@@ -46,6 +46,12 @@ git pull --ff-only
 
 部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标：
 
+编译机器需要先准备：
+
+- Go：以 `backend/go.mod` 中声明的版本为准
+- Node.js / pnpm：用于构建 `frontend`
+- make：用于执行仓库根目录的构建目标
+
 ```bash
 cd /opt/sub2api-src
 pnpm --dir frontend install
@@ -114,4 +120,3 @@ docker compose restart sub2api
 - `GEMINI_CLI_OAUTH_CLIENT_SECRET`
 - `ANTIGRAVITY_OAUTH_CLIENT_ID`
 - `ANTIGRAVITY_OAUTH_CLIENT_SECRET`
-
