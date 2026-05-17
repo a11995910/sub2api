@@ -6295,6 +6295,9 @@ export default {
     purchasing: 'Redeeming...',
     insufficientBalance: 'Insufficient Spirit Stones',
     rechargeSpiritStones: 'Recharge Spirit Stones',
+    confirmPurchaseTitle: 'Confirm Subscription Redemption',
+    confirmPurchaseMessage: 'Use {price} to redeem "{plan}"? Current balance: {balance}. After confirmation, the system will deduct Spirit Stones and automatically create and use a subscription redeem code.',
+    confirmPurchaseButton: 'Confirm Redemption',
     purchaseSuccess: 'Redeemed "{plan}". Code {code} was used automatically.',
     purchaseFailed: 'Failed to redeem subscription',
     status: {

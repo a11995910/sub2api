@@ -89,7 +89,7 @@
                   class="btn w-full justify-center"
                   :class="canAfford(plan) ? 'btn-primary' : 'btn-secondary'"
                   :disabled="!canAfford(plan) || purchasingPlanId === plan.id"
-                  @click="purchasePlan(plan)"
+                  @click="openPurchaseConfirm(plan)"
                 >
                   <Icon v-if="purchasingPlanId === plan.id" name="refresh" size="sm" class="mr-2 animate-spin" />
                   <Icon v-else name="gem" size="sm" class="mr-2" />
@@ -344,6 +344,15 @@
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        :show="showPurchaseConfirm"
+        :title="t('userSubscriptions.confirmPurchaseTitle')"
+        :message="purchaseConfirmMessage"
+        :confirm-text="t('userSubscriptions.confirmPurchaseButton')"
+        @confirm="confirmPurchasePlan"
+        @cancel="closePurchaseConfirm"
+      />
     </div>
   </AppLayout>
 </template>
@@ -358,6 +367,7 @@ import type { UserSubscription } from '@/types'
 import { paymentAPI } from '@/api/payment'
 import type { SubscriptionPlan } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly, formatSpiritStones } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
@@ -384,8 +394,19 @@ const plansLoading = ref(true)
 const purchasingPlanId = ref<number | null>(null)
 const highlightedGroupId = ref<number | null>(null)
 const plansSectionRef = ref<HTMLElement | null>(null)
+const showPurchaseConfirm = ref(false)
+const pendingPurchasePlan = ref<SubscriptionPlan | null>(null)
 const currentBalance = computed(() => authStore.user?.balance || 0)
 const formatQuota = (value: number) => formatSpiritStones(value)
+const purchaseConfirmMessage = computed(() => {
+  const plan = pendingPurchasePlan.value
+  if (!plan) return ''
+  return t('userSubscriptions.confirmPurchaseMessage', {
+    plan: plan.name,
+    price: formatSpiritStones(plan.price),
+    balance: formatSpiritStones(currentBalance.value)
+  })
+})
 
 async function loadSubscriptions() {
   try {
@@ -429,6 +450,24 @@ function purchaseButtonText(plan: SubscriptionPlan): string {
   if (purchasingPlanId.value === plan.id) return t('userSubscriptions.purchasing')
   if (!canAfford(plan)) return t('userSubscriptions.insufficientBalance')
   return t('userSubscriptions.purchaseWithBalance')
+}
+
+function openPurchaseConfirm(plan: SubscriptionPlan) {
+  if (!canAfford(plan) || purchasingPlanId.value) return
+  pendingPurchasePlan.value = plan
+  showPurchaseConfirm.value = true
+}
+
+function closePurchaseConfirm() {
+  showPurchaseConfirm.value = false
+  pendingPurchasePlan.value = null
+}
+
+async function confirmPurchasePlan() {
+  const plan = pendingPurchasePlan.value
+  closePurchaseConfirm()
+  if (!plan) return
+  await purchasePlan(plan)
 }
 
 async function purchasePlan(plan: SubscriptionPlan) {

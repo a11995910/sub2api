@@ -6453,6 +6453,9 @@ export default {
     purchasing: '兑换中...',
     insufficientBalance: '灵石不足',
     rechargeSpiritStones: '充值灵石',
+    confirmPurchaseTitle: '确认兑换订阅',
+    confirmPurchaseMessage: '确定要使用 {price} 兑换「{plan}」吗？当前余额 {balance}。确认后系统会扣除灵石并自动生成、使用订阅兑换码。',
+    confirmPurchaseButton: '确认兑换',
     purchaseSuccess: '已兑换「{plan}」，兑换码 {code} 已自动使用',
     purchaseFailed: '兑换订阅失败',
     status: {
