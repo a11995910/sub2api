@@ -3,18 +3,7 @@
     <div class="space-y-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <section class="card overflow-hidden">
-          <div class="flex flex-col gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700 md:flex-row md:items-center md:justify-between">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                  <Icon name="gem" size="md" />
-                </span>
-                <div>
-                  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('recharge.title') }}</h2>
-                  <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{{ t('recharge.description') }}</p>
-                </div>
-              </div>
-            </div>
+          <div class="flex justify-end border-b border-gray-100 px-5 py-3 dark:border-dark-700">
             <a
               :href="shopUrl"
               target="_blank"
