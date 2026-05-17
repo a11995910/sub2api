@@ -22,6 +22,9 @@ type AvailableGroupRef struct {
 	AllowImageGeneration bool
 	ImageRateIndependent bool
 	ImageRateMultiplier  float64
+	ImagePrice1K         *float64
+	ImagePrice2K         *float64
+	ImagePrice4K         *float64
 }
 
 // AvailableChannel 可用渠道视图：用于「可用渠道」页面展示渠道基础信息 +
@@ -71,6 +74,9 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			AllowImageGeneration: g.AllowImageGeneration,
 			ImageRateIndependent: g.ImageRateIndependent,
 			ImageRateMultiplier:  g.ImageRateMultiplier,
+			ImagePrice1K:         g.ImagePrice1K,
+			ImagePrice2K:         g.ImagePrice2K,
+			ImagePrice4K:         g.ImagePrice4K,
 		}
 	}
 

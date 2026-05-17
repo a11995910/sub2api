@@ -170,6 +170,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { formatScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
+import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
@@ -187,6 +188,7 @@ interface MarketModel {
   key: string
   name: string
   platform: string
+  kind: ModelKind
   pricing: UserSupportedModelPricing | null
   entries: MarketEntry[]
 }
@@ -222,19 +224,21 @@ const marketModels = computed<MarketModel[]>(() => {
       const platform = section.platform
       for (const model of section.supported_models || []) {
         const key = `${platform}:${model.name}:${pricingSignature(model.pricing)}`
+        const kind = resolveModelKind(model)
         let item = map.get(key)
         if (!item) {
           item = {
             key,
             name: model.name,
             platform: model.platform || platform,
+            kind,
             pricing: model.pricing,
             entries: [],
           }
           map.set(key, item)
         }
         const existing = new Set(item.entries.map((entry) => entry.group.id))
-        for (const group of section.groups || []) {
+        for (const group of filterGroupsByModelKind(section.groups, item.kind)) {
           if (!existing.has(group.id)) {
             item.entries.push({ key: `${key}:${group.id}`, group })
             existing.add(group.id)

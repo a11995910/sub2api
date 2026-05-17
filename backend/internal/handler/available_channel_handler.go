@@ -53,15 +53,18 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // 订阅视觉加深），并用 RateMultiplier 作为默认倍率；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
-	ID                   int64   `json:"id"`
-	Name                 string  `json:"name"`
-	Platform             string  `json:"platform"`
-	SubscriptionType     string  `json:"subscription_type"`
-	RateMultiplier       float64 `json:"rate_multiplier"`
-	IsExclusive          bool    `json:"is_exclusive"`
-	AllowImageGeneration bool    `json:"allow_image_generation"`
-	ImageRateIndependent bool    `json:"image_rate_independent"`
-	ImageRateMultiplier  float64 `json:"image_rate_multiplier"`
+	ID                   int64    `json:"id"`
+	Name                 string   `json:"name"`
+	Platform             string   `json:"platform"`
+	SubscriptionType     string   `json:"subscription_type"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	IsExclusive          bool     `json:"is_exclusive"`
+	AllowImageGeneration bool     `json:"allow_image_generation"`
+	ImageRateIndependent bool     `json:"image_rate_independent"`
+	ImageRateMultiplier  float64  `json:"image_rate_multiplier"`
+	ImagePrice1K         *float64 `json:"image_price_1k"`
+	ImagePrice2K         *float64 `json:"image_price_2k"`
+	ImagePrice4K         *float64 `json:"image_price_4k"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
@@ -92,6 +95,7 @@ type userPricingIntervalDTO struct {
 type userSupportedModel struct {
 	Name     string                     `json:"name"`
 	Platform string                     `json:"platform"`
+	Kind     string                     `json:"kind"`
 	Pricing  *userSupportedModelPricing `json:"pricing"`
 }
 
@@ -196,11 +200,17 @@ func buildPlatformSections(
 	sections := make([]userChannelPlatformSection, 0, len(platforms))
 	for _, platform := range platforms {
 		platformSet := map[string]struct{}{platform: {}}
-		sections = append(sections, userChannelPlatformSection{
+		models := toUserSupportedModels(ch.SupportedModels, platformSet)
+		models = appendImageModelsForPlatform(models, groupsByPlatform[platform], platform)
+		section := userChannelPlatformSection{
 			Platform:        platform,
 			Groups:          groupsByPlatform[platform],
-			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
-		})
+			SupportedModels: models,
+		}
+		if len(section.Groups) == 0 || len(section.SupportedModels) == 0 {
+			continue
+		}
+		sections = append(sections, section)
 	}
 	return sections
 }
@@ -225,9 +235,40 @@ func filterUserVisibleGroups(
 			AllowImageGeneration: g.AllowImageGeneration,
 			ImageRateIndependent: g.ImageRateIndependent,
 			ImageRateMultiplier:  g.ImageRateMultiplier,
+			ImagePrice1K:         g.ImagePrice1K,
+			ImagePrice2K:         g.ImagePrice2K,
+			ImagePrice4K:         g.ImagePrice4K,
 		})
 	}
 	return visible
+}
+
+const (
+	modelKindToken = "token"
+	modelKindImage = "image"
+)
+
+func modelKindForPricing(p *service.ChannelModelPricing) string {
+	if p != nil && p.BillingMode == service.BillingModeImage {
+		return modelKindImage
+	}
+	return modelKindToken
+}
+
+func filterGroupsForModelKind(groups []userAvailableGroup, kind string) []userAvailableGroup {
+	out := make([]userAvailableGroup, 0, len(groups))
+	for _, g := range groups {
+		if kind == modelKindImage {
+			if g.AllowImageGeneration {
+				out = append(out, g)
+			}
+			continue
+		}
+		if !g.AllowImageGeneration {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // toUserSupportedModels 将 service 层支持模型转换为用户 DTO（字段白名单）。
@@ -248,10 +289,56 @@ func toUserSupportedModels(
 		out = append(out, userSupportedModel{
 			Name:     m.Name,
 			Platform: m.Platform,
+			Kind:     modelKindForPricing(m.Pricing),
 			Pricing:  toUserPricing(m.Pricing),
 		})
 	}
 	return out
+}
+
+func appendImageModelsForPlatform(
+	models []userSupportedModel,
+	groups []userAvailableGroup,
+	platform string,
+) []userSupportedModel {
+	imageGroups := filterGroupsForModelKind(groups, modelKindImage)
+	if len(imageGroups) == 0 || platform != service.PlatformOpenAI {
+		return models
+	}
+	for _, m := range models {
+		if m.Kind == modelKindImage {
+			return models
+		}
+	}
+	return append(models, userSupportedModel{
+		Name:     "image-2",
+		Platform: platform,
+		Kind:     modelKindImage,
+		Pricing:  imagePricingFromGroups(imageGroups),
+	})
+}
+
+func imagePricingFromGroups(groups []userAvailableGroup) *userSupportedModelPricing {
+	price := firstImagePrice(groups)
+	return &userSupportedModelPricing{
+		BillingMode:     string(service.BillingModeImage),
+		PerRequestPrice: price,
+	}
+}
+
+func firstImagePrice(groups []userAvailableGroup) *float64 {
+	for _, g := range groups {
+		if g.ImagePrice1K != nil {
+			return g.ImagePrice1K
+		}
+		if g.ImagePrice2K != nil {
+			return g.ImagePrice2K
+		}
+		if g.ImagePrice4K != nil {
+			return g.ImagePrice4K
+		}
+	}
+	return nil
 }
 
 // toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。

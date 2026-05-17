@@ -155,7 +155,7 @@
                 :no-pricing-label="noPricingLabel"
                 :show-platform="false"
                 :platform-hint="section.platform"
-                :groups="section.groups"
+                :groups="groupsForModel(section, m)"
                 :user-group-rates="userGroupRates"
               />
               <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
@@ -175,9 +175,10 @@ import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import SupportedModelChip from './SupportedModelChip.vue'
-import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSection } from '@/api/channels'
+import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSection, UserSupportedModel } from '@/api/channels'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBadgeClass } from '@/utils/platformColors'
+import { filterGroupsByModelKind, resolveModelKind } from '@/utils/modelKind'
 
 const props = defineProps<{
   columns: {
@@ -209,6 +210,10 @@ function exclusiveGroups(section: UserChannelPlatformSection): UserAvailableGrou
 
 function publicGroups(section: UserChannelPlatformSection): UserAvailableGroup[] {
   return section.groups.filter((g) => !g.is_exclusive)
+}
+
+function groupsForModel(section: UserChannelPlatformSection, model: UserSupportedModel): UserAvailableGroup[] {
+  return filterGroupsByModelKind(section.groups, resolveModelKind(model))
 }
 
 function effectiveTextRate(group: UserAvailableGroup): number {

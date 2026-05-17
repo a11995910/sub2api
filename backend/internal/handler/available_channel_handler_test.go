@@ -63,6 +63,28 @@ func TestToUserSupportedModels_NilAllowedPlatformsKeepsAll(t *testing.T) {
 	require.Len(t, toUserSupportedModels(src, nil), 2)
 }
 
+func TestToUserSupportedModels_MarksImagePricingKind(t *testing.T) {
+	// 图片计费模型必须带 kind=image，供前端把图片分组与普通 token 模型分开渲染。
+	src := []service.SupportedModel{
+		{
+			Name:     "gpt-image-2",
+			Platform: service.PlatformOpenAI,
+			Pricing:  &service.ChannelModelPricing{BillingMode: service.BillingModeImage},
+		},
+		{
+			Name:     "gpt-5.4",
+			Platform: service.PlatformOpenAI,
+			Pricing:  &service.ChannelModelPricing{BillingMode: service.BillingModeToken},
+		},
+	}
+
+	out := toUserSupportedModels(src, nil)
+
+	require.Len(t, out, 2)
+	require.Equal(t, modelKindImage, out[0].Kind)
+	require.Equal(t, modelKindToken, out[1].Kind)
+}
+
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	// 通过序列化 userAvailableChannel 结构体验证响应形状：
 	// 只有 name / description / platforms；不含管理端字段。
@@ -117,6 +139,9 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		"allow_image_generation",
 		"image_rate_independent",
 		"image_rate_multiplier",
+		"image_price_1k",
+		"image_price_2k",
+		"image_price_4k",
 	} {
 		_, exists := groupDecoded[key]
 		require.Truef(t, exists, "group DTO must expose %q", key)
@@ -164,6 +189,22 @@ func TestFilterUserVisibleGroups_ExposesImageControls(t *testing.T) {
 	require.Equal(t, 1.2, visible[0].ImageRateMultiplier)
 }
 
+func TestFilterGroupsForModelKind_SplitsImageGroups(t *testing.T) {
+	// 模型广场需要用模型类型切分分组：图片分组只给图片模型，普通分组只给 token/按次模型。
+	groups := []userAvailableGroup{
+		{ID: 1, Name: "text", AllowImageGeneration: false},
+		{ID: 2, Name: "image", AllowImageGeneration: true},
+	}
+
+	tokenGroups := filterGroupsForModelKind(groups, modelKindToken)
+	imageGroups := filterGroupsForModelKind(groups, modelKindImage)
+
+	require.Len(t, tokenGroups, 1)
+	require.Equal(t, int64(1), tokenGroups[0].ID)
+	require.Len(t, imageGroups, 1)
+	require.Equal(t, int64(2), imageGroups[0].ID)
+}
+
 func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	// 一个渠道横跨 anthropic / openai / 空平台：应该生成 2 个 section，
 	// 按 platform 字母序排序，各自 groups 和 supported_models 只含同平台条目。
@@ -187,4 +228,33 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	require.Equal(t, int64(2), sections[0].Groups[0].ID)
 	require.Len(t, sections[0].SupportedModels, 1)
 	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+}
+
+func TestBuildPlatformSections_AppendsOpenAIImageModelForImageGroup(t *testing.T) {
+	// 线上图片分组只有 allow_image_generation 标记，没有单独渠道定价行；
+	// 因此用户侧需要补一个独立 image-2 模型，避免把图片能力挂到所有 GPT 模型下面。
+	ch := service.AvailableChannel{
+		Name: "openai",
+		SupportedModels: []service.SupportedModel{
+			{
+				Name:     "gpt-5.4",
+				Platform: service.PlatformOpenAI,
+				Pricing:  &service.ChannelModelPricing{BillingMode: service.BillingModeToken},
+			},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "GPT", Platform: service.PlatformOpenAI},
+		{ID: 2, Name: "ChatGPT2API 图片", Platform: service.PlatformOpenAI, AllowImageGeneration: true},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+
+	require.Len(t, sections, 1)
+	require.Len(t, sections[0].SupportedModels, 2)
+	require.Equal(t, "gpt-5.4", sections[0].SupportedModels[0].Name)
+	require.Equal(t, modelKindToken, sections[0].SupportedModels[0].Kind)
+	require.Equal(t, "image-2", sections[0].SupportedModels[1].Name)
+	require.Equal(t, modelKindImage, sections[0].SupportedModels[1].Kind)
+	require.Equal(t, string(service.BillingModeImage), sections[0].SupportedModels[1].Pricing.BillingMode)
 }

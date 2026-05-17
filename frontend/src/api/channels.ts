@@ -22,6 +22,12 @@ export interface UserAvailableGroup {
   image_rate_independent: boolean
   /** 图片生成独立倍率，仅 image_rate_independent=true 时生效。 */
   image_rate_multiplier: number
+  /** 1K 图片生成单价；为空时后端计费会回退默认图片价格。 */
+  image_price_1k: number | null
+  /** 2K 图片生成单价；为空时后端计费会回退默认图片价格。 */
+  image_price_2k: number | null
+  /** 4K 图片生成单价；为空时后端计费会回退默认图片价格。 */
+  image_price_4k: number | null
 }
 
 export interface UserPricingInterval {
@@ -49,6 +55,8 @@ export interface UserSupportedModelPricing {
 export interface UserSupportedModel {
   name: string
   platform: string
+  /** token = 文本/按次模型，image = 独立图片模型。旧后端可能没有该字段，前端需兜底。 */
+  kind?: 'token' | 'image'
   pricing: UserSupportedModelPricing | null
 }
 
