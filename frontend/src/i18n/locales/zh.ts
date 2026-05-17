@@ -373,7 +373,7 @@ export default {
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
-    buySubscription: '充值/订阅',
+    buySubscription: '灵石充值',
     docs: '文档',
     myOrders: '我的订单',
     orderManagement: '订单管理',
@@ -1025,12 +1025,12 @@ export default {
 
   // Recharge
   recharge: {
-    title: '余额/订阅充值',
-    description: '在小铺购买兑换码后，前往兑换页充值灵石或开通订阅',
+    title: '灵石充值',
+    description: '在小铺购买兑换码后，前往兑换页充值灵石',
     currentBalance: '当前灵石余额',
     openInNewWindow: '新窗口打开',
     redeemTitle: '已买到兑换码？',
-    redeemDescription: '小铺购买完成后，复制兑换码到兑换页。兑换码可按后台配置直接增加灵石余额或开通订阅。',
+    redeemDescription: '小铺购买完成后，复制兑换码到兑换页。兑换码会按后台配置增加灵石余额。',
     goRedeem: '去兑换',
     iframeHint: '如果小铺在当前页显示为空白，通常是浏览器或目标站点限制 iframe。请使用“新窗口打开”完成购买，再回到兑换页使用兑换码。'
   },
@@ -5637,11 +5637,11 @@ export default {
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },
       purchase: {
-        title: '充值/订阅页面',
-        description: '在侧边栏展示“充值/订阅”入口，并在页面内通过 iframe 打开指定链接',
-        enabled: '显示充值/订阅入口',
+        title: '灵石充值页面',
+        description: '在侧边栏展示“灵石充值”入口，并在页面内通过 iframe 打开指定链接',
+        enabled: '显示灵石充值入口',
         enabledHint: '仅在标准模式（非简单模式）下展示',
-        url: '充值/订阅页面 URL',
+        url: '灵石充值页面 URL',
         urlPlaceholder: 'https://example.com/purchase',
         urlHint: '必须是完整的 http(s) 链接',
         iframeWarning:
@@ -6386,15 +6386,15 @@ export default {
     retry: '重试'
   },
 
-  // Recharge / Subscription Page
+  // Spirit Stones Recharge Page
   purchase: {
-    title: '充值/订阅',
-    description: '通过内嵌页面完成充值/订阅',
+    title: '灵石充值',
+    description: '通过内嵌页面完成灵石充值',
     openInNewTab: '新窗口打开',
     notEnabledTitle: '该功能未开启',
-    notEnabledDesc: '管理员暂未开启充值/订阅入口，请联系管理员。',
-    notConfiguredTitle: '充值/订阅链接未配置',
-    notConfiguredDesc: '管理员已开启入口，但尚未配置充值/订阅链接，请联系管理员。'
+    notEnabledDesc: '管理员暂未开启灵石充值入口，请联系管理员。',
+    notConfiguredTitle: '灵石充值链接未配置',
+    notConfiguredDesc: '管理员已开启入口，但尚未配置灵石充值链接，请联系管理员。'
   },
 
   // Custom Page (iframe embed)
@@ -6434,10 +6434,27 @@ export default {
   // User Subscriptions Page
   userSubscriptions: {
     title: '我的订阅',
-    description: '查看您的订阅计划和用量',
+    description: '查看订阅用量，并使用灵石兑换订阅套餐',
     noActiveSubscriptions: '暂无有效订阅',
-    noActiveSubscriptionsDesc: '您没有任何有效订阅。请联系管理员获取订阅。',
+    noActiveSubscriptionsDesc: '您还没有有效订阅，可在上方使用灵石兑换套餐。',
     failedToLoad: '加载订阅失败',
+    failedToLoadPlans: '加载订阅套餐失败',
+    plansTitle: '用灵石兑换订阅',
+    plansDescription: '保留原套餐价格与说明，兑换后系统会自动生成并使用一张订阅兑换码。',
+    currentBalance: '当前余额：{balance}',
+    noPlans: '暂无可兑换套餐',
+    noPlansDesc: '管理员开启可售订阅套餐后会显示在这里。',
+    validity: '有效期',
+    rateMultiplier: '倍率',
+    validityDays: '{count} 天',
+    validityWeeks: '{count} 周',
+    validityMonths: '{count} 个月',
+    purchaseWithBalance: '用灵石兑换',
+    purchasing: '兑换中...',
+    insufficientBalance: '灵石不足',
+    rechargeSpiritStones: '充值灵石',
+    purchaseSuccess: '已兑换「{plan}」，兑换码 {code} 已自动使用',
+    purchaseFailed: '兑换订阅失败',
     status: {
       active: '有效',
       expired: '已过期',
@@ -6632,7 +6649,7 @@ export default {
 
   // Payment System
   payment: {
-    title: '充值/订阅',
+    title: '灵石充值',
     amountLabel: '充值金额',
     paymentAmount: '支付金额',
     creditedBalance: '到账余额',
@@ -6758,6 +6775,7 @@ export default {
       BALANCE_PAYMENT_DISABLED: '余额充值功能已关闭',
       INVALID_AMOUNT: '金额无效',
       INVALID_INPUT: '参数有误',
+      INSUFFICIENT_BALANCE: '灵石余额不足',
       PLAN_NOT_AVAILABLE: '套餐不存在或已下架',
       GROUP_NOT_FOUND: '订阅分组不可用',
       GROUP_TYPE_MISMATCH: '分组类型不是订阅类型',

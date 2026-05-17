@@ -1,6 +1,109 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
+      <section ref="plansSectionRef" class="space-y-4">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('userSubscriptions.plansTitle') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+              {{ t('userSubscriptions.plansDescription') }}
+            </p>
+          </div>
+          <div class="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <Icon name="gem" size="sm" />
+            {{ t('userSubscriptions.currentBalance', { balance: formatSpiritStones(authStore.user?.balance || 0) }) }}
+          </div>
+        </div>
+
+        <div v-if="plansLoading" class="flex justify-center rounded-xl border border-dashed border-gray-200 py-10 dark:border-dark-700">
+          <div class="h-7 w-7 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
+        </div>
+
+        <div v-else-if="plans.length === 0" class="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center dark:border-dark-700 dark:bg-dark-800">
+          <Icon name="gift" size="xl" class="mx-auto mb-3 text-gray-400" />
+          <p class="font-medium text-gray-900 dark:text-white">{{ t('userSubscriptions.noPlans') }}</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('userSubscriptions.noPlansDesc') }}</p>
+        </div>
+
+        <div v-else class="grid gap-4 xl:grid-cols-3">
+          <article
+            v-for="plan in plans"
+            :key="plan.id"
+            class="flex min-h-[22rem] flex-col overflow-hidden rounded-xl border bg-white dark:bg-dark-800"
+            :class="[
+              platformBorderClass(plan.group_platform || ''),
+              highlightedGroupId === plan.group_id ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-dark-950' : ''
+            ]"
+          >
+            <div class="border-b border-gray-100 p-5 dark:border-dark-700">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ plan.group_name || `Group #${plan.group_id}` }}
+                  </p>
+                  <h3 class="mt-1 break-words text-base font-semibold text-gray-900 dark:text-white">
+                    {{ plan.name }}
+                  </h3>
+                </div>
+                <span :class="['shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium', platformBadgeClass(plan.group_platform || '')]">
+                  {{ platformLabel(plan.group_platform || '') }}
+                </span>
+              </div>
+              <p v-if="plan.description" class="mt-3 text-sm leading-6 text-gray-500 dark:text-dark-400">
+                {{ plan.description }}
+              </p>
+            </div>
+
+            <div class="flex flex-1 flex-col gap-4 p-5">
+              <div class="flex items-end gap-2">
+                <span class="text-2xl font-semibold text-emerald-600 dark:text-emerald-300">
+                  {{ formatSpiritStones(plan.price) }}
+                </span>
+                <span v-if="plan.original_price && plan.original_price > plan.price" class="pb-1 text-sm text-gray-400 line-through">
+                  {{ formatSpiritStones(plan.original_price) }}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-dark-300">
+                <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-700/60">
+                  <p class="text-gray-400">{{ t('userSubscriptions.validity') }}</p>
+                  <p class="mt-1 font-medium text-gray-700 dark:text-gray-200">{{ formatValidity(plan) }}</p>
+                </div>
+                <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-700/60">
+                  <p class="text-gray-400">{{ t('userSubscriptions.rateMultiplier') }}</p>
+                  <p class="mt-1 font-medium text-gray-700 dark:text-gray-200">{{ formatMultiplier(plan.rate_multiplier) }}</p>
+                </div>
+              </div>
+
+              <ul v-if="plan.features?.length" class="space-y-2 text-sm text-gray-600 dark:text-dark-300">
+                <li v-for="feature in plan.features.slice(0, 4)" :key="feature" class="flex gap-2">
+                  <Icon name="checkCircle" size="sm" class="mt-0.5 shrink-0 text-emerald-500" />
+                  <span class="break-words">{{ feature }}</span>
+                </li>
+              </ul>
+
+              <div class="mt-auto space-y-3">
+                <button
+                  class="btn w-full justify-center"
+                  :class="canAfford(plan) ? 'btn-primary' : 'btn-secondary'"
+                  :disabled="!canAfford(plan) || purchasingPlanId === plan.id"
+                  @click="purchasePlan(plan)"
+                >
+                  <Icon v-if="purchasingPlanId === plan.id" name="refresh" size="sm" class="mr-2 animate-spin" />
+                  <Icon v-else name="gem" size="sm" class="mr-2" />
+                  {{ purchaseButtonText(plan) }}
+                </button>
+                <router-link v-if="!canAfford(plan)" to="/purchase" class="btn btn-secondary w-full justify-center">
+                  {{ t('userSubscriptions.rechargeSpiritStones') }}
+                </router-link>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center py-12">
         <div
@@ -67,7 +170,7 @@
               <button
                 v-if="subscription.status === 'active'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
-                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+                @click="scrollToPlans(subscription.group_id)"
               >
                 {{ t('payment.renewNow') }}
               </button>
@@ -246,16 +349,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
+import { paymentAPI } from '@/api/payment'
+import type { SubscriptionPlan } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly, formatSpiritStones } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
@@ -268,11 +374,17 @@ function platformAccentDotClass(p: string): string {
 }
 
 const { t } = useI18n()
-const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const subscriptions = ref<UserSubscription[]>([])
+const plans = ref<SubscriptionPlan[]>([])
 const loading = ref(true)
+const plansLoading = ref(true)
+const purchasingPlanId = ref<number | null>(null)
+const highlightedGroupId = ref<number | null>(null)
+const plansSectionRef = ref<HTMLElement | null>(null)
+const currentBalance = computed(() => authStore.user?.balance || 0)
 const formatQuota = (value: number) => formatSpiritStones(value)
 
 async function loadSubscriptions() {
@@ -285,6 +397,85 @@ async function loadSubscriptions() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadPlans() {
+  try {
+    plansLoading.value = true
+    const response = await paymentAPI.getPlans()
+    plans.value = (response.data || []).map(normalizePlan)
+  } catch (error) {
+    console.error('Failed to load subscription plans:', error)
+    appStore.showError(t('userSubscriptions.failedToLoadPlans'))
+  } finally {
+    plansLoading.value = false
+  }
+}
+
+function normalizePlan(plan: SubscriptionPlan & { features?: string[] | string }): SubscriptionPlan {
+  return {
+    ...plan,
+    features: Array.isArray(plan.features)
+      ? plan.features
+      : String(plan.features || '').split('\n').map((item) => item.trim()).filter(Boolean)
+  }
+}
+
+function canAfford(plan: SubscriptionPlan): boolean {
+  return currentBalance.value >= Number(plan.price || 0)
+}
+
+function purchaseButtonText(plan: SubscriptionPlan): string {
+  if (purchasingPlanId.value === plan.id) return t('userSubscriptions.purchasing')
+  if (!canAfford(plan)) return t('userSubscriptions.insufficientBalance')
+  return t('userSubscriptions.purchaseWithBalance')
+}
+
+async function purchasePlan(plan: SubscriptionPlan) {
+  if (!canAfford(plan) || purchasingPlanId.value) return
+  try {
+    purchasingPlanId.value = plan.id
+    const result = await subscriptionsAPI.purchaseWithBalance(plan.id)
+    appStore.showSuccess(t('userSubscriptions.purchaseSuccess', {
+      plan: plan.name,
+      code: result.redeem_code?.code || ''
+    }))
+    await Promise.all([
+      loadSubscriptions(),
+      loadPlans(),
+      authStore.refreshUser().catch(() => null)
+    ])
+  } catch (error) {
+    console.error('Failed to purchase subscription with balance:', error)
+    appStore.showError(extractI18nErrorMessage(error, t, 'payment.errors', t('userSubscriptions.purchaseFailed')))
+  } finally {
+    purchasingPlanId.value = null
+  }
+}
+
+function scrollToPlans(groupId?: number) {
+  highlightedGroupId.value = groupId || null
+  plansSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (groupId) {
+    window.setTimeout(() => {
+      if (highlightedGroupId.value === groupId) {
+        highlightedGroupId.value = null
+      }
+    }, 2200)
+  }
+}
+
+function formatValidity(plan: SubscriptionPlan): string {
+  const days = Number(plan.validity_days || 0)
+  const unit = plan.validity_unit || 'day'
+  if (unit === 'month') return t('userSubscriptions.validityMonths', { count: days })
+  if (unit === 'week') return t('userSubscriptions.validityWeeks', { count: days })
+  return t('userSubscriptions.validityDays', { count: days })
+}
+
+function formatMultiplier(value?: number): string {
+  if (!value || value <= 0) return t('common.none')
+  return `${value}x`
 }
 
 function getProgressWidth(used: number | undefined, limit: number | null | undefined): string {
@@ -363,5 +554,7 @@ function formatResetTime(windowStart: string | null, windowHours: number): strin
 
 onMounted(() => {
   loadSubscriptions()
+  loadPlans()
+  authStore.refreshUser().catch(() => null)
 })
 </script>

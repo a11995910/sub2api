@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { UserSubscription, SubscriptionProgress } from '@/types'
+import type { RedeemCode, UserSubscription, SubscriptionProgress } from '@/types'
 
 /**
  * Subscription summary for user dashboard
@@ -21,6 +21,14 @@ export interface SubscriptionSummary {
     expires_at: string | null
     days_remaining: number | null
   }>
+}
+
+export interface PurchaseSubscriptionWithBalanceResponse {
+  plan_id: number
+  price: number
+  new_balance: number
+  redeem_code: RedeemCode
+  subscription?: UserSubscription
 }
 
 /**
@@ -67,10 +75,24 @@ export async function getSubscriptionProgress(
   return response.data
 }
 
+/**
+ * 使用灵石兑换订阅套餐。后端会自动生成并使用一张订阅兑换码。
+ */
+export async function purchaseWithBalance(
+  planId: number
+): Promise<PurchaseSubscriptionWithBalanceResponse> {
+  const response = await apiClient.post<PurchaseSubscriptionWithBalanceResponse>(
+    `/payment/plans/${planId}/purchase-with-balance`,
+    {}
+  )
+  return response.data
+}
+
 export default {
   getMySubscriptions,
   getActiveSubscriptions,
   getSubscriptionsProgress,
   getSubscriptionSummary,
-  getSubscriptionProgress
+  getSubscriptionProgress,
+  purchaseWithBalance
 }

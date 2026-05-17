@@ -193,6 +193,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 
 	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
+		hasOuterTx := dbent.TxFromContext(ctx) != nil
 		now := time.Now()
 		var newExpiresAt time.Time
 
@@ -209,23 +210,32 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			newExpiresAt = MaxExpiresAt
 		}
 
-		// 开启事务：ExtendExpiry + UpdateStatus + UpdateNotes 在同一事务中完成
-		tx, err := s.entClient.Tx(ctx)
-		if err != nil {
-			return nil, false, fmt.Errorf("begin transaction: %w", err)
+		// 复用外层事务，保证兑换码、余额扣减、订阅续期能原子提交。
+		txCtx := ctx
+		var tx *dbent.Tx
+		if dbent.TxFromContext(ctx) == nil {
+			var err error
+			tx, err = s.entClient.Tx(ctx)
+			if err != nil {
+				return nil, false, fmt.Errorf("begin transaction: %w", err)
+			}
+			txCtx = dbent.NewTxContext(ctx, tx)
 		}
-		txCtx := dbent.NewTxContext(ctx, tx)
 
 		// 更新过期时间
 		if err := s.userSubRepo.ExtendExpiry(txCtx, existingSub.ID, newExpiresAt); err != nil {
-			_ = tx.Rollback()
+			if tx != nil {
+				_ = tx.Rollback()
+			}
 			return nil, false, fmt.Errorf("extend subscription: %w", err)
 		}
 
 		// 如果订阅已过期或被暂停，恢复为active状态
 		if existingSub.Status != SubscriptionStatusActive {
 			if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
-				_ = tx.Rollback()
+				if tx != nil {
+					_ = tx.Rollback()
+				}
 				return nil, false, fmt.Errorf("update subscription status: %w", err)
 			}
 		}
@@ -238,29 +248,37 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			}
 			newNotes += input.Notes
 			if err := s.userSubRepo.UpdateNotes(txCtx, existingSub.ID, newNotes); err != nil {
-				_ = tx.Rollback()
+				if tx != nil {
+					_ = tx.Rollback()
+				}
 				return nil, false, fmt.Errorf("update subscription notes: %w", err)
 			}
 		}
 
-		// 提交事务
-		if err := tx.Commit(); err != nil {
-			return nil, false, fmt.Errorf("commit transaction: %w", err)
+		// 只有内部开启的事务需要在这里提交；外层事务由调用方统一提交。
+		readCtx := txCtx
+		if tx != nil {
+			if err := tx.Commit(); err != nil {
+				return nil, false, fmt.Errorf("commit transaction: %w", err)
+			}
+			readCtx = ctx
 		}
 
-		// 失效订阅缓存
-		s.InvalidateSubCache(input.UserID, input.GroupID)
-		if s.billingCacheService != nil {
-			userID, groupID := input.UserID, input.GroupID
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-			}()
+		// 外层事务场景下由调用方在提交成功后统一失效缓存，避免读取未提交状态。
+		if !hasOuterTx {
+			s.InvalidateSubCache(input.UserID, input.GroupID)
+			if s.billingCacheService != nil {
+				userID, groupID := input.UserID, input.GroupID
+				go func() {
+					cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				}()
+			}
 		}
 
 		// 返回更新后的订阅
-		sub, err := s.userSubRepo.GetByID(ctx, existingSub.ID)
+		sub, err := s.userSubRepo.GetByID(readCtx, existingSub.ID)
 		return sub, true, err // true 表示是续期
 	}
 
@@ -270,15 +288,17 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		return nil, false, err
 	}
 
-	// 失效订阅缓存
-	s.InvalidateSubCache(input.UserID, input.GroupID)
-	if s.billingCacheService != nil {
-		userID, groupID := input.UserID, input.GroupID
-		go func() {
-			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-		}()
+	// 外层事务场景下由调用方在提交成功后统一失效缓存，避免读取未提交状态。
+	if dbent.TxFromContext(ctx) == nil {
+		s.InvalidateSubCache(input.UserID, input.GroupID)
+		if s.billingCacheService != nil {
+			userID, groupID := input.UserID, input.GroupID
+			go func() {
+				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			}()
+		}
 	}
 
 	return sub, false, nil // false 表示是新建

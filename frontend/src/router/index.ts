@@ -274,7 +274,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Recharge / Subscription',
+      title: 'Spirit Stones Recharge',
       titleKey: 'nav.buySubscription',
       descriptionKey: 'recharge.description',
       requiresPayment: false

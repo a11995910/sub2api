@@ -373,7 +373,7 @@ export default {
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
-    buySubscription: 'Recharge / Subscription',
+    buySubscription: 'Spirit Stones Recharge',
     docs: 'Docs',
     myOrders: 'My Orders',
     orderManagement: 'Orders',
@@ -1021,12 +1021,12 @@ export default {
 
   // Recharge
   recharge: {
-    title: 'Balance / Subscription Recharge',
-    description: 'Buy a redeem code in the shop, then redeem it for Spirit Stones or a subscription',
+    title: 'Spirit Stones Recharge',
+    description: 'Buy a redeem code in the shop, then redeem it for Spirit Stones',
     currentBalance: 'Current Spirit Stones',
     openInNewWindow: 'Open in New Window',
     redeemTitle: 'Already bought a code?',
-    redeemDescription: 'After purchase, copy the redeem code to the redeem page. Codes can add Spirit Stones or grant a subscription depending on their configuration.',
+    redeemDescription: 'After purchase, copy the redeem code to the redeem page. Codes will add Spirit Stones based on the admin configuration.',
     goRedeem: 'Redeem Code',
     iframeHint: 'If the shop appears blank here, the browser or target site may be blocking iframe embedding. Open it in a new window, then return to redeem your code.'
   },
@@ -5476,11 +5476,11 @@ export default {
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
       },
       purchase: {
-        title: 'Recharge / Subscription Page',
-        description: 'Show a "Recharge / Subscription" entry in the sidebar and open the configured URL in an iframe',
-        enabled: 'Show Recharge / Subscription Entry',
+        title: 'Spirit Stones Recharge Page',
+        description: 'Show a "Spirit Stones Recharge" entry in the sidebar and open the configured URL in an iframe',
+        enabled: 'Show Spirit Stones Recharge Entry',
         enabledHint: 'Only shown in standard mode (not simple mode)',
-        url: 'Recharge / Subscription URL',
+        url: 'Spirit Stones Recharge URL',
         urlPlaceholder: 'https://example.com/purchase',
         urlHint: 'Must be an absolute http(s) URL',
         iframeWarning:
@@ -6226,16 +6226,16 @@ export default {
     retry: 'Retry'
   },
 
-  // Recharge / Subscription Page
+  // Spirit Stones Recharge Page
   purchase: {
-    title: 'Recharge / Subscription',
-    description: 'Recharge balance or purchase subscription via the embedded page',
+    title: 'Spirit Stones Recharge',
+    description: 'Recharge Spirit Stones via the embedded page',
     openInNewTab: 'Open in new tab',
     notEnabledTitle: 'Feature not enabled',
-    notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',
-    notConfiguredTitle: 'Recharge / Subscription URL not configured',
+    notEnabledDesc: 'The administrator has not enabled the Spirit Stones recharge entry. Please contact admin.',
+    notConfiguredTitle: 'Spirit Stones Recharge URL not configured',
     notConfiguredDesc:
-      'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
+      'The administrator enabled the entry but has not configured a Spirit Stones recharge URL. Please contact admin.'
   },
 
   // Custom Page (iframe embed)
@@ -6275,11 +6275,28 @@ export default {
   // User Subscriptions Page
   userSubscriptions: {
     title: 'My Subscriptions',
-    description: 'View your subscription plans and usage',
+    description: 'View subscription usage and redeem plans with Spirit Stones',
     noActiveSubscriptions: 'No Active Subscriptions',
     noActiveSubscriptionsDesc:
-      "You don't have any active subscriptions. Contact administrator to get one.",
+      "You don't have any active subscriptions yet. Redeem a plan with Spirit Stones above.",
     failedToLoad: 'Failed to load subscriptions',
+    failedToLoadPlans: 'Failed to load subscription plans',
+    plansTitle: 'Redeem Subscriptions',
+    plansDescription: 'Original plan prices and descriptions are preserved. After redemption, the system creates and uses a subscription redeem code automatically.',
+    currentBalance: 'Current balance: {balance}',
+    noPlans: 'No redeemable plans',
+    noPlansDesc: 'Plans will appear here after an administrator marks them for sale.',
+    validity: 'Validity',
+    rateMultiplier: 'Multiplier',
+    validityDays: '{count} days',
+    validityWeeks: '{count} weeks',
+    validityMonths: '{count} months',
+    purchaseWithBalance: 'Redeem with Spirit Stones',
+    purchasing: 'Redeeming...',
+    insufficientBalance: 'Insufficient Spirit Stones',
+    rechargeSpiritStones: 'Recharge Spirit Stones',
+    purchaseSuccess: 'Redeemed "{plan}". Code {code} was used automatically.',
+    purchaseFailed: 'Failed to redeem subscription',
     status: {
       active: 'Active',
       expired: 'Expired',
@@ -6447,7 +6464,7 @@ export default {
 
   // Payment System
   payment: {
-    title: 'Recharge / Subscription',
+    title: 'Spirit Stones Recharge',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
     creditedBalance: 'Credited Balance',
@@ -6573,6 +6590,7 @@ export default {
       BALANCE_PAYMENT_DISABLED: 'Balance recharge has been disabled.',
       INVALID_AMOUNT: 'Invalid amount.',
       INVALID_INPUT: 'Invalid request.',
+      INSUFFICIENT_BALANCE: 'Insufficient Spirit Stones.',
       PLAN_NOT_AVAILABLE: 'Plan not found or no longer available.',
       GROUP_NOT_FOUND: 'Subscription group is no longer available.',
       GROUP_TYPE_MISMATCH: 'Group is not a subscription type.',
