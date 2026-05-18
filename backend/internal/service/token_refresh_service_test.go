@@ -20,6 +20,7 @@ type tokenRefreshAccountRepo struct {
 	setErrorCalls          int
 	clearTempCalls         int
 	setTempUnschedCalls    int
+	lastErrorMsg           string
 	lastAccount            *Account
 	updateErr              error
 }
@@ -51,6 +52,7 @@ func (r *tokenRefreshAccountRepo) UpdateCredentials(ctx context.Context, id int6
 
 func (r *tokenRefreshAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
+	r.lastErrorMsg = errorMsg
 	return nil
 }
 
@@ -534,6 +536,7 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 		{name: "invalid_client", err: errors.New("invalid_client"), expected: true},
 		{name: "unauthorized_client", err: errors.New("unauthorized_client"), expected: true},
 		{name: "access_denied", err: errors.New("access_denied"), expected: true},
+		{name: "refresh_token_reused", err: errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused"}}`), expected: true},
 		{name: "no_refresh_token", err: errors.New("no refresh token available"), expected: true},
 		{name: "invalid_grant_with_desc", err: errors.New("Error: invalid_grant - token revoked"), expected: true},
 		{name: "case_insensitive", err: errors.New("INVALID_GRANT"), expected: true},
@@ -545,6 +548,42 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestFormatNonRetryableRefreshErrorMessage_RefreshTokenReused(t *testing.T) {
+	err := errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused"}}`)
+
+	message := FormatNonRetryableRefreshErrorMessage(err)
+
+	require.Contains(t, message, "refresh_token_reused")
+	require.Contains(t, message, "失效")
+}
+
+func TestTokenRefreshService_RefreshWithRetry_RefreshTokenReusedSetsError(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          3,
+			RetryBackoffSeconds: 0,
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID:       19,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+	refresher := &tokenRefresherStub{
+		err: errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused"}}`),
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+
+	require.Error(t, err)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 0, repo.setTempUnschedCalls)
+	require.Contains(t, repo.lastErrorMsg, "refresh_token_reused")
+	require.Contains(t, repo.lastErrorMsg, "失效")
 }
 
 // ========== Path A (refreshAPI) 测试用例 ==========

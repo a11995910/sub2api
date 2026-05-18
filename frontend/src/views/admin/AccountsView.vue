@@ -125,6 +125,22 @@
                       </span>
                       <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
                     </button>
+                    <button
+                      class="account-tools-menu-item"
+                      :disabled="codexBatchChecking"
+                      @click="handleCheckAllCodexAccounts"
+                    >
+                      <span class="account-tools-menu-icon bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300">
+                        <Icon name="refresh" size="sm" :class="{ 'animate-spin': codexBatchChecking }" />
+                      </span>
+                      <span class="flex-1 text-left">
+                        {{
+                          codexBatchChecking
+                            ? t('admin.accounts.checkingAllCodexAccounts')
+                            : t('admin.accounts.checkAllCodexAccounts')
+                        }}
+                      </span>
+                    </button>
                     <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
                       <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
                         <Icon name="lock" size="sm" />
@@ -487,6 +503,7 @@ const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
+const codexBatchChecking = ref(false)
 
 // Account tools dropdown
 const showAccountToolsDropdown = ref(false)
@@ -990,6 +1007,67 @@ const openErrorPassthrough = () => {
 const openTLSFingerprintProfiles = () => {
   closeAccountToolsDropdown()
   showTLSFingerprintProfiles.value = true
+}
+
+const CODEX_ACCOUNT_PAGE_SIZE = 1000
+const CODEX_BATCH_REFRESH_CHUNK_SIZE = 80
+
+const listAllCodexAccountIds = async (): Promise<number[]> => {
+  const ids: number[] = []
+  let page = 1
+  let pages = 1
+
+  while (page <= pages) {
+    const result = await adminAPI.accounts.list(page, CODEX_ACCOUNT_PAGE_SIZE, {
+      platform: 'openai',
+      type: 'oauth',
+      sort_by: 'id',
+      sort_order: 'asc'
+    })
+    ids.push(...(result.items || []).map(account => account.id))
+    pages = Math.max(result.pages || 1, 1)
+    page += 1
+  }
+
+  return Array.from(new Set(ids))
+}
+
+const handleCheckAllCodexAccounts = async () => {
+  if (codexBatchChecking.value) return
+  if (!confirm(t('admin.accounts.checkAllCodexConfirm'))) return
+
+  closeAccountToolsDropdown()
+  codexBatchChecking.value = true
+  enterAutoRefreshSilentWindow()
+
+  try {
+    const ids = await listAllCodexAccountIds()
+    if (ids.length === 0) {
+      appStore.showInfo(t('admin.accounts.checkAllCodexEmpty'))
+      return
+    }
+
+    let success = 0
+    let failed = 0
+    for (let start = 0; start < ids.length; start += CODEX_BATCH_REFRESH_CHUNK_SIZE) {
+      const chunk = ids.slice(start, start + CODEX_BATCH_REFRESH_CHUNK_SIZE)
+      const result = await adminAPI.accounts.batchRefresh(chunk)
+      success += result.success || 0
+      failed += result.failed || 0
+    }
+
+    if (failed > 0) {
+      appStore.showError(t('admin.accounts.checkAllCodexPartial', { success, failed }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.checkAllCodexSuccess', { count: success }))
+    }
+    await load()
+  } catch (error: any) {
+    console.error('Failed to check all Codex accounts:', error)
+    appStore.showError(error?.message || t('admin.accounts.checkAllCodexFailed'))
+  } finally {
+    codexBatchChecking.value = false
+  }
 }
 
 const syncPendingListChanges = async () => {
@@ -1673,6 +1751,10 @@ onUnmounted(() => {
 <style scoped>
 .account-tools-menu-item {
   @apply flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700;
+}
+
+.account-tools-menu-item:disabled {
+  @apply cursor-not-allowed opacity-60 hover:bg-transparent dark:hover:bg-transparent;
 }
 
 .account-tools-menu-icon {

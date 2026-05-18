@@ -840,6 +840,7 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		if err != nil {
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 			h.adminService.EnsureOpenAIPrivacy(ctx, account)
+			h.markNonRetryableRefreshError(ctx, account, err)
 			return nil, "", err
 		}
 
@@ -852,6 +853,7 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	} else if account.Platform == service.PlatformGemini {
 		tokenInfo, err := h.geminiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
+			h.markNonRetryableRefreshError(ctx, account, err)
 			return nil, "", fmt.Errorf("failed to refresh credentials: %w", err)
 		}
 
@@ -864,6 +866,7 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	} else if account.Platform == service.PlatformAntigravity {
 		tokenInfo, err := h.antigravityOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
+			h.markNonRetryableRefreshError(ctx, account, err)
 			return nil, "", err
 		}
 
@@ -904,6 +907,7 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		// Use Anthropic/Claude OAuth service to refresh token
 		tokenInfo, err := h.oauthService.RefreshAccountToken(ctx, account)
 		if err != nil {
+			h.markNonRetryableRefreshError(ctx, account, err)
 			return nil, "", err
 		}
 
@@ -946,6 +950,16 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
 
 	return updatedAccount, "", nil
+}
+
+func (h *AccountHandler) markNonRetryableRefreshError(ctx context.Context, account *service.Account, err error) {
+	if h == nil || h.adminService == nil || account == nil || !service.IsNonRetryableRefreshError(err) {
+		return
+	}
+	errorMsg := service.FormatNonRetryableRefreshErrorMessage(err)
+	if setErr := h.adminService.SetAccountError(ctx, account.ID, errorMsg); setErr != nil {
+		log.Printf("[WARN] Failed to mark account %d as error after non-retryable refresh failure: %v", account.ID, setErr)
+	}
 }
 
 // Refresh handles refreshing account credentials

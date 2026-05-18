@@ -283,7 +283,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
 		if isNonRetryableRefreshError(err) {
-			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
+			errorMsg := FormatNonRetryableRefreshErrorMessage(err)
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
 					"account_id", account.ID,
@@ -408,28 +408,50 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed
 var errRefreshSkipped = fmt.Errorf("refresh skipped")
 
+// IsNonRetryableRefreshError 判断是否为不可重试的刷新错误。
+func IsNonRetryableRefreshError(err error) bool {
+	return isNonRetryableRefreshError(err)
+}
+
+// FormatNonRetryableRefreshErrorMessage 生成写入账号 error_message 的刷新失败说明。
+func FormatNonRetryableRefreshErrorMessage(err error) string {
+	code := nonRetryableRefreshErrorCode(err)
+	if code == "" {
+		return fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
+	}
+	if code == "refresh_token_reused" {
+		return fmt.Sprintf("Token refresh failed (non-retryable: refresh_token_reused 失效，需要重新登录或重新导入): %v", err)
+	}
+	return fmt.Sprintf("Token refresh failed (non-retryable: %s): %v", code, err)
+}
+
 // isNonRetryableRefreshError 判断是否为不可重试的刷新错误
 // 这些错误通常表示凭证已失效或配置确实缺失，需要用户重新授权
 // 注意：missing_project_id 错误只在真正缺失（从未获取过）时返回，临时获取失败不会返回此错误
 func isNonRetryableRefreshError(err error) bool {
+	return nonRetryableRefreshErrorCode(err) != ""
+}
+
+func nonRetryableRefreshErrorCode(err error) string {
 	if err == nil {
-		return false
+		return ""
 	}
 	msg := strings.ToLower(err.Error())
 	nonRetryable := []string{
-		"invalid_grant",       // refresh_token 已失效
-		"invalid_client",      // 客户端配置错误
-		"unauthorized_client", // 客户端未授权
-		"access_denied",       // 访问被拒绝
-		"missing_project_id",  // 缺少 project_id
+		"refresh_token_reused", // refresh_token 已被其他路径换取过新 token，必须重新登录/重新导入
+		"invalid_grant",        // refresh_token 已失效
+		"invalid_client",       // 客户端配置错误
+		"unauthorized_client",  // 客户端未授权
+		"access_denied",        // 访问被拒绝
+		"missing_project_id",   // 缺少 project_id
 		"no refresh token available",
 	}
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {
-			return true
+			return needle
 		}
 	}
-	return false
+	return ""
 }
 
 // ensureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
