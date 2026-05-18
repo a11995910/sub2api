@@ -178,6 +178,52 @@ type AccountWithConcurrency struct {
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
+type accountListQuery struct {
+	page        int
+	pageSize    int
+	platform    string
+	accountType string
+	status      string
+	search      string
+	privacyMode string
+	sortBy      string
+	sortOrder   string
+	groupID     int64
+	lite        bool
+}
+
+func parseAccountListQuery(c *gin.Context) (accountListQuery, error) {
+	query := accountListQuery{
+		platform:    c.Query("platform"),
+		accountType: c.Query("type"),
+		status:      c.Query("status"),
+		search:      strings.TrimSpace(c.Query("search")),
+		privacyMode: strings.TrimSpace(c.Query("privacy_mode")),
+		sortBy:      c.DefaultQuery("sort_by", "name"),
+		sortOrder:   c.DefaultQuery("sort_order", "asc"),
+		lite:        parseBoolQueryWithDefault(c.Query("lite"), false),
+	}
+	query.page, query.pageSize = response.ParsePagination(c)
+
+	if len(query.search) > 100 {
+		query.search = query.search[:100]
+	}
+
+	if groupIDStr := c.Query("group"); groupIDStr != "" {
+		if groupIDStr == accountListGroupUngroupedQueryValue {
+			query.groupID = service.AccountListGroupUngrouped
+		} else {
+			parsedGroupID, parseErr := strconv.ParseInt(groupIDStr, 10, 64)
+			if parseErr != nil || parsedGroupID < 0 {
+				return accountListQuery{}, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter")
+			}
+			query.groupID = parsedGroupID
+		}
+	}
+
+	return query, nil
+}
+
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),
@@ -225,40 +271,13 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
-	page, pageSize := response.ParsePagination(c)
-	platform := c.Query("platform")
-	accountType := c.Query("type")
-	status := c.Query("status")
-	search := c.Query("search")
-	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
-	// 标准化和验证 search 参数
-	search = strings.TrimSpace(search)
-	if len(search) > 100 {
-		search = search[:100]
-	}
-	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
-
-	var groupID int64
-	if groupIDStr := c.Query("group"); groupIDStr != "" {
-		if groupIDStr == accountListGroupUngroupedQueryValue {
-			groupID = service.AccountListGroupUngrouped
-		} else {
-			parsedGroupID, parseErr := strconv.ParseInt(groupIDStr, 10, 64)
-			if parseErr != nil {
-				response.ErrorFrom(c, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter"))
-				return
-			}
-			if parsedGroupID < 0 {
-				response.ErrorFrom(c, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter"))
-				return
-			}
-			groupID = parsedGroupID
-		}
+	query, err := parseAccountListQuery(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), query.page, query.pageSize, query.platform, query.accountType, query.status, query.search, query.groupID, query.privacyMode, query.sortBy, query.sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -380,7 +399,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		result[i] = item
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(result, total, query.page, query.pageSize, query.platform, query.accountType, query.status, query.search, query.lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -390,7 +409,25 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	response.Paginated(c, result, total, page, pageSize)
+	response.Paginated(c, result, total, query.page, query.pageSize)
+}
+
+// ListIDs handles listing account IDs with pagination
+// GET /api/v1/admin/accounts/ids
+func (h *AccountHandler) ListIDs(c *gin.Context) {
+	query, err := parseAccountListQuery(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	ids, total, err := h.adminService.ListAccountIDs(c.Request.Context(), query.page, query.pageSize, query.platform, query.accountType, query.status, query.search, query.groupID, query.privacyMode, query.sortBy, query.sortOrder)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Paginated(c, ids, total, query.page, query.pageSize)
 }
 
 func buildAccountsListETag(

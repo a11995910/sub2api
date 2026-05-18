@@ -1009,7 +1009,7 @@ const openTLSFingerprintProfiles = () => {
   showTLSFingerprintProfiles.value = true
 }
 
-const CODEX_ACCOUNT_PAGE_SIZE = 200
+const CODEX_ACCOUNT_ID_PAGE_SIZE = 1000
 const CODEX_BATCH_REFRESH_CHUNK_SIZE = 10
 const CODEX_ACCOUNT_LIST_TIMEOUT_MS = 120000
 
@@ -1019,7 +1019,7 @@ const listAllCodexAccountIds = async (): Promise<number[]> => {
   let pages = 1
 
   while (page <= pages) {
-    const result = await adminAPI.accounts.list(page, CODEX_ACCOUNT_PAGE_SIZE, {
+    const result = await adminAPI.accounts.listIDs(page, CODEX_ACCOUNT_ID_PAGE_SIZE, {
       platform: 'openai',
       type: 'oauth',
       sort_by: 'id',
@@ -1027,7 +1027,7 @@ const listAllCodexAccountIds = async (): Promise<number[]> => {
     }, {
       timeout: CODEX_ACCOUNT_LIST_TIMEOUT_MS
     })
-    ids.push(...(result.items || []).map(account => account.id))
+    ids.push(...(result.items || []))
     pages = Math.max(result.pages || 1, 1)
     page += 1
   }

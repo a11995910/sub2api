@@ -22,6 +22,23 @@ import type {
   CheckMixedChannelResponse
 } from '@/types'
 
+export interface AccountListFilters {
+  platform?: string
+  type?: string
+  status?: string
+  group?: string
+  search?: string
+  privacy_mode?: string
+  lite?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}
+
+interface AccountListOptions {
+  signal?: AbortSignal
+  timeout?: number
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -32,23 +49,32 @@ import type {
 export async function list(
   page: number = 1,
   pageSize: number = 20,
-  filters?: {
-    platform?: string
-    type?: string
-    status?: string
-    group?: string
-    search?: string
-    privacy_mode?: string
-    lite?: string
-    sort_by?: string
-    sort_order?: 'asc' | 'desc'
-  },
-  options?: {
-    signal?: AbortSignal
-    timeout?: number
-  }
+  filters?: AccountListFilters,
+  options?: AccountListOptions
 ): Promise<PaginatedResponse<Account>> {
   const { data } = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
+    params: {
+      page,
+      page_size: pageSize,
+      ...filters
+    },
+    signal: options?.signal,
+    timeout: options?.timeout
+  })
+  return data
+}
+
+/**
+ * List account IDs with pagination.
+ * Used by bulk tools to avoid downloading full credential payloads.
+ */
+export async function listIDs(
+  page: number = 1,
+  pageSize: number = 1000,
+  filters?: AccountListFilters,
+  options?: AccountListOptions
+): Promise<PaginatedResponse<number>> {
+  const { data } = await apiClient.get<PaginatedResponse<number>>('/admin/accounts/ids', {
     params: {
       page,
       page_size: pageSize,
@@ -69,17 +95,7 @@ export interface AccountListWithEtagResult {
 export async function listWithEtag(
   page: number = 1,
   pageSize: number = 20,
-  filters?: {
-    platform?: string
-    type?: string
-    status?: string
-    group?: string
-    search?: string
-    privacy_mode?: string
-    lite?: string
-    sort_by?: string
-    sort_order?: 'asc' | 'desc'
-  },
+  filters?: AccountListFilters,
   options?: {
     signal?: AbortSignal
     etag?: string | null
@@ -643,6 +659,7 @@ export async function setPrivacy(id: number): Promise<Account> {
 
 export const accountsAPI = {
   list,
+  listIDs,
   listWithEtag,
   getById,
   create,

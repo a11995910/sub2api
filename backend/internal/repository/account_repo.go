@@ -461,6 +461,58 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 }
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+	now := time.Now()
+	q := r.buildAccountListQuery(now, platform, accountType, status, search, groupID, privacyMode)
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	accountsQuery := q.
+		Offset(params.Offset()).
+		Limit(params.Limit())
+	for _, order := range accountListOrder(params) {
+		accountsQuery = accountsQuery.Order(order)
+	}
+
+	accounts, err := accountsQuery.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	outAccounts, err := r.accountsToService(ctx, accounts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *accountRepository) ListIDsWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]int64, *pagination.PaginationResult, error) {
+	now := time.Now()
+	q := r.buildAccountListQuery(now, platform, accountType, status, search, groupID, privacyMode)
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	idsQuery := q.
+		Offset(params.Offset()).
+		Limit(params.Limit())
+	for _, order := range accountListOrder(params) {
+		idsQuery = idsQuery.Order(order)
+	}
+
+	ids, err := idsQuery.IDs(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return ids, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *accountRepository) buildAccountListQuery(now time.Time, platform, accountType, status, search string, groupID int64, privacyMode string) *dbent.AccountQuery {
 	q := r.client.Account.Query()
 
 	if platform != "" {
@@ -477,7 +529,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 				dbaccount.SchedulableEQ(true),
 				dbaccount.Or(
 					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(time.Now()),
+					dbaccount.RateLimitResetAtLTE(now),
 				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
@@ -490,7 +542,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		case "rate_limited":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
-				dbaccount.RateLimitResetAtGT(time.Now()),
+				dbaccount.RateLimitResetAtGT(now),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
 					s.Where(entsql.Or(
@@ -516,7 +568,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 				dbaccount.SchedulableEQ(false),
 				dbaccount.Or(
 					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(time.Now()),
+					dbaccount.RateLimitResetAtLTE(now),
 				),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					col := s.C("temp_unschedulable_until")
@@ -553,28 +605,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
-	total, err := q.Count(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	accountsQuery := q.
-		Offset(params.Offset()).
-		Limit(params.Limit())
-	for _, order := range accountListOrder(params) {
-		accountsQuery = accountsQuery.Order(order)
-	}
-
-	accounts, err := accountsQuery.All(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	outAccounts, err := r.accountsToService(ctx, accounts)
-	if err != nil {
-		return nil, nil, err
-	}
-	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+	return q
 }
 
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
