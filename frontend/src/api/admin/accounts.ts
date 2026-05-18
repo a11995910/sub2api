@@ -45,6 +45,7 @@ export async function list(
   },
   options?: {
     signal?: AbortSignal
+    timeout?: number
   }
 ): Promise<PaginatedResponse<Account>> {
   const { data } = await apiClient.get<PaginatedResponse<Account>>('/admin/accounts', {
@@ -53,7 +54,8 @@ export async function list(
       page_size: pageSize,
       ...filters
     },
-    signal: options?.signal
+    signal: options?.signal,
+    timeout: options?.timeout
   })
   return data
 }
@@ -81,6 +83,7 @@ export async function listWithEtag(
   options?: {
     signal?: AbortSignal
     etag?: string | null
+    timeout?: number
   }
 ): Promise<AccountListWithEtagResult> {
   const headers: Record<string, string> = {}
@@ -96,6 +99,7 @@ export async function listWithEtag(
     },
     headers,
     signal: options?.signal,
+    timeout: options?.timeout,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304
   })
 

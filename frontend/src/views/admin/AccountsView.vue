@@ -1009,8 +1009,9 @@ const openTLSFingerprintProfiles = () => {
   showTLSFingerprintProfiles.value = true
 }
 
-const CODEX_ACCOUNT_PAGE_SIZE = 1000
-const CODEX_BATCH_REFRESH_CHUNK_SIZE = 80
+const CODEX_ACCOUNT_PAGE_SIZE = 200
+const CODEX_BATCH_REFRESH_CHUNK_SIZE = 10
+const CODEX_ACCOUNT_LIST_TIMEOUT_MS = 120000
 
 const listAllCodexAccountIds = async (): Promise<number[]> => {
   const ids: number[] = []
@@ -1023,6 +1024,8 @@ const listAllCodexAccountIds = async (): Promise<number[]> => {
       type: 'oauth',
       sort_by: 'id',
       sort_order: 'asc'
+    }, {
+      timeout: CODEX_ACCOUNT_LIST_TIMEOUT_MS
     })
     ids.push(...(result.items || []).map(account => account.id))
     pages = Math.max(result.pages || 1, 1)
