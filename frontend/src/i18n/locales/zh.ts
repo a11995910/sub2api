@@ -358,6 +358,7 @@ export default {
     channels: '渠道管理',
     availableChannels: '可用渠道',
     modelMarket: '模型广场',
+    modelTest: '模型测试台',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
@@ -1006,6 +1007,7 @@ export default {
     empty: '暂无可展示的模型',
     noPricing: '未配置定价',
     intervalCount: '阶梯 {count} 档',
+    test: '去测试',
     stats: {
       models: '可调用模型',
       platforms: '平台',
@@ -1019,8 +1021,63 @@ export default {
       cacheWrite: '缓存写入 / 1M token',
       cacheRead: '缓存读取 / 1M token',
       imageOutput: '图片输出',
-      perRequest: '按次'
+      perRequest: '按次',
+      actions: '操作'
     }
+  },
+
+  // Model Test
+  modelTest: {
+    title: '模型测试台',
+    description: '选择模型、分组和 API Key，直接通过真实网关在线测试',
+    modes: {
+      text: '文本',
+      image: '图片'
+    },
+    fields: {
+      type: '类型',
+      model: '模型',
+      group: '分组',
+      apiKey: 'API Key',
+      prompt: '提示词',
+      imageSize: '图片尺寸',
+      maxTokens: '最大输出'
+    },
+    placeholders: {
+      model: '请选择模型',
+      group: '请选择分组',
+      apiKey: '请选择 API Key',
+      prompt: '输入要测试的提示词'
+    },
+    summary: {
+      groupRate: '当前倍率',
+      price: '价格预览',
+      endpoint: '请求端点',
+      input: '输入',
+      output: '输出'
+    },
+    result: {
+      title: '测试结果',
+      waiting: '正在请求真实网关...',
+      empty: '运行一次测试后，这里会显示返回结果',
+      raw: '原始响应'
+    },
+    validation: {
+      missingSelection: '请先选择模型、分组和 API Key',
+      promptRequired: '请输入提示词'
+    },
+    defaultTextPrompt: '用一句话介绍你自己，并说明当前请求已经通过模型测试台发起。',
+    defaultImagePrompt: '一张干净的未来感 API 控制台界面，屏幕上有发光的数据流，写实风格。',
+    noGroupKey: '当前分组“{group}”没有可用的 active API Key，请先创建或绑定该分组的 Key。',
+    goCreateKey: '去创建 Key',
+    realBillingNotice: '本测试会调用真实网关，并按所选分组扣除对应灵石。',
+    empty: '暂无可测试模型',
+    loadKeysFailed: '加载 API Key 失败',
+    run: '运行测试',
+    running: '测试中...',
+    runSuccess: '测试完成',
+    runFailed: '测试失败',
+    perImage: '张'
   },
 
   // Recharge
@@ -1717,20 +1774,24 @@ export default {
 
     affiliates: {
       invitesDescription: '查看全站邀请关系和被邀请用户累计返利',
-      rebatesDescription: '查看每一笔产生返利的充值订单',
+      rebatesDescription: '查看每一笔产生返利的充值订单和余额兑换码',
       transfersDescription: '查看返利额度转入账户余额的提取流水',
       errors: {
         loadFailed: '加载邀请返利记录失败'
       },
       records: {
         search: '搜索',
-        searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
+        searchPlaceholder: '邮箱、用户名、用户 ID、订单号、兑换码',
         startAt: '开始日期',
         endAt: '结束日期',
         inviter: '邀请人',
         invitee: '被邀请人',
         user: '用户',
         affCode: '邀请码',
+        source: '来源',
+        sourceOrder: '订单',
+        sourceRedeem: '兑换码',
+        sourceLegacy: '历史流水',
         order: '订单',
         totalRebate: '累计返利',
         orderAmount: '充值金额',
@@ -1738,6 +1799,7 @@ export default {
         rebateAmount: '返利金额',
         paymentType: '支付方式',
         orderStatus: '订单状态',
+        redeemedStatus: '已兑换',
         transferAmount: '提取金额',
         balanceAfter: '提取后余额',
         availableQuotaAfter: '提取后可提',
@@ -6671,6 +6733,7 @@ export default {
       airwallex: 'Airwallex',
       card: '银行卡',
       link: 'Link',
+      redeem_code: '兑换码兑换',
       alipay_direct: '支付宝（直连）',
       wxpay_direct: '微信支付（直连）',
     },

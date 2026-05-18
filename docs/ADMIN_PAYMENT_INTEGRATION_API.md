@@ -30,6 +30,8 @@
 
 用途：原子完成“创建兑换码 + 兑换到指定用户”。
 
+返利规则：当 `type` 为空或为 `balance` 且 `value > 0` 时，兑换成功后会按邀请返利策略为该用户的上游邀请人累计返利。返利生效仍取决于 `affiliate_enabled`、邀请绑定关系、返利有效期、单人返利上限和冻结期配置。
+
 请求头：
 - `x-api-key`
 - `Idempotency-Key`
@@ -149,6 +151,8 @@ Note: Admin JWT can also access admin routes, but Admin API Key is recommended f
 `POST /api/v1/admin/redeem-codes/create-and-redeem`
 
 Use case: atomically create a redeem code and redeem it to a target user.
+
+Affiliate rebate behavior: when `type` is omitted or set to `balance` and `value > 0`, a successful redemption accrues affiliate rebate for the user's inviter according to the current affiliate policy. The effective result still depends on `affiliate_enabled`, inviter binding, rebate duration, per-invitee cap, and freeze-hour settings.
 
 Headers:
 - `x-api-key`

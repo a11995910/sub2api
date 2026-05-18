@@ -358,6 +358,7 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelMarket: 'Model Market',
+    modelTest: 'Model Test',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
@@ -1002,6 +1003,7 @@ export default {
     empty: 'No models to display',
     noPricing: 'Pricing not configured',
     intervalCount: '{count} pricing tiers',
+    test: 'Test',
     stats: {
       models: 'Callable Models',
       platforms: 'Platforms',
@@ -1015,8 +1017,63 @@ export default {
       cacheWrite: 'Cache Write / 1M tokens',
       cacheRead: 'Cache Read / 1M tokens',
       imageOutput: 'Image Output',
-      perRequest: 'Per Request'
+      perRequest: 'Per Request',
+      actions: 'Actions'
     }
+  },
+
+  // Model Test
+  modelTest: {
+    title: 'Model Test',
+    description: 'Select a model, group, and API key, then test through the real gateway',
+    modes: {
+      text: 'Text',
+      image: 'Image'
+    },
+    fields: {
+      type: 'Type',
+      model: 'Model',
+      group: 'Group',
+      apiKey: 'API Key',
+      prompt: 'Prompt',
+      imageSize: 'Image Size',
+      maxTokens: 'Max Output'
+    },
+    placeholders: {
+      model: 'Select a model',
+      group: 'Select a group',
+      apiKey: 'Select an API key',
+      prompt: 'Enter a prompt to test'
+    },
+    summary: {
+      groupRate: 'Current Rate',
+      price: 'Price Preview',
+      endpoint: 'Endpoint',
+      input: 'Input',
+      output: 'Output'
+    },
+    result: {
+      title: 'Result',
+      waiting: 'Calling the real gateway...',
+      empty: 'Run a test to see the response here',
+      raw: 'Raw Response'
+    },
+    validation: {
+      missingSelection: 'Select a model, group, and API key first',
+      promptRequired: 'Enter a prompt'
+    },
+    defaultTextPrompt: 'Introduce yourself in one sentence and mention that this request came from Model Test.',
+    defaultImagePrompt: 'A clean futuristic API console with glowing data streams on screen, realistic style.',
+    noGroupKey: 'Group "{group}" has no active API key. Create or bind a key for this group first.',
+    goCreateKey: 'Create Key',
+    realBillingNotice: 'This test calls the real gateway and charges Spirit Stones for the selected group.',
+    empty: 'No testable models',
+    loadKeysFailed: 'Failed to load API keys',
+    run: 'Run Test',
+    running: 'Running...',
+    runSuccess: 'Test completed',
+    runFailed: 'Test failed',
+    perImage: 'image'
   },
 
   // Recharge
@@ -1696,20 +1753,24 @@ export default {
 
     affiliates: {
       invitesDescription: 'View site-wide inviter and invitee relationships',
-      rebatesDescription: 'View recharge orders that generated affiliate rebates',
+      rebatesDescription: 'View recharge orders and balance redeem codes that generated affiliate rebates',
       transfersDescription: 'View affiliate quota transfers into account balance',
       errors: {
         loadFailed: 'Failed to load affiliate records'
       },
       records: {
         search: 'Search',
-        searchPlaceholder: 'Email, username, user ID, or order number',
+        searchPlaceholder: 'Email, username, user ID, order number, or redeem code',
         startAt: 'Start date',
         endAt: 'End date',
         inviter: 'Inviter',
         invitee: 'Invitee',
         user: 'User',
         affCode: 'Invite Code',
+        source: 'Source',
+        sourceOrder: 'Order',
+        sourceRedeem: 'Redeem Code',
+        sourceLegacy: 'Legacy Ledger',
         order: 'Order',
         totalRebate: 'Total Rebate',
         orderAmount: 'Top-up Amount',
@@ -1717,6 +1778,7 @@ export default {
         rebateAmount: 'Rebate Amount',
         paymentType: 'Payment Method',
         orderStatus: 'Order Status',
+        redeemedStatus: 'Redeemed',
         transferAmount: 'Transfer Amount',
         balanceAfter: 'Balance After',
         availableQuotaAfter: 'Available After',
@@ -6486,6 +6548,7 @@ export default {
       airwallex: 'Airwallex',
       card: 'Card',
       link: 'Link',
+      redeem_code: 'Redeem Code',
       alipay_direct: 'Alipay (Direct)',
       wxpay_direct: 'WeChat Pay (Direct)',
     },

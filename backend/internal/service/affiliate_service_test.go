@@ -6,9 +6,113 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+type affiliateRepoSourceStub struct {
+	summaries              map[int64]*AffiliateSummary
+	accrueSourceOrderID    *int64
+	accrueSourceRedeemCode *int64
+}
+
+func (r *affiliateRepoSourceStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
+	if summary, ok := r.summaries[userID]; ok {
+		return summary, nil
+	}
+	return nil, ErrAffiliateProfileNotFound
+}
+
+func (r *affiliateRepoSourceStub) GetAffiliateByCode(context.Context, string) (*AffiliateSummary, error) {
+	panic("unexpected GetAffiliateByCode call")
+}
+
+func (r *affiliateRepoSourceStub) BindInviter(context.Context, int64, int64) (bool, error) {
+	panic("unexpected BindInviter call")
+}
+
+func (r *affiliateRepoSourceStub) AccrueQuota(_ context.Context, _ int64, _ int64, _ float64, _ int, sourceOrderID, sourceRedeemCodeID *int64) (bool, error) {
+	r.accrueSourceOrderID = sourceOrderID
+	r.accrueSourceRedeemCode = sourceRedeemCodeID
+	return true, nil
+}
+
+func (r *affiliateRepoSourceStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
+	return 0, nil
+}
+
+func (r *affiliateRepoSourceStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
+	panic("unexpected ThawFrozenQuota call")
+}
+
+func (r *affiliateRepoSourceStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
+	panic("unexpected TransferQuotaToBalance call")
+}
+
+func (r *affiliateRepoSourceStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
+	panic("unexpected ListInvitees call")
+}
+
+func (r *affiliateRepoSourceStub) UpdateUserAffCode(context.Context, int64, string) error {
+	panic("unexpected UpdateUserAffCode call")
+}
+
+func (r *affiliateRepoSourceStub) ResetUserAffCode(context.Context, int64) (string, error) {
+	panic("unexpected ResetUserAffCode call")
+}
+
+func (r *affiliateRepoSourceStub) SetUserRebateRate(context.Context, int64, *float64) error {
+	panic("unexpected SetUserRebateRate call")
+}
+
+func (r *affiliateRepoSourceStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
+	panic("unexpected BatchSetUserRebateRate call")
+}
+
+func (r *affiliateRepoSourceStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
+	panic("unexpected ListUsersWithCustomSettings call")
+}
+
+func (r *affiliateRepoSourceStub) ListAffiliateInviteRecords(context.Context, AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
+	panic("unexpected ListAffiliateInviteRecords call")
+}
+
+func (r *affiliateRepoSourceStub) ListAffiliateRebateRecords(context.Context, AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
+	panic("unexpected ListAffiliateRebateRecords call")
+}
+
+func (r *affiliateRepoSourceStub) ListAffiliateTransferRecords(context.Context, AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
+	panic("unexpected ListAffiliateTransferRecords call")
+}
+
+func (r *affiliateRepoSourceStub) GetAffiliateUserOverview(context.Context, int64) (*AffiliateUserOverview, error) {
+	panic("unexpected GetAffiliateUserOverview call")
+}
+
+func TestAccrueInviteRebateForRedeemPassesRedeemSource(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	inviterID := int64(10)
+	inviteeID := int64(20)
+	redeemCodeID := int64(30)
+	repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+		inviteeID: {UserID: inviteeID, InviterID: &inviterID, CreatedAt: time.Now()},
+		inviterID: {UserID: inviterID, CreatedAt: time.Now()},
+	}}
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled: "true",
+	}}, &config.Config{})
+	svc := &AffiliateService{repo: repo, settingService: settingSvc}
+
+	rebate, err := svc.AccrueInviteRebateForRedeem(ctx, inviteeID, 100, &redeemCodeID)
+	require.NoError(t, err)
+	require.InDelta(t, 20, rebate, 1e-9)
+	require.Nil(t, repo.accrueSourceOrderID)
+	require.NotNil(t, repo.accrueSourceRedeemCode)
+	require.Equal(t, redeemCodeID, *repo.accrueSourceRedeemCode)
+}
 
 // TestResolveRebateRatePercent_PerUserOverride verifies that per-inviter
 // AffRebateRatePercent overrides the global rate, that NULL falls back to the

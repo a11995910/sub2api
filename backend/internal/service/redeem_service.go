@@ -31,9 +31,8 @@ const (
 
 type ctxKeySkipRedeemAffiliate struct{}
 
-// ContextSkipRedeemAffiliate returns a context that suppresses the redeem-level
-// affiliate rebate. Used by payment fulfillment which handles rebate separately
-// via applyAffiliateRebateForOrder (with audit-log deduplication).
+// ContextSkipRedeemAffiliate 标记当前兑换不在兑换层发放邀请返利。
+// 支付订单履约会在订单层按 source_order_id 发放返利，避免同一笔充值重复返利。
 func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
 }
@@ -384,7 +383,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 
 	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
-		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
+		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value, redeemCode.ID)
 	}
 
 	// 重新获取更新后的兑换码
@@ -436,7 +435,7 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 	}
 }
 
-func (s *RedeemService) tryAccrueAffiliateRebateForRedeem(ctx context.Context, userID int64, amount float64) {
+func (s *RedeemService) tryAccrueAffiliateRebateForRedeem(ctx context.Context, userID int64, amount float64, redeemCodeID int64) {
 	if ctx.Value(ctxKeySkipRedeemAffiliate{}) != nil {
 		return
 	}
@@ -446,7 +445,11 @@ func (s *RedeemService) tryAccrueAffiliateRebateForRedeem(ctx context.Context, u
 	if !s.affiliateService.IsEnabled(ctx) {
 		return
 	}
-	rebate, err := s.affiliateService.AccrueInviteRebate(ctx, userID, amount)
+	var sourceRedeemCodeID *int64
+	if redeemCodeID > 0 {
+		sourceRedeemCodeID = &redeemCodeID
+	}
+	rebate, err := s.affiliateService.AccrueInviteRebateForRedeem(ctx, userID, amount, sourceRedeemCodeID)
 	if err != nil {
 		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate rebate failed for user %d amount %.2f: %v", userID, amount, err)
 		return

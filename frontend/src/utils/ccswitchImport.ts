@@ -60,7 +60,7 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
     ['apiKey', input.apiKey],
     ['configFormat', 'json'],
     ['usageEnabled', 'true'],
-    ['usageScript', btoa(input.usageScript)],
+    ['usageScript', btoa(toAsciiJavaScriptSource(input.usageScript))],
     ['usageAutoInterval', '30']
   ]
 
@@ -69,4 +69,24 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
   }
 
   return `ccswitch://v1/import?${new URLSearchParams(entries).toString()}`
+}
+
+function toAsciiJavaScriptSource(source: string): string {
+  // CC Switch 的 usageScript 是 base64 后的 JS 源码；先转义非 ASCII 字符，
+  // 避免浏览器 btoa 遇到中文单位等字符时报 InvalidCharacterError。
+  return source.replace(/[^\x00-\x7F]/g, (char) =>
+    Array.from(char)
+      .map((part) => {
+        const codePoint = part.codePointAt(0)
+        if (codePoint == null) return ''
+        if (codePoint <= 0xFFFF) {
+          return `\\u${codePoint.toString(16).padStart(4, '0')}`
+        }
+        const normalized = codePoint - 0x10000
+        const high = 0xD800 + (normalized >> 10)
+        const low = 0xDC00 + (normalized & 0x3FF)
+        return `\\u${high.toString(16).padStart(4, '0')}\\u${low.toString(16).padStart(4, '0')}`
+      })
+      .join('')
+  )
 }

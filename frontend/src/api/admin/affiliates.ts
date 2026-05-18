@@ -47,8 +47,13 @@ export interface AffiliateInviteRecord {
 }
 
 export interface AffiliateRebateRecord {
+  ledger_id: number
+  source_type: 'payment_order' | 'redeem_code' | 'legacy' | string
+  source_id: number
   order_id: number
   out_trade_no: string
+  redeem_code_id: number
+  redeem_code: string
   inviter_id: number
   inviter_email: string
   inviter_username: string

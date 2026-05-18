@@ -34,6 +34,22 @@ describe('ccswitchImport utils', () => {
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
   })
 
+  it('encodes non-Latin1 usage scripts without throwing', () => {
+    const usageScript = 'const unit = "灵石"; return unit'
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        usageScript,
+        platform: 'anthropic',
+        clientType: 'claude'
+      })
+    )
+
+    const decoded = atob(params.get('usageScript') || '')
+    expect(decoded).toContain('"\\u7075\\u77f3"')
+    expect(new Function(decoded)()).toBe('灵石')
+  })
+
   it.each([
     { platform: 'anthropic' as GroupPlatform, clientType: 'claude' as const, app: 'claude' },
     { platform: 'gemini' as GroupPlatform, clientType: 'gemini' as const, app: 'gemini' }

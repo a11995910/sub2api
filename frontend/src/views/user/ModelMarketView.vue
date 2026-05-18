@@ -106,7 +106,7 @@
           </div>
 
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[920px] text-sm">
+            <table class="w-full min-w-[1040px] text-sm">
               <thead>
                 <tr class="border-b border-gray-100 bg-gray-50/70 text-xs font-medium text-gray-500 dark:border-dark-700 dark:bg-dark-800/60 dark:text-gray-400">
                   <th class="px-4 py-3 text-left">{{ t('modelMarket.columns.group') }}</th>
@@ -117,6 +117,7 @@
                   <th class="px-4 py-3 text-right">{{ t('modelMarket.columns.cacheRead') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('modelMarket.columns.imageOutput') }}</th>
                   <th class="px-4 py-3 text-right">{{ t('modelMarket.columns.perRequest') }}</th>
+                  <th class="px-4 py-3 text-right">{{ t('modelMarket.columns.actions') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,8 +141,18 @@
                   <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ formatPrice(model.pricing?.output_price, perMillionScale, entry.group, model.pricing?.billing_mode) }}</td>
                   <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ formatPrice(model.pricing?.cache_write_price, perMillionScale, entry.group, model.pricing?.billing_mode) }}</td>
                   <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ formatPrice(model.pricing?.cache_read_price, perMillionScale, entry.group, model.pricing?.billing_mode) }}</td>
-                  <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ formatPrice(model.pricing?.image_output_price, model.pricing?.billing_mode === BILLING_MODE_TOKEN ? perMillionScale : 1, entry.group, model.pricing?.billing_mode) }}</td>
+                  <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ formatImagePrice(model, entry.group) }}</td>
                   <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ formatPrice(model.pricing?.per_request_price, 1, entry.group, model.pricing?.billing_mode) }}</td>
+                  <td class="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm whitespace-nowrap"
+                      @click="goTest(model, entry.group)"
+                    >
+                      <Icon name="beaker" size="sm" />
+                      {{ t('modelMarket.test') }}
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -155,6 +166,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
@@ -194,6 +206,7 @@ interface MarketModel {
 }
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 
 const channels = ref<UserAvailableChannel[]>([])
@@ -305,6 +318,20 @@ function formatPrice(
   return formatScaled(value * effectiveMultiplier(group, mode), scale)
 }
 
+function formatImagePrice(model: MarketModel, group: UserAvailableGroup): string {
+  if (model.kind === 'image') {
+    return [
+      ['1K', group.image_price_1k],
+      ['2K', group.image_price_2k],
+      ['4K', group.image_price_4k],
+    ]
+      .map(([tier, value]) => `${tier} ${typeof value === 'number' ? formatScaled(value * effectiveImageRate(group), 1) : '-'}`)
+      .join(' / ')
+  }
+  const scale = model.pricing?.billing_mode === BILLING_MODE_TOKEN ? perMillionScale : 1
+  return formatPrice(model.pricing?.image_output_price, scale, group, model.pricing?.billing_mode)
+}
+
 function billingModeLabel(mode?: BillingMode): string {
   switch (mode) {
     case BILLING_MODE_TOKEN:
@@ -316,6 +343,18 @@ function billingModeLabel(mode?: BillingMode): string {
     default:
       return t('modelMarket.noPricing')
   }
+}
+
+function goTest(model: MarketModel, group: UserAvailableGroup) {
+  router.push({
+    path: '/model-test',
+    query: {
+      model: model.name,
+      group_id: String(group.id),
+      kind: model.kind,
+      platform: model.platform,
+    },
+  })
 }
 
 async function loadModels() {

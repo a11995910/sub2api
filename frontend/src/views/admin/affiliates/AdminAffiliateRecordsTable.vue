@@ -56,17 +56,20 @@
           <template #cell-aff_code="{ row }">
             <span class="font-mono text-sm text-gray-700 dark:text-gray-300">{{ row.aff_code || '-' }}</span>
           </template>
-          <template #cell-order="{ row }">
+          <template #cell-source="{ row }">
             <div class="space-y-0.5">
-              <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ row.order_id }}</div>
-              <div class="max-w-56 truncate text-sm text-gray-500 dark:text-dark-400">{{ row.out_trade_no }}</div>
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ sourceTitle(row as AffiliateRebateRecord) }}</div>
+              <div class="max-w-56 truncate font-mono text-sm text-gray-500 dark:text-dark-400">{{ sourceSubtitle(row as AffiliateRebateRecord) }}</div>
             </div>
           </template>
           <template #cell-payment_type="{ row }">
-            {{ t('payment.methods.' + row.payment_type, row.payment_type || '-') }}
+            {{ paymentTypeLabel(row as AffiliateRebateRecord) }}
           </template>
           <template #cell-order_status="{ row }">
-            <OrderStatusBadge :status="row.order_status" />
+            <OrderStatusBadge v-if="isPaymentOrder(row as AffiliateRebateRecord)" :status="(row as AffiliateRebateRecord).order_status as OrderStatus" />
+            <span v-else class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+              {{ t('admin.affiliates.records.redeemedStatus') }}
+            </span>
           </template>
           <template #cell-total_rebate="{ row }">
             <AmountText :value="row.total_rebate" />
@@ -155,6 +158,7 @@ import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
 import { affiliatesAPI, type AffiliateInviteRecord, type AffiliateRebateRecord, type AffiliateTransferRecord, type AffiliateUserOverview, type ListAffiliateRecordsParams } from '@/api/admin/affiliates'
 import type { PaginatedResponse } from '@/types'
+import type { OrderStatus } from '@/types/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDisplayDateTime, formatSpiritStones } from '@/utils/format'
 
@@ -188,7 +192,7 @@ const columns = computed<Column[]>(() => {
   }
   if (props.type === 'rebates') {
     return [
-      { key: 'order', label: t('admin.affiliates.records.order'), sortable: true },
+      { key: 'source', label: t('admin.affiliates.records.source'), sortable: true },
       { key: 'inviter', label: t('admin.affiliates.records.inviter'), sortable: true },
       { key: 'invitee', label: t('admin.affiliates.records.invitee'), sortable: true },
       { key: 'order_amount', label: t('admin.affiliates.records.orderAmount'), sortable: true },
@@ -314,6 +318,37 @@ function formatPercent(value: number | null | undefined): string {
 
 function formatDateTime(value: string | null | undefined): string {
   return value ? formatDisplayDateTime(value) : '-'
+}
+
+function isPaymentOrder(record: AffiliateRebateRecord): boolean {
+  return record.source_type === 'payment_order' && record.order_id > 0
+}
+
+function sourceTitle(record: AffiliateRebateRecord): string {
+  if (isPaymentOrder(record)) {
+    return `${t('admin.affiliates.records.sourceOrder')} #${record.order_id}`
+  }
+  if (record.source_type === 'redeem_code' && record.redeem_code_id > 0) {
+    return `${t('admin.affiliates.records.sourceRedeem')} #${record.redeem_code_id}`
+  }
+  return `${t('admin.affiliates.records.sourceLegacy')} #${record.ledger_id || record.source_id}`
+}
+
+function sourceSubtitle(record: AffiliateRebateRecord): string {
+  if (isPaymentOrder(record)) {
+    return record.out_trade_no || '-'
+  }
+  if (record.source_type === 'redeem_code') {
+    return record.redeem_code || '-'
+  }
+  return `ledger:${record.ledger_id || record.source_id || '-'}`
+}
+
+function paymentTypeLabel(record: AffiliateRebateRecord): string {
+  if (record.source_type === 'redeem_code') {
+    return t('payment.methods.redeem_code')
+  }
+  return t('payment.methods.' + record.payment_type, record.payment_type || '-')
 }
 
 async function openUserOverview(userId: number) {

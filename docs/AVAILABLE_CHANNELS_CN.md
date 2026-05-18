@@ -12,6 +12,7 @@
 - `allow_image_generation`：该分组是否允许图片生成。
 - `image_rate_independent`：图片生成是否使用独立倍率。
 - `image_rate_multiplier`：图片独立倍率，仅 `image_rate_independent=true` 时生效。
+- `image_price_1k`、`image_price_2k`、`image_price_4k`：图片生成 1K、2K、4K 单张基础价；为空时后端真实计费会回退默认图片价格。
 
 前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。
 
@@ -24,3 +25,13 @@
 - 图片计费模型：若 `image_rate_independent=true`，使用 `image_rate_multiplier`；否则使用当前有效分组倍率。
 
 如果同一平台下用户可访问多个分组，价格卡会按分组分别展示最终价格，避免用户误以为所有分组价格相同。
+
+## 图片分组当前定价口径
+
+`ChatGPT2API 图片` 分组按以下单张价格展示并计费：
+
+- `1K`：`0.134` 灵石 / 张
+- `2K`：`0.201` 灵石 / 张
+- `4K`：`0.268` 灵石 / 张
+
+模型广场和模型测试台都会直接展示这三档价格。模型测试台调用真实 `/v1/images/generations` 网关，不绕过用量记录和扣费。
