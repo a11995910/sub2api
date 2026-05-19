@@ -21,7 +21,7 @@ build-backend-embed:
 
 # 编译前端（需要已安装依赖）
 build-frontend:
-	@pnpm --dir frontend run build
+	@NODE_OPTIONS=--max-old-space-size=1536 pnpm --dir frontend run build
 
 # 源码部署编译：先生成前端 dist，再把前端资源嵌入后端二进制
 build-deploy: build-frontend build-backend-embed

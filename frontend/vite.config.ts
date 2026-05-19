@@ -43,9 +43,13 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       vue(),
-      checker({
-        vueTsc: true
-      }),
+      ...(mode === 'development'
+        ? [
+            checker({
+              vueTsc: true
+            })
+          ]
+        : []),
       injectPublicSettings(backendUrl)
     ],
   resolve: {
