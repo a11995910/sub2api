@@ -76,7 +76,8 @@ export function formatSpiritStones(
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
   }).format(value)
-  const suffix = options?.suffix ?? i18n.global.t('common.currencyName')
+  const translatedSuffix = i18n.global.t('common.currencyName')
+  const suffix = options?.suffix ?? (translatedSuffix === 'common.currencyName' ? '灵石' : translatedSuffix)
   return `${formatted} ${suffix}`
 }
 

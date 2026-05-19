@@ -20,9 +20,8 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install pnpm
-# 固定到本地验证通过的版本，避免新版 pnpm 改变依赖构建策略导致 Docker 构建失败
-RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
+# 固定到官方 v0.1.127 使用的 pnpm 主版本；当前 lockfileVersion 为 9.0。
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./

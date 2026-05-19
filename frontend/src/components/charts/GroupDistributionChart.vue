@@ -241,10 +241,16 @@ const formatNumber = (value: number): string => {
   return value.toLocaleString()
 }
 
-const formatCost = (value: number): string => {
-  if (value >= 1000) return `${(value / 1000).toFixed(2)}K ${t('common.currencyName')}`
-  if (value >= 1) return `${value.toFixed(2)} ${t('common.currencyName')}`
-  if (value >= 0.01) return `${value.toFixed(3)} ${t('common.currencyName')}`
-  return `${value.toFixed(4)} ${t('common.currencyName')}`
+const currencyName = () => {
+  const name = t('common.currencyName')
+  return name === 'common.currencyName' ? '灵石' : name
+}
+
+const formatCost = (value: number | null | undefined): string => {
+  const safeValue = Number.isFinite(Number(value)) ? Number(value) : 0
+  if (safeValue >= 1000) return `${(safeValue / 1000).toFixed(2)}K ${currencyName()}`
+  if (safeValue >= 1) return `${safeValue.toFixed(2)} ${currencyName()}`
+  if (safeValue >= 0.01) return `${safeValue.toFixed(3)} ${currencyName()}`
+  return `${safeValue.toFixed(4)} ${currencyName()}`
 }
 </script>
