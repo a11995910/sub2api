@@ -1,6 +1,14 @@
-# Sub2API 源码同步与部署说明
+# Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库、VPS 源码目录和从源码编译部署的固定流程，避免后续在其他电脑修改时漏掉前端嵌入构建。
+本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。线上 `sub2api` 当前使用自定义二进制挂载运行，必须从服务器上的同源源码目录完整构建前端和后端，再替换挂载文件。
+
+## 强制原则
+
+- 线上定制二进制只能从 `/opt/sub2api-src` 构建，不允许使用本地临时打包的 `backend` 目录直接覆盖线上。
+- 每次上线必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
+- 不允许只执行 `go build -tags embed` 就覆盖线上，除非已经确认前端资源是同一次源码构建生成的最新产物。
+- 替换线上二进制前必须备份当前文件，替换后必须验证容器状态、健康接口、管理端账号页面和日志。
+- 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
 
 ## 源码仓库
 
@@ -17,7 +25,7 @@ git push
 
 ## VPS 源码目录
 
-建议源码放在：
+当前 VPS 源码目录固定为：
 
 ```bash
 /opt/sub2api-src
@@ -39,8 +47,12 @@ git clone https://github.com/a11995910/sub2api.git /opt/sub2api-src
 
 ```bash
 cd /opt/sub2api-src
+git status --short
 git pull --ff-only
+git rev-parse --short HEAD
 ```
+
+执行 `git pull --ff-only` 前，`git status --short` 应为空。如果有未提交改动，必须先确认来源，不能直接覆盖或回滚。
 
 ## 编译要求
 
@@ -54,14 +66,22 @@ git pull --ff-only
 
 ```bash
 cd /opt/sub2api-src
-pnpm --dir frontend install
+pnpm --dir frontend install --frozen-lockfile
 make build-deploy
+./backend/bin/server --version
 ```
 
 构建产物位置：
 
 ```bash
 backend/bin/server
+```
+
+上线前应记录本次构建对应的 Git commit：
+
+```bash
+git rev-parse HEAD
+git log -1 --oneline
 ```
 
 ## 替换当前运行版本
@@ -72,7 +92,7 @@ backend/bin/server
 /opt/sub2api-deploy/custom/sub2api-pool-overview
 ```
 
-建议每次替换前先备份：
+替换流程：
 
 ```bash
 ts=$(date +%Y%m%d-%H%M%S)
@@ -85,13 +105,17 @@ cd /opt/sub2api-deploy
 docker compose restart sub2api
 ```
 
+如果 Docker Compose 服务名变化，先用 `docker compose ps` 确认实际服务名，再重启对应服务。
+
 ## 验证
 
 ```bash
+cd /opt/sub2api-deploy
 docker compose ps
 curl -I https://fast.youkeduo.site/health
 curl -I https://fast.youkeduo.site/purchase
 curl -I https://fast.youkeduo.site/models
+docker compose logs --tail=200 sub2api
 ```
 
 期望结果：
@@ -99,6 +123,8 @@ curl -I https://fast.youkeduo.site/models
 - 容器状态为 `healthy`
 - `/health`、`/purchase`、`/models` 返回成功状态码
 - 前端页面刷新不出现 404
+- 管理端 `/admin/accounts` 能正常打开，账号列表接口 `/api/v1/admin/accounts` 不出现 5xx
+- 日志中没有启动失败、前端资源缺失、数据库迁移失败或账号列表序列化异常
 
 ## 回滚
 
@@ -110,6 +136,8 @@ cp /opt/sub2api-deploy/custom/sub2api-pool-overview.bak-时间戳 \
 chmod +x /opt/sub2api-deploy/custom/sub2api-pool-overview
 cd /opt/sub2api-deploy
 docker compose restart sub2api
+docker compose ps
+docker compose logs --tail=200 sub2api
 ```
 
 ## OAuth 凭证说明

@@ -400,9 +400,11 @@ rm -rf data/ postgres_data/ redis_data/
 
 从源码编译安装，适合开发或定制需求。
 
+> **生产定制上线必须先阅读 [Sub2API 源码定制上线说明](docs/SOURCE_DEPLOY_CN.md)。当前 VPS 的 `sub2api` 使用自定义二进制挂载运行，必须在 `/opt/sub2api-src` 同源源码目录执行 `make build-deploy`，完整构建前端和后端嵌入产物后再备份替换线上文件。严禁只打包本地 `backend` 目录或只执行临时 `go build -tags embed` 覆盖线上。**
+
 #### 前置条件
 
-- Go 1.21+
+- Go：以 `backend/go.mod` 中声明的版本为准
 - Node.js 18+
 - PostgreSQL 15+
 - Redis 7+
@@ -417,21 +419,18 @@ cd sub2api
 # 2. 安装 pnpm（如果还没有安装）
 npm install -g pnpm
 
-# 3. 编译前端
-cd frontend
-pnpm install
-pnpm run build
-# 构建产物输出到 ../backend/internal/web/dist/
+# 3. 安装前端依赖
+pnpm --dir frontend install --frozen-lockfile
 
-# 4. 编译后端（嵌入前端）
-cd ../backend
-go build -tags embed -o sub2api ./cmd/server
+# 4. 完整构建前端和后端嵌入产物
+make build-deploy
+# 构建产物输出到 backend/bin/server
 
 # 5. 创建配置文件
-cp ../deploy/config.example.yaml ./config.yaml
+cp deploy/config.example.yaml backend/config.yaml
 
 # 6. 编辑配置
-nano config.yaml
+nano backend/config.yaml
 ```
 
 > **注意：** `-tags embed` 参数会将前端嵌入到二进制文件中。不使用此参数编译的程序将不包含前端界面。
