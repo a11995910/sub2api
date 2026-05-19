@@ -249,7 +249,7 @@ func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {
 	require.Equal(t, []int64{7, 11}, result.SuccessIDs)
 }
 
-func TestAdminServiceBulkUpdateAccounts_EnsuresOpenAIGPT55Mapping(t *testing.T) {
+func TestAdminServiceBulkUpdateAccounts_EnsuresOpenAIRequiredModelMappings(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{
 		getByIDsAccounts: []*Account{
 			{ID: 1, Platform: PlatformOpenAI},
@@ -268,5 +268,7 @@ func TestAdminServiceBulkUpdateAccounts_EnsuresOpenAIGPT55Mapping(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, 2, result.Success)
 	mapping := repo.bulkUpdatePayload.Credentials["model_mapping"].(map[string]any)
+	require.Equal(t, "codex-auto-review", mapping["codex-auto-review"])
 	require.Equal(t, openAIRequiredGPT55Model, mapping[openAIRequiredGPT55Model])
+	require.Equal(t, "gpt-image-2", mapping["gpt-image-2"])
 }

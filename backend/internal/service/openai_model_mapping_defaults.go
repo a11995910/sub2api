@@ -4,7 +4,27 @@ import "strings"
 
 const openAIRequiredGPT55Model = "gpt-5.5"
 
-// ensureRequiredOpenAIModelMappings 为 OpenAI GPT-5 系列白名单补齐必须透传的模型。
+var openAIRequiredModelMappings = []string{
+	"codex-auto-review",
+	"gpt-4o-audio-preview",
+	"gpt-4o-realtime-preview",
+	"gpt-5.2",
+	"gpt-5.2-2025-12-11",
+	"gpt-5.2-chat-latest",
+	"gpt-5.2-pro",
+	"gpt-5.2-pro-2025-12-11",
+	"gpt-5.3-codex",
+	"gpt-5.3-codex-spark",
+	"gpt-5.4",
+	"gpt-5.4-2026-03-05",
+	"gpt-5.4-mini",
+	openAIRequiredGPT55Model,
+	"gpt-image-1",
+	"gpt-image-1.5",
+	"gpt-image-2",
+}
+
+// ensureRequiredOpenAIModelMappings 为 OpenAI 固定模型白名单补齐必须透传的模型。
 // 旧前端、外部同步或批量导入可能传入固定旧白名单，导致真实可用账号被本地调度过滤。
 // 空 mapping 表示允许所有模型，不能写入白名单，否则会把全量能力收窄。
 func ensureRequiredOpenAIModelMappings(platform string, credentials map[string]any) map[string]any {
@@ -20,10 +40,7 @@ func ensureRequiredOpenAIModelMappings(platform string, credentials map[string]a
 	if len(mapping) == 0 {
 		return credentials
 	}
-	if mappingSupportsRequestedModel(mapping, openAIRequiredGPT55Model) {
-		return credentials
-	}
-	if !isOpenAIGPT5FamilyMapping(mapping) {
+	if !isOpenAIRequiredModelMappingCandidate(mapping) {
 		return credentials
 	}
 
@@ -31,7 +48,17 @@ func ensureRequiredOpenAIModelMappings(platform string, credentials map[string]a
 	if updatedMapping == nil {
 		return credentials
 	}
-	updatedMapping[openAIRequiredGPT55Model] = openAIRequiredGPT55Model
+	changed := false
+	for _, model := range openAIRequiredModelMappings {
+		if _, exists := mapping[model]; exists {
+			continue
+		}
+		updatedMapping[model] = model
+		changed = true
+	}
+	if !changed {
+		return credentials
+	}
 
 	out := cloneStringAnyMap(credentials)
 	out["model_mapping"] = updatedMapping
@@ -46,17 +73,29 @@ func credentialsMayNeedRequiredOpenAIModelMappings(credentials map[string]any) b
 	if len(mapping) == 0 {
 		return false
 	}
-	return !mappingSupportsRequestedModel(mapping, openAIRequiredGPT55Model) && isOpenAIGPT5FamilyMapping(mapping)
-}
-
-func isOpenAIGPT5FamilyMapping(mapping map[string]string) bool {
-	for key := range mapping {
-		model := strings.TrimSpace(key)
-		if strings.HasPrefix(model, "gpt-5.") || strings.HasPrefix(model, "gpt-5-") || model == "gpt-5" {
+	if !isOpenAIRequiredModelMappingCandidate(mapping) {
+		return false
+	}
+	for _, model := range openAIRequiredModelMappings {
+		if _, exists := mapping[model]; !exists {
 			return true
 		}
 	}
 	return false
+}
+
+func isOpenAIRequiredModelMappingCandidate(mapping map[string]string) bool {
+	for key := range mapping {
+		model := strings.TrimSpace(key)
+		if model == "codex-auto-review" || isOpenAIGPT5FamilyModel(model) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOpenAIGPT5FamilyModel(model string) bool {
+	return model == "gpt-5" || matchWildcard("gpt-5.*", model) || matchWildcard("gpt-5-*", model)
 }
 
 func cloneStringAnyMap(src map[string]any) map[string]any {
