@@ -550,7 +550,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			continue
 		}
 
-		credentials := sanitizeCredentialsMap(src.Credentials)
+		credentials := ensureRequiredOpenAIModelMappings(PlatformOpenAI, sanitizeCredentialsMap(src.Credentials))
 		// Normalize token_type
 		if v, ok := credentials["token_type"].(string); !ok || strings.TrimSpace(v) == "" {
 			credentials["token_type"] = "Bearer"
@@ -630,7 +630,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformOpenAI
 		existing.Type = AccountTypeOAuth
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = ensureRequiredOpenAIModelMappings(PlatformOpenAI, mergeMap(existing.Credentials, credentials))
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 		}
@@ -695,7 +695,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			continue
 		}
 
-		credentials := sanitizeCredentialsMap(src.Credentials)
+		credentials := ensureRequiredOpenAIModelMappings(PlatformOpenAI, sanitizeCredentialsMap(src.Credentials))
 		priority := clampPriority(src.Priority)
 		concurrency := 3
 		status := mapCRSStatus(src.IsActive, src.Status)
@@ -752,7 +752,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformOpenAI
 		existing.Type = AccountTypeAPIKey
-		existing.Credentials = mergeMap(existing.Credentials, credentials)
+		existing.Credentials = ensureRequiredOpenAIModelMappings(PlatformOpenAI, mergeMap(existing.Credentials, credentials))
 		if proxyID != nil {
 			existing.ProxyID = proxyID
 		}

@@ -2404,6 +2404,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, err
 		}
 	}
+	input.Credentials = ensureRequiredOpenAIModelMappings(input.Platform, input.Credentials)
 
 	account := &Account{
 		Name:        input.Name,
@@ -2502,7 +2503,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Notes = normalizeAccountNotes(input.Notes)
 	}
 	if len(input.Credentials) > 0 {
-		account.Credentials = input.Credentials
+		account.Credentials = ensureRequiredOpenAIModelMappings(account.Platform, input.Credentials)
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
@@ -2638,19 +2639,25 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
+	needOpenAIModelMappingGuard := credentialsMayNeedRequiredOpenAIModelMappings(input.Credentials)
 
 	// 预加载账号平台信息（混合渠道检查需要）。
 	platformByID := map[int64]string{}
-	if needMixedChannelCheck {
+	var targetAccounts []*Account
+	if needMixedChannelCheck || needOpenAIModelMappingGuard {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
+		targetAccounts = accounts
 		for _, account := range accounts {
 			if account != nil {
 				platformByID[account.ID] = account.Platform
 			}
 		}
+	}
+	if needOpenAIModelMappingGuard && allAccountsUsePlatform(targetAccounts, PlatformOpenAI, len(input.AccountIDs)) {
+		input.Credentials = ensureRequiredOpenAIModelMappings(PlatformOpenAI, input.Credentials)
 	}
 
 	// 预检查混合渠道风险：在任何写操作之前，若发现风险立即返回错误。
