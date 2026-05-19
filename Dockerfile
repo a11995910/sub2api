@@ -30,7 +30,8 @@ RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
-RUN pnpm run build
+# VPS 构建环境内存较小，显式提升 Node 构建堆上限避免 vue-tsc OOM
+RUN NODE_OPTIONS=--max-old-space-size=1536 pnpm run build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
