@@ -1041,14 +1041,27 @@ export default {
       apiKey: 'API Key',
       prompt: '提示词',
       imageSize: '图片尺寸',
+      referenceImages: '参考图片',
       maxTokens: '最大输出'
     },
     placeholders: {
       model: '请选择模型',
       group: '请选择分组',
       apiKey: '请选择 API Key',
-      prompt: '输入要测试的提示词'
+      prompt: '输入要测试的提示词',
+      textPrompt: '输入要测试的文本提示词',
+      imagePrompt: '描述要生成的图片，可写入尺寸或画幅要求'
     },
+    imageSizeOptions: {
+      adaptive: '自适应'
+    },
+    imageSizeAdaptivePreview: '自适应（{tier} 预估）',
+    referenceImagesHint: '上传后将调用图片编辑接口，可在提示词中说明修改方式。',
+    uploadReferenceImages: '上传图片',
+    removeReferenceImage: '移除参考图',
+    referenceImageLimit: '最多上传 {count} 张参考图片',
+    referenceImageTypeError: '请选择图片文件',
+    referenceImageSizeError: '单张图片不能超过 {size}',
     summary: {
       groupRate: '当前倍率',
       price: '价格预览',
@@ -1066,8 +1079,6 @@ export default {
       missingSelection: '请先选择模型、分组和 API Key',
       promptRequired: '请输入提示词'
     },
-    defaultTextPrompt: '用一句话介绍你自己，并说明当前请求已经通过模型测试台发起。',
-    defaultImagePrompt: '一张干净的未来感 API 控制台界面，屏幕上有发光的数据流，写实风格。',
     noGroupKey: '当前分组“{group}”没有可用的 active API Key，请先创建或绑定该分组的 Key。',
     goCreateKey: '去创建 Key',
     realBillingNotice: '本测试会调用真实网关，并按所选分组扣除对应灵石。',

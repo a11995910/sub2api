@@ -103,8 +103,13 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 - `/api/v1/keys`：读取当前用户 active API Key，并按所选分组筛选可用 Key。
 - `/v1/chat/completions`：文本模型测试端点。
 - `/v1/images/generations`：图片模型测试端点。
+- `/v1/images/edits`：上传参考图后的图片编辑测试端点。
 
 测试请求使用用户选中的真实 API Key 发起，因此会自然经过 API Key 鉴权、分组路由、限流、用量记录和灵石扣费。若某个分组没有 active API Key，页面只提示用户去 API Key 页面创建或绑定该分组的 Key，不会用无分组 Key 代替，避免测试流量落到错误分组。
+
+图片测试支持固定尺寸和自适应尺寸。固定尺寸会向图片网关传递 `size`；自适应尺寸不会传递 `size`，适用于用户在提示词中自行描述尺寸、画幅或比例的场景。自适应尺寸的价格预览按后端当前默认 `2K` 分档展示，真实请求仍经过网关的图片计费记录链路。
+
+图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
 
 ## 货币单位
 

@@ -19,7 +19,14 @@ export interface ChatCompletionTestRequest extends GatewayTestOptions {
 export interface ImageGenerationTestRequest extends GatewayTestOptions {
   model: string
   prompt: string
-  size: string
+  size?: string
+}
+
+export interface ImageEditTestRequest extends GatewayTestOptions {
+  model: string
+  prompt: string
+  size?: string
+  images: File[]
 }
 
 export class ModelTestError extends Error {
@@ -48,6 +55,30 @@ async function postGateway<T>(
       Accept: 'application/json',
     },
     body: JSON.stringify(payload),
+    signal,
+  })
+
+  const text = await response.text()
+  const data = parseMaybeJSON(text)
+  if (!response.ok) {
+    throw new ModelTestError(extractGatewayErrorMessage(data, text, response.status), response.status, data)
+  }
+  return data as T
+}
+
+async function postGatewayFormData<T>(
+  path: '/v1/images/edits',
+  apiKey: string,
+  payload: FormData,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json',
+    },
+    body: payload,
     signal,
   })
 
@@ -98,16 +129,45 @@ export async function testChatCompletion(req: ChatCompletionTestRequest): Promis
 }
 
 export async function testImageGeneration(req: ImageGenerationTestRequest): Promise<unknown> {
+  const payload: Record<string, unknown> = {
+    model: req.model,
+    prompt: req.prompt,
+    n: 1,
+    response_format: 'b64_json',
+  }
+  const size = req.size?.trim()
+  if (size) {
+    payload.size = size
+  }
+
   return postGateway(
     '/v1/images/generations',
     req.apiKey,
-    {
-      model: req.model,
-      prompt: req.prompt,
-      size: req.size,
-      n: 1,
-      response_format: 'b64_json',
-    },
+    payload,
+    req.signal,
+  )
+}
+
+export async function testImageEdit(req: ImageEditTestRequest): Promise<unknown> {
+  const form = new FormData()
+  form.set('model', req.model)
+  form.set('prompt', req.prompt)
+  form.set('n', '1')
+  form.set('response_format', 'b64_json')
+
+  const size = req.size?.trim()
+  if (size) {
+    form.set('size', size)
+  }
+
+  req.images.forEach((image, index) => {
+    form.append(req.images.length === 1 ? 'image' : `image[${index}]`, image, image.name)
+  })
+
+  return postGatewayFormData(
+    '/v1/images/edits',
+    req.apiKey,
+    form,
     req.signal,
   )
 }
@@ -115,4 +175,5 @@ export async function testImageGeneration(req: ImageGenerationTestRequest): Prom
 export default {
   testChatCompletion,
   testImageGeneration,
+  testImageEdit,
 }

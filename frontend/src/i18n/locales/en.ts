@@ -1037,14 +1037,27 @@ export default {
       apiKey: 'API Key',
       prompt: 'Prompt',
       imageSize: 'Image Size',
+      referenceImages: 'Reference Images',
       maxTokens: 'Max Output'
     },
     placeholders: {
       model: 'Select a model',
       group: 'Select a group',
       apiKey: 'Select an API key',
-      prompt: 'Enter a prompt to test'
+      prompt: 'Enter a prompt to test',
+      textPrompt: 'Enter a text prompt to test',
+      imagePrompt: 'Describe the image you want to generate, including size or aspect ratio if needed'
     },
+    imageSizeOptions: {
+      adaptive: 'Adaptive'
+    },
+    imageSizeAdaptivePreview: 'Adaptive ({tier} estimate)',
+    referenceImagesHint: 'Uploaded images use the image edit endpoint. Describe the change in the prompt.',
+    uploadReferenceImages: 'Upload Images',
+    removeReferenceImage: 'Remove reference image',
+    referenceImageLimit: 'Upload up to {count} reference images',
+    referenceImageTypeError: 'Select an image file',
+    referenceImageSizeError: 'Each image must be under {size}',
     summary: {
       groupRate: 'Current Rate',
       price: 'Price Preview',
@@ -1062,8 +1075,6 @@ export default {
       missingSelection: 'Select a model, group, and API key first',
       promptRequired: 'Enter a prompt'
     },
-    defaultTextPrompt: 'Introduce yourself in one sentence and mention that this request came from Model Test.',
-    defaultImagePrompt: 'A clean futuristic API console with glowing data streams on screen, realistic style.',
     noGroupKey: 'Group "{group}" has no active API key. Create or bind a key for this group first.',
     goCreateKey: 'Create Key',
     realBillingNotice: 'This test calls the real gateway and charges Spirit Stones for the selected group.',

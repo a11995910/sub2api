@@ -127,7 +127,7 @@
               <textarea
                 v-model="prompt"
                 class="input min-h-[180px] resize-y leading-6"
-                :placeholder="t('modelTest.placeholders.prompt')"
+                :placeholder="promptPlaceholder"
               ></textarea>
             </div>
 
@@ -143,6 +143,54 @@
               <div v-else>
                 <label class="input-label">{{ t('modelTest.fields.maxTokens') }}</label>
                 <input v-model.number="maxTokens" type="number" min="1" max="4096" class="input" />
+              </div>
+            </div>
+
+            <div v-if="selectedKind === 'image'" class="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/50">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <label class="input-label mb-1">{{ t('modelTest.fields.referenceImages') }}</label>
+                  <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('modelTest.referenceImagesHint') }}</p>
+                </div>
+                <label
+                  class="btn btn-secondary cursor-pointer"
+                  :class="referenceImagesFull ? 'pointer-events-none opacity-60' : ''"
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    class="hidden"
+                    :disabled="referenceImagesFull || running"
+                    @change="handleReferenceImagesSelected"
+                  />
+                  <Icon name="upload" size="sm" />
+                  {{ t('modelTest.uploadReferenceImages') }}
+                </label>
+              </div>
+
+              <p v-if="imageUploadError" class="mt-2 text-xs text-red-500">{{ imageUploadError }}</p>
+
+              <div v-if="referenceImages.length > 0" class="mt-3 grid gap-3 sm:grid-cols-2">
+                <figure
+                  v-for="item in referenceImages"
+                  :key="item.id"
+                  class="relative flex gap-3 rounded-lg border border-gray-100 bg-white p-2 dark:border-dark-700 dark:bg-dark-900"
+                >
+                  <img :src="item.previewUrl" :alt="item.file.name" class="h-16 w-16 flex-shrink-0 rounded-md object-cover" />
+                  <figcaption class="min-w-0 flex-1 self-center pr-8">
+                    <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.file.name }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatFileSize(item.file.size) }}</p>
+                  </figcaption>
+                  <button
+                    type="button"
+                    class="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-500 dark:hover:bg-dark-700"
+                    :title="t('modelTest.removeReferenceImage')"
+                    @click="removeReferenceImage(item.id)"
+                  >
+                    <Icon name="x" size="sm" />
+                  </button>
+                </figure>
               </div>
             </div>
 
@@ -237,7 +285,7 @@ import userChannelsAPI, {
 } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import keysAPI from '@/api/keys'
-import { ModelTestError, testChatCompletion, testImageGeneration } from '@/api/modelTest'
+import { ModelTestError, testChatCompletion, testImageEdit, testImageGeneration } from '@/api/modelTest'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
@@ -267,6 +315,12 @@ interface ImageOutput {
   revisedPrompt: string
 }
 
+interface ReferenceImage {
+  id: string
+  file: File
+  previewUrl: string
+}
+
 const { t } = useI18n()
 const appStore = useAppStore()
 const route = useRoute()
@@ -282,7 +336,10 @@ const selectedModelKey = ref('')
 const selectedGroupId = ref<number | null>(null)
 const selectedApiKeyId = ref<number | null>(null)
 const prompt = ref('')
-const imageSize = ref('1024x1024')
+const adaptiveImageSizeValue = ''
+const imageSize = ref(adaptiveImageSizeValue)
+const referenceImages = ref<ReferenceImage[]>([])
+const imageUploadError = ref('')
 const maxTokens = ref(256)
 const rawResponse = ref<unknown | null>(null)
 const errorMessage = ref('')
@@ -290,14 +347,18 @@ const durationMs = ref<number | null>(null)
 
 let runController: AbortController | null = null
 
-const imageSizeOptions = [
+const maxReferenceImages = 4
+const maxReferenceImageSize = 20 * 1024 * 1024
+
+const imageSizeOptions = computed(() => [
+  { value: adaptiveImageSizeValue, tier: '2K', label: t('modelTest.imageSizeOptions.adaptive') },
   { value: '1024x1024', tier: '1K', label: '1024x1024 · 1K' },
   { value: '1536x1024', tier: '2K', label: '1536x1024 · 2K' },
   { value: '1024x1536', tier: '2K', label: '1024x1536 · 2K' },
   { value: '2048x2048', tier: '2K', label: '2048x2048 · 2K' },
   { value: '3840x2160', tier: '4K', label: '3840x2160 · 4K' },
   { value: '2160x3840', tier: '4K', label: '2160x3840 · 4K' },
-] as const
+] as const)
 
 const perMillionScale = 1_000_000
 
@@ -362,9 +423,17 @@ const keysForSelectedGroup = computed(() => {
   return activeKeys.value.filter((key) => key.status === 'active' && Number(key.group_id) === selectedGroupId.value)
 })
 const selectedApiKey = computed(() => activeKeys.value.find((key) => key.id === selectedApiKeyId.value) || null)
+const referenceImagesFull = computed(() => referenceImages.value.length >= maxReferenceImages)
+const promptPlaceholder = computed(() =>
+  selectedKind.value === 'image'
+    ? t('modelTest.placeholders.imagePrompt')
+    : t('modelTest.placeholders.textPrompt'),
+)
 
 const gatewayEndpoint = computed(() =>
-  selectedKind.value === 'image' ? '/v1/images/generations' : '/v1/chat/completions',
+  selectedKind.value === 'image'
+    ? referenceImages.value.length > 0 ? '/v1/images/edits' : '/v1/images/generations'
+    : '/v1/chat/completions',
 )
 
 const canRun = computed(() =>
@@ -388,10 +457,13 @@ const currentPricePreview = computed(() => {
   if (!model || !group) return '-'
   if (selectedKind.value === 'image') {
     const tier = imageSizeTier(imageSize.value)
+    const tierLabel = imageSize.value === adaptiveImageSizeValue
+      ? t('modelTest.imageSizeAdaptivePreview', { tier })
+      : tier
     const price = imageTierBasePrice(group, tier)
     return price == null
       ? imageTierPrices(group)
-      : `${tier} ${formatScaled(price * effectiveImageRate(group), 1)} / ${t('modelTest.perImage')}`
+      : `${tierLabel} ${formatScaled(price * effectiveImageRate(group), 1)} / ${t('modelTest.perImage')}`
   }
   return textPricePreview(model.pricing, group)
 })
@@ -401,9 +473,6 @@ const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImag
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
 watch(selectedKind, (kind) => {
-  if (isDefaultPrompt()) {
-    prompt.value = defaultPrompt(kind)
-  }
   if (selectedModel.value?.kind !== kind) {
     selectedModelKey.value = filteredModels.value[0]?.key || ''
   }
@@ -493,20 +562,7 @@ function imageTierPrices(group: UserAvailableGroup): string {
 }
 
 function imageSizeTier(size: string): string {
-  return imageSizeOptions.find((option) => option.value === size)?.tier || '2K'
-}
-
-function defaultPrompt(kind: ModelKind): string {
-  return kind === 'image'
-    ? t('modelTest.defaultImagePrompt')
-    : t('modelTest.defaultTextPrompt')
-}
-
-function isDefaultPrompt(): boolean {
-  const value = prompt.value.trim()
-  return !value ||
-    value === t('modelTest.defaultImagePrompt') ||
-    value === t('modelTest.defaultTextPrompt')
+  return imageSizeOptions.value.find((option) => option.value === size)?.tier || '2K'
 }
 
 async function loadData() {
@@ -662,21 +718,32 @@ async function runTest() {
   durationMs.value = null
   const startedAt = performance.now()
   try {
-    rawResponse.value = selectedKind.value === 'image'
-      ? await testImageGeneration({
-        apiKey: apiKey.key,
-        model: model.name,
-        prompt: cleanPrompt,
-        size: imageSize.value,
-        signal: runController.signal,
-      })
-      : await testChatCompletion({
+    if (selectedKind.value === 'image') {
+      rawResponse.value = referenceImages.value.length > 0
+        ? await testImageEdit({
+          apiKey: apiKey.key,
+          model: model.name,
+          prompt: cleanPrompt,
+          size: imageSize.value,
+          images: referenceImages.value.map((item) => item.file),
+          signal: runController.signal,
+        })
+        : await testImageGeneration({
+          apiKey: apiKey.key,
+          model: model.name,
+          prompt: cleanPrompt,
+          size: imageSize.value,
+          signal: runController.signal,
+        })
+    } else {
+      rawResponse.value = await testChatCompletion({
         apiKey: apiKey.key,
         model: model.name,
         prompt: cleanPrompt,
         maxTokens: normalizedMaxTokens(),
         signal: runController.signal,
       })
+    }
     durationMs.value = Math.round(performance.now() - startedAt)
     appStore.showSuccess(t('modelTest.runSuccess'))
   } catch (err: unknown) {
@@ -702,6 +769,72 @@ function normalizedMaxTokens(): number {
 function cancelRunning() {
   runController?.abort()
   running.value = false
+}
+
+function handleReferenceImagesSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  imageUploadError.value = ''
+  if (files.length === 0) return
+
+  const remainingSlots = maxReferenceImages - referenceImages.value.length
+  if (remainingSlots <= 0) {
+    imageUploadError.value = t('modelTest.referenceImageLimit', { count: maxReferenceImages })
+    input.value = ''
+    return
+  }
+
+  const accepted: ReferenceImage[] = []
+  for (const file of files.slice(0, remainingSlots)) {
+    if (!file.type.startsWith('image/')) {
+      imageUploadError.value = t('modelTest.referenceImageTypeError')
+      continue
+    }
+    if (file.size > maxReferenceImageSize) {
+      imageUploadError.value = t('modelTest.referenceImageSizeError', {
+        size: formatFileSize(maxReferenceImageSize),
+      })
+      continue
+    }
+    accepted.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    })
+  }
+
+  if (files.length > remainingSlots) {
+    imageUploadError.value = t('modelTest.referenceImageLimit', { count: maxReferenceImages })
+  }
+  referenceImages.value = [...referenceImages.value, ...accepted]
+  input.value = ''
+}
+
+function removeReferenceImage(id: string) {
+  const target = referenceImages.value.find((item) => item.id === id)
+  if (target) {
+    URL.revokeObjectURL(target.previewUrl)
+  }
+  referenceImages.value = referenceImages.value.filter((item) => item.id !== id)
+}
+
+function clearReferenceImages() {
+  for (const item of referenceImages.value) {
+    URL.revokeObjectURL(item.previewUrl)
+  }
+  referenceImages.value = []
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`
 }
 
 function extractChatText(payload: unknown): string {
@@ -766,11 +899,11 @@ function redactForPreview(value: unknown): unknown {
 }
 
 onMounted(() => {
-  prompt.value = defaultPrompt(selectedKind.value)
   void loadData()
 })
 
 onBeforeUnmount(() => {
   runController?.abort()
+  clearReferenceImages()
 })
 </script>
