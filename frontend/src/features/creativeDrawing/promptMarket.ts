@@ -1,5 +1,5 @@
 /**
- * 提示词市场解析器。
+ * 热门模板解析器。
  *
  * 远程数据源、字段规范与解析思路改写自 ZyphrZero/chatgpt2api
  * （MIT License，Copyright (c) 2026 kunkun）。
@@ -295,12 +295,12 @@ export async function fetchBananaPrompts(signal?: AbortSignal) {
     }
   })
   if (!response.ok) {
-    throw new Error(`读取提示词市场失败：${response.status}`)
+    throw new Error(`读取热门模板失败：${response.status}`)
   }
 
   const data: unknown = await response.json()
   if (!Array.isArray(data)) {
-    throw new Error('提示词市场数据格式无效')
+    throw new Error('热门模板数据格式无效')
   }
 
   return data.flatMap((item, index) => {

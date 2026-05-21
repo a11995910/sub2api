@@ -40,6 +40,20 @@ export const IMAGE_RESOLUTION_OPTIONS = [
 
 export type ImageResolution = (typeof IMAGE_RESOLUTION_OPTIONS)[number]['value']
 
+export type ImageBillingTier = '1K' | '2K' | '4K'
+
+export const ADAPTIVE_IMAGE_SIZE_VALUE = ''
+
+export const IMAGE_SIZE_PRESET_OPTIONS = [
+  { value: ADAPTIVE_IMAGE_SIZE_VALUE, tier: '2K', label: 'Auto · 2K' },
+  { value: '1024x1024', tier: '1K', label: '1024×1024 · 1K' },
+  { value: '1536x1024', tier: '2K', label: '1536×1024 · 2K' },
+  { value: '1024x1536', tier: '2K', label: '1024×1536 · 2K' },
+  { value: '2048x2048', tier: '2K', label: '2048×2048 · 2K' },
+  { value: '3840x2160', tier: '4K', label: '3840×2160 · 4K' },
+  { value: '2160x3840', tier: '4K', label: '2160×3840 · 4K' }
+] as const
+
 export type ImageSizeSelection = {
   mode: ImageSizeMode
   aspectRatio: ImageAspectRatio
@@ -227,6 +241,42 @@ export function getImageSizeRequirementLabel(size: string) {
     return 'Auto'
   }
   return isHighResolutionImageSize(size) ? '高分辨率' : '常规分辨率'
+}
+
+export function getImageBillingTier(size: string): ImageBillingTier {
+  const trimmed = size.trim()
+  const normalized = normalizeImageSize(trimmed)
+  const lower = normalized.toLowerCase()
+  if (!lower || lower === 'auto') {
+    return '2K'
+  }
+  if (lower === '1k') {
+    return '1K'
+  }
+  if (lower === '2k') {
+    return '2K'
+  }
+  if (lower === '4k') {
+    return '4K'
+  }
+
+  const preset = IMAGE_SIZE_PRESET_OPTIONS.find((option) => option.value.toLowerCase() === lower)
+  if (preset) {
+    return preset.tier
+  }
+
+  const dimensions = parseImageSizeDimensions(normalized)
+  if (!dimensions) {
+    return '2K'
+  }
+  const maxEdge = Math.max(Number(dimensions.width), Number(dimensions.height))
+  if (maxEdge <= 1024) {
+    return '1K'
+  }
+  if (maxEdge <= 2048) {
+    return '2K'
+  }
+  return '4K'
 }
 
 export function isImageAspectRatio(value: unknown): value is ImageAspectRatio {

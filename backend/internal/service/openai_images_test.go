@@ -1097,8 +1097,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	body := []byte(`{
 		"model":"gpt-image-2",
 		"prompt":"replace background with aurora",
-		"images":[{"image_url":"https://example.com/source.png"}],
-		"mask":{"image_url":"https://example.com/mask.png"},
+		"images":[{"image_url":"data:image/png;base64,c291cmNl"}],
+		"mask":{"image_url":"data:image/png;base64,bWFzaw=="},
 		"stream":true,
 		"response_format":"url"
 	}`)
@@ -1144,8 +1144,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "edit", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
-	require.Equal(t, "https://example.com/source.png", gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
-	require.Equal(t, "https://example.com/mask.png", gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String(), "data:image/png;base64,"))
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "tools.0.input_image_mask.image_url").String(), "data:image/png;base64,"))
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	partial, ok := findOpenAIImageTestSSEEvent(events, "image_edit.partial_image")
 	require.True(t, ok)
@@ -1182,7 +1182,7 @@ func TestBuildOpenAIImagesResponsesRequest_DowngradesMultipleImagesToSingle(t *t
 		N:        2,
 	}
 
-	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
+	body, err := buildOpenAIImagesResponsesRequest(context.Background(), parsed, "gpt-image-2")
 	require.NoError(t, err)
 	require.NotNil(t, body)
 	require.False(t, gjson.GetBytes(body, "tools.0.n").Exists())
@@ -1197,11 +1197,11 @@ func TestBuildOpenAIImagesResponsesRequest_StripsInputFidelity(t *testing.T) {
 		Prompt:        "replace background",
 		InputFidelity: "high",
 		InputImageURLs: []string{
-			"https://example.com/source.png",
+			"data:image/png;base64,c291cmNl",
 		},
 	}
 
-	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
+	body, err := buildOpenAIImagesResponsesRequest(context.Background(), parsed, "gpt-image-2")
 	require.NoError(t, err)
 	require.NotNil(t, body)
 	require.False(t, gjson.GetBytes(body, "tools.0.input_fidelity").Exists())
@@ -1242,6 +1242,38 @@ func TestCollectOpenAIImagesFromResponsesBody_MultilineSSE(t *testing.T) {
 	require.Equal(t, "ZmluYWw=", results[0].Result)
 	require.Equal(t, "png", firstMeta.OutputFormat)
 	require.JSONEq(t, `{"images":1}`, string(usageRaw))
+}
+
+func TestCollectOpenAIImagesFromResponsesBody_ExtractsNestedInlineImage(t *testing.T) {
+	body := []byte(
+		"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000012,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"id\":\"ig_nested\",\"type\":\"image_generation_call\",\"content\":[{\"type\":\"output_image\",\"b64_json\":\"data:image/webp;base64,TmVzdGVk\"}],\"revised_prompt\":\"draw nested\",\"output_format\":\"webp\"}]}}\n\n" +
+			"data: [DONE]\n\n",
+	)
+
+	results, createdAt, usageRaw, firstMeta, foundFinal, err := collectOpenAIImagesFromResponsesBody(body)
+	require.NoError(t, err)
+	require.True(t, foundFinal)
+	require.Equal(t, int64(1710000012), createdAt)
+	require.Len(t, results, 1)
+	require.Equal(t, "TmVzdGVk", results[0].Result)
+	require.Equal(t, "draw nested", results[0].RevisedPrompt)
+	require.Equal(t, "webp", firstMeta.OutputFormat)
+	require.JSONEq(t, `{"images":1}`, string(usageRaw))
+}
+
+func TestCollectOpenAIImagesFromResponsesBody_ExtractsNestedDownloadURL(t *testing.T) {
+	body := []byte(
+		"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000013,\"output\":[{\"id\":\"ig_url\",\"type\":\"image_generation_call\",\"result\":\"\",\"image\":{\"download_url\":\"https://files.example.com/generated.webp?sig=1\",\"mime_type\":\"image/webp\"}}]}}\n\n" +
+			"data: [DONE]\n\n",
+	)
+
+	results, createdAt, _, firstMeta, foundFinal, err := collectOpenAIImagesFromResponsesBody(body)
+	require.NoError(t, err)
+	require.True(t, foundFinal)
+	require.Equal(t, int64(1710000013), createdAt)
+	require.Len(t, results, 1)
+	require.Equal(t, "https://files.example.com/generated.webp?sig=1", results[0].URL)
+	require.Equal(t, "webp", firstMeta.OutputFormat)
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesOutputItemDoneFallback(t *testing.T) {

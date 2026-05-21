@@ -6,7 +6,7 @@
           <header class="border-b border-gray-100 px-5 py-4 sm:px-7">
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
-                <h2 class="text-2xl font-bold text-gray-950 dark:text-white">Prompts 提示词市场</h2>
+                <h2 class="text-2xl font-bold text-gray-950 dark:text-white">热门模板</h2>
                 <p class="mt-2 hidden text-sm leading-6 text-gray-600 dark:text-dark-300 sm:block">
                   来自
                   <a :href="BANANA_PROMPTS_SOURCE_URL" target="_blank" rel="noreferrer" class="font-semibold text-blue-600 hover:underline">glidea/banana-prompt-quicker</a>
@@ -74,7 +74,7 @@
           <div ref="scrollRef" class="min-h-0 flex-1 overflow-y-auto bg-gray-50 px-5 py-4 dark:bg-dark-950 sm:px-7">
             <div v-if="isLoading" class="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-gray-500 dark:text-dark-300">
               <Icon name="refresh" size="lg" class="animate-spin text-blue-600" />
-              <p class="text-sm">正在读取远程提示词市场...</p>
+              <p class="text-sm">正在读取远程热门模板...</p>
             </div>
 
             <div v-else-if="error" class="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 text-center">
@@ -260,7 +260,7 @@ const countLabel = computed(() => favoriteFilter.value === 'favorites'
   ? `已收藏 ${filteredPrompts.value.length}`
   : prompts.value.length
     ? `${filteredPrompts.value.length} / ${sourceFilteredPrompts.value.length}`
-    : '远程市场')
+    : '热门模板')
 
 watch([keyword, source, promptLanguage, category, mode, nsfwFilter, favoriteFilter], () => {
   visibleCount.value = INITIAL_VISIBLE_COUNT
@@ -279,7 +279,7 @@ async function loadPromptData() {
   try {
     prompts.value = await fetchPromptMarketPrompts()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '读取提示词市场失败'
+    error.value = err instanceof Error ? err.message : '读取热门模板失败'
   } finally {
     isLoading.value = false
   }

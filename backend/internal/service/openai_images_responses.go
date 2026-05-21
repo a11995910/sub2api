@@ -21,8 +21,10 @@ import (
 
 type openAIResponsesImageResult struct {
 	Result        string
+	URL           string
 	RevisedPrompt string
 	OutputFormat  string
+	MimeType      string
 	Size          string
 	Background    string
 	Quality       string
@@ -32,6 +34,9 @@ type openAIResponsesImageResult struct {
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
 	if strings.TrimSpace(result.Result) != "" {
 		return strings.TrimSpace(result.OutputFormat) + "|" + strings.TrimSpace(result.Result)
+	}
+	if strings.TrimSpace(result.URL) != "" {
+		return "url:" + strings.TrimSpace(result.URL)
 	}
 	return "item:" + strings.TrimSpace(itemID)
 }
@@ -57,6 +62,9 @@ func mergeOpenAIResponsesImageMeta(dst *openAIResponsesImageResult, src openAIRe
 	}
 	if trimmed := strings.TrimSpace(src.OutputFormat); trimmed != "" {
 		dst.OutputFormat = trimmed
+	}
+	if trimmed := strings.TrimSpace(src.MimeType); trimmed != "" {
+		dst.MimeType = trimmed
 	}
 	if trimmed := strings.TrimSpace(src.Size); trimmed != "" {
 		dst.Size = trimmed
@@ -159,12 +167,16 @@ func buildOpenAIImagesStreamCompletedPayload(
 		createdAt = time.Now().Unix()
 	}
 
-	payload := []byte(`{"type":"","created_at":0,"b64_json":""}`)
+	payload := []byte(`{"type":"","created_at":0}`)
 	payload, _ = sjson.SetBytes(payload, "type", eventType)
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
-	payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
-	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
+	if strings.TrimSpace(img.Result) != "" {
+		payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
+	}
+	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") && strings.TrimSpace(img.Result) != "" {
 		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+	} else if strings.TrimSpace(img.URL) != "" {
+		payload, _ = sjson.SetBytes(payload, "url", strings.TrimSpace(img.URL))
 	}
 	if img.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", img.Background)
@@ -217,9 +229,12 @@ func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
-func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
+func buildOpenAIImagesResponsesRequest(ctx context.Context, parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	prompt := strings.TrimSpace(parsed.Prompt)
 	if prompt == "" {
@@ -227,10 +242,19 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	}
 
 	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
-	for _, imageURL := range parsed.InputImageURLs {
-		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
-			inputImages = append(inputImages, trimmed)
+	for index, imageURL := range parsed.InputImageURLs {
+		if strings.TrimSpace(imageURL) == "" {
+			continue
 		}
+		upload, err := openAIImagesUploadFromURL(ctx, imageURL, fmt.Sprintf("reference-%d", index+1))
+		if err != nil {
+			return nil, err
+		}
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, err
+		}
+		inputImages = append(inputImages, dataURL)
 	}
 	for _, upload := range parsed.Uploads {
 		dataURL, err := openAIImageUploadToDataURL(upload)
@@ -292,6 +316,16 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 			return nil, err
 		}
 		maskImageURL = dataURL
+	} else if maskImageURL != "" {
+		upload, err := openAIImagesUploadFromURL(ctx, maskImageURL, "mask")
+		if err != nil {
+			return nil, err
+		}
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, err
+		}
+		maskImageURL = dataURL
 	}
 	if maskImageURL != "" {
 		tool, _ = sjson.SetBytes(tool, "input_image_mask.image_url", maskImageURL)
@@ -322,22 +356,28 @@ func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponse
 			if item.Get("type").String() != "image_generation_call" {
 				continue
 			}
-			result := strings.TrimSpace(item.Get("result").String())
-			if result == "" {
-				continue
-			}
 			entry := openAIResponsesImageResult{
-				Result:        result,
+				Result:        normalizeOpenAIImageBase64(item.Get("result").String()),
 				RevisedPrompt: strings.TrimSpace(item.Get("revised_prompt").String()),
 				OutputFormat:  strings.TrimSpace(item.Get("output_format").String()),
 				Size:          strings.TrimSpace(item.Get("size").String()),
 				Background:    strings.TrimSpace(item.Get("background").String()),
 				Quality:       strings.TrimSpace(item.Get("quality").String()),
 			}
-			if len(results) == 0 {
-				firstMeta = entry
+			if strings.TrimSpace(entry.Result) != "" || strings.TrimSpace(entry.URL) != "" {
+				if len(results) == 0 {
+					firstMeta = entry
+				}
+				results = append(results, entry)
+				continue
 			}
-			results = append(results, entry)
+			inlineResults := openAIResponsesImageResultsFromPayload([]byte(item.Raw), entry)
+			for _, inlineResult := range inlineResults {
+				if len(results) == 0 {
+					firstMeta = inlineResult
+				}
+				results = append(results, inlineResult)
+			}
 		}
 	}
 
@@ -358,20 +398,99 @@ func extractOpenAIImageFromResponsesOutputItemDone(payload []byte) (openAIRespon
 		return openAIResponsesImageResult{}, "", false, nil
 	}
 
-	result := strings.TrimSpace(item.Get("result").String())
-	if result == "" {
-		return openAIResponsesImageResult{}, "", false, nil
-	}
-
 	entry := openAIResponsesImageResult{
-		Result:        result,
+		Result:        normalizeOpenAIImageBase64(item.Get("result").String()),
 		RevisedPrompt: strings.TrimSpace(item.Get("revised_prompt").String()),
 		OutputFormat:  strings.TrimSpace(item.Get("output_format").String()),
 		Size:          strings.TrimSpace(item.Get("size").String()),
 		Background:    strings.TrimSpace(item.Get("background").String()),
 		Quality:       strings.TrimSpace(item.Get("quality").String()),
 	}
+	if strings.TrimSpace(entry.Result) == "" && strings.TrimSpace(entry.URL) == "" {
+		inlineResults := openAIResponsesImageResultsFromPayload([]byte(item.Raw), entry)
+		if len(inlineResults) == 0 {
+			return openAIResponsesImageResult{}, "", false, nil
+		}
+		entry = inlineResults[0]
+	}
 	return entry, strings.TrimSpace(item.Get("id").String()), true, nil
+}
+
+func openAIResponsesImageResultsFromPayload(payload []byte, fallback openAIResponsesImageResult) []openAIResponsesImageResult {
+	pointers := collectOpenAIImageInlineAssets(payload, fallback.RevisedPrompt)
+	if len(pointers) == 0 {
+		return nil
+	}
+	results := make([]openAIResponsesImageResult, 0, len(pointers))
+	for _, pointer := range pointers {
+		result, ok := openAIResponsesImageResultFromPointer(pointer, fallback)
+		if ok {
+			results = append(results, result)
+		}
+	}
+	return results
+}
+
+func openAIResponsesImageResultFromPointer(pointer openAIImagePointerInfo, fallback openAIResponsesImageResult) (openAIResponsesImageResult, bool) {
+	result := fallback
+	if prompt := strings.TrimSpace(pointer.Prompt); prompt != "" {
+		result.RevisedPrompt = prompt
+	}
+	if mimeType := strings.TrimSpace(pointer.MimeType); mimeType != "" {
+		result.MimeType = mimeType
+		if strings.TrimSpace(result.OutputFormat) == "" {
+			result.OutputFormat = openAIImageFormatFromMIMEType(mimeType)
+		}
+	}
+
+	if b64 := normalizeOpenAIImageBase64(pointer.B64JSON); b64 != "" {
+		result.Result = b64
+		return result, true
+	}
+	if b64, mimeType := openAIImageBase64FromDataURL(pointer.DownloadURL); b64 != "" {
+		result.Result = b64
+		result.MimeType = mimeType
+		if strings.TrimSpace(result.OutputFormat) == "" {
+			result.OutputFormat = openAIImageFormatFromMIMEType(mimeType)
+		}
+		return result, true
+	}
+	if url := strings.TrimSpace(pointer.DownloadURL); isLikelyOpenAIImageDownloadURL(url) {
+		result.URL = url
+		return result, true
+	}
+	return openAIResponsesImageResult{}, false
+}
+
+func openAIImageBase64FromDataURL(raw string) (string, string) {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(strings.ToLower(trimmed), "data:image/") {
+		return "", ""
+	}
+	comma := strings.Index(trimmed, ",")
+	if comma < 0 {
+		return "", ""
+	}
+	meta := strings.TrimSpace(strings.TrimPrefix(trimmed[:comma], "data:"))
+	mimeType := strings.TrimSpace(strings.Split(meta, ";")[0])
+	b64 := normalizeOpenAIImageBase64(trimmed)
+	if b64 == "" {
+		return "", ""
+	}
+	return b64, mimeType
+}
+
+func openAIImageFormatFromMIMEType(mimeType string) string {
+	switch strings.ToLower(strings.TrimSpace(mimeType)) {
+	case "image/jpeg", "image/jpg":
+		return "jpeg"
+	case "image/webp":
+		return "webp"
+	case "image/png":
+		return "png"
+	default:
+		return ""
+	}
 }
 
 func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageResult, int64, []byte, openAIResponsesImageResult, bool, error) {
@@ -474,10 +593,14 @@ func buildOpenAIImagesAPIResponse(
 	}
 	for _, img := range results {
 		item := []byte(`{}`)
-		if format == "url" {
+		if format == "url" && strings.TrimSpace(img.Result) != "" {
 			item, _ = sjson.SetBytes(item, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
-		} else {
+		} else if strings.TrimSpace(img.Result) != "" {
 			item, _ = sjson.SetBytes(item, "b64_json", img.Result)
+		} else if strings.TrimSpace(img.URL) != "" {
+			item, _ = sjson.SetBytes(item, "url", strings.TrimSpace(img.URL))
+		} else {
+			continue
 		}
 		if img.RevisedPrompt != "" {
 			item, _ = sjson.SetBytes(item, "revised_prompt", img.RevisedPrompt)
@@ -975,7 +1098,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		return nil, err
 	}
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel)
+	responsesBody, err := buildOpenAIImagesResponsesRequest(upstreamCtx, parsed, requestModel)
 	if err != nil {
 		return nil, err
 	}

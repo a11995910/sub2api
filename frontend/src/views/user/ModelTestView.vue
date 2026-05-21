@@ -293,6 +293,11 @@ import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
+  ADAPTIVE_IMAGE_SIZE_VALUE,
+  IMAGE_SIZE_PRESET_OPTIONS,
+  getImageBillingTier,
+} from '@/features/creativeDrawing/imageOptions'
+import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
@@ -336,7 +341,7 @@ const selectedModelKey = ref('')
 const selectedGroupId = ref<number | null>(null)
 const selectedApiKeyId = ref<number | null>(null)
 const prompt = ref('')
-const adaptiveImageSizeValue = ''
+const adaptiveImageSizeValue = ADAPTIVE_IMAGE_SIZE_VALUE
 const imageSize = ref(adaptiveImageSizeValue)
 const referenceImages = ref<ReferenceImage[]>([])
 const imageUploadError = ref('')
@@ -350,15 +355,14 @@ let runController: AbortController | null = null
 const maxReferenceImages = 4
 const maxReferenceImageSize = 20 * 1024 * 1024
 
-const imageSizeOptions = computed(() => [
-  { value: adaptiveImageSizeValue, tier: '2K', label: t('modelTest.imageSizeOptions.adaptive') },
-  { value: '1024x1024', tier: '1K', label: '1024x1024 · 1K' },
-  { value: '1536x1024', tier: '2K', label: '1536x1024 · 2K' },
-  { value: '1024x1536', tier: '2K', label: '1024x1536 · 2K' },
-  { value: '2048x2048', tier: '2K', label: '2048x2048 · 2K' },
-  { value: '3840x2160', tier: '4K', label: '3840x2160 · 4K' },
-  { value: '2160x3840', tier: '4K', label: '2160x3840 · 4K' },
-] as const)
+const imageSizeOptions = computed(() =>
+  IMAGE_SIZE_PRESET_OPTIONS.map((option) => ({
+    ...option,
+    label: option.value === adaptiveImageSizeValue
+      ? t('modelTest.imageSizeOptions.adaptive')
+      : option.label.replace(/×/g, 'x'),
+  })),
+)
 
 const perMillionScale = 1_000_000
 
@@ -562,7 +566,7 @@ function imageTierPrices(group: UserAvailableGroup): string {
 }
 
 function imageSizeTier(size: string): string {
-  return imageSizeOptions.value.find((option) => option.value === size)?.tier || '2K'
+  return getImageBillingTier(size)
 }
 
 async function loadData() {

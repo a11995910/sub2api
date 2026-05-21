@@ -4,8 +4,8 @@
       <aside class="creative-history">
         <div class="flex items-center gap-2">
           <button class="creative-new-button" @click="startNewConversation">
-            <Icon name="chat" size="sm" />
-            新建对话
+            <Icon name="sparkles" size="sm" />
+            新建创作
           </button>
           <button class="creative-icon-button" title="清空历史" @click="clearConversations">
             <Icon name="trash" size="sm" />
@@ -21,7 +21,7 @@
             @click="selectConversation(conversation.id)"
           >
             <span class="truncate text-sm font-semibold text-slate-700 dark:text-slate-100">{{ conversation.title }}</span>
-            <span class="mt-1 text-xs text-slate-400">{{ conversation.turns.length }} 轮 · {{ formatConversationTime(conversation.updatedAt) }}</span>
+            <span class="mt-1 text-xs text-slate-400">{{ conversation.turns.length }} 次 · {{ formatConversationTime(conversation.updatedAt) }}</span>
           </button>
 
           <div v-if="conversations.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-500 dark:border-dark-700 dark:text-dark-400">
@@ -117,122 +117,125 @@
           </div>
         </div>
 
-        <div class="creative-composer-wrap" :class="{ 'creative-composer-wrap-collapsed': appStore.sidebarCollapsed }">
-          <div v-if="referenceImages.length" class="mb-3 flex flex-wrap gap-2">
-            <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
-              <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700" referrerpolicy="no-referrer">
-              <button class="absolute -right-1 -top-1 rounded-full bg-white p-1 text-slate-500 shadow hover:text-red-600 dark:bg-dark-800" title="移除参考图" @click="removeReference(reference.id)">
-                <Icon name="x" size="xs" />
-              </button>
-            </div>
-          </div>
-
-          <div class="creative-composer">
-            <textarea
-              v-model="prompt"
-              class="creative-textarea"
-              :placeholder="referenceImages.length ? '描述你希望如何参考这些图片作画...' : '加载并使用 Nano Banana Pro 工具作画，而不是分析或给提示词...'"
-              @keydown.meta.enter.prevent="submit"
-              @keydown.ctrl.enter.prevent="submit"
-            />
-
-            <div class="creative-toolbar">
-              <div class="flex flex-wrap items-center gap-2">
-                <button class="creative-pill" :class="{ 'creative-pill-active': composerMode === 'chat' }" @click="composerMode = 'chat'">
-                  <Icon name="chat" size="xs" />
-                  对话
-                </button>
-                <button class="creative-pill" :class="{ 'creative-pill-active': composerMode === 'image' }" @click="composerMode = 'image'">
-                  <Icon name="image" size="xs" />
-                  作画
-                </button>
-                <select v-model="selectedModel" class="creative-select" title="模型">
-                  <option v-for="item in CREATIVE_IMAGE_MODEL_OPTIONS" :key="item.value" :value="item.value">模型 {{ item.label }}</option>
-                </select>
-                <button class="creative-pill" @click="marketOpen = true">
-                  <Icon name="globe" size="xs" />
-                  市场
-                </button>
-                <button class="creative-pill" @click="paramsOpen = !paramsOpen">
-                  <Icon name="filter" size="xs" />
-                  参数
-                </button>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="handleFileChange">
-                <button class="creative-icon-button" title="上传参考图" @click="fileInputRef?.click()">
-                  <Icon name="upload" size="sm" />
-                </button>
-                <button class="creative-send" :disabled="isSubmitting" title="发送" @click="submit">
-                  <Icon v-if="isSubmitting" name="refresh" size="sm" class="animate-spin" />
-                  <Icon v-else name="arrowUp" size="sm" />
-                </button>
-              </div>
-            </div>
-
-            <div v-if="paramsOpen" class="creative-params">
-              <label class="creative-field">
-                <span>API 密钥</span>
-                <select v-model.number="selectedApiKeyId">
-                  <option :value="0">选择 OpenAI 分组密钥</option>
-                  <option v-for="key in drawableKeys" :key="key.id" :value="key.id">
-                    {{ key.name }} · {{ maskKey(key.key) }}
-                  </option>
-                </select>
-              </label>
-              <label class="creative-field">
-                <span>数量</span>
-                <input v-model.number="imageCount" min="1" max="4" type="number">
-              </label>
-              <label class="creative-field">
-                <span>尺寸模式</span>
-                <select v-model="sizeSelection.mode">
-                  <option v-for="item in IMAGE_SIZE_MODE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
-                </select>
-              </label>
-              <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
-                <span>比例</span>
-                <select v-model="sizeSelection.aspectRatio">
-                  <option v-for="item in IMAGE_ASPECT_RATIO_OPTIONS" :key="item.value || 'auto'" :value="item.value">{{ item.label }}</option>
-                </select>
-              </label>
-              <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
-                <span>分辨率</span>
-                <select v-model="sizeSelection.resolution">
-                  <option v-for="item in IMAGE_RESOLUTION_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
-                </select>
-              </label>
-              <label v-if="sizeSelection.mode === 'ratio' && sizeSelection.aspectRatio === CUSTOM_IMAGE_ASPECT_RATIO" class="creative-field">
-                <span>自定义比例</span>
-                <input v-model="sizeSelection.customRatio" placeholder="16:9">
-              </label>
-              <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
-                <span>宽度</span>
-                <input v-model="sizeSelection.customWidth" inputmode="numeric">
-              </label>
-              <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
-                <span>高度</span>
-                <input v-model="sizeSelection.customHeight" inputmode="numeric">
-              </label>
-              <label class="creative-field">
-                <span>格式</span>
-                <select v-model="outputFormat">
-                  <option v-for="item in CREATIVE_OUTPUT_FORMAT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="mt-2 flex items-center justify-between px-2 text-xs text-slate-400">
-              <span>本地额度无限</span>
-              <span>预计消耗 {{ Math.max(imageCount, 1) }} 图片单位</span>
-            </div>
-          </div>
-        </div>
       </section>
     </div>
 
     <PromptMarketDialog v-model:open="marketOpen" @apply="applyMarketPrompt" />
+
+    <teleport to="body">
+      <div class="creative-composer-wrap" :class="{ 'creative-composer-wrap-collapsed': appStore.sidebarCollapsed }">
+        <div v-if="referenceImages.length" class="creative-reference-strip">
+          <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
+            <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700" referrerpolicy="no-referrer">
+            <button class="absolute -right-1 -top-1 rounded-full bg-white p-1 text-slate-500 shadow hover:text-red-600 dark:bg-dark-800" title="移除参考图" @click="removeReference(reference.id)">
+              <Icon name="x" size="xs" />
+            </button>
+          </div>
+        </div>
+
+        <div class="creative-composer">
+          <textarea
+            v-model="prompt"
+            class="creative-textarea"
+            :placeholder="referenceImages.length ? '描述如何参考这些图片生成新图...' : '输入画面描述，使用 gpt-image-2 直接生成图片...'"
+            @keydown.meta.enter.prevent="submit"
+            @keydown.ctrl.enter.prevent="submit"
+          />
+
+          <div class="creative-toolbar">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="creative-pill creative-pill-active">
+                <Icon name="image" size="xs" />
+                作画
+              </span>
+              <select v-model="quickSizeValue" class="creative-select creative-size-select" title="尺寸">
+                <option v-for="item in creativeSizeOptions" :key="item.value || 'auto'" :value="item.value">
+                  尺寸 {{ item.label }}
+                </option>
+                <option v-if="showCurrentSizeOption" :value="currentImageSize">
+                  尺寸 {{ formatImageSizeDisplay(currentImageSize) }} · {{ currentImageBillingTier }}
+                </option>
+              </select>
+              <button class="creative-pill" @click="marketOpen = true">
+                <Icon name="globe" size="xs" />
+                热门模板
+              </button>
+              <button class="creative-pill" @click="paramsOpen = !paramsOpen">
+                <Icon name="filter" size="xs" />
+                参数
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="handleFileChange">
+              <button class="creative-icon-button" title="上传参考图" @click="fileInputRef?.click()">
+                <Icon name="upload" size="sm" />
+              </button>
+              <button class="creative-send" :disabled="isSubmitting" title="发送" @click="submit">
+                <Icon v-if="isSubmitting" name="refresh" size="sm" class="animate-spin" />
+                <Icon v-else name="arrowUp" size="sm" />
+              </button>
+            </div>
+          </div>
+
+          <div v-if="paramsOpen" class="creative-params">
+            <label class="creative-field">
+              <span>API 密钥</span>
+              <select v-model.number="selectedApiKeyId">
+                <option :value="0">选择 OpenAI 分组密钥</option>
+                <option v-for="key in drawableKeys" :key="key.id" :value="key.id">
+                  {{ key.name }} · {{ maskKey(key.key) }}
+                </option>
+              </select>
+            </label>
+            <label class="creative-field">
+              <span>数量</span>
+              <input v-model.number="imageCount" min="1" max="4" type="number">
+            </label>
+            <label class="creative-field">
+              <span>尺寸模式</span>
+              <select v-model="sizeSelection.mode">
+                <option v-for="item in IMAGE_SIZE_MODE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+            <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
+              <span>比例</span>
+              <select v-model="sizeSelection.aspectRatio">
+                <option v-for="item in IMAGE_ASPECT_RATIO_OPTIONS" :key="item.value || 'auto'" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+            <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
+              <span>分辨率</span>
+              <select v-model="sizeSelection.resolution">
+                <option v-for="item in IMAGE_RESOLUTION_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+            <label v-if="sizeSelection.mode === 'ratio' && sizeSelection.aspectRatio === CUSTOM_IMAGE_ASPECT_RATIO" class="creative-field">
+              <span>自定义比例</span>
+              <input v-model="sizeSelection.customRatio" placeholder="16:9">
+            </label>
+            <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
+              <span>宽度</span>
+              <input v-model="sizeSelection.customWidth" inputmode="numeric">
+            </label>
+            <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
+              <span>高度</span>
+              <input v-model="sizeSelection.customHeight" inputmode="numeric">
+            </label>
+            <label class="creative-field">
+              <span>格式</span>
+              <select v-model="outputFormat">
+                <option v-for="item in CREATIVE_OUTPUT_FORMAT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="mt-2 flex items-center justify-end px-2 text-xs text-slate-400">
+            <span>{{ estimatedConsumptionLabel }}</span>
+          </div>
+        </div>
+      </div>
+    </teleport>
 
     <teleport to="body">
       <transition name="fade">
@@ -255,7 +258,6 @@ import { useAppStore } from '@/stores'
 import keysAPI from '@/api/keys'
 import type { ApiKey } from '@/types'
 import {
-  CREATIVE_IMAGE_MODEL_OPTIONS,
   CREATIVE_OUTPUT_FORMAT_OPTIONS,
   createCreativeImageEdit,
   createCreativeImageGeneration,
@@ -272,8 +274,10 @@ import {
   IMAGE_ASPECT_RATIO_OPTIONS,
   IMAGE_RESOLUTION_OPTIONS,
   IMAGE_SIZE_MODE_OPTIONS,
+  IMAGE_SIZE_PRESET_OPTIONS,
   buildImageSize,
   formatImageSizeDisplay,
+  getImageBillingTier,
   getImageSizeSelectionFromSize,
   type ImageSizeSelection
 } from '@/features/creativeDrawing/imageOptions'
@@ -301,8 +305,7 @@ const appStore = useAppStore()
 const conversations = ref<CreativeConversation[]>([])
 const activeConversationId = ref('')
 const prompt = ref('')
-const composerMode = ref<'chat' | 'image'>('image')
-const selectedModel = ref<CreativeImageModel>('auto')
+const fixedCreativeImageModel: CreativeImageModel = 'gpt-image-2'
 const outputFormat = ref<CreativeOutputFormat>('png')
 const imageCount = ref(1)
 const paramsOpen = ref(false)
@@ -333,6 +336,24 @@ const drawableKeys = computed(() => {
   })
 })
 const selectedApiKey = computed(() => drawableKeys.value.find((key) => key.id === selectedApiKeyId.value) || null)
+const creativeSizeOptions = computed(() => IMAGE_SIZE_PRESET_OPTIONS)
+const currentImageSize = computed(() => buildImageSize(sizeSelection))
+const currentImageBillingTier = computed(() => getImageBillingTier(currentImageSize.value))
+const showCurrentSizeOption = computed(() => {
+  const size = currentImageSize.value
+  if (!size) {
+    return false
+  }
+  return !IMAGE_SIZE_PRESET_OPTIONS.some((option) => option.value === size)
+})
+const quickSizeValue = computed({
+  get: () => currentImageSize.value,
+  set: (value: string) => applySizeFromPreset(value)
+})
+const estimatedConsumptionLabel = computed(() => {
+  const count = normalizeImageCount(imageCount.value)
+  return `预计消耗 ${count} 张 · ${currentImageBillingTier.value} 图片单位`
+})
 
 watch(conversations, (items) => saveCreativeConversations(items), { deep: true })
 watch(activeConversationId, (id) => saveActiveCreativeConversationId(id))
@@ -361,7 +382,6 @@ function startNewConversation() {
   activeConversationId.value = ''
   prompt.value = ''
   referenceImages.value = []
-  composerMode.value = 'image'
 }
 
 function selectConversation(id: string) {
@@ -446,30 +466,49 @@ async function loadReferenceFromURL(url: string, name: string, source: CreativeR
   }
 }
 
+function resolveBrowserReferenceURL(url: string) {
+  const trimmed = url.trim()
+  if (!trimmed || /^data:image\//i.test(trimmed)) {
+    return trimmed
+  }
+  if (/^\/\//.test(trimmed) && typeof window !== 'undefined') {
+    return `${window.location.protocol}${trimmed}`
+  }
+  if (/^\//.test(trimmed) && typeof window !== 'undefined') {
+    return `${window.location.origin}${trimmed}`
+  }
+  return trimmed
+}
+
 async function applyPreset(preset: ImagePromptPreset) {
   prompt.value = preset.prompt
   imageCount.value = preset.count
   applySizeFromPreset(preset.size)
-  composerMode.value = 'image'
+  const fallbackReference: CreativeReferenceImage = {
+    id: createId(),
+    name: `${preset.id}.${preset.imageSrc.split('.').pop() || 'png'}`,
+    type: guessImageMimeType(preset.imageSrc),
+    dataUrl: resolveBrowserReferenceURL(preset.imageSrc),
+    source: 'preset'
+  }
+  referenceImages.value = [fallbackReference]
   try {
     referenceImages.value = [
-      await loadReferenceFromURL(preset.imageSrc, `${preset.id}.${preset.imageSrc.split('.').pop() || 'png'}`, 'preset')
+      await loadReferenceFromURL(preset.imageSrc, fallbackReference.name, 'preset')
     ]
   } catch (err) {
-    referenceImages.value = []
     appStore.showWarning(err instanceof Error ? err.message : '预设参考图加载失败')
   }
 }
 
 function applyMarketPrompt(marketPrompt: BananaPrompt) {
   prompt.value = marketPrompt.prompt
-  composerMode.value = 'image'
   const urls = getPromptApplyReferenceImageUrls(marketPrompt)
   referenceImages.value = urls.map((url, index) => ({
     id: createId(),
     name: `market-reference-${index + 1}.png`,
     type: 'image/png',
-    dataUrl: url,
+    dataUrl: resolveBrowserReferenceURL(url),
     source: 'market'
   }))
 }
@@ -529,10 +568,6 @@ async function submit() {
     appStore.showWarning(drawableKeys.value.length ? '请选择用于作画的 OpenAI 分组密钥' : '请先创建并绑定允许图片生成的 OpenAI 分组 API 密钥')
     return
   }
-  if (composerMode.value !== 'image') {
-    composerMode.value = 'image'
-  }
-
   const size = buildImageSize(sizeSelection)
   const count = normalizeImageCount(imageCount.value)
   const conversation = ensureConversation(text)
@@ -542,7 +577,7 @@ async function submit() {
     id: createId(),
     prompt: text,
     mode: references.length > 0 ? 'edit' : 'generate',
-    model: selectedModel.value,
+    model: fixedCreativeImageModel,
     count,
     size,
     outputFormat: outputFormat.value,
@@ -559,7 +594,7 @@ async function submit() {
     const request: CreativeImageRequest = {
       apiKey: selectedApiKey.value.key,
       prompt: text,
-      model: selectedModel.value,
+      model: fixedCreativeImageModel,
       count,
       size,
       outputFormat: outputFormat.value
@@ -611,7 +646,6 @@ function useResultAsReference(image: CreativeStoredImage, index: number) {
     return
   }
   referenceImages.value = [reference]
-  composerMode.value = 'image'
   prompt.value = '参考这张图，生成一张同风格的新图。'
 }
 
@@ -756,8 +790,9 @@ function formatConversationTime(value: string) {
   bottom: max(1.5rem, env(safe-area-inset-bottom));
   left: calc(16rem + 2rem);
   right: 2rem;
-  z-index: 60;
+  z-index: 80;
   width: auto;
+  max-height: calc(100dvh - 2rem);
   pointer-events: none;
 }
 
@@ -770,6 +805,13 @@ function formatConversationTime(value: string) {
   margin-left: auto;
   margin-right: auto;
   max-width: 980px;
+}
+
+.creative-reference-strip {
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .creative-composer {
@@ -833,6 +875,10 @@ function formatConversationTime(value: string) {
   border-color: rgb(191 219 254);
   background: rgb(239 246 255);
   color: rgb(37 99 235);
+}
+
+.creative-size-select {
+  min-width: 12.25rem;
 }
 
 .dark .creative-pill,
