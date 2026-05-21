@@ -51,6 +51,7 @@
                 :src="reference.dataUrl"
                 :alt="reference.name"
                 class="h-16 w-16 rounded-2xl object-cover ring-1 ring-slate-200 dark:ring-dark-700"
+                referrerpolicy="no-referrer"
               >
             </div>
 
@@ -68,7 +69,7 @@
             <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <figure v-for="(image, index) in turn.images" :key="image.id" class="creative-result">
                 <button class="block w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-dark-800" @click="previewImage = image.url">
-                  <img :src="image.url" :alt="turn.prompt" class="h-full max-h-[520px] w-full object-contain">
+                  <img :src="image.url" :alt="turn.prompt" class="creative-result-image" referrerpolicy="no-referrer">
                 </button>
                 <figcaption class="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-dark-400">
                   <span class="truncate">{{ image.revised_prompt || image.size || `结果 ${index + 1}` }}</span>
@@ -119,7 +120,7 @@
         <div class="creative-composer-wrap">
           <div v-if="referenceImages.length" class="mb-3 flex flex-wrap gap-2">
             <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
-              <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700">
+              <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700" referrerpolicy="no-referrer">
               <button class="absolute -right-1 -top-1 rounded-full bg-white p-1 text-slate-500 shadow hover:text-red-600 dark:bg-dark-800" title="移除参考图" @click="removeReference(reference.id)">
                 <Icon name="x" size="xs" />
               </button>
@@ -278,7 +279,7 @@ import {
 } from '@/features/creativeDrawing/imageOptions'
 import { IMAGE_PROMPT_PRESETS, type ImagePromptPreset } from '@/features/creativeDrawing/imagePresets'
 import PromptMarketDialog from '@/features/creativeDrawing/PromptMarketDialog.vue'
-import type { BananaPrompt } from '@/features/creativeDrawing/promptMarket'
+import { getPromptApplyReferenceImageUrls, type BananaPrompt } from '@/features/creativeDrawing/promptMarket'
 import {
   buildConversationTitle,
   createId,
@@ -426,16 +427,14 @@ function applyPreset(preset: ImagePromptPreset) {
 function applyMarketPrompt(marketPrompt: BananaPrompt) {
   prompt.value = marketPrompt.prompt
   composerMode.value = 'image'
-  if (marketPrompt.mode === 'edit') {
-    const urls = marketPrompt.referenceImageUrls.length > 0 ? marketPrompt.referenceImageUrls : [marketPrompt.preview]
-    referenceImages.value = urls.map((url, index) => ({
-      id: createId(),
-      name: `market-reference-${index + 1}.png`,
-      type: 'image/png',
-      dataUrl: url,
-      source: 'market'
-    }))
-  }
+  const urls = getPromptApplyReferenceImageUrls(marketPrompt)
+  referenceImages.value = urls.map((url, index) => ({
+    id: createId(),
+    name: `market-reference-${index + 1}.png`,
+    type: 'image/png',
+    dataUrl: url,
+    source: 'market'
+  }))
 }
 
 async function handleFileChange(event: Event) {
@@ -622,12 +621,15 @@ function formatConversationTime(value: string) {
 
 .creative-main {
   position: relative;
+  display: flex;
   min-height: calc(100vh - 8rem);
+  flex-direction: column;
   padding-bottom: 17rem;
 }
 
 .creative-empty {
   display: flex;
+  flex: 1 1 auto;
   min-height: calc(100vh - 26rem);
   flex-direction: column;
   align-items: center;
@@ -717,7 +719,9 @@ function formatConversationTime(value: string) {
   bottom: 1.5rem;
   z-index: 20;
   margin: 0 auto;
+  width: 100%;
   max-width: 980px;
+  flex: 0 0 auto;
 }
 
 .creative-composer {
@@ -848,7 +852,9 @@ function formatConversationTime(value: string) {
 
 .creative-turns {
   margin: 0 auto;
+  width: 100%;
   max-width: 980px;
+  flex: 1 1 auto;
   padding: 0.5rem 0 2rem;
 }
 
@@ -872,6 +878,14 @@ function formatConversationTime(value: string) {
 
 .creative-result {
   min-width: 0;
+}
+
+.creative-result-image {
+  aspect-ratio: 1 / 1;
+  max-height: 520px;
+  min-height: 220px;
+  width: 100%;
+  object-fit: contain;
 }
 
 .creative-mini-button {

@@ -51,20 +51,48 @@ function imageMimeType(format?: string) {
   }
 }
 
-function normalizeGatewayImageItem(item: Record<string, unknown>, index: number): CreativeImageResult {
-  const outputFormat = typeof item.output_format === 'string' ? item.output_format : undefined
-  const b64 = typeof item.b64_json === 'string' ? item.b64_json : ''
-  const itemURL = typeof item.url === 'string' ? item.url : ''
-  const url = itemURL || (b64 ? `data:${imageMimeType(outputFormat)};base64,${b64}` : '')
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue
+    }
+    const trimmed = value.trim()
+    if (trimmed) {
+      return trimmed
+    }
+  }
+  return ''
+}
+
+function normalizeBase64ImageSource(value: string, outputFormat?: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+  if (/^(data:image\/|https?:\/\/|blob:)/i.test(trimmed)) {
+    return trimmed
+  }
+  return `data:${imageMimeType(outputFormat)};base64,${trimmed}`
+}
+
+function normalizeGatewayImageItem(
+  item: Record<string, unknown>,
+  index: number,
+  context: { outputFormat?: string; size?: string; createdAt?: number }
+): CreativeImageResult {
+  const outputFormat = firstString(item.output_format, context.outputFormat)
+  const b64 = firstString(item.b64_json, item.base64, item.image_base64, item.result)
+  const itemURL = firstString(item.url, item.image_url, item.download_url)
+  const url = itemURL || normalizeBase64ImageSource(b64, outputFormat)
 
   return {
     id: typeof item.id === 'string' ? item.id : `${Date.now()}-${index}`,
     url,
     b64_json: b64 || undefined,
     revised_prompt: typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined,
-    output_format: outputFormat,
-    size: typeof item.size === 'string' ? item.size : undefined,
-    created_at: typeof item.created_at === 'number' ? item.created_at : undefined
+    output_format: outputFormat || undefined,
+    size: typeof item.size === 'string' ? item.size : context.size,
+    created_at: typeof item.created_at === 'number' ? item.created_at : context.createdAt
   }
 }
 
@@ -80,14 +108,20 @@ async function parseGatewayResponse(response: Response): Promise<CreativeImageRe
     throw new Error(message)
   }
 
-  const data = (payload as Record<string, unknown>).data
+  const responsePayload = payload as Record<string, unknown>
+  const data = responsePayload.data
   if (!Array.isArray(data)) {
     throw new Error('图片接口返回结构无效：缺少 data 数组')
+  }
+  const context = {
+    outputFormat: typeof responsePayload.output_format === 'string' ? responsePayload.output_format : undefined,
+    size: typeof responsePayload.size === 'string' ? responsePayload.size : undefined,
+    createdAt: typeof responsePayload.created === 'number' ? responsePayload.created : undefined
   }
 
   const images = data
     .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    .map(normalizeGatewayImageItem)
+    .map((item, index) => normalizeGatewayImageItem(item, index, context))
     .filter((item) => item.url)
 
   if (images.length === 0) {

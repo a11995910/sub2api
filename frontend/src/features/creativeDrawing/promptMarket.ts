@@ -352,6 +352,18 @@ export function getPromptReferenceImageUrls(prompt: BananaPrompt) {
   return Array.from(new Set(urls.map((url) => url.trim()).filter(Boolean)))
 }
 
+export function getPromptApplyReferenceImageUrls(prompt: BananaPrompt) {
+  const referenceUrls = Array.from(new Set(prompt.referenceImageUrls.map((url) => url.trim()).filter(Boolean)))
+  if (referenceUrls.length > 0) {
+    return referenceUrls
+  }
+  if (prompt.mode !== 'edit') {
+    return []
+  }
+  const preview = prompt.preview.trim()
+  return preview ? [preview] : []
+}
+
 export function getLocalizedPrompt(prompt: BananaPrompt, language: PromptMarketLanguage): BananaPrompt {
   const localization = prompt.localizations?.[language] ?? prompt.localizations?.['zh-CN'] ?? prompt.localizations?.en
   if (!localization) {
