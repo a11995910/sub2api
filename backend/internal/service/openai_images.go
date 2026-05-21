@@ -12,8 +12,12 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/textproto"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -584,7 +588,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		parsed.Endpoint,
 		account.Type,
 	)
-	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
+	forwardBody, forwardContentType, err := s.buildOpenAIImagesAPIKeyForwardBody(ctx, body, parsed, upstreamModel)
 	if err != nil {
 		return nil, err
 	}
@@ -768,6 +772,296 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 
 func buildOpenAIImagesURL(base string, endpoint string) string {
 	return buildOpenAIEndpointURL(base, endpoint)
+}
+
+func (s *OpenAIGatewayService) buildOpenAIImagesAPIKeyForwardBody(
+	ctx context.Context,
+	body []byte,
+	parsed *OpenAIImagesRequest,
+	model string,
+) ([]byte, string, error) {
+	if parsed == nil {
+		return nil, "", fmt.Errorf("parsed images request is required")
+	}
+	if parsed.IsEdits() && !parsed.Multipart && len(parsed.InputImageURLs) > 0 {
+		return buildOpenAIImagesMultipartEditBody(ctx, parsed, model)
+	}
+	return rewriteOpenAIImagesModel(body, parsed.ContentType, model)
+}
+
+func buildOpenAIImagesMultipartEditBody(
+	ctx context.Context,
+	parsed *OpenAIImagesRequest,
+	model string,
+) ([]byte, string, error) {
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+
+	fields := []struct {
+		name  string
+		value string
+	}{
+		{name: "model", value: strings.TrimSpace(model)},
+		{name: "prompt", value: parsed.Prompt},
+		{name: "n", value: strconv.Itoa(parsed.N)},
+		{name: "size", value: parsed.Size},
+		{name: "response_format", value: parsed.ResponseFormat},
+		{name: "quality", value: parsed.Quality},
+		{name: "background", value: parsed.Background},
+		{name: "output_format", value: parsed.OutputFormat},
+		{name: "moderation", value: parsed.Moderation},
+		{name: "input_fidelity", value: parsed.InputFidelity},
+		{name: "style", value: parsed.Style},
+	}
+	for _, field := range fields {
+		if strings.TrimSpace(field.value) == "" {
+			continue
+		}
+		if err := writer.WriteField(field.name, field.value); err != nil {
+			_ = writer.Close()
+			return nil, "", fmt.Errorf("write multipart field %s: %w", field.name, err)
+		}
+	}
+	if parsed.OutputCompression != nil {
+		if err := writer.WriteField("output_compression", strconv.Itoa(*parsed.OutputCompression)); err != nil {
+			_ = writer.Close()
+			return nil, "", fmt.Errorf("write multipart field output_compression: %w", err)
+		}
+	}
+	if parsed.PartialImages != nil {
+		if err := writer.WriteField("partial_images", strconv.Itoa(*parsed.PartialImages)); err != nil {
+			_ = writer.Close()
+			return nil, "", fmt.Errorf("write multipart field partial_images: %w", err)
+		}
+	}
+
+	for index, imageURL := range parsed.InputImageURLs {
+		upload, err := openAIImagesUploadFromURL(ctx, imageURL, fmt.Sprintf("reference-%d", index+1))
+		if err != nil {
+			_ = writer.Close()
+			return nil, "", err
+		}
+		if err := writeOpenAIImagesMultipartUpload(writer, "image", upload); err != nil {
+			_ = writer.Close()
+			return nil, "", err
+		}
+	}
+	if maskURL := strings.TrimSpace(parsed.MaskImageURL); maskURL != "" {
+		upload, err := openAIImagesUploadFromURL(ctx, maskURL, "mask")
+		if err != nil {
+			_ = writer.Close()
+			return nil, "", err
+		}
+		if err := writeOpenAIImagesMultipartUpload(writer, "mask", upload); err != nil {
+			_ = writer.Close()
+			return nil, "", err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("finalize image edit multipart body: %w", err)
+	}
+	return buffer.Bytes(), writer.FormDataContentType(), nil
+}
+
+func writeOpenAIImagesMultipartUpload(writer *multipart.Writer, field string, upload OpenAIImagesUpload) error {
+	fileName := strings.TrimSpace(upload.FileName)
+	if fileName == "" {
+		fileName = field + openAIImagesExtensionFromContentType(upload.ContentType)
+	}
+	contentType := strings.TrimSpace(upload.ContentType)
+	if contentType == "" {
+		contentType = http.DetectContentType(upload.Data)
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", multipartContentDisposition(field, fileName))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return fmt.Errorf("create multipart image part: %w", err)
+	}
+	if _, err := part.Write(upload.Data); err != nil {
+		return fmt.Errorf("write multipart image part: %w", err)
+	}
+	return nil
+}
+
+func multipartContentDisposition(name string, fileName string) string {
+	escape := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+	return fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escape.Replace(name), escape.Replace(fileName))
+}
+
+func openAIImagesUploadFromURL(ctx context.Context, rawURL string, defaultName string) (OpenAIImagesUpload, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return OpenAIImagesUpload{}, fmt.Errorf("image_url is empty")
+	}
+	if strings.HasPrefix(strings.ToLower(trimmed), "data:image/") {
+		data, contentType, err := decodeOpenAIImagesDataURL(trimmed)
+		if err != nil {
+			return OpenAIImagesUpload{}, err
+		}
+		return OpenAIImagesUpload{
+			FieldName:   "image",
+			FileName:    defaultName + openAIImagesExtensionFromContentType(contentType),
+			ContentType: contentType,
+			Data:        data,
+		}, nil
+	}
+	data, contentType, fileName, err := downloadOpenAIImagesPublicURL(ctx, trimmed, defaultName)
+	if err != nil {
+		return OpenAIImagesUpload{}, err
+	}
+	return OpenAIImagesUpload{
+		FieldName:   "image",
+		FileName:    fileName,
+		ContentType: contentType,
+		Data:        data,
+	}, nil
+}
+
+func decodeOpenAIImagesDataURL(raw string) ([]byte, string, error) {
+	comma := strings.Index(raw, ",")
+	if comma < 0 {
+		return nil, "", fmt.Errorf("invalid image data URL")
+	}
+	meta := strings.TrimSpace(raw[len("data:"):comma])
+	content := strings.NewReplacer("\n", "", "\r", "", "\t", "", " ", "").Replace(strings.TrimSpace(raw[comma+1:]))
+	mediaType := strings.TrimSpace(strings.Split(meta, ";")[0])
+	if !strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+		return nil, "", fmt.Errorf("image data URL must use an image media type")
+	}
+	if !strings.Contains(strings.ToLower(meta), ";base64") {
+		return nil, "", fmt.Errorf("image data URL must be base64 encoded")
+	}
+	data, err := base64.StdEncoding.DecodeString(content)
+	if err != nil {
+		return nil, "", fmt.Errorf("decode image data URL: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("image data URL is empty")
+	}
+	if len(data) > openAIImageMaxUploadPartSize {
+		return nil, "", fmt.Errorf("image data URL exceeds %d bytes", openAIImageMaxUploadPartSize)
+	}
+	return data, mediaType, nil
+}
+
+func downloadOpenAIImagesPublicURL(ctx context.Context, rawURL string, defaultName string) ([]byte, string, string, error) {
+	parsed, err := validateOpenAIImagesPublicURL(ctx, rawURL)
+	if err != nil {
+		return nil, "", "", err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("image_url redirects too many times")
+			}
+			_, redirectErr := validateOpenAIImagesPublicURL(req.Context(), req.URL.String())
+			return redirectErr
+		},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("build image_url download request: %w", err)
+	}
+	req.Header.Set("Accept", "image/*,*/*;q=0.8")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("download image_url: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", "", fmt.Errorf("download image_url failed: status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxUploadPartSize+1))
+	if err != nil {
+		return nil, "", "", fmt.Errorf("read image_url body: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, "", "", fmt.Errorf("image_url returned empty body")
+	}
+	if len(data) > openAIImageMaxUploadPartSize {
+		return nil, "", "", fmt.Errorf("image_url exceeds %d bytes", openAIImageMaxUploadPartSize)
+	}
+	contentType := normalizeOpenAIImagesContentType(resp.Header.Get("Content-Type"), data)
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, "", "", fmt.Errorf("image_url did not return an image")
+	}
+	return data, contentType, openAIImagesFileNameFromURL(parsed, defaultName, contentType), nil
+}
+
+// 服务端代取远程参考图时只允许公网地址，避免把图片编辑接口变成内网探测入口。
+func validateOpenAIImagesPublicURL(ctx context.Context, rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return nil, fmt.Errorf("invalid image_url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("image_url must be http or https")
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return nil, fmt.Errorf("image_url host is required")
+	}
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolve image_url host: %w", err)
+	}
+	if len(addresses) == 0 {
+		return nil, fmt.Errorf("resolve image_url host: no addresses")
+	}
+	for _, address := range addresses {
+		addr, ok := netip.AddrFromSlice(address.IP)
+		addr = addr.Unmap()
+		if !ok || !isOpenAIImagesPublicAddress(addr) {
+			return nil, fmt.Errorf("image_url must point to a public address")
+		}
+	}
+	return parsed, nil
+}
+
+func isOpenAIImagesPublicAddress(addr netip.Addr) bool {
+	return addr.IsValid() &&
+		addr.IsGlobalUnicast() &&
+		!addr.IsPrivate() &&
+		!addr.IsLoopback() &&
+		!addr.IsLinkLocalUnicast() &&
+		!addr.IsLinkLocalMulticast() &&
+		!addr.IsUnspecified()
+}
+
+func normalizeOpenAIImagesContentType(raw string, data []byte) string {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(raw))
+	if err == nil && mediaType != "" {
+		return mediaType
+	}
+	return http.DetectContentType(data)
+}
+
+func openAIImagesFileNameFromURL(parsed *url.URL, defaultName string, contentType string) string {
+	fileName := path.Base(parsed.EscapedPath())
+	if fileName == "." || fileName == "/" || strings.TrimSpace(fileName) == "" {
+		fileName = defaultName + openAIImagesExtensionFromContentType(contentType)
+	}
+	if !strings.Contains(path.Base(fileName), ".") {
+		fileName += openAIImagesExtensionFromContentType(contentType)
+	}
+	return fileName
+}
+
+func openAIImagesExtensionFromContentType(contentType string) string {
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "image/jpeg", "image/jpg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".png"
+	}
 }
 
 func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]byte, string, error) {

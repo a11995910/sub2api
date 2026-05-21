@@ -64,6 +64,48 @@ describe('creativeDrawing api', () => {
     ])
   })
 
+  it('网关返回不可展示 url 但同时包含 b64_json 时优先展示 base64 图片', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        data: [{ url: 'file-service://file_123', b64_json: 'QUJD' }]
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const images = await createCreativeImageGeneration({
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+      prompt: '画一张图',
+      count: 1,
+      outputFormat: 'png'
+    })
+
+    expect(images[0].url).toBe('data:image/png;base64,QUJD')
+  })
+
+  it('兼容上游把 data URL 包在 markdown 图片里的响应', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        data: [{ result: '![image](data:image/webp;base64,V0VCUA==)' }]
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const images = await createCreativeImageGeneration({
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+      prompt: '画一张图',
+      count: 1,
+      outputFormat: 'webp'
+    })
+
+    expect(images[0].url).toBe('data:image/webp;base64,V0VCUA==')
+  })
+
   it('市场远程参考图通过 JSON images[].image_url 调用图片编辑接口', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

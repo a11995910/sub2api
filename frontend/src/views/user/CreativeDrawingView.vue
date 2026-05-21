@@ -117,7 +117,7 @@
           </div>
         </div>
 
-        <div class="creative-composer-wrap">
+        <div class="creative-composer-wrap" :class="{ 'creative-composer-wrap-collapsed': appStore.sidebarCollapsed }">
           <div v-if="referenceImages.length" class="mb-3 flex flex-wrap gap-2">
             <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
               <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700" referrerpolicy="no-referrer">
@@ -417,11 +417,48 @@ function applySizeFromPreset(size: string) {
   Object.assign(sizeSelection, selection)
 }
 
-function applyPreset(preset: ImagePromptPreset) {
+function guessImageMimeType(name: string) {
+  const normalized = name.toLowerCase()
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
+  if (normalized.endsWith('.webp')) return 'image/webp'
+  if (normalized.endsWith('.gif')) return 'image/gif'
+  return 'image/png'
+}
+
+async function loadReferenceFromURL(url: string, name: string, source: CreativeReferenceImage['source']) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'image/*'
+    }
+  })
+  if (!response.ok) {
+    throw new Error(`加载参考图失败：${response.status}`)
+  }
+  const blob = await response.blob()
+  const type = blob.type.startsWith('image/') ? blob.type : guessImageMimeType(name)
+  const file = new File([blob], name, { type })
+  return {
+    id: createId(),
+    name,
+    type,
+    dataUrl: await readFileAsDataUrl(file),
+    source
+  }
+}
+
+async function applyPreset(preset: ImagePromptPreset) {
   prompt.value = preset.prompt
   imageCount.value = preset.count
   applySizeFromPreset(preset.size)
   composerMode.value = 'image'
+  try {
+    referenceImages.value = [
+      await loadReferenceFromURL(preset.imageSrc, `${preset.id}.${preset.imageSrc.split('.').pop() || 'png'}`, 'preset')
+    ]
+  } catch (err) {
+    referenceImages.value = []
+    appStore.showWarning(err instanceof Error ? err.message : '预设参考图加载失败')
+  }
 }
 
 function applyMarketPrompt(marketPrompt: BananaPrompt) {
@@ -624,7 +661,7 @@ function formatConversationTime(value: string) {
   display: flex;
   min-height: calc(100vh - 8rem);
   flex-direction: column;
-  padding-bottom: 17rem;
+  padding-bottom: 21rem;
 }
 
 .creative-empty {
@@ -715,13 +752,24 @@ function formatConversationTime(value: string) {
 }
 
 .creative-composer-wrap {
-  position: sticky;
-  bottom: 1.5rem;
-  z-index: 20;
-  margin: 0 auto;
-  width: 100%;
+  position: fixed;
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+  left: calc(16rem + 2rem);
+  right: 2rem;
+  z-index: 60;
+  width: auto;
+  pointer-events: none;
+}
+
+.creative-composer-wrap-collapsed {
+  left: calc(72px + 2rem);
+}
+
+.creative-composer-wrap > * {
+  pointer-events: auto;
+  margin-left: auto;
+  margin-right: auto;
   max-width: 980px;
-  flex: 0 0 auto;
 }
 
 .creative-composer {
@@ -742,11 +790,12 @@ function formatConversationTime(value: string) {
   min-height: 7rem;
   max-height: 15rem;
   width: 100%;
-  resize: vertical;
+  resize: none;
   border: 0;
   background: transparent;
   padding: 0.5rem 0.75rem;
   color: rgb(15 23 42);
+  overflow-y: auto;
   outline: none;
 }
 
@@ -937,7 +986,14 @@ function formatConversationTime(value: string) {
   }
 
   .creative-main {
-    padding-bottom: 19rem;
+    padding-bottom: 21rem;
+  }
+
+  .creative-composer-wrap,
+  .creative-composer-wrap-collapsed {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    left: 1rem;
+    right: 1rem;
   }
 }
 </style>

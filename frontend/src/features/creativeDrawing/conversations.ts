@@ -6,7 +6,7 @@ export type CreativeReferenceImage = {
   name: string
   type: string
   dataUrl: string
-  source: 'upload' | 'market' | 'result'
+  source: 'upload' | 'market' | 'preset' | 'result'
 }
 
 export type CreativeStoredImage = {

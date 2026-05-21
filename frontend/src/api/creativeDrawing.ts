@@ -69,10 +69,39 @@ function normalizeBase64ImageSource(value: string, outputFormat?: string) {
   if (!trimmed) {
     return ''
   }
+  const markdownImage = trimmed.match(/!\[[^\]]*]\((data:image\/[^)\s]+)\)/i)
+  if (markdownImage?.[1]) {
+    return markdownImage[1]
+  }
+  const htmlImage = trimmed.match(/<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/i)
+  if (htmlImage?.[1]) {
+    return htmlImage[1]
+  }
+  if (/^data:image\//i.test(trimmed)) {
+    return trimmed
+  }
+  const compact = trimmed.replace(/\s+/g, '')
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+    return ''
+  }
+  return `data:${imageMimeType(outputFormat)};base64,${compact}`
+}
+
+function normalizeDisplayableImageSource(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
   if (/^(data:image\/|https?:\/\/|blob:)/i.test(trimmed)) {
     return trimmed
   }
-  return `data:${imageMimeType(outputFormat)};base64,${trimmed}`
+  if (/^\/\//.test(trimmed) && typeof window !== 'undefined') {
+    return `${window.location.protocol}${trimmed}`
+  }
+  if (/^\//.test(trimmed) && typeof window !== 'undefined') {
+    return `${window.location.origin}${trimmed}`
+  }
+  return ''
 }
 
 function normalizeGatewayImageItem(
@@ -82,7 +111,7 @@ function normalizeGatewayImageItem(
 ): CreativeImageResult {
   const outputFormat = firstString(item.output_format, context.outputFormat)
   const b64 = firstString(item.b64_json, item.base64, item.image_base64, item.result)
-  const itemURL = firstString(item.url, item.image_url, item.download_url)
+  const itemURL = normalizeDisplayableImageSource(firstString(item.url, item.image_url, item.download_url))
   const url = itemURL || normalizeBase64ImageSource(b64, outputFormat)
 
   return {
