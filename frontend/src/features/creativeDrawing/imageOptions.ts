@@ -45,7 +45,7 @@ export type ImageBillingTier = '1K' | '2K' | '4K'
 export const ADAPTIVE_IMAGE_SIZE_VALUE = ''
 
 export const IMAGE_SIZE_PRESET_OPTIONS = [
-  { value: ADAPTIVE_IMAGE_SIZE_VALUE, tier: '2K', label: 'Auto · 2K' },
+  { value: ADAPTIVE_IMAGE_SIZE_VALUE, tier: '2K', label: 'Auto' },
   { value: '1024x1024', tier: '1K', label: '1024×1024 · 1K' },
   { value: '1536x1024', tier: '2K', label: '1536×1024 · 2K' },
   { value: '1024x1536', tier: '2K', label: '1024×1536 · 2K' },

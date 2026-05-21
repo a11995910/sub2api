@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"mime/multipart"
@@ -1274,6 +1275,79 @@ func TestCollectOpenAIImagesFromResponsesBody_ExtractsNestedDownloadURL(t *testi
 	require.Len(t, results, 1)
 	require.Equal(t, "https://files.example.com/generated.webp?sig=1", results[0].URL)
 	require.Equal(t, "webp", firstMeta.OutputFormat)
+}
+
+func TestOpenAIGatewayServiceMaterializeOpenAIResponsesImageURLs_DownloadsURLAsBase64(t *testing.T) {
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"image/webp"}},
+			Body:       io.NopCloser(strings.NewReader("webp-bytes")),
+		},
+	}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	results, err := svc.materializeOpenAIResponsesImageURLs(
+		context.Background(),
+		[]openAIResponsesImageResult{{URL: "https://files.example.com/generated.webp?sig=1"}},
+		http.Header{"User-Agent": []string{"test-agent"}},
+		"socks5://proxy.example:1080",
+		42,
+		3,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, base64.StdEncoding.EncodeToString([]byte("webp-bytes")), results[0].Result)
+	require.Empty(t, results[0].URL)
+	require.Equal(t, "image/webp", results[0].MimeType)
+	require.Equal(t, "webp", results[0].OutputFormat)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, http.MethodGet, upstream.requests[0].Method)
+	require.Equal(t, "test-agent", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "image/*,*/*;q=0.8", upstream.requests[0].Header.Get("Accept"))
+}
+
+func TestOpenAIGatewayServiceHandleOpenAIImagesOAuthNonStreamingResponse_MaterializesDownloadURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	responseBody := "data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000014,\"output\":[{\"id\":\"ig_url\",\"type\":\"image_generation_call\",\"result\":\"\",\"image\":{\"download_url\":\"https://files.example.com/generated.webp?sig=1\",\"mime_type\":\"image/webp\"}}]}}\n\n" +
+		"data: [DONE]\n\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(responseBody)),
+	}
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"image/webp"}},
+			Body:       io.NopCloser(strings.NewReader("webp-bytes")),
+		},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+
+	_, imageCount, _, err := svc.handleOpenAIImagesOAuthNonStreamingResponse(
+		resp,
+		c,
+		"b64_json",
+		"gpt-image-2",
+		context.Background(),
+		http.Header{"User-Agent": []string{"test-agent"}},
+		"",
+		42,
+		3,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, imageCount)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, base64.StdEncoding.EncodeToString([]byte("webp-bytes")), gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Empty(t, gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesOutputItemDoneFallback(t *testing.T) {

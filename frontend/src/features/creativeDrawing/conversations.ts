@@ -47,6 +47,91 @@ const STORAGE_KEY = 'sub2api:creative-drawing:conversations'
 const ACTIVE_STORAGE_KEY = 'sub2api:creative-drawing:active-conversation'
 const MAX_CONVERSATIONS = 80
 
+function storedImageMimeType(format?: string) {
+  switch ((format || 'png').toLowerCase()) {
+    case 'jpeg':
+    case 'jpg':
+      return 'image/jpeg'
+    case 'webp':
+      return 'image/webp'
+    default:
+      return 'image/png'
+  }
+}
+
+function normalizeStoredImageBase64(value?: string) {
+  const trimmed = (value || '').trim()
+  if (!trimmed) {
+    return ''
+  }
+  if (/^data:image\//i.test(trimmed)) {
+    const [, content = ''] = trimmed.split(',', 2)
+    return content.replace(/\s+/g, '')
+  }
+  return trimmed.replace(/\s+/g, '')
+}
+
+function isDisplayableStoredImageUrl(url: string) {
+  return /^(data:image\/|https?:\/\/|\/\/|\/)/i.test(url)
+}
+
+export function buildStoredImageUrl(image: Pick<CreativeStoredImage, 'url' | 'b64_json' | 'output_format'>) {
+  const url = (image.url || '').trim()
+  if (url && isDisplayableStoredImageUrl(url) && !/^blob:/i.test(url)) {
+    return url
+  }
+  const b64 = normalizeStoredImageBase64(image.b64_json)
+  if (!b64) {
+    return url
+  }
+  return `data:${storedImageMimeType(image.output_format)};base64,${b64}`
+}
+
+function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {
+  const b64 = normalizeStoredImageBase64(image.b64_json)
+  const hydrated = {
+    ...image,
+    url: typeof image.url === 'string' ? image.url : '',
+    b64_json: b64 || undefined
+  }
+  return {
+    ...hydrated,
+    url: buildStoredImageUrl(hydrated)
+  }
+}
+
+function serializeStoredImage(image: CreativeStoredImage): CreativeStoredImage {
+  const b64 = normalizeStoredImageBase64(image.b64_json)
+  const url = (image.url || '').trim()
+  return {
+    ...image,
+    url: b64 && /^data:image\//i.test(url) ? '' : url,
+    b64_json: b64 || undefined
+  }
+}
+
+function hydrateCreativeConversation(item: CreativeConversation): CreativeConversation {
+  return {
+    ...item,
+    turns: item.turns.map((turn) => ({
+      ...turn,
+      references: Array.isArray(turn.references) ? turn.references : [],
+      images: Array.isArray(turn.images) ? turn.images.map(hydrateStoredImage) : []
+    }))
+  }
+}
+
+function serializeCreativeConversation(item: CreativeConversation): CreativeConversation {
+  return {
+    ...item,
+    turns: item.turns.map((turn) => ({
+      ...turn,
+      references: Array.isArray(turn.references) ? turn.references : [],
+      images: Array.isArray(turn.images) ? turn.images.map(serializeStoredImage) : []
+    }))
+  }
+}
+
 export function createId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
@@ -75,9 +160,11 @@ export function loadCreativeConversations(): CreativeConversation[] {
     if (!Array.isArray(parsed)) {
       return []
     }
-    return parsed.filter((item): item is CreativeConversation => {
-      return Boolean(item && typeof item === 'object' && typeof item.id === 'string' && Array.isArray(item.turns))
-    })
+    return parsed
+      .filter((item): item is CreativeConversation => {
+        return Boolean(item && typeof item === 'object' && typeof item.id === 'string' && Array.isArray(item.turns))
+      })
+      .map(hydrateCreativeConversation)
   } catch {
     return []
   }
@@ -90,7 +177,28 @@ export function saveCreativeConversations(conversations: CreativeConversation[])
   const normalized = [...conversations]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, MAX_CONVERSATIONS)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+    .map(serializeCreativeConversation)
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  } catch {
+    const compact = normalized.slice(0, 20).map((conversation) => ({
+      ...conversation,
+      turns: conversation.turns.map((turn) => ({
+        ...turn,
+        references: [],
+        images: turn.images.map((image) => ({
+          ...image,
+          url: /^https?:\/\//i.test(image.url) ? image.url : '',
+          b64_json: undefined
+        }))
+      }))
+    }))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(compact))
+    } catch {
+      // 浏览器配额已满时不再阻塞当前创作流程。
+    }
+  }
 }
 
 export function loadActiveCreativeConversationId() {
@@ -132,14 +240,15 @@ export function dataUrlToFile(dataUrl: string, fileName: string, mimeType?: stri
 }
 
 export function resultToReferenceImage(image: CreativeStoredImage, index: number): CreativeReferenceImage | null {
-  if (!image.url) {
+  const url = buildStoredImageUrl(image)
+  if (!url) {
     return null
   }
   return {
     id: createId(),
     name: `result-${index + 1}.${image.output_format === 'jpeg' ? 'jpg' : image.output_format || 'png'}`,
-    type: image.output_format === 'jpeg' ? 'image/jpeg' : `image/${image.output_format || 'png'}`,
-    dataUrl: image.url,
+    type: storedImageMimeType(image.output_format),
+    dataUrl: url,
     source: 'result'
   }
 }

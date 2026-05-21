@@ -628,6 +628,104 @@ func buildOpenAIImagesAPIResponse(
 	return out, nil
 }
 
+func (s *OpenAIGatewayService) materializeOpenAIResponsesImageURLs(
+	ctx context.Context,
+	results []openAIResponsesImageResult,
+	headers http.Header,
+	proxyURL string,
+	accountID int64,
+	accountConcurrency int,
+) ([]openAIResponsesImageResult, error) {
+	if len(results) == 0 {
+		return results, nil
+	}
+	out := make([]openAIResponsesImageResult, len(results))
+	copy(out, results)
+	for index := range out {
+		if strings.TrimSpace(out[index].Result) != "" {
+			continue
+		}
+		imageURL := strings.TrimSpace(out[index].URL)
+		if imageURL == "" {
+			continue
+		}
+		if b64, mimeType := openAIImageBase64FromDataURL(imageURL); b64 != "" {
+			out[index].Result = b64
+			out[index].URL = ""
+			out[index].MimeType = mimeType
+			if strings.TrimSpace(out[index].OutputFormat) == "" {
+				out[index].OutputFormat = openAIImageFormatFromMIMEType(mimeType)
+			}
+			continue
+		}
+		data, mimeType, err := s.downloadOpenAIResponsesImageURL(ctx, imageURL, headers, proxyURL, accountID, accountConcurrency)
+		if err != nil {
+			return nil, err
+		}
+		out[index].Result = base64.StdEncoding.EncodeToString(data)
+		out[index].URL = ""
+		if strings.TrimSpace(out[index].MimeType) == "" {
+			out[index].MimeType = mimeType
+		}
+		if strings.TrimSpace(out[index].OutputFormat) == "" {
+			out[index].OutputFormat = openAIImageFormatFromMIMEType(firstNonEmptyString(out[index].MimeType, mimeType))
+		}
+	}
+	return out, nil
+}
+
+func (s *OpenAIGatewayService) downloadOpenAIResponsesImageURL(
+	ctx context.Context,
+	imageURL string,
+	headers http.Header,
+	proxyURL string,
+	accountID int64,
+	accountConcurrency int,
+) ([]byte, string, error) {
+	if s == nil || s.httpUpstream == nil {
+		return nil, "", fmt.Errorf("image download upstream is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if strings.HasPrefix(imageURL, openAIChatGPTStartURL) {
+		downloadHeaders := cloneHTTPHeader(headers)
+		downloadHeaders.Set("Accept", "image/*,*/*;q=0.8")
+		downloadHeaders.Del("Content-Type")
+		for key, values := range downloadHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	} else {
+		userAgent := strings.TrimSpace(headers.Get("User-Agent"))
+		if userAgent == "" {
+			userAgent = openAIImageBackendUserAgent
+		}
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "image/*,*/*;q=0.8")
+	}
+
+	resp, err := s.httpUpstream.Do(req, proxyURL, accountID, accountConcurrency)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("download image bytes failed: status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxDownloadBytes+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(data) > openAIImageMaxDownloadBytes {
+		return nil, "", fmt.Errorf("download image bytes failed: image exceeds %d bytes", openAIImageMaxDownloadBytes)
+	}
+	mimeType := normalizeOpenAIImagesContentType(resp.Header.Get("Content-Type"), data)
+	return data, mimeType, nil
+}
+
 func openAIImagesStreamPrefix(parsed *OpenAIImagesRequest) string {
 	if parsed != nil && parsed.IsEdits() {
 		return "image_edit"
@@ -686,6 +784,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	ctx context.Context,
+	upstreamHeaders http.Header,
+	proxyURL string,
+	accountID int64,
+	accountConcurrency int,
 ) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -706,6 +809,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if strings.TrimSpace(firstMeta.Model) == "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
+	results, err = s.materializeOpenAIResponsesImageURLs(ctx, results, upstreamHeaders, proxyURL, accountID, accountConcurrency)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, err
+	}
+	if len(results) > 0 {
+		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
+	}
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
@@ -723,6 +833,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	ctx context.Context,
+	upstreamHeaders http.Header,
+	proxyURL string,
+	accountID int64,
+	accountConcurrency int,
 ) (OpenAIUsage, int, []string, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -842,6 +957,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
+			var materializeErr error
+			finalResults, materializeErr = s.materializeOpenAIResponsesImageURLs(ctx, finalResults, upstreamHeaders, proxyURL, accountID, accountConcurrency)
+			if materializeErr != nil {
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(materializeErr.Error()))
+				processDataErr = materializeErr
+				processDataDone = true
+				return
+			}
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -883,7 +1006,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		}
 		if len(pendingResults) > 0 {
 			eventName := streamPrefix + ".completed"
-			for _, img := range pendingResults {
+			materializedResults, err := s.materializeOpenAIResponsesImageURLs(ctx, pendingResults, upstreamHeaders, proxyURL, accountID, accountConcurrency)
+			if err != nil {
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
+				return err
+			}
+			for _, img := range materializedResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {
@@ -894,7 +1022,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 			}
 			imageCount = len(emitted)
-			imageOutputSizes = openAIResponsesImageResultSizes(pendingResults)
+			imageOutputSizes = openAIResponsesImageResultSizes(materializedResults)
 			return nil
 		}
 
@@ -1167,7 +1295,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		firstTokenMs     *int
 	)
 	if parsed.Stream {
-		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
+		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(
+			resp,
+			c,
+			startTime,
+			parsed.ResponseFormat,
+			openAIImagesStreamPrefix(parsed),
+			requestModel,
+			upstreamCtx,
+			upstreamReq.Header,
+			proxyURL,
+			account.ID,
+			account.Concurrency,
+		)
 		if err != nil {
 			if imageCount > 0 {
 				return &OpenAIForwardResult{
@@ -1188,7 +1328,17 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			return nil, err
 		}
 	} else {
-		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(
+			resp,
+			c,
+			parsed.ResponseFormat,
+			requestModel,
+			upstreamCtx,
+			upstreamReq.Header,
+			proxyURL,
+			account.ID,
+			account.Concurrency,
+		)
 		if err != nil {
 			return nil, err
 		}

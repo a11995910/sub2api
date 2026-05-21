@@ -80,11 +80,31 @@ function normalizeBase64ImageSource(value: string, outputFormat?: string) {
   if (/^data:image\//i.test(trimmed)) {
     return trimmed
   }
-  const compact = trimmed.replace(/\s+/g, '')
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+  const normalized = normalizeBase64ImagePayload(trimmed)
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) {
     return ''
   }
-  return `data:${imageMimeType(outputFormat)};base64,${compact}`
+  return `data:${imageMimeType(outputFormat)};base64,${normalized}`
+}
+
+function normalizeBase64ImagePayload(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+  const markdownImage = trimmed.match(/!\[[^\]]*]\((data:image\/[^)\s]+)\)/i)
+  if (markdownImage?.[1]) {
+    return normalizeBase64ImagePayload(markdownImage[1])
+  }
+  const htmlImage = trimmed.match(/<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/i)
+  if (htmlImage?.[1]) {
+    return normalizeBase64ImagePayload(htmlImage[1])
+  }
+  if (/^data:image\//i.test(trimmed)) {
+    const [, content = ''] = trimmed.split(',', 2)
+    return content.replace(/\s+/g, '')
+  }
+  return trimmed.replace(/\s+/g, '')
 }
 
 function normalizeDisplayableImageSource(value: string) {
@@ -110,9 +130,10 @@ function normalizeGatewayImageItem(
   context: { outputFormat?: string; size?: string; createdAt?: number }
 ): CreativeImageResult {
   const outputFormat = firstString(item.output_format, context.outputFormat)
-  const b64 = firstString(item.b64_json, item.base64, item.image_base64, item.result)
+  const rawB64 = firstString(item.b64_json, item.base64, item.image_base64, item.result)
+  const b64 = normalizeBase64ImagePayload(rawB64)
   const itemURL = normalizeDisplayableImageSource(firstString(item.url, item.image_url, item.download_url))
-  const url = itemURL || normalizeBase64ImageSource(b64, outputFormat)
+  const url = itemURL || normalizeBase64ImageSource(rawB64, outputFormat)
 
   return {
     id: typeof item.id === 'string' ? item.id : `${Date.now()}-${index}`,

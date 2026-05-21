@@ -12,7 +12,7 @@
           </button>
         </div>
 
-        <div class="mt-6 space-y-2">
+        <div class="creative-history-list">
           <button
             v-for="conversation in conversations"
             :key="conversation.id"
@@ -68,8 +68,8 @@
 
             <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <figure v-for="(image, index) in turn.images" :key="image.id" class="creative-result">
-                <button class="block w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-dark-800" @click="previewImage = image.url">
-                  <img :src="image.url" :alt="turn.prompt" class="creative-result-image" referrerpolicy="no-referrer">
+                <button class="block w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-dark-800" @click="previewImage = buildStoredImageUrl(image)">
+                  <img :src="buildStoredImageUrl(image)" :alt="turn.prompt" class="creative-result-image" referrerpolicy="no-referrer">
                 </button>
                 <figcaption class="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-dark-400">
                   <span class="truncate">{{ image.revised_prompt || image.size || `结果 ${index + 1}` }}</span>
@@ -77,7 +77,7 @@
                     <button class="creative-mini-button" title="作为参考图继续创作" @click="useResultAsReference(image, index)">
                       <Icon name="image" size="xs" />
                     </button>
-                    <a class="creative-mini-button" title="打开图片" :href="image.url" target="_blank" rel="noreferrer">
+                    <a class="creative-mini-button" title="打开图片" :href="buildStoredImageUrl(image)" target="_blank" rel="noreferrer">
                       <Icon name="externalLink" size="xs" />
                     </a>
                   </div>
@@ -143,7 +143,7 @@
           />
 
           <div class="creative-toolbar">
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="creative-toolbar-main flex flex-wrap items-center gap-2">
               <span class="creative-pill creative-pill-active">
                 <Icon name="image" size="xs" />
                 作画
@@ -166,7 +166,7 @@
               </button>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="creative-toolbar-actions flex items-center gap-2">
               <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="handleFileChange">
               <button class="creative-icon-button" title="上传参考图" @click="fileInputRef?.click()">
                 <Icon name="upload" size="sm" />
@@ -286,6 +286,7 @@ import PromptMarketDialog from '@/features/creativeDrawing/PromptMarketDialog.vu
 import { getPromptApplyReferenceImageUrls, type BananaPrompt } from '@/features/creativeDrawing/promptMarket'
 import {
   buildConversationTitle,
+  buildStoredImageUrl,
   createId,
   dataUrlToFile,
   loadActiveCreativeConversationId,
@@ -382,6 +383,8 @@ function startNewConversation() {
   activeConversationId.value = ''
   prompt.value = ''
   referenceImages.value = []
+  imageCount.value = 1
+  applySizeFromPreset('')
 }
 
 function selectConversation(id: string) {
@@ -395,6 +398,8 @@ function clearConversations() {
   activeConversationId.value = ''
   prompt.value = ''
   referenceImages.value = []
+  imageCount.value = 1
+  applySizeFromPreset('')
 }
 
 function ensureConversation(seedPrompt: string) {
@@ -764,6 +769,12 @@ function formatConversationTime(value: string) {
   background: rgb(241 245 249);
 }
 
+.creative-history-list {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
 .dark .creative-history-item:hover,
 .dark .creative-history-item-active {
   background: rgb(17 24 39);
@@ -853,6 +864,11 @@ function formatConversationTime(value: string) {
   gap: 0.75rem;
   border-top: 1px solid rgb(241 245 249);
   padding-top: 0.75rem;
+}
+
+.creative-toolbar-main,
+.creative-toolbar-actions {
+  min-width: 0;
 }
 
 .dark .creative-toolbar {
@@ -1017,22 +1033,45 @@ function formatConversationTime(value: string) {
 
 @media (max-width: 1024px) {
   .creative-shell {
-    grid-template-columns: 1fr;
+    display: block;
+    min-height: auto;
   }
 
   .creative-history {
     position: relative;
     top: auto;
     height: auto;
-    max-height: 220px;
+    max-height: none;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid rgb(226 232 240);
+    margin-bottom: 1rem;
     padding-bottom: 1rem;
     padding-right: 0;
   }
 
+  .creative-history-list {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    scroll-snap-type: x mandatory;
+  }
+
+  .creative-history-item {
+    min-width: 13rem;
+    scroll-snap-align: start;
+  }
+
   .creative-main {
-    padding-bottom: 21rem;
+    min-height: auto;
+    padding-bottom: 20rem;
+  }
+
+  .creative-empty {
+    min-height: auto;
+    justify-content: flex-start;
+    padding-bottom: 18rem;
   }
 
   .creative-composer-wrap,
@@ -1040,6 +1079,179 @@ function formatConversationTime(value: string) {
     bottom: max(1rem, env(safe-area-inset-bottom));
     left: 1rem;
     right: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .creative-shell {
+    gap: 0;
+  }
+
+  .creative-main {
+    padding-bottom: 18rem;
+  }
+
+  .creative-empty {
+    align-items: stretch;
+    padding: 1rem 0 17rem;
+  }
+
+  .creative-empty > * {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .creative-empty h1 {
+    font-size: 2rem;
+    line-height: 1.15;
+    text-align: center;
+  }
+
+  .creative-empty p {
+    max-width: 24rem;
+    font-size: 0.9375rem;
+  }
+
+  .creative-preset {
+    min-height: auto;
+    border-radius: 1rem;
+  }
+
+  .creative-turns {
+    padding: 0 0 1rem;
+  }
+
+  .creative-turn {
+    padding: 1rem 0;
+  }
+
+  .creative-turn-meta {
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+  }
+
+  .creative-turn p {
+    font-size: 0.875rem;
+    line-height: 1.75;
+  }
+
+  .creative-result-image,
+  .creative-image-skeleton {
+    min-height: 180px;
+    max-height: 70dvh;
+  }
+
+  .creative-reference-strip {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 0.25rem;
+  }
+
+  .creative-composer-wrap,
+  .creative-composer-wrap-collapsed {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 72dvh;
+    overflow-y: auto;
+    padding: 0 0.75rem max(0.75rem, env(safe-area-inset-bottom));
+    pointer-events: auto;
+  }
+
+  .creative-composer-wrap > * {
+    max-width: none;
+  }
+
+  .creative-composer {
+    border-radius: 1.25rem 1.25rem 0 0;
+    padding: 0.75rem;
+  }
+
+  .creative-textarea {
+    min-height: 5.5rem;
+    max-height: 9rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+
+  .creative-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+  }
+
+  .creative-toolbar-main {
+    display: flex;
+    width: 100%;
+  }
+
+  .creative-toolbar-main > * {
+    flex: 1 1 calc(50% - 0.25rem);
+  }
+
+  .creative-toolbar-main .creative-pill-active {
+    flex: 0 0 auto;
+  }
+
+  .creative-size-select {
+    min-width: 0;
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .creative-toolbar-actions {
+    justify-content: flex-end;
+  }
+
+  .creative-params {
+    max-height: 38dvh;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-y: auto;
+    gap: 0.625rem;
+  }
+
+  .creative-field input,
+  .creative-field select {
+    height: 2.25rem;
+    border-radius: 0.75rem;
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .creative-main {
+    padding-bottom: 17rem;
+  }
+
+  .creative-empty {
+    padding-bottom: 16rem;
+  }
+
+  .creative-history-item {
+    min-width: 11.5rem;
+  }
+
+  .creative-new-button {
+    min-height: 2.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .creative-pill,
+  .creative-select {
+    min-height: 2.2rem;
+    padding: 0 0.7rem;
+    font-size: 0.75rem;
+  }
+
+  .creative-icon-button,
+  .creative-send {
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+
+  .creative-params {
+    grid-template-columns: 1fr;
   }
 }
 </style>
