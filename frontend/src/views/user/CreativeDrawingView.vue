@@ -1,0 +1,929 @@
+<template>
+  <AppLayout>
+    <div class="creative-shell">
+      <aside class="creative-history">
+        <div class="flex items-center gap-2">
+          <button class="creative-new-button" @click="startNewConversation">
+            <Icon name="chat" size="sm" />
+            新建对话
+          </button>
+          <button class="creative-icon-button" title="清空历史" @click="clearConversations">
+            <Icon name="trash" size="sm" />
+          </button>
+        </div>
+
+        <div class="mt-6 space-y-2">
+          <button
+            v-for="conversation in conversations"
+            :key="conversation.id"
+            class="creative-history-item"
+            :class="{ 'creative-history-item-active': conversation.id === activeConversationId }"
+            @click="selectConversation(conversation.id)"
+          >
+            <span class="truncate text-sm font-semibold text-slate-700 dark:text-slate-100">{{ conversation.title }}</span>
+            <span class="mt-1 text-xs text-slate-400">{{ conversation.turns.length }} 轮 · {{ formatConversationTime(conversation.updatedAt) }}</span>
+          </button>
+
+          <div v-if="conversations.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-500 dark:border-dark-700 dark:text-dark-400">
+            暂无创作历史。发送第一张图后会自动保存到本地浏览器。
+          </div>
+        </div>
+      </aside>
+
+      <section class="creative-main">
+        <div v-if="activeConversation?.turns.length" class="creative-turns">
+          <article v-for="turn in activeConversation.turns" :key="turn.id" class="creative-turn">
+            <div class="creative-turn-meta">
+              <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-dark-800 dark:text-dark-200">
+                {{ turn.mode === 'edit' ? '参考图作画' : '文生图' }}
+              </span>
+              <span>{{ turn.model }}</span>
+              <span>{{ formatImageSizeDisplay(turn.size) }}</span>
+              <span>{{ turn.count }} 张</span>
+              <span>{{ formatConversationTime(turn.createdAt) }}</span>
+            </div>
+            <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700 dark:text-dark-200">{{ turn.prompt }}</p>
+
+            <div v-if="turn.references.length" class="mt-3 flex flex-wrap gap-2">
+              <img
+                v-for="reference in turn.references"
+                :key="reference.id"
+                :src="reference.dataUrl"
+                :alt="reference.name"
+                class="h-16 w-16 rounded-2xl object-cover ring-1 ring-slate-200 dark:ring-dark-700"
+              >
+            </div>
+
+            <div v-if="turn.status === 'generating'" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div v-for="index in Math.max(turn.count, 1)" :key="index" class="creative-image-skeleton">
+                <Icon name="sparkles" size="lg" class="animate-pulse text-blue-600" />
+                <span>生成中</span>
+              </div>
+            </div>
+
+            <div v-else-if="turn.status === 'error'" class="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200">
+              {{ turn.error || '生成失败' }}
+            </div>
+
+            <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <figure v-for="(image, index) in turn.images" :key="image.id" class="creative-result">
+                <button class="block w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-dark-800" @click="previewImage = image.url">
+                  <img :src="image.url" :alt="turn.prompt" class="h-full max-h-[520px] w-full object-contain">
+                </button>
+                <figcaption class="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-dark-400">
+                  <span class="truncate">{{ image.revised_prompt || image.size || `结果 ${index + 1}` }}</span>
+                  <div class="flex shrink-0 items-center gap-1">
+                    <button class="creative-mini-button" title="作为参考图继续创作" @click="useResultAsReference(image, index)">
+                      <Icon name="image" size="xs" />
+                    </button>
+                    <a class="creative-mini-button" title="打开图片" :href="image.url" target="_blank" rel="noreferrer">
+                      <Icon name="externalLink" size="xs" />
+                    </a>
+                  </div>
+                </figcaption>
+              </figure>
+            </div>
+          </article>
+        </div>
+
+        <div v-else class="creative-empty">
+          <div class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-dark-800 dark:text-dark-200">
+            <Icon name="sparkles" size="xs" class="text-blue-600" />
+            生图预设
+          </div>
+          <h1 class="mt-4 text-4xl font-bold tracking-normal text-slate-950 dark:text-white md:text-5xl">
+            Turn ideas into images
+          </h1>
+          <p class="mx-auto mt-4 max-w-xl text-center text-base leading-7 text-slate-600 dark:text-dark-300">
+            选择一组真实案例预设快速开始，也可以直接在下方输入自己的画面描述。
+          </p>
+
+          <div class="mt-8 grid w-full max-w-6xl gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <article v-for="preset in IMAGE_PROMPT_PRESETS" :key="preset.id" class="creative-preset">
+              <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
+                <img :src="preset.imageSrc" :alt="preset.title" class="h-full w-full object-cover">
+                <span class="absolute bottom-2 left-2 rounded-full bg-white/90 px-2 py-1 text-xs font-bold text-slate-900">{{ preset.size }}</span>
+                <span class="absolute bottom-2 right-2 rounded-full bg-black/45 px-2 py-1 text-xs font-bold text-white">{{ preset.count }} 张</span>
+              </div>
+              <div class="flex flex-1 flex-col p-4 text-center">
+                <h3 class="font-semibold text-slate-950 dark:text-white">{{ preset.title }}</h3>
+                <p class="mt-2 min-h-[48px] text-sm leading-6 text-slate-600 dark:text-dark-300">{{ preset.hint }}</p>
+                <button class="mt-auto border-t border-slate-100 pt-3 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:border-dark-800" @click="applyPreset(preset)">
+                  套用这个预设
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="creative-composer-wrap">
+          <div v-if="referenceImages.length" class="mb-3 flex flex-wrap gap-2">
+            <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
+              <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700">
+              <button class="absolute -right-1 -top-1 rounded-full bg-white p-1 text-slate-500 shadow hover:text-red-600 dark:bg-dark-800" title="移除参考图" @click="removeReference(reference.id)">
+                <Icon name="x" size="xs" />
+              </button>
+            </div>
+          </div>
+
+          <div class="creative-composer">
+            <textarea
+              v-model="prompt"
+              class="creative-textarea"
+              :placeholder="referenceImages.length ? '描述你希望如何参考这些图片作画...' : '加载并使用 Nano Banana Pro 工具作画，而不是分析或给提示词...'"
+              @keydown.meta.enter.prevent="submit"
+              @keydown.ctrl.enter.prevent="submit"
+            />
+
+            <div class="creative-toolbar">
+              <div class="flex flex-wrap items-center gap-2">
+                <button class="creative-pill" :class="{ 'creative-pill-active': composerMode === 'chat' }" @click="composerMode = 'chat'">
+                  <Icon name="chat" size="xs" />
+                  对话
+                </button>
+                <button class="creative-pill" :class="{ 'creative-pill-active': composerMode === 'image' }" @click="composerMode = 'image'">
+                  <Icon name="image" size="xs" />
+                  作画
+                </button>
+                <select v-model="selectedModel" class="creative-select" title="模型">
+                  <option v-for="item in CREATIVE_IMAGE_MODEL_OPTIONS" :key="item.value" :value="item.value">模型 {{ item.label }}</option>
+                </select>
+                <button class="creative-pill" @click="marketOpen = true">
+                  <Icon name="globe" size="xs" />
+                  市场
+                </button>
+                <button class="creative-pill" @click="paramsOpen = !paramsOpen">
+                  <Icon name="filter" size="xs" />
+                  参数
+                </button>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="handleFileChange">
+                <button class="creative-icon-button" title="上传参考图" @click="fileInputRef?.click()">
+                  <Icon name="upload" size="sm" />
+                </button>
+                <button class="creative-send" :disabled="isSubmitting" title="发送" @click="submit">
+                  <Icon v-if="isSubmitting" name="refresh" size="sm" class="animate-spin" />
+                  <Icon v-else name="arrowUp" size="sm" />
+                </button>
+              </div>
+            </div>
+
+            <div v-if="paramsOpen" class="creative-params">
+              <label class="creative-field">
+                <span>API 密钥</span>
+                <select v-model.number="selectedApiKeyId">
+                  <option :value="0">选择 OpenAI 分组密钥</option>
+                  <option v-for="key in drawableKeys" :key="key.id" :value="key.id">
+                    {{ key.name }} · {{ maskKey(key.key) }}
+                  </option>
+                </select>
+              </label>
+              <label class="creative-field">
+                <span>数量</span>
+                <input v-model.number="imageCount" min="1" max="4" type="number">
+              </label>
+              <label class="creative-field">
+                <span>尺寸模式</span>
+                <select v-model="sizeSelection.mode">
+                  <option v-for="item in IMAGE_SIZE_MODE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+                </select>
+              </label>
+              <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
+                <span>比例</span>
+                <select v-model="sizeSelection.aspectRatio">
+                  <option v-for="item in IMAGE_ASPECT_RATIO_OPTIONS" :key="item.value || 'auto'" :value="item.value">{{ item.label }}</option>
+                </select>
+              </label>
+              <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
+                <span>分辨率</span>
+                <select v-model="sizeSelection.resolution">
+                  <option v-for="item in IMAGE_RESOLUTION_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+                </select>
+              </label>
+              <label v-if="sizeSelection.mode === 'ratio' && sizeSelection.aspectRatio === CUSTOM_IMAGE_ASPECT_RATIO" class="creative-field">
+                <span>自定义比例</span>
+                <input v-model="sizeSelection.customRatio" placeholder="16:9">
+              </label>
+              <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
+                <span>宽度</span>
+                <input v-model="sizeSelection.customWidth" inputmode="numeric">
+              </label>
+              <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
+                <span>高度</span>
+                <input v-model="sizeSelection.customHeight" inputmode="numeric">
+              </label>
+              <label class="creative-field">
+                <span>格式</span>
+                <select v-model="outputFormat">
+                  <option v-for="item in CREATIVE_OUTPUT_FORMAT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="mt-2 flex items-center justify-between px-2 text-xs text-slate-400">
+              <span>本地额度无限</span>
+              <span>预计消耗 {{ Math.max(imageCount, 1) }} 图片单位</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <PromptMarketDialog v-model:open="marketOpen" @apply="applyMarketPrompt" />
+
+    <teleport to="body">
+      <transition name="fade">
+        <div v-if="previewImage" class="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 p-4" @click.self="previewImage = ''">
+          <button class="absolute right-5 top-5 rounded-full bg-white/10 p-2 text-white backdrop-blur hover:bg-white/20" title="关闭" @click="previewImage = ''">
+            <Icon name="x" size="lg" />
+          </button>
+          <img :src="previewImage" alt="图片预览" class="max-h-full max-w-full rounded-2xl object-contain shadow-2xl">
+        </div>
+      </transition>
+    </teleport>
+  </AppLayout>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
+import { useAppStore } from '@/stores'
+import keysAPI from '@/api/keys'
+import type { ApiKey } from '@/types'
+import {
+  CREATIVE_IMAGE_MODEL_OPTIONS,
+  CREATIVE_OUTPUT_FORMAT_OPTIONS,
+  createCreativeImageEdit,
+  createCreativeImageGeneration,
+  type CreativeImageModel,
+  type CreativeOutputFormat,
+  type CreativeImageRequest,
+  type CreativeImageResult
+} from '@/api/creativeDrawing'
+import {
+  CUSTOM_IMAGE_ASPECT_RATIO,
+  DEFAULT_IMAGE_CUSTOM_HEIGHT,
+  DEFAULT_IMAGE_CUSTOM_RATIO,
+  DEFAULT_IMAGE_CUSTOM_WIDTH,
+  IMAGE_ASPECT_RATIO_OPTIONS,
+  IMAGE_RESOLUTION_OPTIONS,
+  IMAGE_SIZE_MODE_OPTIONS,
+  buildImageSize,
+  formatImageSizeDisplay,
+  getImageSizeSelectionFromSize,
+  type ImageSizeSelection
+} from '@/features/creativeDrawing/imageOptions'
+import { IMAGE_PROMPT_PRESETS, type ImagePromptPreset } from '@/features/creativeDrawing/imagePresets'
+import PromptMarketDialog from '@/features/creativeDrawing/PromptMarketDialog.vue'
+import type { BananaPrompt } from '@/features/creativeDrawing/promptMarket'
+import {
+  buildConversationTitle,
+  createId,
+  dataUrlToFile,
+  loadActiveCreativeConversationId,
+  loadCreativeConversations,
+  readFileAsDataUrl,
+  resultToReferenceImage,
+  saveActiveCreativeConversationId,
+  saveCreativeConversations,
+  type CreativeConversation,
+  type CreativeReferenceImage,
+  type CreativeStoredImage,
+  type CreativeTurn
+} from '@/features/creativeDrawing/conversations'
+
+const appStore = useAppStore()
+
+const conversations = ref<CreativeConversation[]>([])
+const activeConversationId = ref('')
+const prompt = ref('')
+const composerMode = ref<'chat' | 'image'>('image')
+const selectedModel = ref<CreativeImageModel>('auto')
+const outputFormat = ref<CreativeOutputFormat>('png')
+const imageCount = ref(1)
+const paramsOpen = ref(false)
+const marketOpen = ref(false)
+const isSubmitting = ref(false)
+const previewImage = ref('')
+const referenceImages = ref<CreativeReferenceImage[]>([])
+const apiKeys = ref<ApiKey[]>([])
+const selectedApiKeyId = ref(0)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const sizeSelection = reactive<ImageSizeSelection>({
+  mode: 'auto',
+  aspectRatio: '',
+  resolution: 'auto',
+  customRatio: DEFAULT_IMAGE_CUSTOM_RATIO,
+  customWidth: DEFAULT_IMAGE_CUSTOM_WIDTH,
+  customHeight: DEFAULT_IMAGE_CUSTOM_HEIGHT
+})
+
+const activeConversation = computed(() => conversations.value.find((item) => item.id === activeConversationId.value) || null)
+const drawableKeys = computed(() => {
+  return apiKeys.value.filter((key) => {
+    return key.status === 'active' &&
+      key.group_id &&
+      key.group?.platform === 'openai' &&
+      key.group.allow_image_generation
+  })
+})
+const selectedApiKey = computed(() => drawableKeys.value.find((key) => key.id === selectedApiKeyId.value) || null)
+
+watch(conversations, (items) => saveCreativeConversations(items), { deep: true })
+watch(activeConversationId, (id) => saveActiveCreativeConversationId(id))
+watch(drawableKeys, (keys) => {
+  if (!selectedApiKeyId.value && keys.length > 0) {
+    selectedApiKeyId.value = keys[0].id
+  }
+})
+
+onMounted(async () => {
+  conversations.value = loadCreativeConversations()
+  activeConversationId.value = loadActiveCreativeConversationId() || conversations.value[0]?.id || ''
+  await loadApiKeys()
+})
+
+async function loadApiKeys() {
+  try {
+    const result = await keysAPI.list(1, 100, { status: 'active' })
+    apiKeys.value = result.items
+  } catch (err) {
+    appStore.showError(err instanceof Error ? err.message : '加载 API 密钥失败')
+  }
+}
+
+function startNewConversation() {
+  activeConversationId.value = ''
+  prompt.value = ''
+  referenceImages.value = []
+  composerMode.value = 'image'
+}
+
+function selectConversation(id: string) {
+  activeConversationId.value = id
+  prompt.value = ''
+  referenceImages.value = []
+}
+
+function clearConversations() {
+  conversations.value = []
+  activeConversationId.value = ''
+  prompt.value = ''
+  referenceImages.value = []
+}
+
+function ensureConversation(seedPrompt: string) {
+  if (activeConversation.value) {
+    return activeConversation.value
+  }
+  const now = new Date().toISOString()
+  const conversation: CreativeConversation = {
+    id: createId(),
+    title: buildConversationTitle(seedPrompt),
+    createdAt: now,
+    updatedAt: now,
+    turns: []
+  }
+  conversations.value = [conversation, ...conversations.value]
+  activeConversationId.value = conversation.id
+  return conversation
+}
+
+function updateConversation(conversation: CreativeConversation, updater: (item: CreativeConversation) => CreativeConversation) {
+  conversations.value = conversations.value.map((item) => item.id === conversation.id ? updater(item) : item)
+}
+
+function addOrUpdateTurn(conversation: CreativeConversation, turn: CreativeTurn) {
+  updateConversation(conversation, (item) => {
+    const turns = item.turns.some((existing) => existing.id === turn.id)
+      ? item.turns.map((existing) => existing.id === turn.id ? turn : existing)
+      : [...item.turns, turn]
+    return {
+      ...item,
+      title: item.turns.length === 0 ? buildConversationTitle(turn.prompt) : item.title,
+      updatedAt: new Date().toISOString(),
+      turns
+    }
+  })
+}
+
+function applySizeFromPreset(size: string) {
+  const selection = getImageSizeSelectionFromSize(size)
+  Object.assign(sizeSelection, selection)
+}
+
+function applyPreset(preset: ImagePromptPreset) {
+  prompt.value = preset.prompt
+  imageCount.value = preset.count
+  applySizeFromPreset(preset.size)
+  composerMode.value = 'image'
+}
+
+function applyMarketPrompt(marketPrompt: BananaPrompt) {
+  prompt.value = marketPrompt.prompt
+  composerMode.value = 'image'
+  if (marketPrompt.mode === 'edit') {
+    const urls = marketPrompt.referenceImageUrls.length > 0 ? marketPrompt.referenceImageUrls : [marketPrompt.preview]
+    referenceImages.value = urls.map((url, index) => ({
+      id: createId(),
+      name: `market-reference-${index + 1}.png`,
+      type: 'image/png',
+      dataUrl: url,
+      source: 'market'
+    }))
+  }
+}
+
+async function handleFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || []).filter((file) => file.type.startsWith('image/'))
+  if (files.length === 0) {
+    input.value = ''
+    return
+  }
+  try {
+    const refs = await Promise.all(files.map(async (file) => ({
+      id: createId(),
+      name: file.name,
+      type: file.type || 'image/png',
+      dataUrl: await readFileAsDataUrl(file),
+      source: 'upload' as const
+    })))
+    referenceImages.value = [...referenceImages.value, ...refs].slice(0, 8)
+  } catch (err) {
+    appStore.showError(err instanceof Error ? err.message : '读取参考图失败')
+  } finally {
+    input.value = ''
+  }
+}
+
+function removeReference(id: string) {
+  referenceImages.value = referenceImages.value.filter((item) => item.id !== id)
+}
+
+function normalizeImageCount(value: number) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 1
+  return Math.min(4, Math.max(1, Math.round(numeric)))
+}
+
+function isDataUrlReference(reference: CreativeReferenceImage) {
+  return /^data:image\//i.test(reference.dataUrl)
+}
+
+function buildReferenceFiles(references: CreativeReferenceImage[]) {
+  return references.map((reference, index) => {
+    const name = reference.name || `reference-${index + 1}.png`
+    return dataUrlToFile(reference.dataUrl, name, reference.type)
+  })
+}
+
+async function submit() {
+  const text = prompt.value.trim()
+  if (!text) {
+    appStore.showWarning('请输入画面描述')
+    return
+  }
+  if (!selectedApiKey.value) {
+    paramsOpen.value = true
+    appStore.showWarning(drawableKeys.value.length ? '请选择用于作画的 OpenAI 分组密钥' : '请先创建并绑定允许图片生成的 OpenAI 分组 API 密钥')
+    return
+  }
+  if (composerMode.value !== 'image') {
+    composerMode.value = 'image'
+  }
+
+  const size = buildImageSize(sizeSelection)
+  const count = normalizeImageCount(imageCount.value)
+  const conversation = ensureConversation(text)
+  const now = new Date().toISOString()
+  const references = referenceImages.value.map((item) => ({ ...item }))
+  const turn: CreativeTurn = {
+    id: createId(),
+    prompt: text,
+    mode: references.length > 0 ? 'edit' : 'generate',
+    model: selectedModel.value,
+    count,
+    size,
+    outputFormat: outputFormat.value,
+    sizeSelection: { ...sizeSelection },
+    references,
+    images: [],
+    status: 'generating',
+    createdAt: now
+  }
+  addOrUpdateTurn(conversation, turn)
+  isSubmitting.value = true
+
+  try {
+    const request: CreativeImageRequest = {
+      apiKey: selectedApiKey.value.key,
+      prompt: text,
+      model: selectedModel.value,
+      count,
+      size,
+      outputFormat: outputFormat.value
+    }
+    if (references.length > 0) {
+      const inlineReferences = references.filter(isDataUrlReference)
+      if (inlineReferences.length === references.length) {
+        request.files = buildReferenceFiles(inlineReferences)
+      } else {
+        request.imageUrls = references.map((item) => item.dataUrl)
+      }
+    }
+    const images: CreativeImageResult[] = references.length > 0
+      ? await createCreativeImageEdit(request)
+      : await createCreativeImageGeneration(request)
+    const finishedTurn: CreativeTurn = {
+      ...turn,
+      status: 'success',
+      images: images.map((item, index): CreativeStoredImage => ({
+        id: item.id || createId(),
+        url: item.url,
+        b64_json: item.b64_json,
+        revised_prompt: item.revised_prompt,
+        output_format: item.output_format,
+        size: item.size || size,
+        created_at: item.created_at || Date.now() + index
+      }))
+    }
+    addOrUpdateTurn(conversation, finishedTurn)
+    prompt.value = ''
+    referenceImages.value = []
+    appStore.showSuccess('图片生成完成')
+  } catch (err) {
+    const failedTurn: CreativeTurn = {
+      ...turn,
+      status: 'error',
+      error: err instanceof Error ? err.message : '图片生成失败'
+    }
+    addOrUpdateTurn(conversation, failedTurn)
+    appStore.showError(failedTurn.error || '图片生成失败')
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function useResultAsReference(image: CreativeStoredImage, index: number) {
+  const reference = resultToReferenceImage(image, index)
+  if (!reference) {
+    return
+  }
+  referenceImages.value = [reference]
+  composerMode.value = 'image'
+  prompt.value = '参考这张图，生成一张同风格的新图。'
+}
+
+function maskKey(key: string) {
+  if (!key) return ''
+  if (key.length <= 10) return '***'
+  return `${key.slice(0, 6)}...${key.slice(-4)}`
+}
+
+function formatConversationTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
+}
+</script>
+
+<style scoped>
+.creative-shell {
+  display: grid;
+  min-height: calc(100vh - 8rem);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.creative-history {
+  position: sticky;
+  top: 5.5rem;
+  height: calc(100vh - 7.5rem);
+  overflow-y: auto;
+  border-right: 1px solid rgb(226 232 240);
+  padding-right: 1rem;
+}
+
+.dark .creative-history {
+  border-right-color: rgb(31 41 55);
+}
+
+.creative-main {
+  position: relative;
+  min-height: calc(100vh - 8rem);
+  padding-bottom: 17rem;
+}
+
+.creative-empty {
+  display: flex;
+  min-height: calc(100vh - 26rem);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 0 1rem;
+}
+
+.creative-new-button,
+.creative-send,
+.creative-icon-button,
+.creative-pill,
+.creative-mini-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  transition: all 0.15s ease;
+}
+
+.creative-new-button {
+  min-height: 2.75rem;
+  flex: 1 1 auto;
+  border-radius: 9999px;
+  background: rgb(15 23 42);
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 10px 25px rgb(15 23 42 / 0.16);
+}
+
+.creative-icon-button {
+  height: 2.75rem;
+  width: 2.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  color: rgb(71 85 105);
+  box-shadow: 0 8px 18px rgb(15 23 42 / 0.08);
+}
+
+.dark .creative-icon-button {
+  border-color: rgb(55 65 81);
+  background: rgb(17 24 39);
+  color: rgb(203 213 225);
+}
+
+.creative-history-item {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.creative-history-item:hover,
+.creative-history-item-active {
+  background: rgb(241 245 249);
+}
+
+.dark .creative-history-item:hover,
+.dark .creative-history-item-active {
+  background: rgb(17 24 39);
+}
+
+.creative-preset {
+  display: flex;
+  min-height: 340px;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.375rem;
+  border: 1px solid rgb(241 245 249);
+  background: white;
+  box-shadow: 0 4px 14px rgb(15 23 42 / 0.06);
+}
+
+.dark .creative-preset {
+  border-color: rgb(31 41 55);
+  background: rgb(17 24 39);
+}
+
+.creative-composer-wrap {
+  position: sticky;
+  bottom: 1.5rem;
+  z-index: 20;
+  margin: 0 auto;
+  max-width: 980px;
+}
+
+.creative-composer {
+  border-radius: 1.75rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.96);
+  padding: 1rem;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.dark .creative-composer {
+  border-color: rgb(31 41 55);
+  background: rgb(15 23 42 / 0.96);
+}
+
+.creative-textarea {
+  min-height: 7rem;
+  max-height: 15rem;
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  color: rgb(15 23 42);
+  outline: none;
+}
+
+.dark .creative-textarea {
+  color: white;
+}
+
+.creative-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid rgb(241 245 249);
+  padding-top: 0.75rem;
+}
+
+.dark .creative-toolbar {
+  border-top-color: rgb(31 41 55);
+}
+
+.creative-pill,
+.creative-select {
+  min-height: 2.25rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: rgb(71 85 105);
+}
+
+.creative-pill-active {
+  border-color: rgb(191 219 254);
+  background: rgb(239 246 255);
+  color: rgb(37 99 235);
+}
+
+.dark .creative-pill,
+.dark .creative-select {
+  border-color: rgb(55 65 81);
+  background: rgb(17 24 39);
+  color: rgb(226 232 240);
+}
+
+.creative-send {
+  height: 2.75rem;
+  width: 2.75rem;
+  border-radius: 9999px;
+  background: rgb(15 23 42);
+  color: white;
+}
+
+.creative-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.creative-params {
+  margin-top: 0.875rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  border-top: 1px solid rgb(241 245 249);
+  padding-top: 0.875rem;
+}
+
+.dark .creative-params {
+  border-top-color: rgb(31 41 55);
+}
+
+.creative-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgb(100 116 139);
+}
+
+.creative-field input,
+.creative-field select {
+  height: 2.5rem;
+  min-width: 0;
+  border-radius: 0.875rem;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(15 23 42);
+  outline: none;
+}
+
+.dark .creative-field input,
+.dark .creative-field select {
+  border-color: rgb(55 65 81);
+  background: rgb(10 15 26);
+  color: white;
+}
+
+.creative-turns {
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 0.5rem 0 2rem;
+}
+
+.creative-turn {
+  border-bottom: 1px solid rgb(226 232 240);
+  padding: 1.25rem 0;
+}
+
+.dark .creative-turn {
+  border-bottom-color: rgb(31 41 55);
+}
+
+.creative-turn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: rgb(100 116 139);
+}
+
+.creative-result {
+  min-width: 0;
+}
+
+.creative-mini-button {
+  height: 1.75rem;
+  width: 1.75rem;
+  border-radius: 9999px;
+  background: rgb(241 245 249);
+  color: rgb(71 85 105);
+}
+
+.dark .creative-mini-button {
+  background: rgb(31 41 55);
+  color: rgb(203 213 225);
+}
+
+.creative-image-skeleton {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  border-radius: 1.25rem;
+  background: rgb(241 245 249);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgb(100 116 139);
+}
+
+.dark .creative-image-skeleton {
+  background: rgb(17 24 39);
+  color: rgb(203 213 225);
+}
+
+@media (max-width: 1024px) {
+  .creative-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .creative-history {
+    position: relative;
+    top: auto;
+    height: auto;
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid rgb(226 232 240);
+    padding-bottom: 1rem;
+    padding-right: 0;
+  }
+
+  .creative-main {
+    padding-bottom: 19rem;
+  }
+}
+</style>

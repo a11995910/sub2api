@@ -358,6 +358,7 @@ export default {
     channels: '渠道管理',
     availableChannels: '可用渠道',
     modelMarket: '模型广场',
+    creativeDrawing: '创意绘图',
     modelTest: '模型测试台',
     subscriptions: '订阅管理',
     accounts: '账号管理',
@@ -1071,6 +1072,11 @@ export default {
       perRequest: '按次',
       actions: '操作'
     }
+  },
+
+  creativeDrawing: {
+    title: '创意绘图',
+    description: '使用自己的 API 密钥进行图片生成、参考图编辑和提示词市场套用'
   },
 
   // Model Test
