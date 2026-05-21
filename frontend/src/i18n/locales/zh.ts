@@ -376,6 +376,7 @@ export default {
     mySubscriptions: '我的订阅',
     buySubscription: '灵石充值',
     docs: '文档',
+    beginnerGuide: '小白攻略',
     myOrders: '我的订单',
     orderManagement: '订单管理',
     paymentDashboard: '支付概览',

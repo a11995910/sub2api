@@ -26,6 +26,15 @@
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
+        <!-- Beginner Guide Link -->
+        <router-link
+          to="/beginner-guide"
+          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-900/20 md:flex"
+        >
+          <Icon name="lightbulb" size="sm" />
+          <span>{{ t('nav.beginnerGuide') }}</span>
+        </router-link>
+
         <!-- Docs Link -->
         <a
           v-if="docUrl"

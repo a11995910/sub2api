@@ -376,6 +376,7 @@ export default {
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Spirit Stones Recharge',
     docs: 'Docs',
+    beginnerGuide: 'Beginner Guide',
     myOrders: 'My Orders',
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',

@@ -63,6 +63,16 @@
             <Icon name="book" size="md" />
           </a>
 
+          <!-- Beginner Guide Link -->
+          <router-link
+            to="/beginner-guide"
+            class="hidden items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-900/20 sm:inline-flex"
+            title="小白使用攻略"
+          >
+            <Icon name="lightbulb" size="sm" />
+            小白攻略
+          </router-link>
+
           <!-- Theme Toggle -->
           <button
             @click="toggleTheme"
@@ -175,6 +185,38 @@
             </div>
           </div>
         </div>
+
+        <!-- Beginner Guide Announcement -->
+        <router-link
+          to="/beginner-guide"
+          class="mb-12 block rounded-lg border border-emerald-200 bg-white/85 p-5 shadow-sm backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg dark:border-emerald-900/60 dark:bg-dark-900/80 dark:hover:border-emerald-700"
+        >
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div class="flex items-start gap-4">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+                <Icon name="lightbulb" size="md" />
+              </span>
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    新手必看
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-dark-400">从下载到导入，一页走完</span>
+                </div>
+                <h2 class="mt-2 text-xl font-bold text-gray-950 dark:text-white">
+                  小白使用攻略：新建密钥、下载 Codex、导入 CC-Switch
+                </h2>
+                <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-dark-300">
+                  适合第一次配置的用户，按步骤完成工具下载、密钥创建、导入 CCS 和 Codex 测试。
+                </p>
+              </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+              立即查看
+              <Icon name="arrowRight" size="sm" />
+            </span>
+          </div>
+        </router-link>
 
         <!-- Feature Tags - Centered -->
         <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
