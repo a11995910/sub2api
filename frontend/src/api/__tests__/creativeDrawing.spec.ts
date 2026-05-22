@@ -85,6 +85,30 @@ describe('creativeDrawing api', () => {
     expect(images[0].url).toBe('data:image/png;base64,QUJD')
   })
 
+  it('网关同时返回受保护 url 和 b64_json 时优先展示 base64 图片', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        data: [{
+          url: 'http://192.0.2.10:3000/images/generated.png',
+          b64_json: 'UE5HREFUQQ=='
+        }]
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const images = await createCreativeImageGeneration({
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+      prompt: '画一张图',
+      count: 1,
+      outputFormat: 'png'
+    })
+
+    expect(images[0].url).toBe('data:image/png;base64,UE5HREFUQQ==')
+  })
+
   it('兼容上游把 data URL 包在 markdown 图片里的响应', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

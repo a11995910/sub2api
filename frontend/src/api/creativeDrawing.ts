@@ -133,7 +133,7 @@ function normalizeGatewayImageItem(
   const rawB64 = firstString(item.b64_json, item.base64, item.image_base64, item.result)
   const b64 = normalizeBase64ImagePayload(rawB64)
   const itemURL = normalizeDisplayableImageSource(firstString(item.url, item.image_url, item.download_url))
-  const url = itemURL || normalizeBase64ImageSource(rawB64, outputFormat)
+  const url = normalizeBase64ImageSource(rawB64, outputFormat) || itemURL
 
   return {
     id: typeof item.id === 'string' ? item.id : `${Date.now()}-${index}`,

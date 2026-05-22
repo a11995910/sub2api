@@ -127,6 +127,12 @@
         <div v-if="referenceImages.length" class="creative-reference-strip">
           <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
             <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700" referrerpolicy="no-referrer">
+            <div v-if="reference.loading" class="creative-reference-loading">
+              <Icon name="refresh" size="xs" class="animate-spin" />
+            </div>
+            <div v-else-if="reference.loadError" class="creative-reference-error" title="参考图加载失败">
+              <Icon name="x" size="xs" />
+            </div>
             <button class="absolute -right-1 -top-1 rounded-full bg-white p-1 text-slate-500 shadow hover:text-red-600 dark:bg-dark-800" title="移除参考图" @click="removeReference(reference.id)">
               <Icon name="x" size="xs" />
             </button>
@@ -171,8 +177,8 @@
               <button class="creative-icon-button" title="上传参考图" @click="fileInputRef?.click()">
                 <Icon name="upload" size="sm" />
               </button>
-              <button class="creative-send" :disabled="isSubmitting" title="发送" @click="submit">
-                <Icon v-if="isSubmitting" name="refresh" size="sm" class="animate-spin" />
+              <button class="creative-send" :disabled="isSubmitting || hasLoadingReferences" title="发送" @click="submit">
+                <Icon v-if="isSubmitting || hasLoadingReferences" name="refresh" size="sm" class="animate-spin" />
                 <Icon v-else name="arrowUp" size="sm" />
               </button>
             </div>
@@ -355,6 +361,7 @@ const estimatedConsumptionLabel = computed(() => {
   const count = normalizeImageCount(imageCount.value)
   return `预计消耗 ${count} 张 · ${currentImageBillingTier.value} 图片单位`
 })
+const hasLoadingReferences = computed(() => referenceImages.value.some((item) => item.loading))
 
 watch(conversations, (items) => saveCreativeConversations(items), { deep: true })
 watch(activeConversationId, (id) => saveActiveCreativeConversationId(id))
@@ -443,7 +450,7 @@ function applySizeFromPreset(size: string) {
 }
 
 function guessImageMimeType(name: string) {
-  const normalized = name.toLowerCase()
+  const normalized = name.toLowerCase().split('?')[0]
   if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
   if (normalized.endsWith('.webp')) return 'image/webp'
   if (normalized.endsWith('.gif')) return 'image/gif'
@@ -451,7 +458,8 @@ function guessImageMimeType(name: string) {
 }
 
 async function loadReferenceFromURL(url: string, name: string, source: CreativeReferenceImage['source']) {
-  const response = await fetch(url, {
+  const resolvedURL = resolveBrowserReferenceURL(url)
+  const response = await fetch(resolvedURL, {
     headers: {
       Accept: 'image/*'
     }
@@ -467,6 +475,7 @@ async function loadReferenceFromURL(url: string, name: string, source: CreativeR
     name,
     type,
     dataUrl: await readFileAsDataUrl(file),
+    remoteUrl: resolvedURL,
     source
   }
 }
@@ -485,37 +494,98 @@ function resolveBrowserReferenceURL(url: string) {
   return trimmed
 }
 
+function getReferenceFileName(url: string, fallback: string) {
+  try {
+    const parsed = new URL(resolveBrowserReferenceURL(url), typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
+    const name = parsed.pathname.split('/').filter(Boolean).pop()
+    return name || fallback
+  } catch {
+    return fallback
+  }
+}
+
+function createRemoteReference(url: string, index: number, source: CreativeReferenceImage['source']): CreativeReferenceImage {
+  const resolvedURL = resolveBrowserReferenceURL(url)
+  const fallback = `${source}-reference-${index + 1}.png`
+  const name = getReferenceFileName(resolvedURL, fallback)
+  return {
+    id: createId(),
+    name,
+    type: guessImageMimeType(name),
+    dataUrl: resolvedURL,
+    remoteUrl: resolvedURL,
+    loading: true,
+    source
+  }
+}
+
+async function hydrateRemoteReference(reference: CreativeReferenceImage) {
+  const url = reference.remoteUrl || reference.dataUrl
+  if (!url || isDataUrlReference(reference)) {
+    return reference
+  }
+  try {
+    const loaded = await loadReferenceFromURL(url, reference.name, reference.source)
+    return {
+      ...loaded,
+      id: reference.id
+    }
+  } catch (err) {
+    return {
+      ...reference,
+      loading: false,
+      loadError: err instanceof Error ? err.message : '参考图加载失败'
+    }
+  }
+}
+
+async function hydrateReferenceImages(ids: string[]) {
+  if (ids.length === 0) {
+    return
+  }
+  const idSet = new Set(ids)
+  const loaded = await Promise.all(referenceImages.value
+    .filter((reference) => idSet.has(reference.id))
+    .map((reference) => hydrateRemoteReference(reference)))
+  const loadedById = new Map(loaded.map((reference) => [reference.id, reference]))
+  referenceImages.value = referenceImages.value.map((reference) => loadedById.get(reference.id) || reference)
+}
+
+async function ensureReferencesReady() {
+  const pending = referenceImages.value.filter((reference) => reference.loading || (!isDataUrlReference(reference) && reference.remoteUrl))
+  if (pending.length === 0) {
+    return true
+  }
+  referenceImages.value = referenceImages.value.map((reference) => {
+    if (!pending.some((item) => item.id === reference.id)) {
+      return reference
+    }
+    return { ...reference, loading: true, loadError: undefined }
+  })
+  await hydrateReferenceImages(pending.map((reference) => reference.id))
+  const failed = referenceImages.value.filter((reference) => reference.loadError)
+  if (failed.length > 0) {
+    appStore.showWarning('部分参考图加载失败，请移除失败图片或重新套用后再提交')
+    return false
+  }
+  return true
+}
+
 async function applyPreset(preset: ImagePromptPreset) {
   prompt.value = preset.prompt
   imageCount.value = preset.count
   applySizeFromPreset(preset.size)
-  const fallbackReference: CreativeReferenceImage = {
-    id: createId(),
-    name: `${preset.id}.${preset.imageSrc.split('.').pop() || 'png'}`,
-    type: guessImageMimeType(preset.imageSrc),
-    dataUrl: resolveBrowserReferenceURL(preset.imageSrc),
-    source: 'preset'
-  }
-  referenceImages.value = [fallbackReference]
-  try {
-    referenceImages.value = [
-      await loadReferenceFromURL(preset.imageSrc, fallbackReference.name, 'preset')
-    ]
-  } catch (err) {
-    appStore.showWarning(err instanceof Error ? err.message : '预设参考图加载失败')
-  }
+  const reference = createRemoteReference(preset.imageSrc, 0, 'preset')
+  referenceImages.value = [reference]
+  void hydrateReferenceImages([reference.id])
 }
 
 function applyMarketPrompt(marketPrompt: BananaPrompt) {
   prompt.value = marketPrompt.prompt
   const urls = getPromptApplyReferenceImageUrls(marketPrompt)
-  referenceImages.value = urls.map((url, index) => ({
-    id: createId(),
-    name: `market-reference-${index + 1}.png`,
-    type: 'image/png',
-    dataUrl: resolveBrowserReferenceURL(url),
-    source: 'market'
-  }))
+  const references = urls.map((url, index) => createRemoteReference(url, index, 'market'))
+  referenceImages.value = references
+  void hydrateReferenceImages(references.map((reference) => reference.id))
 }
 
 async function handleFileChange(event: Event) {
@@ -573,6 +643,9 @@ async function submit() {
     appStore.showWarning(drawableKeys.value.length ? '请选择用于作画的 OpenAI 分组密钥' : '请先创建并绑定允许图片生成的 OpenAI 分组 API 密钥')
     return
   }
+  if (!(await ensureReferencesReady())) {
+    return
+  }
   const size = buildImageSize(sizeSelection)
   const count = normalizeImageCount(imageCount.value)
   const conversation = ensureConversation(text)
@@ -593,6 +666,8 @@ async function submit() {
     createdAt: now
   }
   addOrUpdateTurn(conversation, turn)
+  prompt.value = ''
+  referenceImages.value = []
   isSubmitting.value = true
 
   try {
@@ -629,8 +704,6 @@ async function submit() {
       }))
     }
     addOrUpdateTurn(conversation, finishedTurn)
-    prompt.value = ''
-    referenceImages.value = []
     appStore.showSuccess('图片生成完成')
   } catch (err) {
     const failedTurn: CreativeTurn = {
@@ -823,6 +896,22 @@ function formatConversationTime(value: string) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.creative-reference-loading,
+.creative-reference-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
+  background: rgb(15 23 42 / 0.5);
+  color: white;
+}
+
+.creative-reference-error {
+  background: rgb(220 38 38 / 0.72);
 }
 
 .creative-composer {

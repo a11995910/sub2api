@@ -6,6 +6,9 @@ export type CreativeReferenceImage = {
   name: string
   type: string
   dataUrl: string
+  remoteUrl?: string
+  loading?: boolean
+  loadError?: string
   source: 'upload' | 'market' | 'preset' | 'result'
 }
 

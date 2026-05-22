@@ -700,7 +700,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, openAIImagesNonStreamingResponseOptions{
+			ctx:            upstreamCtx,
+			parsed:         parsed,
+			requestHeaders: upstreamReq.Header.Clone(),
+			baseURL:        upstreamReq.URL,
+			proxyURL:       proxyURL,
+			account:        account,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1150,8 +1157,25 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+type openAIImagesNonStreamingResponseOptions struct {
+	ctx            context.Context
+	parsed         *OpenAIImagesRequest
+	requestHeaders http.Header
+	baseURL        *url.URL
+	proxyURL       string
+	account        *Account
+}
+
+func (o openAIImagesNonStreamingResponseOptions) shouldInlineImageURLs() bool {
+	return o.parsed != nil && strings.EqualFold(strings.TrimSpace(o.parsed.ResponseFormat), "b64_json")
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, opts openAIImagesNonStreamingResponseOptions) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, err
+	}
+	body, err = s.inlineOpenAIImagesResponseURLs(body, opts)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
@@ -1166,6 +1190,133 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+}
+
+func (s *OpenAIGatewayService) inlineOpenAIImagesResponseURLs(body []byte, opts openAIImagesNonStreamingResponseOptions) ([]byte, error) {
+	if !opts.shouldInlineImageURLs() || len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	data := gjson.GetBytes(body, "data")
+	if !data.IsArray() {
+		return body, nil
+	}
+
+	rewritten := body
+	for index, item := range data.Array() {
+		if normalizeOpenAIImageBase64(item.Get("b64_json").String()) != "" {
+			continue
+		}
+		imageURL := firstNonEmptyString(
+			item.Get("url").String(),
+			item.Get("image_url").String(),
+			item.Get("download_url").String(),
+		)
+		if imageURL == "" {
+			continue
+		}
+		imageBytes, err := s.downloadOpenAIImagesResponseURL(opts, imageURL)
+		if err != nil {
+			return nil, fmt.Errorf("download upstream image result: %w", err)
+		}
+		rewritten, err = sjson.SetBytes(rewritten, fmt.Sprintf("data.%d.b64_json", index), base64.StdEncoding.EncodeToString(imageBytes))
+		if err != nil {
+			return nil, fmt.Errorf("rewrite image response: %w", err)
+		}
+	}
+	return rewritten, nil
+}
+
+func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImagesNonStreamingResponseOptions, rawURL string) ([]byte, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return nil, fmt.Errorf("image url is empty")
+	}
+	if normalized := normalizeOpenAIImageBase64(trimmed); normalized != "" {
+		return base64.StdEncoding.DecodeString(normalized)
+	}
+	downloadURL, err := resolveOpenAIImagesResponseURL(trimmed, opts.baseURL)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil || s.httpUpstream == nil {
+		return nil, fmt.Errorf("http upstream is not configured")
+	}
+
+	ctx := opts.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build image download request: %w", err)
+	}
+	headers := cloneHTTPHeader(opts.requestHeaders)
+	headers.Set("Accept", "image/*,*/*;q=0.8")
+	headers.Del("Content-Type")
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+	if strings.TrimSpace(req.Header.Get("User-Agent")) == "" {
+		req.Header.Set("User-Agent", openAIImageBackendUserAgent)
+	}
+
+	accountID := int64(0)
+	accountConcurrency := 0
+	if opts.account != nil {
+		accountID = opts.account.ID
+		accountConcurrency = opts.account.Concurrency
+	}
+	resp, err := s.httpUpstream.Do(req, opts.proxyURL, accountID, accountConcurrency)
+	if err != nil {
+		return nil, fmt.Errorf("download image url: %w", err)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("download image url: empty response")
+	}
+	if resp.Body == nil {
+		return nil, fmt.Errorf("download image url: empty response body")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		message := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(body))
+		if message == "" {
+			message = fmt.Sprintf("status %d", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("download image url failed: %s", message)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxDownloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("read image url body: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("image url returned empty body")
+	}
+	return data, nil
+}
+
+func resolveOpenAIImagesResponseURL(rawURL string, baseURL *url.URL) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", fmt.Errorf("invalid image url: %w", err)
+	}
+	if !parsed.IsAbs() {
+		if baseURL == nil {
+			return "", fmt.Errorf("relative image url requires upstream base url")
+		}
+		parsed = baseURL.ResolveReference(parsed)
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		if strings.TrimSpace(parsed.Host) == "" {
+			return "", fmt.Errorf("image url host is required")
+		}
+		return parsed.String(), nil
+	default:
+		return "", fmt.Errorf("unsupported image url scheme: %s", parsed.Scheme)
+	}
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
