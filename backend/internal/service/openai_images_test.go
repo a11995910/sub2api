@@ -605,6 +605,91 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyGeneration502RetryableOnSameAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		cfg:              &config.Config{},
+		rateLimitService: &RateLimitService{},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_502"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"temporary upstream error"}}`)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       6,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+}
+
+func TestShouldRetryOpenAIImagesSameAccount(t *testing.T) {
+	regularAPIKeyAccount := &Account{
+		ID:          6,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-api-key"},
+	}
+	poolModeAPIKeyAccount := &Account{
+		ID:       7,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":   "test-api-key",
+			"pool_mode": true,
+		},
+	}
+
+	tests := []struct {
+		name       string
+		statusCode int
+		account    *Account
+		want       bool
+	}{
+		{name: "nil account", statusCode: http.StatusBadGateway, account: nil, want: false},
+		{name: "regular account retries 502", statusCode: http.StatusBadGateway, account: regularAPIKeyAccount, want: true},
+		{name: "regular account retries 503", statusCode: http.StatusServiceUnavailable, account: regularAPIKeyAccount, want: true},
+		{name: "regular account retries 504", statusCode: http.StatusGatewayTimeout, account: regularAPIKeyAccount, want: true},
+		{name: "regular account does not retry 400", statusCode: http.StatusBadRequest, account: regularAPIKeyAccount, want: false},
+		{name: "regular account does not retry 429", statusCode: http.StatusTooManyRequests, account: regularAPIKeyAccount, want: false},
+		{name: "pool mode keeps 429 retry behavior", statusCode: http.StatusTooManyRequests, account: poolModeAPIKeyAccount, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldRetryOpenAIImagesSameAccount(tt.statusCode, tt.account))
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationInlinesProtectedImageURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)

@@ -650,7 +650,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: shouldRetryOpenAIImagesSameAccount(resp.StatusCode, account),
 			}
 		}
 		return s.handleErrorResponse(upstreamCtx, resp, c, account, forwardBody)
@@ -1068,6 +1068,21 @@ func openAIImagesExtensionFromContentType(contentType string) string {
 		return ".gif"
 	default:
 		return ".png"
+	}
+}
+
+func shouldRetryOpenAIImagesSameAccount(statusCode int, account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsPoolMode() && isPoolModeRetryableStatus(statusCode) {
+		return true
+	}
+	switch statusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
 	}
 }
 
