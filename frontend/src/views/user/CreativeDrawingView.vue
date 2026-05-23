@@ -295,8 +295,10 @@ import {
   buildStoredImageUrl,
   createId,
   dataUrlToFile,
+  hydrateCreativeConversationImages,
   loadActiveCreativeConversationId,
   loadCreativeConversations,
+  persistCreativeStoredImages,
   readFileAsDataUrl,
   resultToReferenceImage,
   saveActiveCreativeConversationId,
@@ -374,6 +376,7 @@ watch(drawableKeys, (keys) => {
 onMounted(async () => {
   conversations.value = loadCreativeConversations()
   activeConversationId.value = loadActiveCreativeConversationId() || conversations.value[0]?.id || ''
+  conversations.value = await hydrateCreativeConversationImages(conversations.value)
   await loadApiKeys()
 })
 
@@ -690,18 +693,21 @@ async function submit() {
     const images: CreativeImageResult[] = references.length > 0
       ? await createCreativeImageEdit(request)
       : await createCreativeImageGeneration(request)
+    const storedImages = images.map((item, index): CreativeStoredImage => ({
+      id: item.id || createId(),
+      url: item.url,
+      source_url: item.source_url,
+      b64_json: item.b64_json,
+      revised_prompt: item.revised_prompt,
+      output_format: item.output_format,
+      size: item.size || size,
+      created_at: item.created_at || Date.now() + index
+    }))
+    await persistCreativeStoredImages(storedImages)
     const finishedTurn: CreativeTurn = {
       ...turn,
       status: 'success',
-      images: images.map((item, index): CreativeStoredImage => ({
-        id: item.id || createId(),
-        url: item.url,
-        b64_json: item.b64_json,
-        revised_prompt: item.revised_prompt,
-        output_format: item.output_format,
-        size: item.size || size,
-        created_at: item.created_at || Date.now() + index
-      }))
+      images: storedImages
     }
     addOrUpdateTurn(conversation, finishedTurn)
     appStore.showSuccess('图片生成完成')

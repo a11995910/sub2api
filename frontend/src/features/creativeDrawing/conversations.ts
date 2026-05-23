@@ -15,6 +15,8 @@ export type CreativeReferenceImage = {
 export type CreativeStoredImage = {
   id: string
   url: string
+  source_url?: string
+  image_store_id?: string
   b64_json?: string
   revised_prompt?: string
   output_format?: string
@@ -49,6 +51,17 @@ export type CreativeConversation = {
 const STORAGE_KEY = 'sub2api:creative-drawing:conversations'
 const ACTIVE_STORAGE_KEY = 'sub2api:creative-drawing:active-conversation'
 const MAX_CONVERSATIONS = 80
+const IMAGE_STORE_DB_NAME = 'sub2api-creative-drawing'
+const IMAGE_STORE_DB_VERSION = 1
+const IMAGE_STORE_NAME = 'images'
+
+type CreativeStoredImageRecord = {
+  id: string
+  b64_json: string
+  output_format?: string
+  source_url?: string
+  updated_at: string
+}
 
 function storedImageMimeType(format?: string) {
   switch ((format || 'png').toLowerCase()) {
@@ -80,14 +93,17 @@ function isDisplayableStoredImageUrl(url: string) {
 
 export function buildStoredImageUrl(image: Pick<CreativeStoredImage, 'url' | 'b64_json' | 'output_format'>) {
   const url = (image.url || '').trim()
-  if (url && isDisplayableStoredImageUrl(url) && !/^blob:/i.test(url)) {
+  if (url && /^data:image\//i.test(url)) {
     return url
   }
   const b64 = normalizeStoredImageBase64(image.b64_json)
-  if (!b64) {
+  if (b64) {
+    return `data:${storedImageMimeType(image.output_format)};base64,${b64}`
+  }
+  if (url && isDisplayableStoredImageUrl(url) && !/^blob:/i.test(url)) {
     return url
   }
-  return `data:${storedImageMimeType(image.output_format)};base64,${b64}`
+  return url
 }
 
 function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {
@@ -95,6 +111,8 @@ function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {
   const hydrated = {
     ...image,
     url: typeof image.url === 'string' ? image.url : '',
+    source_url: typeof image.source_url === 'string' ? image.source_url : undefined,
+    image_store_id: typeof image.image_store_id === 'string' ? image.image_store_id : undefined,
     b64_json: b64 || undefined
   }
   return {
@@ -106,10 +124,26 @@ function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {
 function serializeStoredImage(image: CreativeStoredImage): CreativeStoredImage {
   const b64 = normalizeStoredImageBase64(image.b64_json)
   const url = (image.url || '').trim()
+  const sourceURL = (image.source_url || '').trim()
+  const imageStoreID = (image.image_store_id || '').trim()
+  const persistedURL = b64 && /^data:image\//i.test(url) ? sourceURL : url
   return {
     ...image,
-    url: b64 && /^data:image\//i.test(url) ? '' : url,
-    b64_json: b64 || undefined
+    url: persistedURL,
+    source_url: sourceURL || undefined,
+    image_store_id: imageStoreID || undefined,
+    b64_json: imageStoreID ? undefined : b64 || undefined
+  }
+}
+
+function interruptPersistedGeneratingTurn(turn: CreativeTurn): CreativeTurn {
+  if (turn.status !== 'generating') {
+    return turn
+  }
+  return {
+    ...turn,
+    status: 'error',
+    error: '上次创作在页面刷新或浏览器中断后未能完成状态回写，请重新发起创作。'
   }
 }
 
@@ -127,11 +161,141 @@ function hydrateCreativeConversation(item: CreativeConversation): CreativeConver
 function serializeCreativeConversation(item: CreativeConversation): CreativeConversation {
   return {
     ...item,
-    turns: item.turns.map((turn) => ({
-      ...turn,
-      references: Array.isArray(turn.references) ? turn.references : [],
-      images: Array.isArray(turn.images) ? turn.images.map(serializeStoredImage) : []
+    turns: item.turns.map((turn) => {
+      const normalizedTurn = interruptPersistedGeneratingTurn(turn)
+      return {
+        ...normalizedTurn,
+        references: Array.isArray(normalizedTurn.references) ? normalizedTurn.references : [],
+        images: Array.isArray(normalizedTurn.images) ? normalizedTurn.images.map(serializeStoredImage) : []
+      }
+    })
+  }
+}
+
+function openCreativeImageStore() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('当前浏览器不支持 IndexedDB'))
+      return
+    }
+    const request = indexedDB.open(IMAGE_STORE_DB_NAME, IMAGE_STORE_DB_VERSION)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      if (!db.objectStoreNames.contains(IMAGE_STORE_NAME)) {
+        db.createObjectStore(IMAGE_STORE_NAME, { keyPath: 'id' })
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error || new Error('打开图片本地存储失败'))
+  })
+}
+
+function waitForTransaction(transaction: IDBTransaction) {
+  return new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error || new Error('图片本地存储事务失败'))
+    transaction.onabort = () => reject(transaction.error || new Error('图片本地存储事务中止'))
+  })
+}
+
+function getImageRecord(store: IDBObjectStore, id: string) {
+  return new Promise<CreativeStoredImageRecord | undefined>((resolve, reject) => {
+    const request = store.get(id)
+    request.onsuccess = () => resolve(request.result as CreativeStoredImageRecord | undefined)
+    request.onerror = () => reject(request.error || new Error('读取图片本地缓存失败'))
+  })
+}
+
+export async function persistCreativeStoredImages(images: CreativeStoredImage[]) {
+  const pendingRecords: Array<{ image: CreativeStoredImage; record: CreativeStoredImageRecord }> = []
+  images.forEach((image) => {
+    const b64 = normalizeStoredImageBase64(image.b64_json || image.url)
+    if (!b64) {
+      return
+    }
+    pendingRecords.push({
+      image,
+      record: {
+        id: image.image_store_id || createId(),
+        b64_json: b64,
+        output_format: image.output_format,
+        source_url: image.source_url,
+        updated_at: new Date().toISOString()
+      }
+    })
+  })
+
+  if (pendingRecords.length === 0) {
+    return images
+  }
+
+  let db: IDBDatabase | null = null
+  try {
+    db = await openCreativeImageStore()
+    const transaction = db.transaction(IMAGE_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(IMAGE_STORE_NAME)
+    pendingRecords.forEach(({ record }) => store.put(record))
+    await waitForTransaction(transaction)
+    pendingRecords.forEach(({ image, record }) => {
+      image.image_store_id = record.id
+      image.b64_json = record.b64_json
+    })
+  } catch {
+    // IndexedDB 不可用时保留内联 base64，当前创作仍可立即展示。
+  } finally {
+    db?.close()
+  }
+  return images
+}
+
+export async function hydrateCreativeConversationImages(conversations: CreativeConversation[]) {
+  const imageStoreIDs = Array.from(new Set(conversations
+    .flatMap((conversation) => conversation.turns)
+    .flatMap((turn) => turn.images || [])
+    .map((image) => image.image_store_id || '')
+    .filter(Boolean)))
+
+  if (imageStoreIDs.length === 0) {
+    return conversations
+  }
+
+  let db: IDBDatabase | null = null
+  try {
+    db = await openCreativeImageStore()
+    const transaction = db.transaction(IMAGE_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(IMAGE_STORE_NAME)
+    const records = await Promise.all(imageStoreIDs.map(async (id) => [id, await getImageRecord(store, id)] as const))
+    const recordByID = new Map(records.filter((item): item is readonly [string, CreativeStoredImageRecord] => Boolean(item[1])))
+
+    return conversations.map((conversation) => ({
+      ...conversation,
+      turns: conversation.turns.map((turn) => ({
+        ...turn,
+        images: (turn.images || []).map((image) => {
+          if (normalizeStoredImageBase64(image.b64_json)) {
+            return image
+          }
+          const record = image.image_store_id ? recordByID.get(image.image_store_id) : undefined
+          if (!record?.b64_json) {
+            return image
+          }
+          const hydrated = {
+            ...image,
+            b64_json: normalizeStoredImageBase64(record.b64_json) || undefined,
+            output_format: image.output_format || record.output_format,
+            source_url: image.source_url || record.source_url
+          }
+          return {
+            ...hydrated,
+            url: buildStoredImageUrl(hydrated)
+          }
+        })
+      }))
     }))
+  } catch {
+    return conversations
+  } finally {
+    db?.close()
   }
 }
 
@@ -168,6 +332,10 @@ export function loadCreativeConversations(): CreativeConversation[] {
         return Boolean(item && typeof item === 'object' && typeof item.id === 'string' && Array.isArray(item.turns))
       })
       .map(hydrateCreativeConversation)
+      .map((conversation) => ({
+        ...conversation,
+        turns: conversation.turns.map(interruptPersistedGeneratingTurn)
+      }))
   } catch {
     return []
   }
@@ -191,7 +359,7 @@ export function saveCreativeConversations(conversations: CreativeConversation[])
         references: [],
         images: turn.images.map((image) => ({
           ...image,
-          url: /^https?:\/\//i.test(image.url) ? image.url : '',
+          url: image.source_url || (/^https?:\/\//i.test(image.url) ? image.url : ''),
           b64_json: undefined
         }))
       }))

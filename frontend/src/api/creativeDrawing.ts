@@ -16,6 +16,7 @@ export const CREATIVE_OUTPUT_FORMAT_OPTIONS: Array<{ value: CreativeOutputFormat
 export type CreativeImageResult = {
   id: string
   url: string
+  source_url?: string
   b64_json?: string
   revised_prompt?: string
   output_format?: CreativeOutputFormat | string
@@ -138,6 +139,7 @@ function normalizeGatewayImageItem(
   return {
     id: typeof item.id === 'string' ? item.id : `${Date.now()}-${index}`,
     url,
+    source_url: itemURL && itemURL !== url ? itemURL : undefined,
     b64_json: b64 || undefined,
     revised_prompt: typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined,
     output_format: outputFormat || undefined,

@@ -37,6 +37,8 @@ function createConversation(): CreativeConversation {
           {
             id: 'image-1',
             url: 'data:image/webp;base64,QUJD',
+            source_url: 'http://192.0.2.10:3000/images/generated.webp',
+            image_store_id: 'stored-image-1',
             b64_json: 'QUJD',
             output_format: 'webp'
           }
@@ -53,19 +55,32 @@ describe('creativeDrawing conversations', () => {
     localStorage.clear()
   })
 
-  it('保存本地历史时不重复存储 data URL，读取时可恢复可展示图片', () => {
+  it('保存本地历史时把大图正文留在图片缓存索引中，读取时可恢复可展示图片', () => {
     saveCreativeConversations([createConversation()])
 
     const raw = localStorage.getItem(STORAGE_KEY)
     expect(raw).toBeTruthy()
     const stored = JSON.parse(raw || '[]') as CreativeConversation[]
-    expect(stored[0].turns[0].images[0].url).toBe('')
-    expect(stored[0].turns[0].images[0].b64_json).toBe('QUJD')
+    expect(stored[0].turns[0].images[0].url).toBe('http://192.0.2.10:3000/images/generated.webp')
+    expect(stored[0].turns[0].images[0].source_url).toBe('http://192.0.2.10:3000/images/generated.webp')
+    expect(stored[0].turns[0].images[0].image_store_id).toBe('stored-image-1')
+    expect(stored[0].turns[0].images[0].b64_json).toBeUndefined()
 
     const loaded = loadCreativeConversations()
     const image = loaded[0].turns[0].images[0]
-    expect(buildStoredImageUrl(image)).toBe('data:image/webp;base64,QUJD')
-    expect(resultToReferenceImage(image, 0)?.dataUrl).toBe('data:image/webp;base64,QUJD')
+    expect(buildStoredImageUrl({ ...image, b64_json: 'QUJD' })).toBe('data:image/webp;base64,QUJD')
+    expect(resultToReferenceImage({ ...image, b64_json: 'QUJD' }, 0)?.dataUrl).toBe('data:image/webp;base64,QUJD')
     expect(buildStoredImageUrl({ url: 'file-service://file_123', b64_json: 'QUJD', output_format: 'webp' })).toBe('data:image/webp;base64,QUJD')
+  })
+
+  it('读取持久化历史时把遗留生成中轮次标记为中断', () => {
+    const conversation = createConversation()
+    conversation.turns[0].status = 'generating'
+    conversation.turns[0].images = []
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([conversation]))
+
+    const loaded = loadCreativeConversations()
+    expect(loaded[0].turns[0].status).toBe('error')
+    expect(loaded[0].turns[0].error).toContain('页面刷新')
   })
 })

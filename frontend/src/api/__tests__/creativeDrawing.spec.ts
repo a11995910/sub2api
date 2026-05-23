@@ -107,6 +107,7 @@ describe('creativeDrawing api', () => {
     })
 
     expect(images[0].url).toBe('data:image/png;base64,UE5HREFUQQ==')
+    expect(images[0].source_url).toBe('http://192.0.2.10:3000/images/generated.png')
   })
 
   it('兼容上游把 data URL 包在 markdown 图片里的响应', async () => {
