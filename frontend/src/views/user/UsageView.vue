@@ -38,7 +38,8 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('usage.in') }}: {{ formatTokens(usageStats?.total_input_tokens || 0) }} /
-                {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }}
+                {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }} /
+                {{ t('usage.cacheReadFull') }}: {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}
               </p>
             </div>
           </div>
