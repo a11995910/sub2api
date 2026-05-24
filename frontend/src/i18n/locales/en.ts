@@ -1516,6 +1516,7 @@ export default {
       tokens: 'Tokens',
       actual: 'Actual',
       standard: 'Standard',
+      originalPrice: 'Original',
       accountCost: 'Cost',
       noDataAvailable: 'No data available',
       recentUsage: 'Recent Usage',

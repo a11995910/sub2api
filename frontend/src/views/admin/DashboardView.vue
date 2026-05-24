@@ -108,26 +108,10 @@
                   {{ t('admin.dashboard.todayTokens') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ formatTokens(stats.today_tokens) }}
+                  {{ formatFullTokens(stats.today_tokens) }}
                 </p>
                 <p class="text-xs">
-                  <span
-                    class="text-green-600 dark:text-green-400"
-                    :title="t('admin.dashboard.actual')"
-                    >{{ formatCost(stats.today_actual_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-orange-500 dark:text-orange-400"
-                    :title="t('admin.dashboard.accountCost')"
-                    >{{ formatCost(stats.today_account_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-gray-400 dark:text-gray-500"
-                    :title="t('admin.dashboard.standard')"
-                    >{{ formatCost(stats.today_cost) }}</span
-                  >
+                  <span class="text-green-600 dark:text-green-400">{{ formatCostComparison(stats.today_actual_cost, stats.today_cost) }}</span>
                 </p>
               </div>
             </div>
@@ -144,26 +128,10 @@
                   {{ t('admin.dashboard.totalTokens') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
-                  {{ formatTokens(stats.total_tokens) }}
+                  {{ formatFullTokens(stats.total_tokens) }}
                 </p>
                 <p class="text-xs">
-                  <span
-                    class="text-green-600 dark:text-green-400"
-                    :title="t('admin.dashboard.actual')"
-                    >{{ formatCost(stats.total_actual_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-orange-500 dark:text-orange-400"
-                    :title="t('admin.dashboard.accountCost')"
-                    >{{ formatCost(stats.total_account_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-gray-400 dark:text-gray-500"
-                    :title="t('admin.dashboard.standard')"
-                    >{{ formatCost(stats.total_cost) }}</span
-                  >
+                  <span class="text-green-600 dark:text-green-400">{{ formatCostComparison(stats.total_actual_cost, stats.total_cost) }}</span>
                 </p>
               </div>
             </div>
@@ -538,9 +506,14 @@ const formatNumber = (value: number): string => {
   return value.toLocaleString()
 }
 
-const formatCost = (value: number): string => {
-  return formatSpiritStones(value, { fractionDigits: value > 0 && value < 0.01 ? 4 : 2 })
+const formatFullTokens = (value: number | undefined): string => {
+  return (value ?? 0).toLocaleString()
 }
+
+const formatCostPlain = (value: number): string => formatSpiritStones(value, { fractionDigits: 2 }).replace(/\s+/g, '')
+
+const formatCostComparison = (actual: number, original: number): string =>
+  `${t('admin.dashboard.actual')}${formatCostPlain(actual)}/${t('admin.dashboard.originalPrice')}${formatCostPlain(original)}`
 
 const formatDuration = (ms: number): string => {
   if (ms >= 1000) {
