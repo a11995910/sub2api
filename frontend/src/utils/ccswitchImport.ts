@@ -74,8 +74,12 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
 function toAsciiJavaScriptSource(source: string): string {
   // CC Switch 的 usageScript 是 base64 后的 JS 源码；先转义非 ASCII 字符，
   // 避免浏览器 btoa 遇到中文单位等字符时报 InvalidCharacterError。
-  return source.replace(/[^\x00-\x7F]/g, (char) =>
-    Array.from(char)
+  return Array.from(source, (char) => {
+    const firstUnit = char.charCodeAt(0)
+    if (firstUnit <= 0x7F) {
+      return char
+    }
+    return Array.from(char)
       .map((part) => {
         const codePoint = part.codePointAt(0)
         if (codePoint == null) return ''
@@ -88,5 +92,5 @@ function toAsciiJavaScriptSource(source: string): string {
         return `\\u${high.toString(16).padStart(4, '0')}\\u${low.toString(16).padStart(4, '0')}`
       })
       .join('')
-  )
+  }).join('')
 }
