@@ -97,6 +97,11 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
+		CheckinEnabled:   settings.CheckinEnabled,
+		CheckinContent:   settings.CheckinContent,
+		CheckinRewardMin: settings.CheckinRewardMin,
+		CheckinRewardMax: settings.CheckinRewardMax,
+
 		RiskControlEnabled: settings.RiskControlEnabled,
 	})
 }

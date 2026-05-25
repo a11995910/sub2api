@@ -233,6 +233,10 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
   affiliate_enabled: boolean
+  checkin_enabled: boolean
+  checkin_content: string
+  checkin_reward_min: number
+  checkin_reward_max: number
 }
 
 export interface AuthResponse {

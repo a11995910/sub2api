@@ -701,6 +701,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
+		SettingKeyCheckinEnabled,
+		SettingKeyCheckinContent,
+		SettingKeyCheckinRewardMin,
+		SettingKeyCheckinRewardMax,
 		SettingKeyRiskControlEnabled,
 	}
 
@@ -758,6 +762,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
 	}
+	checkinEnabled, checkinContent, checkinRewardMin, checkinRewardMax := parseCheckinSettings(settings)
 
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -813,6 +818,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
+		CheckinEnabled:   checkinEnabled,
+		CheckinContent:   checkinContent,
+		CheckinRewardMin: checkinRewardMin,
+		CheckinRewardMax: checkinRewardMax,
+
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 	}, nil
 }
@@ -833,6 +843,50 @@ func parseChannelMonitorInterval(raw string) int {
 		return channelMonitorIntervalFallback
 	}
 	return clampChannelMonitorInterval(v)
+}
+
+func parseCheckinSettings(settings map[string]string) (bool, string, float64, float64) {
+	content := strings.TrimSpace(settings[SettingKeyCheckinContent])
+	if content == "" {
+		content = CheckinContentDefault
+	}
+	rewardMin := parseNonNegativeFloatSetting(settings[SettingKeyCheckinRewardMin])
+	rewardMax := parseNonNegativeFloatSetting(settings[SettingKeyCheckinRewardMax])
+	if rewardMax < rewardMin {
+		rewardMax = rewardMin
+	}
+	return settings[SettingKeyCheckinEnabled] == "true", content, rewardMin, rewardMax
+}
+
+func parseNonNegativeFloatSetting(raw string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+		return 0
+	}
+	return v
+}
+
+func normalizeCheckinSettings(settings *SystemSettings) error {
+	if settings == nil {
+		return nil
+	}
+	settings.CheckinContent = strings.TrimSpace(settings.CheckinContent)
+	if settings.CheckinContent == "" {
+		settings.CheckinContent = CheckinContentDefault
+	}
+	if math.IsNaN(settings.CheckinRewardMin) || math.IsInf(settings.CheckinRewardMin, 0) || settings.CheckinRewardMin < 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward min must be a non-negative number")
+	}
+	if math.IsNaN(settings.CheckinRewardMax) || math.IsInf(settings.CheckinRewardMax, 0) || settings.CheckinRewardMax < 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward max must be a non-negative number")
+	}
+	if settings.CheckinRewardMax < settings.CheckinRewardMin {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward max must be greater than or equal to min")
+	}
+	if settings.CheckinEnabled && settings.CheckinRewardMax <= 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward max must be greater than 0 when checkin is enabled")
+	}
+	return nil
 }
 
 // clampChannelMonitorInterval clamps v to the allowed range. 0 means "not provided".
@@ -1063,11 +1117,15 @@ type PublicSettingsInjectionPayload struct {
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
 	// that hid the "可用渠道" menu on page refresh.
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
-	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
-	AffiliateEnabled                     bool `json:"affiliate_enabled"`
-	RiskControlEnabled                   bool `json:"risk_control_enabled"`
+	ChannelMonitorEnabled                bool    `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int     `json:"channel_monitor_default_interval_seconds"`
+	AvailableChannelsEnabled             bool    `json:"available_channels_enabled"`
+	AffiliateEnabled                     bool    `json:"affiliate_enabled"`
+	CheckinEnabled                       bool    `json:"checkin_enabled"`
+	CheckinContent                       string  `json:"checkin_content"`
+	CheckinRewardMin                     float64 `json:"checkin_reward_min"`
+	CheckinRewardMax                     float64 `json:"checkin_reward_max"`
+	RiskControlEnabled                   bool    `json:"risk_control_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1129,6 +1187,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
+		CheckinEnabled:                       settings.CheckinEnabled,
+		CheckinContent:                       settings.CheckinContent,
+		CheckinRewardMin:                     settings.CheckinRewardMin,
+		CheckinRewardMax:                     settings.CheckinRewardMax,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
 }
@@ -1507,6 +1569,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err != nil {
 		return nil, err
 	}
+	if err := normalizeCheckinSettings(settings); err != nil {
+		return nil, err
+	}
 	settings.PaymentVisibleMethodAlipaySource = alipaySource
 	settings.PaymentVisibleMethodWxpaySource = wxpaySource
 	settings.WeChatConnectAppID = strings.TrimSpace(settings.WeChatConnectAppID)
@@ -1731,6 +1796,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		settings.AffiliateRebatePerInviteeCap = AffiliateRebatePerInviteeCapDefault
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
+	updates[SettingKeyCheckinEnabled] = strconv.FormatBool(settings.CheckinEnabled)
+	updates[SettingKeyCheckinContent] = settings.CheckinContent
+	updates[SettingKeyCheckinRewardMin] = strconv.FormatFloat(settings.CheckinRewardMin, 'f', 8, 64)
+	updates[SettingKeyCheckinRewardMax] = strconv.FormatFloat(settings.CheckinRewardMax, 'f', 8, 64)
 	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
@@ -2615,6 +2684,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
+		// 每日签到配置（默认关闭；奖励区间为 0 表示未配置发奖能力）
+		SettingKeyCheckinEnabled:   "false",
+		SettingKeyCheckinContent:   CheckinContentDefault,
+		SettingKeyCheckinRewardMin: "0",
+		SettingKeyCheckinRewardMax: "0",
+
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 
@@ -2737,6 +2812,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if perInviteeCap, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebatePerInviteeCap], 64); err == nil && perInviteeCap >= 0 {
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
 	}
+	result.CheckinEnabled, result.CheckinContent, result.CheckinRewardMin, result.CheckinRewardMax = parseCheckinSettings(settings)
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
 
 	// 敏感信息直接返回，方便测试连接时使用

@@ -78,6 +78,25 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 	require.Equal(t, []int{20, 50, 100}, settings.TablePageSizeOptions)
 }
 
+func TestSettingService_GetPublicSettings_ExposesCheckinSettings(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyCheckinEnabled:   "true",
+			SettingKeyCheckinContent:   "  连续签到领额度  ",
+			SettingKeyCheckinRewardMin: "1.5",
+			SettingKeyCheckinRewardMax: "3",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.CheckinEnabled)
+	require.Equal(t, "连续签到领额度", settings.CheckinContent)
+	require.InDelta(t, 1.5, settings.CheckinRewardMin, 0.0001)
+	require.InDelta(t, 3, settings.CheckinRewardMax, 0.0001)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

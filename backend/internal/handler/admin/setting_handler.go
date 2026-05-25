@@ -232,6 +232,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
+		CheckinEnabled:                         settings.CheckinEnabled,
+		CheckinContent:                         settings.CheckinContent,
+		CheckinRewardMin:                       settings.CheckinRewardMin,
+		CheckinRewardMax:                       settings.CheckinRewardMax,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
@@ -504,6 +508,10 @@ type UpdateSettingsRequest struct {
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
+	CheckinEnabled                            *bool                             `json:"checkin_enabled"`
+	CheckinContent                            *string                           `json:"checkin_content"`
+	CheckinRewardMin                          *float64                          `json:"checkin_reward_min"`
+	CheckinRewardMax                          *float64                          `json:"checkin_reward_max"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
@@ -703,6 +711,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if affiliateRebatePerInviteeCap < 0 {
 		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
 	}
+	checkinEnabled := boolValueOrDefault(req.CheckinEnabled, previousSettings.CheckinEnabled)
+	checkinContent := previousSettings.CheckinContent
+	if req.CheckinContent != nil {
+		checkinContent = strings.TrimSpace(*req.CheckinContent)
+	}
+	checkinRewardMin := float64ValueOrDefault(req.CheckinRewardMin, previousSettings.CheckinRewardMin)
+	checkinRewardMax := float64ValueOrDefault(req.CheckinRewardMax, previousSettings.CheckinRewardMax)
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
 		req.TableDefaultPageSize = previousSettings.TableDefaultPageSize
@@ -1554,6 +1569,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
+		CheckinEnabled:                         checkinEnabled,
+		CheckinContent:                         checkinContent,
+		CheckinRewardMin:                       checkinRewardMin,
+		CheckinRewardMax:                       checkinRewardMax,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    req.EnableModelFallback,
@@ -1976,6 +1995,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
+		CheckinEnabled:                         updatedSettings.CheckinEnabled,
+		CheckinContent:                         updatedSettings.CheckinContent,
+		CheckinRewardMin:                       updatedSettings.CheckinRewardMin,
+		CheckinRewardMax:                       updatedSettings.CheckinRewardMax,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
@@ -2374,6 +2397,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
 		changed = append(changed, "affiliate_rebate_per_invitee_cap")
+	}
+	if before.CheckinEnabled != after.CheckinEnabled {
+		changed = append(changed, "checkin_enabled")
+	}
+	if before.CheckinContent != after.CheckinContent {
+		changed = append(changed, "checkin_content")
+	}
+	if before.CheckinRewardMin != after.CheckinRewardMin {
+		changed = append(changed, "checkin_reward_min")
+	}
+	if before.CheckinRewardMax != after.CheckinRewardMax {
+		changed = append(changed, "checkin_reward_max")
 	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")

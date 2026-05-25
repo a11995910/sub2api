@@ -5131,6 +5131,81 @@
           </div>
         </div>
 
+        <!-- Check-in feature card -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.checkin.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.checkin.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.checkin.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.checkin.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.checkin_enabled" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div class="md:col-span-2">
+                <label class="input-label">
+                  {{ t('admin.settings.features.checkin.content') }}
+                </label>
+                <input
+                  v-model.trim="form.checkin_content"
+                  type="text"
+                  maxlength="120"
+                  class="input"
+                  :placeholder="t('admin.settings.features.checkin.contentPlaceholder')"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.checkin.contentHint') }}
+                </p>
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.checkin.rewardMin') }}
+                </label>
+                <input
+                  v-model.number="form.checkin_reward_min"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  placeholder="0"
+                />
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.checkin.rewardMax') }}
+                </label>
+                <input
+                  v-model.number="form.checkin_reward_max"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <p class="text-xs text-gray-400">
+              {{ t('admin.settings.features.checkin.rewardHint') }}
+            </p>
+          </div>
+        </div>
+
         <!-- Affiliate (邀请返利) feature card -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -6856,6 +6931,10 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
+  checkin_enabled: false,
+  checkin_content: "每日签到",
+  checkin_reward_min: 0,
+  checkin_reward_max: 0,
   default_concurrency: 1,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
@@ -7954,6 +8033,16 @@ async function saveSettings() {
       );
       return;
     }
+    const checkinRewardMin = Math.max(0, Number(form.checkin_reward_min) || 0);
+    const checkinRewardMax = Math.max(0, Number(form.checkin_reward_max) || 0);
+    if (checkinRewardMax < checkinRewardMin) {
+      appStore.showError(t("admin.settings.features.checkin.rewardRangeError"));
+      return;
+    }
+    if (form.checkin_enabled && checkinRewardMax <= 0) {
+      appStore.showError(t("admin.settings.features.checkin.rewardRequiredError"));
+      return;
+    }
     // Validate URL fields — novalidate disables browser-native checks, so we validate here
     const isValidHttpUrl = (url: string): boolean => {
       if (!url) return true;
@@ -7998,6 +8087,10 @@ async function saveSettings() {
       affiliate_rebate_freeze_hours: Math.max(0, Math.min(720, Number(form.affiliate_rebate_freeze_hours) || 0)),
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
+      checkin_enabled: form.checkin_enabled,
+      checkin_content: form.checkin_content.trim(),
+      checkin_reward_min: checkinRewardMin,
+      checkin_reward_max: checkinRewardMax,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
