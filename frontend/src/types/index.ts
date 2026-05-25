@@ -235,8 +235,9 @@ export interface PublicSettings {
   affiliate_enabled: boolean
   checkin_enabled: boolean
   checkin_content: string
-  checkin_reward_min: number
-  checkin_reward_max: number
+  checkin_daily_reward: number
+  checkin_extra_reward_4: number
+  checkin_extra_reward_16: number
 }
 
 export interface AuthResponse {

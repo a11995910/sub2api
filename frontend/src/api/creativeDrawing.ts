@@ -1,3 +1,5 @@
+import { apiClient } from './client'
+
 export type CreativeImageModel = 'auto' | 'gpt-image-2' | 'gpt-image-1'
 export type CreativeOutputFormat = 'png' | 'jpeg' | 'webp'
 
@@ -15,7 +17,7 @@ export const CREATIVE_OUTPUT_FORMAT_OPTIONS: Array<{ value: CreativeOutputFormat
 
 export type CreativeImageResult = {
   id: string
-  url: string
+  url?: string
   source_url?: string
   b64_json?: string
   revised_prompt?: string
@@ -34,6 +36,52 @@ export type CreativeImageRequest = {
   imageUrls?: string[]
   files?: File[]
   signal?: AbortSignal
+}
+
+export type CreativeTaskStatus = 'queued' | 'running' | 'success' | 'error'
+
+export type CreativeTaskReference = {
+  id: string
+  name: string
+  type: string
+  data_url: string
+  remote_url?: string
+  source: string
+}
+
+export type CreativeDrawingTask = {
+  id: string
+  user_id: number
+  api_key_id: number
+  conversation_id: string
+  turn_id: string
+  mode: 'generate' | 'edit'
+  model: CreativeImageModel
+  prompt: string
+  size?: string
+  count: number
+  output_format: CreativeOutputFormat | string
+  reference_images: CreativeTaskReference[]
+  status: CreativeTaskStatus
+  error?: string
+  images: CreativeImageResult[]
+  created_at: string
+  updated_at: string
+  started_at?: string
+  completed_at?: string
+}
+
+export type CreateCreativeDrawingTaskRequest = {
+  api_key_id: number
+  conversation_id: string
+  turn_id: string
+  mode: 'generate' | 'edit'
+  model: CreativeImageModel
+  prompt: string
+  size?: string
+  count: number
+  output_format: CreativeOutputFormat
+  reference_images: CreativeTaskReference[]
 }
 
 function resolveGatewayImageModel(model: CreativeImageModel) {
@@ -262,4 +310,27 @@ export async function createCreativeImageEdit(request: CreativeImageRequest) {
   })
 
   return parseGatewayResponse(response)
+}
+
+export async function createCreativeDrawingTask(request: CreateCreativeDrawingTaskRequest) {
+  const { data } = await apiClient.post<CreativeDrawingTask>('/creative-drawing/tasks', request)
+  return data
+}
+
+export async function getCreativeDrawingTask(id: string) {
+  const { data } = await apiClient.get<CreativeDrawingTask>(`/creative-drawing/tasks/${id}`)
+  return data
+}
+
+export async function listCreativeDrawingTasks(limit = 50) {
+  const { data } = await apiClient.get<CreativeDrawingTask[]>('/creative-drawing/tasks', {
+    params: { limit }
+  })
+  return data
+}
+
+export const creativeDrawingAPI = {
+  createTask: createCreativeDrawingTask,
+  getTask: getCreativeDrawingTask,
+  listTasks: listCreativeDrawingTasks
 }

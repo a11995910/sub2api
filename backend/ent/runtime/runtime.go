@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/checkinrecord"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -689,6 +690,37 @@ func init() {
 	channelmonitorrequesttemplate.DefaultBodyOverrideMode = channelmonitorrequesttemplateDescBodyOverrideMode.Default.(string)
 	// channelmonitorrequesttemplate.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitorrequesttemplate.BodyOverrideModeValidator = channelmonitorrequesttemplateDescBodyOverrideMode.Validators[0].(func(string) error)
+	checkinrecordMixin := schema.CheckinRecord{}.Mixin()
+	checkinrecordMixinFields0 := checkinrecordMixin[0].Fields()
+	_ = checkinrecordMixinFields0
+	checkinrecordFields := schema.CheckinRecord{}.Fields()
+	_ = checkinrecordFields
+	// checkinrecordDescCreatedAt is the schema descriptor for created_at field.
+	checkinrecordDescCreatedAt := checkinrecordMixinFields0[0].Descriptor()
+	// checkinrecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	checkinrecord.DefaultCreatedAt = checkinrecordDescCreatedAt.Default.(func() time.Time)
+	// checkinrecordDescUpdatedAt is the schema descriptor for updated_at field.
+	checkinrecordDescUpdatedAt := checkinrecordMixinFields0[1].Descriptor()
+	// checkinrecord.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	checkinrecord.DefaultUpdatedAt = checkinrecordDescUpdatedAt.Default.(func() time.Time)
+	// checkinrecord.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	checkinrecord.UpdateDefaultUpdatedAt = checkinrecordDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// checkinrecordDescDailyReward is the schema descriptor for daily_reward field.
+	checkinrecordDescDailyReward := checkinrecordFields[2].Descriptor()
+	// checkinrecord.DefaultDailyReward holds the default value on creation for the daily_reward field.
+	checkinrecord.DefaultDailyReward = checkinrecordDescDailyReward.Default.(float64)
+	// checkinrecordDescExtraReward is the schema descriptor for extra_reward field.
+	checkinrecordDescExtraReward := checkinrecordFields[3].Descriptor()
+	// checkinrecord.DefaultExtraReward holds the default value on creation for the extra_reward field.
+	checkinrecord.DefaultExtraReward = checkinrecordDescExtraReward.Default.(float64)
+	// checkinrecordDescMonthCount is the schema descriptor for month_count field.
+	checkinrecordDescMonthCount := checkinrecordFields[4].Descriptor()
+	// checkinrecord.DefaultMonthCount holds the default value on creation for the month_count field.
+	checkinrecord.DefaultMonthCount = checkinrecordDescMonthCount.Default.(int)
+	// checkinrecordDescCheckedInAt is the schema descriptor for checked_in_at field.
+	checkinrecordDescCheckedInAt := checkinrecordFields[6].Descriptor()
+	// checkinrecord.DefaultCheckedInAt holds the default value on creation for the checked_in_at field.
+	checkinrecord.DefaultCheckedInAt = checkinrecordDescCheckedInAt.Default.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

@@ -97,6 +97,24 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
+		// 每日签到
+		checkin := authenticated.Group("/checkin")
+		{
+			checkin.GET("", h.Checkin.GetOverview)
+			checkin.POST("", h.Checkin.Checkin)
+		}
+
+		// 创意绘图任务
+		creativeDrawing := authenticated.Group("/creative-drawing")
+		{
+			tasks := creativeDrawing.Group("/tasks")
+			{
+				tasks.GET("", h.CreativeDrawing.ListTasks)
+				tasks.POST("", h.CreativeDrawing.CreateTask)
+				tasks.GET("/:id", h.CreativeDrawing.GetTask)
+			}
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

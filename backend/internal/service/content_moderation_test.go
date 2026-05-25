@@ -179,6 +179,10 @@ func (r *contentModerationTestUserRepo) UpdateBalance(ctx context.Context, id in
 	panic("unexpected UpdateBalance call")
 }
 
+func (r *contentModerationTestUserRepo) AddBalance(ctx context.Context, id int64, amount float64) error {
+	panic("unexpected AddBalance call")
+}
+
 func (r *contentModerationTestUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	panic("unexpected DeductBalance call")
 }

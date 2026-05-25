@@ -596,6 +596,40 @@ var (
 			},
 		},
 	}
+	// CheckinRecordsColumns holds the columns for the "checkin_records" table.
+	CheckinRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "checkin_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "daily_reward", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "extra_reward", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "month_count", Type: field.TypeInt, Default: 0},
+		{Name: "extra_milestones", Type: field.TypeJSON, Nullable: true},
+		{Name: "checked_in_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// CheckinRecordsTable holds the schema information for the "checkin_records" table.
+	CheckinRecordsTable = &schema.Table{
+		Name:       "checkin_records",
+		Columns:    CheckinRecordsColumns,
+		PrimaryKey: []*schema.Column{CheckinRecordsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "checkin_records_users_checkin_records",
+				Columns:    []*schema.Column{CheckinRecordsColumns[9]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "checkinrecord_user_id_checkin_date",
+				Unique:  true,
+				Columns: []*schema.Column{CheckinRecordsColumns[9], CheckinRecordsColumns[3]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1714,6 +1748,7 @@ var (
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
+		CheckinRecordsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1785,6 +1820,10 @@ func init() {
 	}
 	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_request_templates",
+	}
+	CheckinRecordsTable.ForeignKeys[0].RefTable = UsersTable
+	CheckinRecordsTable.Annotation = &entsql.Annotation{
+		Table: "checkin_records",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

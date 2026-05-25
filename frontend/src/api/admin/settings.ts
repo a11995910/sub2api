@@ -339,8 +339,9 @@ export interface SystemSettings {
   affiliate_rebate_per_invitee_cap: number;
   checkin_enabled: boolean;
   checkin_content: string;
-  checkin_reward_min: number;
-  checkin_reward_max: number;
+  checkin_daily_reward: number;
+  checkin_extra_reward_4: number;
+  checkin_extra_reward_16: number;
   default_concurrency: number;
   default_user_rpm_limit: number;
   default_subscriptions: DefaultSubscriptionSetting[];
@@ -589,8 +590,9 @@ export interface UpdateSettingsRequest {
   affiliate_rebate_per_invitee_cap?: number;
   checkin_enabled?: boolean;
   checkin_content?: string;
-  checkin_reward_min?: number;
-  checkin_reward_max?: number;
+  checkin_daily_reward?: number;
+  checkin_extra_reward_4?: number;
+  checkin_extra_reward_16?: number;
   default_concurrency?: number;
   default_user_rpm_limit?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];

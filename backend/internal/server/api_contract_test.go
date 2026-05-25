@@ -873,8 +873,9 @@ func TestAPIContracts(t *testing.T) {
 					"available_channels_enabled": false,
 					"checkin_enabled": false,
 					"checkin_content": "每日签到",
-					"checkin_reward_min": 0,
-					"checkin_reward_max": 0,
+					"checkin_daily_reward": 0,
+					"checkin_extra_reward_4": 0,
+					"checkin_extra_reward_16": 0,
 					"risk_control_enabled": false,
 					"affiliate_enabled": false,
 					"wechat_connect_enabled": false,
@@ -1103,8 +1104,9 @@ func TestAPIContracts(t *testing.T) {
 					"available_channels_enabled": false,
 					"checkin_enabled": false,
 					"checkin_content": "每日签到",
-					"checkin_reward_min": 0,
-					"checkin_reward_max": 0,
+					"checkin_daily_reward": 0,
+					"checkin_extra_reward_4": 0,
+					"checkin_extra_reward_16": 0,
 					"risk_control_enabled": false,
 					"affiliate_enabled": false,
 					"wechat_connect_enabled": true,
@@ -1421,6 +1423,10 @@ func (r *stubUserRepo) ListWithFilters(ctx context.Context, params pagination.Pa
 }
 
 func (r *stubUserRepo) UpdateBalance(ctx context.Context, id int64, amount float64) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubUserRepo) AddBalance(ctx context.Context, id int64, amount float64) error {
 	return errors.New("not implemented")
 }
 

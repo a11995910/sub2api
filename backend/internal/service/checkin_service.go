@@ -1,0 +1,272 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	apptimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+)
+
+var (
+	ErrCheckinDisabled       = infraerrors.BadRequest("CHECKIN_DISABLED", "daily check-in is disabled")
+	ErrCheckinAlreadyChecked = infraerrors.Conflict("CHECKIN_ALREADY_CHECKED", "already checked in today")
+)
+
+type CheckinRepository interface {
+	Create(ctx context.Context, record *CheckinRecord) error
+	GetByUserAndDate(ctx context.Context, userID int64, date time.Time) (*CheckinRecord, error)
+	ListByUserAndDateRange(ctx context.Context, userID int64, start, end time.Time) ([]CheckinRecord, error)
+	CountByUserAndDateRange(ctx context.Context, userID int64, start, end time.Time) (int, error)
+}
+
+type checkinBalanceCreditRepository interface {
+	AddBalance(ctx context.Context, id int64, amount float64) error
+}
+
+type CheckinService struct {
+	repo                 CheckinRepository
+	userRepo             UserRepository
+	settingService       *SettingService
+	entClient            *dbent.Client
+	authCacheInvalidator APIKeyAuthCacheInvalidator
+	billingCacheService  *BillingCacheService
+	now                  func() time.Time
+}
+
+func NewCheckinService(
+	repo CheckinRepository,
+	userRepo UserRepository,
+	settingService *SettingService,
+	entClient *dbent.Client,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	billingCacheService *BillingCacheService,
+) *CheckinService {
+	return &CheckinService{
+		repo:                 repo,
+		userRepo:             userRepo,
+		settingService:       settingService,
+		entClient:            entClient,
+		authCacheInvalidator: authCacheInvalidator,
+		billingCacheService:  billingCacheService,
+		now:                  time.Now,
+	}
+}
+
+func (s *CheckinService) GetOverview(ctx context.Context, userID int64) (*CheckinOverview, error) {
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := s.buildMonthSummary(ctx, userID, s.today())
+	if err != nil {
+		return nil, err
+	}
+	return &CheckinOverview{Settings: settings, Summary: summary}, nil
+}
+
+func (s *CheckinService) Checkin(ctx context.Context, userID int64) (*CheckinResult, error) {
+	settings, err := s.loadSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !settings.Enabled || settings.DailyReward <= 0 {
+		return nil, ErrCheckinDisabled
+	}
+	today := s.today()
+	monthStart, monthEnd := monthBounds(today)
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin checkin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	existing, err := s.repo.GetByUserAndDate(txCtx, userID, today)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, ErrCheckinAlreadyChecked
+	}
+
+	countBefore, err := s.repo.CountByUserAndDateRange(txCtx, userID, monthStart, monthEnd)
+	if err != nil {
+		return nil, fmt.Errorf("count monthly checkins: %w", err)
+	}
+	monthCount := countBefore + 1
+	extraReward, milestones := checkinExtraReward(settings, monthCount)
+	record := &CheckinRecord{
+		UserID:          userID,
+		CheckinDate:     today,
+		DailyReward:     settings.DailyReward,
+		ExtraReward:     extraReward,
+		MonthCount:      monthCount,
+		ExtraMilestones: milestones,
+		CheckedInAt:     s.now().UTC(),
+	}
+	if err := s.repo.Create(txCtx, record); err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrCheckinAlreadyChecked
+		}
+		return nil, fmt.Errorf("create checkin record: %w", err)
+	}
+	totalReward := settings.DailyReward + extraReward
+	if err := s.addRewardBalance(txCtx, userID, totalReward); err != nil {
+		return nil, fmt.Errorf("update user balance: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrCheckinAlreadyChecked
+		}
+		return nil, fmt.Errorf("commit checkin tx: %w", err)
+	}
+
+	s.invalidateBalanceCaches(ctx, userID)
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get updated user: %w", err)
+	}
+	summary, err := s.buildMonthSummary(ctx, userID, today)
+	if err != nil {
+		return nil, err
+	}
+	return &CheckinResult{
+		Record:     *record,
+		Summary:    summary,
+		Reward:     totalReward,
+		NewBalance: user.Balance,
+	}, nil
+}
+
+func (s *CheckinService) loadSettings(ctx context.Context) (CheckinSettings, error) {
+	if s.settingService == nil {
+		return CheckinSettings{}, ErrCheckinDisabled
+	}
+	settings, err := s.settingService.GetPublicSettings(ctx)
+	if err != nil {
+		return CheckinSettings{}, fmt.Errorf("get checkin settings: %w", err)
+	}
+	return CheckinSettings{
+		Enabled:       settings.CheckinEnabled,
+		Content:       settings.CheckinContent,
+		DailyReward:   settings.CheckinDailyReward,
+		ExtraReward4:  settings.CheckinExtraReward4,
+		ExtraReward16: settings.CheckinExtraReward16,
+	}, nil
+}
+
+func (s *CheckinService) buildMonthSummary(ctx context.Context, userID int64, today time.Time) (CheckinMonthSummary, error) {
+	monthStart, monthEnd := monthBounds(today)
+	records, err := s.repo.ListByUserAndDateRange(ctx, userID, monthStart, monthEnd)
+	if err != nil {
+		return CheckinMonthSummary{}, fmt.Errorf("list monthly checkins: %w", err)
+	}
+	todayChecked := false
+	for _, record := range records {
+		if sameDate(record.CheckinDate, today) {
+			todayChecked = true
+			break
+		}
+	}
+	monthCount := len(records)
+	return CheckinMonthSummary{
+		Year:               monthStart.Year(),
+		Month:              int(monthStart.Month()),
+		Today:              formatDate(today),
+		TodayChecked:       todayChecked,
+		MonthCount:         monthCount,
+		DaysInMonth:        int(monthEnd.Sub(monthStart).Hours() / 24),
+		Records:            records,
+		NextExtraMilestone: nextCheckinExtraMilestone(monthCount),
+	}, nil
+}
+
+func (s *CheckinService) today() time.Time {
+	now := time.Now
+	if s != nil && s.now != nil {
+		now = s.now
+	}
+	return truncateDate(now())
+}
+
+func (s *CheckinService) invalidateBalanceCaches(ctx context.Context, userID int64) {
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	if s.billingCacheService == nil {
+		return
+	}
+	go func() {
+		cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.billingCacheService.InvalidateUserBalance(cacheCtx, userID)
+	}()
+}
+
+func (s *CheckinService) addRewardBalance(ctx context.Context, userID int64, amount float64) error {
+	if amount <= 0 {
+		return nil
+	}
+	if repo, ok := s.userRepo.(checkinBalanceCreditRepository); ok {
+		return repo.AddBalance(ctx, userID, amount)
+	}
+	// 兼容测试桩或旧实现；真实仓储实现了 AddBalance，不会把签到奖励计入累计充值。
+	return s.userRepo.UpdateBalance(ctx, userID, amount)
+}
+
+func checkinExtraReward(settings CheckinSettings, monthCount int) (float64, []int) {
+	switch monthCount {
+	case CheckinExtraMilestoneFirstDefault:
+		if settings.ExtraReward4 > 0 {
+			return settings.ExtraReward4, []int{CheckinExtraMilestoneFirstDefault}
+		}
+	case CheckinExtraMilestoneSecondDefault:
+		if settings.ExtraReward16 > 0 {
+			return settings.ExtraReward16, []int{CheckinExtraMilestoneSecondDefault}
+		}
+	}
+	return 0, []int{}
+}
+
+func nextCheckinExtraMilestone(monthCount int) *int {
+	if monthCount < CheckinExtraMilestoneFirstDefault {
+		v := CheckinExtraMilestoneFirstDefault
+		return &v
+	}
+	if monthCount < CheckinExtraMilestoneSecondDefault {
+		v := CheckinExtraMilestoneSecondDefault
+		return &v
+	}
+	return nil
+}
+
+func monthBounds(day time.Time) (time.Time, time.Time) {
+	day = truncateDate(day)
+	start := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return start, start.AddDate(0, 1, 0)
+}
+
+func truncateDate(t time.Time) time.Time {
+	loc := apptimezone.Location()
+	local := t.In(loc)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func sameDate(a, b time.Time) bool {
+	return truncateDate(a).Equal(truncateDate(b))
+}
+
+func formatDate(t time.Time) string {
+	return truncateDate(t).Format("2006-01-02")
+}
+
+func isUniqueConstraintError(err error) bool {
+	var constraint *dbent.ConstraintError
+	return errors.As(err, &constraint)
+}

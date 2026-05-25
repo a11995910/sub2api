@@ -352,6 +352,7 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
+    checkin: '每日签到',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
@@ -1054,6 +1055,43 @@ export default {
     }
   },
 
+  // Daily Check-in
+  checkin: {
+    title: '每日签到',
+    description: '每天领取灵石，按本月签到次数获得额外奖励。',
+    monthProgress: '本月已签到 {count} 天',
+    checkedToday: '今日已签',
+    notCheckedToday: '今日未签',
+    checkNow: '立即签到',
+    alreadyChecked: '今日已签到',
+    disabled: '签到未开启',
+    dailyReward: '每日奖励',
+    day4Bonus: '第 4 天奖励',
+    day16Bonus: '第 16 天奖励',
+    nextBonus: '下一档额外奖励',
+    daysToBonus: '还差 {days} 天到第 {milestone} 天',
+    noMoreBonus: '本月额外奖励已全部领取',
+    currentBalance: '当前余额：{balance}',
+    monthCalendar: '{year} 年 {month} 月签到表',
+    rulesTitle: '签到规则',
+    ruleDaily: '每日只能签到一次，签到成功后发放 {reward}。',
+    ruleBonus4: '本月第 4 次签到时，额外发放 {reward}。',
+    ruleBonus16: '本月第 16 次签到时，额外发放 {reward}。',
+    ruleMonthReset: '签到次数按服务端自然月统计，每月 1 日重新计算。',
+    loadFailed: '加载签到信息失败',
+    failed: '签到失败',
+    success: '签到成功，已获得 {reward}',
+    weekdays: {
+      sun: '日',
+      mon: '一',
+      tue: '二',
+      wed: '三',
+      thu: '四',
+      fri: '五',
+      sat: '六'
+    }
+  },
+
   // Model Market
   modelMarket: {
     title: '模型广场',
@@ -1063,6 +1101,10 @@ export default {
     empty: '暂无可展示的模型',
     noPricing: '未配置定价',
     intervalCount: '阶梯 {count} 档',
+    subscriptionGroup: '订阅分组',
+    groupSummary: '{count} 个模型，当前倍率 x{rate}',
+    noModelsInGroup: '当前分组暂无匹配模型',
+    effectiveRate: '生效倍率',
     test: '去测试',
     stats: {
       models: '可调用模型',
@@ -5531,17 +5573,17 @@ export default {
         },
         checkin: {
           title: '每日签到',
-          description: '配置用户每日签到的展示文案和奖励区间。默认关闭。',
+          description: '配置用户每日签到的展示文案、固定奖励和额外奖励。默认关闭。',
           enabled: '启用每日签到',
           enabledHint: '关闭后用户端不应展示签到入口，签到奖励不会发放。',
           content: '签到内容',
           contentPlaceholder: '每日签到',
           contentHint: '展示给用户的签到说明文案，留空时使用默认文案。',
-          rewardMin: '最小奖励',
-          rewardMax: '最大奖励',
-          rewardHint: '奖励区间为非负数；启用签到时最大奖励必须大于 0，实际发放逻辑由签到接口按该区间执行。',
-          rewardRangeError: '签到最大奖励必须大于等于最小奖励',
-          rewardRequiredError: '启用签到时最大奖励必须大于 0',
+          dailyReward: '每日固定奖励',
+          extraReward4: '第 4 天额外奖励',
+          extraReward16: '第 16 天额外奖励',
+          rewardHint: '奖励必须为非负数；启用签到时每日固定奖励必须大于 0。额外奖励在用户当月第 4 次、第 16 次签到时发放。',
+          rewardRequiredError: '启用签到时每日固定奖励必须大于 0',
         },
         affiliate: {
           title: '邀请返利',

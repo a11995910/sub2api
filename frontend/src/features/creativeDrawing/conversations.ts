@@ -26,6 +26,7 @@ export type CreativeStoredImage = {
 
 export type CreativeTurn = {
   id: string
+  taskId?: string
   prompt: string
   mode: 'generate' | 'edit'
   model: CreativeImageModel
@@ -138,6 +139,9 @@ function serializeStoredImage(image: CreativeStoredImage): CreativeStoredImage {
 
 function interruptPersistedGeneratingTurn(turn: CreativeTurn): CreativeTurn {
   if (turn.status !== 'generating') {
+    return turn
+  }
+  if (turn.taskId) {
     return turn
   }
   return {

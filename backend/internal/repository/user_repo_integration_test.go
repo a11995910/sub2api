@@ -342,6 +342,18 @@ func (s *UserRepoSuite) TestUpdateBalance() {
 	s.Require().InDelta(12.5, got.Balance, 1e-6)
 }
 
+func (s *UserRepoSuite) TestAddBalanceDoesNotIncreaseTotalRecharged() {
+	user := s.mustCreateUser(&service.User{Email: "gift-balance@test.com", Balance: 10, TotalRecharged: 20})
+
+	err := s.repo.AddBalance(s.ctx, user.ID, 2.5)
+	s.Require().NoError(err, "AddBalance")
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(12.5, got.Balance, 1e-6)
+	s.Require().InDelta(20, got.TotalRecharged, 1e-6)
+}
+
 func (s *UserRepoSuite) TestUpdateBalance_Negative() {
 	user := s.mustCreateUser(&service.User{Email: "balneg@test.com", Balance: 10})
 

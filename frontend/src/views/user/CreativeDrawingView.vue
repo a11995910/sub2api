@@ -257,7 +257,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
@@ -265,12 +265,12 @@ import keysAPI from '@/api/keys'
 import type { ApiKey } from '@/types'
 import {
   CREATIVE_OUTPUT_FORMAT_OPTIONS,
-  createCreativeImageEdit,
-  createCreativeImageGeneration,
+  createCreativeDrawingTask,
+  getCreativeDrawingTask,
+  listCreativeDrawingTasks,
+  type CreativeDrawingTask,
   type CreativeImageModel,
-  type CreativeOutputFormat,
-  type CreativeImageRequest,
-  type CreativeImageResult
+  type CreativeOutputFormat
 } from '@/api/creativeDrawing'
 import {
   CUSTOM_IMAGE_ASPECT_RATIO,
@@ -294,7 +294,6 @@ import {
   buildConversationTitle,
   buildStoredImageUrl,
   createId,
-  dataUrlToFile,
   hydrateCreativeConversationImages,
   loadActiveCreativeConversationId,
   loadCreativeConversations,
@@ -325,6 +324,7 @@ const referenceImages = ref<CreativeReferenceImage[]>([])
 const apiKeys = ref<ApiKey[]>([])
 const selectedApiKeyId = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+let taskSyncTimer: number | null = null
 
 const sizeSelection = reactive<ImageSizeSelection>({
   mode: 'auto',
@@ -378,6 +378,15 @@ onMounted(async () => {
   activeConversationId.value = loadActiveCreativeConversationId() || conversations.value[0]?.id || ''
   conversations.value = await hydrateCreativeConversationImages(conversations.value)
   await loadApiKeys()
+  await syncCreativeDrawingTasks()
+  startTaskSyncTimer()
+})
+
+onBeforeUnmount(() => {
+  if (taskSyncTimer) {
+    window.clearInterval(taskSyncTimer)
+    taskSyncTimer = null
+  }
 })
 
 async function loadApiKeys() {
@@ -628,13 +637,6 @@ function isDataUrlReference(reference: CreativeReferenceImage) {
   return /^data:image\//i.test(reference.dataUrl)
 }
 
-function buildReferenceFiles(references: CreativeReferenceImage[]) {
-  return references.map((reference, index) => {
-    const name = reference.name || `reference-${index + 1}.png`
-    return dataUrlToFile(reference.dataUrl, name, reference.type)
-  })
-}
-
 async function submit() {
   const text = prompt.value.trim()
   if (!text) {
@@ -674,43 +676,28 @@ async function submit() {
   isSubmitting.value = true
 
   try {
-    const request: CreativeImageRequest = {
-      apiKey: selectedApiKey.value.key,
+    const task = await createCreativeDrawingTask({
+      api_key_id: selectedApiKey.value.id,
+      conversation_id: conversation.id,
+      turn_id: turn.id,
+      mode: turn.mode,
       prompt: text,
       model: fixedCreativeImageModel,
       count,
       size,
-      outputFormat: outputFormat.value
-    }
-    if (references.length > 0) {
-      const inlineReferences = references.filter(isDataUrlReference)
-      if (inlineReferences.length === references.length) {
-        request.files = buildReferenceFiles(inlineReferences)
-      } else {
-        request.imageUrls = references.map((item) => item.dataUrl)
-      }
-    }
-    const images: CreativeImageResult[] = references.length > 0
-      ? await createCreativeImageEdit(request)
-      : await createCreativeImageGeneration(request)
-    const storedImages = images.map((item, index): CreativeStoredImage => ({
-      id: item.id || createId(),
-      url: item.url,
-      source_url: item.source_url,
-      b64_json: item.b64_json,
-      revised_prompt: item.revised_prompt,
-      output_format: item.output_format,
-      size: item.size || size,
-      created_at: item.created_at || Date.now() + index
-    }))
-    await persistCreativeStoredImages(storedImages)
-    const finishedTurn: CreativeTurn = {
-      ...turn,
-      status: 'success',
-      images: storedImages
-    }
-    addOrUpdateTurn(conversation, finishedTurn)
-    appStore.showSuccess('图片生成完成')
+      output_format: outputFormat.value,
+      reference_images: references.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        data_url: item.dataUrl,
+        remote_url: item.remoteUrl,
+        source: item.source
+      }))
+    })
+    await applyCreativeDrawingTask(task, { notify: false })
+    void pollCreativeDrawingTask(task.id)
+    appStore.showSuccess('创作任务已提交，完成后会自动回写')
   } catch (err) {
     const failedTurn: CreativeTurn = {
       ...turn,
@@ -722,6 +709,146 @@ async function submit() {
   } finally {
     isSubmitting.value = false
   }
+}
+
+function startTaskSyncTimer() {
+  if (taskSyncTimer) {
+    return
+  }
+  taskSyncTimer = window.setInterval(() => {
+    if (hasGeneratingTasks()) {
+      void syncCreativeDrawingTasks()
+    }
+  }, 3500)
+}
+
+function hasGeneratingTasks() {
+  return conversations.value.some((conversation) =>
+    conversation.turns.some((turn) => turn.status === 'generating' && turn.taskId)
+  )
+}
+
+async function syncCreativeDrawingTasks() {
+  try {
+    const tasks = await listCreativeDrawingTasks(80)
+    for (const task of tasks) {
+      await applyCreativeDrawingTask(task, { notify: false })
+    }
+  } catch {
+    // 同步失败不打断页面使用，下一轮轮询会继续尝试。
+  }
+}
+
+async function pollCreativeDrawingTask(taskId: string) {
+  if (!taskId) {
+    return
+  }
+  try {
+    const task = await getCreativeDrawingTask(taskId)
+    await applyCreativeDrawingTask(task, { notify: true })
+    if (task.status === 'queued' || task.status === 'running') {
+      window.setTimeout(() => void pollCreativeDrawingTask(taskId), 3500)
+    }
+  } catch {
+    window.setTimeout(() => void pollCreativeDrawingTask(taskId), 5000)
+  }
+}
+
+async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { notify: boolean }) {
+  const conversation = ensureTaskConversation(task)
+  const existingTurn = conversation.turns.find((turn) => turn.id === task.turn_id || turn.taskId === task.id)
+  const baseTurn = existingTurn || buildTurnFromTask(task)
+  const nextTurn: CreativeTurn = {
+    ...baseTurn,
+    id: task.turn_id || baseTurn.id,
+    taskId: task.id,
+    status: task.status === 'success' ? 'success' : task.status === 'error' ? 'error' : 'generating',
+    error: task.status === 'error' ? task.error || '图片生成失败' : undefined
+  }
+  if (task.status === 'success') {
+    const storedImages = task.images.map((item, index): CreativeStoredImage => ({
+      id: item.id || createId(),
+      url: item.url || '',
+      source_url: item.source_url,
+      b64_json: item.b64_json,
+      revised_prompt: item.revised_prompt,
+      output_format: item.output_format,
+      size: item.size || task.size || '',
+      created_at: item.created_at || Date.now() + index
+    }))
+    await persistCreativeStoredImages(storedImages)
+    nextTurn.images = storedImages
+  }
+  addOrUpdateTurn(conversation, nextTurn)
+  if (options.notify && task.status === 'success') {
+    appStore.showSuccess('图片生成完成')
+  }
+  if (options.notify && task.status === 'error') {
+    appStore.showError(nextTurn.error || '图片生成失败')
+  }
+}
+
+function ensureTaskConversation(task: CreativeDrawingTask) {
+  const id = task.conversation_id || `task-${task.id}`
+  const existing = conversations.value.find((item) => item.id === id)
+  if (existing) {
+    return existing
+  }
+  const createdAt = task.created_at || new Date().toISOString()
+  const conversation: CreativeConversation = {
+    id,
+    title: buildConversationTitle(task.prompt),
+    createdAt,
+    updatedAt: task.updated_at || createdAt,
+    turns: []
+  }
+  conversations.value = [conversation, ...conversations.value]
+  if (!activeConversationId.value) {
+    activeConversationId.value = conversation.id
+  }
+  return conversation
+}
+
+function buildTurnFromTask(task: CreativeDrawingTask): CreativeTurn {
+  const output = normalizeTaskOutputFormat(task.output_format)
+  const size = task.size || ''
+  return {
+    id: task.turn_id || createId(),
+    taskId: task.id,
+    prompt: task.prompt,
+    mode: task.mode,
+    model: task.model,
+    count: task.count || Math.max(task.images.length, 1),
+    size,
+    outputFormat: output,
+    sizeSelection: getImageSizeSelectionFromSize(size),
+    references: (task.reference_images || []).map((item) => ({
+      id: item.id || createId(),
+      name: item.name || 'reference.png',
+      type: item.type || 'image/png',
+      dataUrl: item.data_url,
+      remoteUrl: item.remote_url,
+      source: normalizeReferenceSource(item.source)
+    })),
+    images: [],
+    status: task.status === 'success' ? 'success' : task.status === 'error' ? 'error' : 'generating',
+    error: task.error,
+    createdAt: task.created_at || new Date().toISOString()
+  }
+}
+
+function normalizeTaskOutputFormat(value?: string): CreativeOutputFormat {
+  if (value === 'jpeg' || value === 'webp' || value === 'png') {
+    return value
+  }
+  return 'png'
+}
+
+function normalizeReferenceSource(value?: string): CreativeReferenceImage['source'] {
+  if (value === 'upload' || value === 'market' || value === 'preset' || value === 'result') {
+    return value
+  }
+  return 'upload'
 }
 
 function useResultAsReference(image: CreativeStoredImage, index: number) {

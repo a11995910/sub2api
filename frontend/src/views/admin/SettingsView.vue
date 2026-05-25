@@ -5154,7 +5154,7 @@
               <Toggle v-model="form.checkin_enabled" />
             </div>
 
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div class="md:col-span-2">
                 <label class="input-label">
                   {{ t('admin.settings.features.checkin.content') }}
@@ -5173,10 +5173,10 @@
 
               <div>
                 <label class="input-label">
-                  {{ t('admin.settings.features.checkin.rewardMin') }}
+                  {{ t('admin.settings.features.checkin.dailyReward') }}
                 </label>
                 <input
-                  v-model.number="form.checkin_reward_min"
+                  v-model.number="form.checkin_daily_reward"
                   type="number"
                   step="0.01"
                   min="0"
@@ -5187,10 +5187,24 @@
 
               <div>
                 <label class="input-label">
-                  {{ t('admin.settings.features.checkin.rewardMax') }}
+                  {{ t('admin.settings.features.checkin.extraReward4') }}
                 </label>
                 <input
-                  v-model.number="form.checkin_reward_max"
+                  v-model.number="form.checkin_extra_reward_4"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  placeholder="0"
+                />
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.checkin.extraReward16') }}
+                </label>
+                <input
+                  v-model.number="form.checkin_extra_reward_16"
                   type="number"
                   step="0.01"
                   min="0"
@@ -6933,8 +6947,9 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_per_invitee_cap: 0,
   checkin_enabled: false,
   checkin_content: "每日签到",
-  checkin_reward_min: 0,
-  checkin_reward_max: 0,
+  checkin_daily_reward: 0,
+  checkin_extra_reward_4: 0,
+  checkin_extra_reward_16: 0,
   default_concurrency: 1,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
@@ -8033,13 +8048,10 @@ async function saveSettings() {
       );
       return;
     }
-    const checkinRewardMin = Math.max(0, Number(form.checkin_reward_min) || 0);
-    const checkinRewardMax = Math.max(0, Number(form.checkin_reward_max) || 0);
-    if (checkinRewardMax < checkinRewardMin) {
-      appStore.showError(t("admin.settings.features.checkin.rewardRangeError"));
-      return;
-    }
-    if (form.checkin_enabled && checkinRewardMax <= 0) {
+    const checkinDailyReward = Math.max(0, Number(form.checkin_daily_reward) || 0);
+    const checkinExtraReward4 = Math.max(0, Number(form.checkin_extra_reward_4) || 0);
+    const checkinExtraReward16 = Math.max(0, Number(form.checkin_extra_reward_16) || 0);
+    if (form.checkin_enabled && checkinDailyReward <= 0) {
       appStore.showError(t("admin.settings.features.checkin.rewardRequiredError"));
       return;
     }
@@ -8089,8 +8101,9 @@ async function saveSettings() {
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       checkin_enabled: form.checkin_enabled,
       checkin_content: form.checkin_content.trim(),
-      checkin_reward_min: checkinRewardMin,
-      checkin_reward_max: checkinRewardMax,
+      checkin_daily_reward: checkinDailyReward,
+      checkin_extra_reward_4: checkinExtraReward4,
+      checkin_extra_reward_16: checkinExtraReward16,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,

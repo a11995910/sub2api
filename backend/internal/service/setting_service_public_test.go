@@ -81,9 +81,29 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 func TestSettingService_GetPublicSettings_ExposesCheckinSettings(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
+			SettingKeyCheckinEnabled:       "true",
+			SettingKeyCheckinContent:       "  连续签到领额度  ",
+			SettingKeyCheckinDailyReward:   "2",
+			SettingKeyCheckinExtraReward4:  "4",
+			SettingKeyCheckinExtraReward16: "16",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.CheckinEnabled)
+	require.Equal(t, "连续签到领额度", settings.CheckinContent)
+	require.InDelta(t, 2, settings.CheckinDailyReward, 0.0001)
+	require.InDelta(t, 4, settings.CheckinExtraReward4, 0.0001)
+	require.InDelta(t, 16, settings.CheckinExtraReward16, 0.0001)
+}
+
+func TestSettingService_GetPublicSettings_FallsBackToLegacyCheckinRewardMax(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
 			SettingKeyCheckinEnabled:   "true",
 			SettingKeyCheckinContent:   "  连续签到领额度  ",
-			SettingKeyCheckinRewardMin: "1.5",
 			SettingKeyCheckinRewardMax: "3",
 		},
 	}
@@ -93,8 +113,9 @@ func TestSettingService_GetPublicSettings_ExposesCheckinSettings(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.CheckinEnabled)
 	require.Equal(t, "连续签到领额度", settings.CheckinContent)
-	require.InDelta(t, 1.5, settings.CheckinRewardMin, 0.0001)
-	require.InDelta(t, 3, settings.CheckinRewardMax, 0.0001)
+	require.InDelta(t, 3, settings.CheckinDailyReward, 0.0001)
+	require.InDelta(t, 0, settings.CheckinExtraReward4, 0.0001)
+	require.InDelta(t, 0, settings.CheckinExtraReward16, 0.0001)
 }
 
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {

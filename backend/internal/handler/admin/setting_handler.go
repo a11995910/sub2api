@@ -232,10 +232,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
-		CheckinEnabled:                         settings.CheckinEnabled,
-		CheckinContent:                         settings.CheckinContent,
-		CheckinRewardMin:                       settings.CheckinRewardMin,
-		CheckinRewardMax:                       settings.CheckinRewardMax,
+			CheckinEnabled:                         settings.CheckinEnabled,
+			CheckinContent:                         settings.CheckinContent,
+			CheckinDailyReward:                     settings.CheckinDailyReward,
+			CheckinExtraReward4:                    settings.CheckinExtraReward4,
+			CheckinExtraReward16:                   settings.CheckinExtraReward16,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
@@ -510,8 +511,9 @@ type UpdateSettingsRequest struct {
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	CheckinEnabled                            *bool                             `json:"checkin_enabled"`
 	CheckinContent                            *string                           `json:"checkin_content"`
-	CheckinRewardMin                          *float64                          `json:"checkin_reward_min"`
-	CheckinRewardMax                          *float64                          `json:"checkin_reward_max"`
+	CheckinDailyReward                        *float64                          `json:"checkin_daily_reward"`
+	CheckinExtraReward4                       *float64                          `json:"checkin_extra_reward_4"`
+	CheckinExtraReward16                      *float64                          `json:"checkin_extra_reward_16"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
@@ -716,8 +718,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.CheckinContent != nil {
 		checkinContent = strings.TrimSpace(*req.CheckinContent)
 	}
-	checkinRewardMin := float64ValueOrDefault(req.CheckinRewardMin, previousSettings.CheckinRewardMin)
-	checkinRewardMax := float64ValueOrDefault(req.CheckinRewardMax, previousSettings.CheckinRewardMax)
+	checkinDailyReward := float64ValueOrDefault(req.CheckinDailyReward, previousSettings.CheckinDailyReward)
+	checkinExtraReward4 := float64ValueOrDefault(req.CheckinExtraReward4, previousSettings.CheckinExtraReward4)
+	checkinExtraReward16 := float64ValueOrDefault(req.CheckinExtraReward16, previousSettings.CheckinExtraReward16)
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
 		req.TableDefaultPageSize = previousSettings.TableDefaultPageSize
@@ -1569,10 +1572,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
-		CheckinEnabled:                         checkinEnabled,
-		CheckinContent:                         checkinContent,
-		CheckinRewardMin:                       checkinRewardMin,
-		CheckinRewardMax:                       checkinRewardMax,
+			CheckinEnabled:                         checkinEnabled,
+			CheckinContent:                         checkinContent,
+			CheckinDailyReward:                     checkinDailyReward,
+			CheckinExtraReward4:                    checkinExtraReward4,
+			CheckinExtraReward16:                   checkinExtraReward16,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    req.EnableModelFallback,
@@ -1995,10 +1999,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
-		CheckinEnabled:                         updatedSettings.CheckinEnabled,
-		CheckinContent:                         updatedSettings.CheckinContent,
-		CheckinRewardMin:                       updatedSettings.CheckinRewardMin,
-		CheckinRewardMax:                       updatedSettings.CheckinRewardMax,
+			CheckinEnabled:                         updatedSettings.CheckinEnabled,
+			CheckinContent:                         updatedSettings.CheckinContent,
+			CheckinDailyReward:                     updatedSettings.CheckinDailyReward,
+			CheckinExtraReward4:                    updatedSettings.CheckinExtraReward4,
+			CheckinExtraReward16:                   updatedSettings.CheckinExtraReward16,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
@@ -2404,11 +2409,14 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.CheckinContent != after.CheckinContent {
 		changed = append(changed, "checkin_content")
 	}
-	if before.CheckinRewardMin != after.CheckinRewardMin {
-		changed = append(changed, "checkin_reward_min")
+	if before.CheckinDailyReward != after.CheckinDailyReward {
+		changed = append(changed, "checkin_daily_reward")
 	}
-	if before.CheckinRewardMax != after.CheckinRewardMax {
-		changed = append(changed, "checkin_reward_max")
+	if before.CheckinExtraReward4 != after.CheckinExtraReward4 {
+		changed = append(changed, "checkin_extra_reward_4")
+	}
+	if before.CheckinExtraReward16 != after.CheckinExtraReward16 {
+		changed = append(changed, "checkin_extra_reward_16")
 	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")

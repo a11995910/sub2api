@@ -152,8 +152,9 @@ type SystemSettings struct {
 	AffiliateRebatePerInviteeCap float64
 	CheckinEnabled               bool
 	CheckinContent               string
-	CheckinRewardMin             float64
-	CheckinRewardMax             float64
+	CheckinDailyReward           float64
+	CheckinExtraReward4          float64
+	CheckinExtraReward16         float64
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 
@@ -292,10 +293,11 @@ type PublicSettings struct {
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	// 每日签到配置
-	CheckinEnabled   bool    `json:"checkin_enabled"`
-	CheckinContent   string  `json:"checkin_content"`
-	CheckinRewardMin float64 `json:"checkin_reward_min"`
-	CheckinRewardMax float64 `json:"checkin_reward_max"`
+	CheckinEnabled       bool    `json:"checkin_enabled"`
+	CheckinContent       string  `json:"checkin_content"`
+	CheckinDailyReward   float64 `json:"checkin_daily_reward"`
+	CheckinExtraReward4  float64 `json:"checkin_extra_reward_4"`
+	CheckinExtraReward16 float64 `json:"checkin_extra_reward_16"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`

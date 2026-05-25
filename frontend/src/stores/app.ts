@@ -361,8 +361,9 @@ export const useAppStore = defineStore('app', () => {
         affiliate_enabled: false,
         checkin_enabled: false,
         checkin_content: '每日签到',
-        checkin_reward_min: 0,
-        checkin_reward_max: 0,
+        checkin_daily_reward: 0,
+        checkin_extra_reward_4: 0,
+        checkin_extra_reward_16: 0,
       }
     }
 

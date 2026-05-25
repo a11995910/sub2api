@@ -30,6 +30,8 @@ const (
 	AffiliateRebateDurationDaysMax      = 3650  // ~10 年
 	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上限
 	CheckinContentDefault               = "每日签到"
+	CheckinExtraMilestoneFirstDefault   = 4
+	CheckinExtraMilestoneSecondDefault  = 16
 )
 
 // Platform constants
@@ -113,8 +115,11 @@ const (
 	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"    // 单人返利上限（0=无上限）
 	SettingKeyCheckinEnabled                   = "checkin_enabled"                     // 每日签到功能总开关
 	SettingKeyCheckinContent                   = "checkin_content"                     // 签到展示文案
-	SettingKeyCheckinRewardMin                 = "checkin_reward_min"                  // 单次签到最小奖励
-	SettingKeyCheckinRewardMax                 = "checkin_reward_max"                  // 单次签到最大奖励
+	SettingKeyCheckinDailyReward               = "checkin_daily_reward"                // 每日固定签到奖励
+	SettingKeyCheckinExtraReward4              = "checkin_extra_reward_4"              // 当月第 4 次签到额外奖励
+	SettingKeyCheckinExtraReward16             = "checkin_extra_reward_16"             // 当月第 16 次签到额外奖励
+	SettingKeyCheckinRewardMin                 = "checkin_reward_min"                  // 旧版单次签到最小奖励（兼容读取）
+	SettingKeyCheckinRewardMax                 = "checkin_reward_max"                  // 旧版单次签到最大奖励（兼容读取）
 	SettingKeyRiskControlEnabled               = "risk_control_enabled"                // 是否启用风控中心入口与审计链路
 	SettingKeyContentModerationConfig          = "content_moderation_config"           // 内容审计配置（JSON）
 	SettingKeyLoginAgreementEnabled            = "login_agreement_enabled"             // 登录前是否要求同意条款

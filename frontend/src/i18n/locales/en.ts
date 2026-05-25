@@ -352,6 +352,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
+    checkin: 'Daily Check-in',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
     affiliateInviteRecords: 'Invite Records',
@@ -1050,6 +1051,43 @@ export default {
     }
   },
 
+  // Daily Check-in
+  checkin: {
+    title: 'Daily Check-in',
+    description: 'Claim spirit stones every day and earn monthly milestone bonuses.',
+    monthProgress: '{count} check-ins this month',
+    checkedToday: 'Checked today',
+    notCheckedToday: 'Not checked today',
+    checkNow: 'Check In',
+    alreadyChecked: 'Already checked today',
+    disabled: 'Check-in disabled',
+    dailyReward: 'Daily Reward',
+    day4Bonus: 'Day 4 Bonus',
+    day16Bonus: 'Day 16 Bonus',
+    nextBonus: 'Next Bonus',
+    daysToBonus: '{days} days to day {milestone}',
+    noMoreBonus: 'All monthly bonuses claimed',
+    currentBalance: 'Current balance: {balance}',
+    monthCalendar: '{year}-{month} Check-in Calendar',
+    rulesTitle: 'Rules',
+    ruleDaily: 'You can check in once per day and receive {reward}.',
+    ruleBonus4: 'On the 4th monthly check-in, you receive an extra {reward}.',
+    ruleBonus16: 'On the 16th monthly check-in, you receive an extra {reward}.',
+    ruleMonthReset: 'Check-in counts follow the server calendar month and reset on the 1st.',
+    loadFailed: 'Failed to load check-in info',
+    failed: 'Check-in failed',
+    success: 'Check-in complete. You received {reward}.',
+    weekdays: {
+      sun: 'Sun',
+      mon: 'Mon',
+      tue: 'Tue',
+      wed: 'Wed',
+      thu: 'Thu',
+      fri: 'Fri',
+      sat: 'Sat'
+    }
+  },
+
   // Model Market
   modelMarket: {
     title: 'Model Market',
@@ -1059,6 +1097,10 @@ export default {
     empty: 'No models to display',
     noPricing: 'Pricing not configured',
     intervalCount: '{count} pricing tiers',
+    subscriptionGroup: 'Subscription Group',
+    groupSummary: '{count} models, current rate x{rate}',
+    noModelsInGroup: 'No matching models in this group',
+    effectiveRate: 'Effective Rate',
     test: 'Test',
     stats: {
       models: 'Callable Models',
@@ -5368,17 +5410,17 @@ export default {
         },
         checkin: {
           title: 'Daily Check-in',
-          description: 'Configure the user-facing daily check-in copy and reward range. Disabled by default.',
+          description: 'Configure the user-facing daily check-in copy, fixed reward, and bonus rewards. Disabled by default.',
           enabled: 'Enable Daily Check-in',
           enabledHint: 'When off, the user-facing check-in entry should stay hidden and rewards are not issued.',
           content: 'Check-in Content',
           contentPlaceholder: 'Daily check-in',
           contentHint: 'User-facing check-in copy. The default copy is used when left blank.',
-          rewardMin: 'Minimum Reward',
-          rewardMax: 'Maximum Reward',
-          rewardHint: 'Rewards must be non-negative. When enabled, the maximum reward must be greater than 0; the check-in endpoint should issue rewards within this range.',
-          rewardRangeError: 'Maximum check-in reward must be greater than or equal to the minimum reward',
-          rewardRequiredError: 'Maximum check-in reward must be greater than 0 when check-in is enabled',
+          dailyReward: 'Daily Reward',
+          extraReward4: 'Day 4 Bonus',
+          extraReward16: 'Day 16 Bonus',
+          rewardHint: 'Rewards must be non-negative. When enabled, the daily reward must be greater than 0. Bonus rewards are issued on the 4th and 16th monthly check-ins.',
+          rewardRequiredError: 'Daily reward must be greater than 0 when check-in is enabled',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',

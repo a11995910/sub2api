@@ -83,4 +83,17 @@ describe('creativeDrawing conversations', () => {
     expect(loaded[0].turns[0].status).toBe('error')
     expect(loaded[0].turns[0].error).toContain('页面刷新')
   })
+
+  it('带后端任务 ID 的生成中轮次刷新后保持生成中，等待任务同步回写', () => {
+    const conversation = createConversation()
+    conversation.turns[0].status = 'generating'
+    conversation.turns[0].taskId = 'task-1'
+    conversation.turns[0].images = []
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([conversation]))
+
+    const loaded = loadCreativeConversations()
+    expect(loaded[0].turns[0].status).toBe('generating')
+    expect(loaded[0].turns[0].taskId).toBe('task-1')
+    expect(loaded[0].turns[0].error).toBeUndefined()
+  })
 })

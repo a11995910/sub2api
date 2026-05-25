@@ -703,6 +703,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyCheckinEnabled,
 		SettingKeyCheckinContent,
+		SettingKeyCheckinDailyReward,
+		SettingKeyCheckinExtraReward4,
+		SettingKeyCheckinExtraReward16,
 		SettingKeyCheckinRewardMin,
 		SettingKeyCheckinRewardMax,
 		SettingKeyRiskControlEnabled,
@@ -762,7 +765,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
 	}
-	checkinEnabled, checkinContent, checkinRewardMin, checkinRewardMax := parseCheckinSettings(settings)
+	checkinSettings := parseCheckinSettings(settings)
 
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -818,10 +821,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
-		CheckinEnabled:   checkinEnabled,
-		CheckinContent:   checkinContent,
-		CheckinRewardMin: checkinRewardMin,
-		CheckinRewardMax: checkinRewardMax,
+		CheckinEnabled:       checkinSettings.Enabled,
+		CheckinContent:       checkinSettings.Content,
+		CheckinDailyReward:   checkinSettings.DailyReward,
+		CheckinExtraReward4:  checkinSettings.ExtraReward4,
+		CheckinExtraReward16: checkinSettings.ExtraReward16,
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 	}, nil
@@ -845,17 +849,32 @@ func parseChannelMonitorInterval(raw string) int {
 	return clampChannelMonitorInterval(v)
 }
 
-func parseCheckinSettings(settings map[string]string) (bool, string, float64, float64) {
+type parsedCheckinSettings struct {
+	Enabled       bool
+	Content       string
+	DailyReward   float64
+	ExtraReward4  float64
+	ExtraReward16 float64
+}
+
+func parseCheckinSettings(settings map[string]string) parsedCheckinSettings {
 	content := strings.TrimSpace(settings[SettingKeyCheckinContent])
 	if content == "" {
 		content = CheckinContentDefault
 	}
-	rewardMin := parseNonNegativeFloatSetting(settings[SettingKeyCheckinRewardMin])
-	rewardMax := parseNonNegativeFloatSetting(settings[SettingKeyCheckinRewardMax])
-	if rewardMax < rewardMin {
-		rewardMax = rewardMin
+	dailyReward := parseNonNegativeFloatSetting(settings[SettingKeyCheckinDailyReward])
+	if dailyReward == 0 {
+		// 兼容旧版“随机区间”配置：升级后用旧 max 作为每日固定奖励，
+		// 保证线上原配置不会因为字段切换变成 0。
+		dailyReward = parseNonNegativeFloatSetting(settings[SettingKeyCheckinRewardMax])
 	}
-	return settings[SettingKeyCheckinEnabled] == "true", content, rewardMin, rewardMax
+	return parsedCheckinSettings{
+		Enabled:       settings[SettingKeyCheckinEnabled] == "true",
+		Content:       content,
+		DailyReward:   dailyReward,
+		ExtraReward4:  parseNonNegativeFloatSetting(settings[SettingKeyCheckinExtraReward4]),
+		ExtraReward16: parseNonNegativeFloatSetting(settings[SettingKeyCheckinExtraReward16]),
+	}
 }
 
 func parseNonNegativeFloatSetting(raw string) float64 {
@@ -874,17 +893,17 @@ func normalizeCheckinSettings(settings *SystemSettings) error {
 	if settings.CheckinContent == "" {
 		settings.CheckinContent = CheckinContentDefault
 	}
-	if math.IsNaN(settings.CheckinRewardMin) || math.IsInf(settings.CheckinRewardMin, 0) || settings.CheckinRewardMin < 0 {
-		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward min must be a non-negative number")
+	if math.IsNaN(settings.CheckinDailyReward) || math.IsInf(settings.CheckinDailyReward, 0) || settings.CheckinDailyReward < 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD", "checkin daily reward must be a non-negative number")
 	}
-	if math.IsNaN(settings.CheckinRewardMax) || math.IsInf(settings.CheckinRewardMax, 0) || settings.CheckinRewardMax < 0 {
-		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward max must be a non-negative number")
+	if math.IsNaN(settings.CheckinExtraReward4) || math.IsInf(settings.CheckinExtraReward4, 0) || settings.CheckinExtraReward4 < 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD", "checkin day 4 extra reward must be a non-negative number")
 	}
-	if settings.CheckinRewardMax < settings.CheckinRewardMin {
-		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward max must be greater than or equal to min")
+	if math.IsNaN(settings.CheckinExtraReward16) || math.IsInf(settings.CheckinExtraReward16, 0) || settings.CheckinExtraReward16 < 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD", "checkin day 16 extra reward must be a non-negative number")
 	}
-	if settings.CheckinEnabled && settings.CheckinRewardMax <= 0 {
-		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD_RANGE", "checkin reward max must be greater than 0 when checkin is enabled")
+	if settings.CheckinEnabled && settings.CheckinDailyReward <= 0 {
+		return infraerrors.BadRequest("INVALID_CHECKIN_REWARD", "checkin daily reward must be greater than 0 when checkin is enabled")
 	}
 	return nil
 }
@@ -1123,8 +1142,9 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled                     bool    `json:"affiliate_enabled"`
 	CheckinEnabled                       bool    `json:"checkin_enabled"`
 	CheckinContent                       string  `json:"checkin_content"`
-	CheckinRewardMin                     float64 `json:"checkin_reward_min"`
-	CheckinRewardMax                     float64 `json:"checkin_reward_max"`
+	CheckinDailyReward                   float64 `json:"checkin_daily_reward"`
+	CheckinExtraReward4                  float64 `json:"checkin_extra_reward_4"`
+	CheckinExtraReward16                 float64 `json:"checkin_extra_reward_16"`
 	RiskControlEnabled                   bool    `json:"risk_control_enabled"`
 }
 
@@ -1189,8 +1209,9 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		CheckinEnabled:                       settings.CheckinEnabled,
 		CheckinContent:                       settings.CheckinContent,
-		CheckinRewardMin:                     settings.CheckinRewardMin,
-		CheckinRewardMax:                     settings.CheckinRewardMax,
+		CheckinDailyReward:                   settings.CheckinDailyReward,
+		CheckinExtraReward4:                  settings.CheckinExtraReward4,
+		CheckinExtraReward16:                 settings.CheckinExtraReward16,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
 }
@@ -1798,8 +1819,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
 	updates[SettingKeyCheckinEnabled] = strconv.FormatBool(settings.CheckinEnabled)
 	updates[SettingKeyCheckinContent] = settings.CheckinContent
-	updates[SettingKeyCheckinRewardMin] = strconv.FormatFloat(settings.CheckinRewardMin, 'f', 8, 64)
-	updates[SettingKeyCheckinRewardMax] = strconv.FormatFloat(settings.CheckinRewardMax, 'f', 8, 64)
+	updates[SettingKeyCheckinDailyReward] = strconv.FormatFloat(settings.CheckinDailyReward, 'f', 8, 64)
+	updates[SettingKeyCheckinExtraReward4] = strconv.FormatFloat(settings.CheckinExtraReward4, 'f', 8, 64)
+	updates[SettingKeyCheckinExtraReward16] = strconv.FormatFloat(settings.CheckinExtraReward16, 'f', 8, 64)
 	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
@@ -2684,11 +2706,14 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
-		// 每日签到配置（默认关闭；奖励区间为 0 表示未配置发奖能力）
-		SettingKeyCheckinEnabled:   "false",
-		SettingKeyCheckinContent:   CheckinContentDefault,
-		SettingKeyCheckinRewardMin: "0",
-		SettingKeyCheckinRewardMax: "0",
+		// 每日签到配置（默认关闭；每日奖励为 0 表示未配置发奖能力）
+		SettingKeyCheckinEnabled:       "false",
+		SettingKeyCheckinContent:       CheckinContentDefault,
+		SettingKeyCheckinDailyReward:   "0",
+		SettingKeyCheckinExtraReward4:  "0",
+		SettingKeyCheckinExtraReward16: "0",
+		SettingKeyCheckinRewardMin:     "0",
+		SettingKeyCheckinRewardMax:     "0",
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
@@ -2812,7 +2837,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if perInviteeCap, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebatePerInviteeCap], 64); err == nil && perInviteeCap >= 0 {
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
 	}
-	result.CheckinEnabled, result.CheckinContent, result.CheckinRewardMin, result.CheckinRewardMax = parseCheckinSettings(settings)
+	checkinSettings := parseCheckinSettings(settings)
+	result.CheckinEnabled = checkinSettings.Enabled
+	result.CheckinContent = checkinSettings.Content
+	result.CheckinDailyReward = checkinSettings.DailyReward
+	result.CheckinExtraReward4 = checkinSettings.ExtraReward4
+	result.CheckinExtraReward16 = checkinSettings.ExtraReward16
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
 
 	// 敏感信息直接返回，方便测试连接时使用
