@@ -241,11 +241,11 @@ const platformCards = computed(() => {
 const formatBalance = (b: number) => formatSpiritStones(b)
 
 const formatNumber = (n: number) => n.toLocaleString()
-const formatCost = (c: number) => formatDollarAmount(c, { fractionDigits: 4 })
-const formatCostSummary = (c: number) => formatDollarAmount(c, { fractionDigits: 2 })
-const formatCostPlain = (c: number) => formatCostSummary(c).replace(/\s+/g, '')
+const formatCost = (c: number) => formatSpiritStones(c, { fractionDigits: 4 })
+const formatActualCostPlain = (c: number) => formatSpiritStones(c, { fractionDigits: 2 }).replace(/\s+/g, '')
+const formatOriginalCostPlain = (c: number) => formatDollarAmount(c, { fractionDigits: 2 }).replace(/\s+/g, '')
 const formatCostComparison = (actual: number, original: number) =>
-  `${t('dashboard.actual')}${formatCostPlain(actual)}/${t('dashboard.originalPrice')}${formatCostPlain(original)}`
+  `${t('dashboard.actual')}${formatActualCostPlain(actual)}/${t('dashboard.originalPrice')}${formatOriginalCostPlain(original)}`
 const formatFullTokens = (t: number) => t.toLocaleString()
 const formatTokens = (t: number) => {
   if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`

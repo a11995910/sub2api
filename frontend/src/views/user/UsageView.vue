@@ -56,11 +56,11 @@
                 {{ t('usage.totalCost') }}
               </p>
               <p class="text-xl font-bold text-green-600 dark:text-green-400">
-                {{ formatSummaryCostValue(usageStats?.total_actual_cost || 0, 4) }}
+                {{ formatActualCostValue(usageStats?.total_actual_cost || 0, 4) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('usage.actualCost') }} /
-                <span class="line-through">{{ formatSummaryCostValue(usageStats?.total_cost || 0, 4) }}</span>
+                <span class="line-through">{{ formatOriginalCostValue(usageStats?.total_cost || 0, 4) }}</span>
                 {{ t('usage.standardCost') }}
               </p>
             </div>
@@ -579,7 +579,10 @@ const appStore = useAppStore()
 const formatCostValue = (value: number, fractionDigits: number) =>
   formatSpiritStones(value, { fractionDigits })
 
-const formatSummaryCostValue = (value: number, fractionDigits: number) =>
+const formatActualCostValue = (value: number, fractionDigits: number) =>
+  formatSpiritStones(value, { fractionDigits })
+
+const formatOriginalCostValue = (value: number, fractionDigits: number) =>
   formatDollarAmount(value, { fractionDigits })
 
 let abortController: AbortController | null = null

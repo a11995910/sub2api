@@ -29,12 +29,12 @@
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-gray-500">{{ t('usage.totalCost') }}</p>
         <p class="text-xl font-bold text-green-600">
-          {{ formatCost(stats?.total_actual_cost || 0) }}
+          {{ formatActualCost(stats?.total_actual_cost || 0) }}
         </p>
         <p class="text-xs text-gray-400">
-          <span class="text-orange-500">{{ t('usage.accountCost') }} {{ formatCost(stats?.total_account_cost || 0) }}</span>
+          <span class="text-orange-500">{{ t('usage.accountCost') }} {{ formatActualCost(stats?.total_account_cost || 0) }}</span>
           <span> · </span>
-          <span>{{ t('usage.standardCost') }} {{ formatCost(stats?.total_cost || 0) }}</span>
+          <span>{{ t('usage.standardCost') }} {{ formatOriginalCost(stats?.total_cost || 0) }}</span>
         </p>
       </div>
     </div>
@@ -51,7 +51,7 @@
 import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDollarAmount } from '@/utils/format'
+import { formatDollarAmount, formatSpiritStones } from '@/utils/format'
 
 defineProps<{ stats: AdminUsageStatsResponse | null }>()
 
@@ -69,5 +69,6 @@ const formatTokens = (value: number) => {
 
 const formatFullTokens = (value: number) => value.toLocaleString()
 
-const formatCost = (value: number) => formatDollarAmount(value, { fractionDigits: 4 })
+const formatActualCost = (value: number) => formatSpiritStones(value, { fractionDigits: 4 })
+const formatOriginalCost = (value: number) => formatDollarAmount(value, { fractionDigits: 4 })
 </script>
