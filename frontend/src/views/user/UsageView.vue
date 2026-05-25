@@ -34,7 +34,7 @@
                 {{ t('usage.totalTokens') }}
               </p>
               <p class="text-xl font-bold text-gray-900 dark:text-white">
-                {{ formatTokens(usageStats?.total_tokens || 0) }}
+                {{ formatFullTokens(usageStats?.total_tokens || 0) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('usage.in') }}: {{ formatTokens(usageStats?.total_input_tokens || 0) }} /
@@ -56,11 +56,11 @@
                 {{ t('usage.totalCost') }}
               </p>
               <p class="text-xl font-bold text-green-600 dark:text-green-400">
-                {{ formatCostValue(usageStats?.total_actual_cost || 0, 4) }}
+                {{ formatSummaryCostValue(usageStats?.total_actual_cost || 0, 4) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('usage.actualCost') }} /
-                <span class="line-through">{{ formatCostValue(usageStats?.total_cost || 0, 4) }}</span>
+                <span class="line-through">{{ formatSummaryCostValue(usageStats?.total_cost || 0, 4) }}</span>
                 {{ t('usage.standardCost') }}
               </p>
             </div>
@@ -553,7 +553,7 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse } from '@/types'
 import type { Column } from '@/components/common/types'
-import { formatDateTime, formatReasoningEffort, formatSpiritStones } from '@/utils/format'
+import { formatDateTime, formatDollarAmount, formatReasoningEffort, formatSpiritStones } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
@@ -578,6 +578,9 @@ const appStore = useAppStore()
 
 const formatCostValue = (value: number, fractionDigits: number) =>
   formatSpiritStones(value, { fractionDigits })
+
+const formatSummaryCostValue = (value: number, fractionDigits: number) =>
+  formatDollarAmount(value, { fractionDigits })
 
 let abortController: AbortController | null = null
 
@@ -737,6 +740,8 @@ const formatTokens = (value: number): string => {
   }
   return value.toLocaleString()
 }
+
+const formatFullTokens = (value: number): string => value.toLocaleString()
 
 type UsageTableQueryParams = UsageQueryParams & {
   sort_by?: string

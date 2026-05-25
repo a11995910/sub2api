@@ -181,7 +181,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
-import { formatSpiritStones } from '@/utils/format'
+import { formatDollarAmount, formatSpiritStones } from '@/utils/format'
 
 const props = defineProps<{
   stats: UserStatsType
@@ -241,8 +241,8 @@ const platformCards = computed(() => {
 const formatBalance = (b: number) => formatSpiritStones(b)
 
 const formatNumber = (n: number) => n.toLocaleString()
-const formatCost = (c: number) => formatSpiritStones(c, { fractionDigits: 4 })
-const formatCostSummary = (c: number) => formatSpiritStones(c, { fractionDigits: 2 })
+const formatCost = (c: number) => formatDollarAmount(c, { fractionDigits: 4 })
+const formatCostSummary = (c: number) => formatDollarAmount(c, { fractionDigits: 2 })
 const formatCostPlain = (c: number) => formatCostSummary(c).replace(/\s+/g, '')
 const formatCostComparison = (actual: number, original: number) =>
   `${t('dashboard.actual')}${formatCostPlain(actual)}/${t('dashboard.originalPrice')}${formatCostPlain(original)}`

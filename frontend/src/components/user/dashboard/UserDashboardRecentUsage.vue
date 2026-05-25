@@ -45,7 +45,7 @@ import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDateTime, formatSpiritStones } from '@/utils/format'
+import { formatDateTime, formatDollarAmount } from '@/utils/format'
 import type { UsageLog } from '@/types'
 
 defineProps<{
@@ -53,5 +53,5 @@ defineProps<{
   loading: boolean
 }>()
 const { t } = useI18n()
-const formatCost = (c: number) => formatSpiritStones(c, { fractionDigits: 4 })
+const formatCost = (c: number) => formatDollarAmount(c, { fractionDigits: 4 })
 </script>

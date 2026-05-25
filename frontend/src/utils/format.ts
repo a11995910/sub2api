@@ -82,6 +82,17 @@ export function formatSpiritStones(
 }
 
 /**
+ * 格式化原始成本金额。这里仅用于用量成本展示，不影响余额、充值和订阅价格的灵石单位。
+ */
+export function formatDollarAmount(
+  amount: number | null | undefined,
+  options?: { fractionDigits?: number; suffix?: string }
+): string {
+  const suffix = options?.suffix ?? (getLocale().startsWith('zh') ? '美元' : 'USD')
+  return formatSpiritStones(amount, { ...options, suffix })
+}
+
+/**
  * 格式化字节大小
  * @param bytes 字节数
  * @param decimals 小数位数
