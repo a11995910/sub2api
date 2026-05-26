@@ -118,6 +118,22 @@ func TestSettingService_GetPublicSettings_FallsBackToLegacyCheckinRewardMax(t *t
 	require.InDelta(t, 0, settings.CheckinExtraReward16, 0.0001)
 }
 
+func TestSettingService_GetPublicSettings_UsesExplicitZeroCheckinDailyReward(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyCheckinEnabled:     "false",
+			SettingKeyCheckinDailyReward: "0",
+			SettingKeyCheckinRewardMax:   "3",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.CheckinEnabled)
+	require.InDelta(t, 0, settings.CheckinDailyReward, 0.0001)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

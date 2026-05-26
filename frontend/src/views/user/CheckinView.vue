@@ -56,23 +56,23 @@
           </div>
         </section>
 
-        <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div class="card p-5">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('checkin.monthCalendar', { year: summary?.year, month: summary?.month }) }}</h2>
-              <button class="btn btn-secondary" :disabled="loading" @click="loadOverview">
+        <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div class="card p-4">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('checkin.monthCalendar', { year: summary?.year, month: summary?.month }) }}</h2>
+              <button class="btn btn-secondary btn-sm" :disabled="loading" @click="loadOverview">
                 <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
               </button>
             </div>
-            <div class="grid grid-cols-7 gap-2">
-              <div v-for="day in weekdayLabels" :key="day" class="h-8 text-center text-xs font-medium leading-8 text-gray-500 dark:text-gray-400">
+            <div class="grid grid-cols-7 gap-1.5">
+              <div v-for="day in weekdayLabels" :key="day" class="h-7 text-center text-xs font-medium leading-7 text-gray-500 dark:text-gray-400">
                 {{ day }}
               </div>
-              <div v-for="blank in leadingBlanks" :key="`blank-${blank}`" class="aspect-square rounded-md border border-transparent" />
+              <div v-for="blank in leadingBlanks" :key="`blank-${blank}`" class="h-9 rounded-md border border-transparent sm:h-10" />
               <div
                 v-for="day in calendarDays"
                 :key="day.date"
-                class="flex aspect-square min-h-11 flex-col items-center justify-center rounded-md border text-sm"
+                class="flex h-9 flex-col items-center justify-center rounded-md border text-sm sm:h-10"
                 :class="dayClass(day)"
               >
                 <span class="font-medium">{{ day.day }}</span>

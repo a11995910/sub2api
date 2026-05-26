@@ -862,10 +862,10 @@ func parseCheckinSettings(settings map[string]string) parsedCheckinSettings {
 	if content == "" {
 		content = CheckinContentDefault
 	}
-	dailyReward := parseNonNegativeFloatSetting(settings[SettingKeyCheckinDailyReward])
-	if dailyReward == 0 {
+	dailyReward, hasDailyReward := parseOptionalNonNegativeFloatSetting(settings, SettingKeyCheckinDailyReward)
+	if !hasDailyReward {
 		// 兼容旧版“随机区间”配置：升级后用旧 max 作为每日固定奖励，
-		// 保证线上原配置不会因为字段切换变成 0。
+		// 仅在新版字段尚未落库时回退，避免管理员把新版奖励设为 0 后仍显示旧值。
 		dailyReward = parseNonNegativeFloatSetting(settings[SettingKeyCheckinRewardMax])
 	}
 	return parsedCheckinSettings{
@@ -883,6 +883,14 @@ func parseNonNegativeFloatSetting(raw string) float64 {
 		return 0
 	}
 	return v
+}
+
+func parseOptionalNonNegativeFloatSetting(settings map[string]string, key string) (float64, bool) {
+	raw, ok := settings[key]
+	if !ok {
+		return 0, false
+	}
+	return parseNonNegativeFloatSetting(raw), true
 }
 
 func normalizeCheckinSettings(settings *SystemSettings) error {
