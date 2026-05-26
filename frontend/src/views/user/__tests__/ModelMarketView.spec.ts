@@ -26,6 +26,9 @@ const messages: Record<string, string> = {
   'modelMarket.groupSummary': '{count} 个模型，当前倍率 x{rate}',
   'modelMarket.noModelsInGroup': '当前分组暂无匹配模型',
   'modelMarket.effectiveRate': '生效倍率',
+  'modelMarket.currentPrice': '当前',
+  'modelMarket.officialPrice': '官方',
+  'modelMarket.discount': '优惠',
   'modelMarket.test': '去测试',
   'modelMarket.columns.input': '输入',
   'modelMarket.columns.output': '输出',
@@ -195,6 +198,8 @@ describe('ModelMarketView', () => {
 
     await groupButtons[1].trigger('click')
     expect(wrapper.text()).toContain('gpt-4.1')
+    expect(wrapper.text()).toContain('$1')
+    expect(wrapper.text()).toContain('-85.9%')
     expect(wrapper.text()).not.toContain('image-2')
 
     await groupButtons[0].trigger('click')

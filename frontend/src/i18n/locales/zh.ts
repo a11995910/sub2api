@@ -1105,6 +1105,9 @@ export default {
     groupSummary: '{count} 个模型，当前倍率 x{rate}',
     noModelsInGroup: '当前分组暂无匹配模型',
     effectiveRate: '生效倍率',
+    currentPrice: '当前',
+    officialPrice: '官方',
+    discount: '优惠',
     test: '去测试',
     stats: {
       models: '可调用模型',

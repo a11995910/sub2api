@@ -1,5 +1,9 @@
 import { i18n } from '@/i18n'
 
+function formatPriceNumber(value: number): string {
+  return value.toPrecision(10).replace(/\.?0+$/, '')
+}
+
 /**
  * formatScaled formats a per-token (or per-request) 灵石 price scaled by `scale`.
  *
@@ -11,5 +15,10 @@ import { i18n } from '@/i18n'
  */
 export function formatScaled(value: number | null, scale: number): string {
   if (value == null) return '-'
-  return `${(value * scale).toPrecision(10).replace(/\.?0+$/, '')} ${i18n.global.t('common.currencyName')}`
+  return `${formatPriceNumber(value * scale)} ${i18n.global.t('common.currencyName')}`
+}
+
+export function formatUSDScaled(value: number | null, scale: number): string {
+  if (value == null) return '-'
+  return `$${formatPriceNumber(value * scale)}`
 }

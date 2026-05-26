@@ -1101,6 +1101,9 @@ export default {
     groupSummary: '{count} models, current rate x{rate}',
     noModelsInGroup: 'No matching models in this group',
     effectiveRate: 'Effective Rate',
+    currentPrice: 'Current',
+    officialPrice: 'Official',
+    discount: 'Discount',
     test: 'Test',
     stats: {
       models: 'Callable Models',

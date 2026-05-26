@@ -132,19 +132,54 @@
 
             <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <template v-if="model.kind === 'image'">
-                <PriceTile label="1K" :value="formatSelectedImageTier('1k')" />
-                <PriceTile label="2K" :value="formatSelectedImageTier('2k')" />
-                <PriceTile label="4K" :value="formatSelectedImageTier('4k')" />
+                <PriceTile
+                  label="1K"
+                  :value="formatSelectedImageTier('1k')"
+                  :official-value="formatSelectedOfficialImageTier('1k')"
+                  :discount-value="formatSelectedImageTierDiscount('1k')"
+                />
+                <PriceTile
+                  label="2K"
+                  :value="formatSelectedImageTier('2k')"
+                  :official-value="formatSelectedOfficialImageTier('2k')"
+                  :discount-value="formatSelectedImageTierDiscount('2k')"
+                />
+                <PriceTile
+                  label="4K"
+                  :value="formatSelectedImageTier('4k')"
+                  :official-value="formatSelectedOfficialImageTier('4k')"
+                  :discount-value="formatSelectedImageTierDiscount('4k')"
+                />
               </template>
               <template v-else-if="model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST">
-                <PriceTile :label="t('modelMarket.columns.perRequest')" :value="formatSelectedPrice(model.pricing?.per_request_price, 1, model.pricing?.billing_mode)" />
-                <PriceTile :label="t('modelMarket.columns.multiplier')" :value="selectedTextRateLabel" />
+                <PriceTile
+                  :label="t('modelMarket.columns.perRequest')"
+                  :value="formatSelectedPrice(model.pricing?.per_request_price, 1, model.pricing?.billing_mode)"
+                  :official-value="formatOfficialPrice(model.pricing?.per_request_price, 1)"
+                  :discount-value="formatSelectedDiscount(model.pricing?.per_request_price, 1, model.pricing?.billing_mode)"
+                />
+                <PriceTile :label="t('modelMarket.columns.multiplier')" :value="selectedTextRateLabel" compact />
                 <PriceTile :label="t('modelMarket.columns.cacheRead')" value="-" />
               </template>
               <template v-else>
-                <PriceTile :label="t('modelMarket.columns.input')" :value="formatSelectedPrice(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)" />
-                <PriceTile :label="t('modelMarket.columns.cacheRead')" :value="formatSelectedPrice(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)" />
-                <PriceTile :label="t('modelMarket.columns.output')" :value="formatSelectedPrice(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)" />
+                <PriceTile
+                  :label="t('modelMarket.columns.input')"
+                  :value="formatSelectedPrice(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)"
+                  :official-value="formatOfficialPrice(model.pricing?.input_price, perMillionScale)"
+                  :discount-value="formatSelectedDiscount(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)"
+                />
+                <PriceTile
+                  :label="t('modelMarket.columns.cacheRead')"
+                  :value="formatSelectedPrice(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)"
+                  :official-value="formatOfficialPrice(model.pricing?.cache_read_price, perMillionScale)"
+                  :discount-value="formatSelectedDiscount(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)"
+                />
+                <PriceTile
+                  :label="t('modelMarket.columns.output')"
+                  :value="formatSelectedPrice(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)"
+                  :official-value="formatOfficialPrice(model.pricing?.output_price, perMillionScale)"
+                  :discount-value="formatSelectedDiscount(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)"
+                />
               </template>
             </div>
 
@@ -175,7 +210,7 @@ import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { formatScaled } from '@/utils/pricing'
+import { formatScaled, formatUSDScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
 import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
@@ -191,12 +226,33 @@ const PriceTile = defineComponent({
   props: {
     label: { type: String, required: true },
     value: { type: String, required: true },
+    officialValue: { type: String, default: '' },
+    discountValue: { type: String, default: '' },
+    compact: { type: Boolean, default: false },
   },
   setup(props) {
+    const { t } = useI18n()
     return () =>
-      h('div', { class: 'rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/50' }, [
+      h('div', { class: 'min-h-[138px] rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/50' }, [
         h('p', { class: 'text-xs text-gray-500 dark:text-gray-400' }, props.label),
-        h('p', { class: 'mt-2 truncate font-mono text-sm font-semibold text-gray-900 dark:text-white', title: props.value }, props.value),
+        h('div', { class: props.compact ? 'mt-3' : 'mt-3 space-y-2' }, [
+          h('div', { class: 'flex items-baseline justify-between gap-3' }, [
+            h('span', { class: 'shrink-0 text-xs text-gray-500 dark:text-gray-400' }, t('modelMarket.currentPrice')),
+            h('span', { class: 'min-w-0 truncate text-right font-mono text-base font-bold text-gray-900 dark:text-white', title: props.value }, props.value),
+          ]),
+          !props.compact && props.officialValue && props.officialValue !== '-'
+            ? h('div', { class: 'flex items-baseline justify-between gap-3' }, [
+                h('span', { class: 'shrink-0 text-xs text-gray-500 dark:text-gray-400' }, t('modelMarket.officialPrice')),
+                h('span', { class: 'min-w-0 truncate text-right font-mono text-sm font-medium text-gray-600 dark:text-gray-300', title: props.officialValue }, props.officialValue),
+              ])
+            : null,
+          !props.compact && props.discountValue
+            ? h('div', { class: 'flex overflow-hidden rounded-md border border-red-200 bg-red-50 shadow-sm dark:border-red-900/70 dark:bg-red-950/30' }, [
+                h('span', { class: 'shrink-0 bg-gradient-to-r from-orange-500 to-rose-500 px-2.5 py-1 text-xs font-bold text-white' }, t('modelMarket.discount')),
+                h('span', { class: 'min-w-0 flex-1 truncate px-2 py-1 text-right font-mono text-sm font-bold text-red-700 dark:text-red-200', title: props.discountValue }, props.discountValue),
+              ])
+            : null,
+        ]),
       ])
   },
 })
@@ -225,6 +281,7 @@ const loading = ref(false)
 const searchQuery = ref('')
 const selectedGroupId = ref<number | null>(null)
 const perMillionScale = 1_000_000
+const usdToSpiritStoneRate = 7.1
 
 const toAvailableGroup = (group: Group): UserAvailableGroup => ({
   id: group.id,
@@ -382,10 +439,35 @@ function formatPrice(
   return formatScaled(value * effectiveMultiplier(group, mode), scale)
 }
 
+function formatOfficialPrice(value: number | null | undefined, scale: number): string {
+  return formatUSDScaled(value ?? null, scale)
+}
+
+function formatDiscountPercent(value: number | null | undefined, scale: number, group: UserAvailableGroup, mode?: BillingMode): string {
+  if (value == null) return ''
+  const official = value * scale
+  if (!Number.isFinite(official) || official <= 0) return ''
+  const current = value * effectiveMultiplier(group, mode) * scale
+  const officialConverted = official * usdToSpiritStoneRate
+  if (!Number.isFinite(current) || officialConverted <= 0 || current >= officialConverted) return ''
+  const discount = (current / officialConverted - 1) * 100
+  return `${discount.toFixed(1)}%`
+}
+
 function formatImageTier(group: UserAvailableGroup, tier: '1k' | '2k' | '4k'): string {
   const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
   if (typeof value !== 'number') return '-'
   return formatScaled(value * effectiveImageRate(group), 1)
+}
+
+function formatOfficialImageTier(group: UserAvailableGroup, tier: '1k' | '2k' | '4k'): string {
+  const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
+  return formatUSDScaled(typeof value === 'number' ? value : null, 1)
+}
+
+function formatImageTierDiscount(group: UserAvailableGroup, tier: '1k' | '2k' | '4k'): string {
+  const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
+  return formatDiscountPercent(typeof value === 'number' ? value : null, 1, group, BILLING_MODE_IMAGE)
 }
 
 function formatSelectedPrice(value: number | null | undefined, scale: number, mode?: BillingMode): string {
@@ -394,10 +476,28 @@ function formatSelectedPrice(value: number | null | undefined, scale: number, mo
   return formatPrice(value, scale, group, mode)
 }
 
+function formatSelectedDiscount(value: number | null | undefined, scale: number, mode?: BillingMode): string {
+  const group = selectedGroup.value?.group
+  if (!group) return ''
+  return formatDiscountPercent(value, scale, group, mode)
+}
+
 function formatSelectedImageTier(tier: '1k' | '2k' | '4k'): string {
   const group = selectedGroup.value?.group
   if (!group) return '-'
   return formatImageTier(group, tier)
+}
+
+function formatSelectedOfficialImageTier(tier: '1k' | '2k' | '4k'): string {
+  const group = selectedGroup.value?.group
+  if (!group) return '-'
+  return formatOfficialImageTier(group, tier)
+}
+
+function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k'): string {
+  const group = selectedGroup.value?.group
+  if (!group) return ''
+  return formatImageTierDiscount(group, tier)
 }
 
 function selectedMultiplierLabel(mode?: BillingMode): string {
