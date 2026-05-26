@@ -184,7 +184,7 @@ import {
   BILLING_MODE_TOKEN,
   type BillingMode,
 } from '@/constants/channel'
-import type { GroupPlatform } from '@/types'
+import type { Group, GroupPlatform } from '@/types'
 
 const PriceTile = defineComponent({
   name: 'PriceTile',
@@ -219,11 +219,27 @@ const router = useRouter()
 const appStore = useAppStore()
 
 const channels = ref<UserAvailableChannel[]>([])
+const availableGroups = ref<UserAvailableGroup[]>([])
 const userGroupRates = ref<Record<number, number>>({})
 const loading = ref(false)
 const searchQuery = ref('')
 const selectedGroupId = ref<number | null>(null)
 const perMillionScale = 1_000_000
+
+const toAvailableGroup = (group: Group): UserAvailableGroup => ({
+  id: group.id,
+  name: group.name,
+  platform: group.platform,
+  subscription_type: group.subscription_type,
+  rate_multiplier: group.rate_multiplier,
+  is_exclusive: group.is_exclusive,
+  allow_image_generation: group.allow_image_generation,
+  image_rate_independent: group.image_rate_independent,
+  image_rate_multiplier: group.image_rate_multiplier,
+  image_price_1k: group.image_price_1k,
+  image_price_2k: group.image_price_2k,
+  image_price_4k: group.image_price_4k,
+})
 
 const pricingSignature = (pricing: UserSupportedModelPricing | null): string => {
   if (!pricing) return 'no-pricing'
@@ -239,19 +255,43 @@ const pricingSignature = (pricing: UserSupportedModelPricing | null): string => 
   })
 }
 
+function compareMarketModels(a: GroupMarketModel, b: GroupMarketModel): number {
+  const kindOrder = Number(a.kind === 'image') - Number(b.kind === 'image')
+  if (kindOrder !== 0) return kindOrder
+  return a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)
+}
+
+function compareMarketGroups(a: MarketGroup, b: MarketGroup): number {
+  const kindOrder = Number(a.group.allow_image_generation) - Number(b.group.allow_image_generation)
+  if (kindOrder !== 0) return kindOrder
+  return a.group.platform.localeCompare(b.group.platform) || a.group.name.localeCompare(b.group.name)
+}
+
 const marketGroups = computed<MarketGroup[]>(() => {
   const groups = new Map<number, { group: UserAvailableGroup; models: Map<string, GroupMarketModel> }>()
+  const ensureGroup = (group: UserAvailableGroup) => {
+    let bucket = groups.get(group.id)
+    if (!bucket) {
+      bucket = { group, models: new Map<string, GroupMarketModel>() }
+      groups.set(group.id, bucket)
+    }
+    return bucket
+  }
+
+  for (const group of availableGroups.value) {
+    ensureGroup(group)
+  }
+
   for (const channel of channels.value) {
     for (const section of channel.platforms || []) {
       const platform = section.platform
+      for (const group of section.groups || []) {
+        ensureGroup(group)
+      }
       for (const model of section.supported_models || []) {
         const kind = resolveModelKind(model)
         for (const group of filterGroupsByModelKind(section.groups, kind)) {
-          let bucket = groups.get(group.id)
-          if (!bucket) {
-            bucket = { group, models: new Map<string, GroupMarketModel>() }
-            groups.set(group.id, bucket)
-          }
+          const bucket = ensureGroup(group)
           const modelPlatform = model.platform || platform
           const key = `${group.id}:${modelPlatform}:${model.name}:${pricingSignature(model.pricing)}`
           if (!bucket.models.has(key)) {
@@ -270,9 +310,9 @@ const marketGroups = computed<MarketGroup[]>(() => {
   return Array.from(groups.values())
     .map((item) => ({
       group: item.group,
-      models: Array.from(item.models.values()).sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)),
+      models: Array.from(item.models.values()).sort(compareMarketModels),
     }))
-    .sort((a, b) => a.group.platform.localeCompare(b.group.platform) || a.group.name.localeCompare(b.group.name))
+    .sort(compareMarketGroups)
 })
 
 const visibleGroups = computed(() => {
@@ -400,14 +440,16 @@ function goTestSelected(model: GroupMarketModel) {
 async function loadModels() {
   loading.value = true
   try {
-    const [list, rates] = await Promise.all([
+    const [list, groups, rates] = await Promise.all([
       userChannelsAPI.getAvailable(),
+      userGroupsAPI.getAvailable().then((items) => items.map(toAvailableGroup)),
       userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
         console.error('Failed to load user group rates:', err)
         return {} as Record<number, number>
       }),
     ])
     channels.value = list
+    availableGroups.value = groups
     userGroupRates.value = rates
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
