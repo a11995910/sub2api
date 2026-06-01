@@ -54,6 +54,10 @@ var (
 		"DEFAULT_SUBSCRIPTION_GROUP_DUPLICATE",
 		"default subscription group cannot be duplicated",
 	)
+	ErrAPIKeyDefaultGroupInvalid = infraerrors.BadRequest(
+		"API_KEY_DEFAULT_GROUP_INVALID",
+		"api key default group must exist and be active",
+	)
 )
 
 type SettingRepository interface {
@@ -163,8 +167,8 @@ const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
 
-// DefaultSubscriptionGroupReader validates group references used by default subscriptions.
-type DefaultSubscriptionGroupReader interface {
+// SettingsGroupReader validates group references used by default subscriptions.
+type SettingsGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
 }
 
@@ -175,7 +179,7 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 // SettingService 系统设置服务
 type SettingService struct {
 	settingRepo                 SettingRepository
-	defaultSubGroupReader       DefaultSubscriptionGroupReader
+	settingsGroupReader         SettingsGroupReader
 	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                         *config.Config
 	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
@@ -646,9 +650,9 @@ func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *Setti
 	}
 }
 
-// SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.
-func (s *SettingService) SetDefaultSubscriptionGroupReader(reader DefaultSubscriptionGroupReader) {
-	s.defaultSubGroupReader = reader
+// SetSettingsGroupReader 注入设置保存时用于校验分组存在性和状态的 reader。
+func (s *SettingService) SetSettingsGroupReader(reader SettingsGroupReader) {
+	s.settingsGroupReader = reader
 }
 
 // SetProxyRepository injects a proxy repo for resolving websearch provider proxy URLs.
@@ -1689,6 +1693,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
+	if err := s.validateAPIKeyDefaultGroup(ctx, settings.APIKeyDefaultGroupID); err != nil {
+		return nil, err
+	}
 	normalizedWhitelist, err := NormalizeRegistrationEmailSuffixWhitelist(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", err.Error())
@@ -1943,6 +1950,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("marshal default subscriptions: %w", err)
 	}
 	updates[SettingKeyDefaultSubscriptions] = string(defaultSubsJSON)
+	updates[SettingKeyAPIKeyDefaultGroupID] = strconv.FormatInt(settings.APIKeyDefaultGroupID, 10)
 
 	// Model fallback configuration
 	updates[SettingKeyEnableModelFallback] = strconv.FormatBool(settings.EnableModelFallback)
@@ -2190,11 +2198,11 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 			})
 		}
 		checked[item.GroupID] = struct{}{}
-		if s.defaultSubGroupReader == nil {
+		if s.settingsGroupReader == nil {
 			continue
 		}
 
-		group, err := s.defaultSubGroupReader.GetByID(ctx, item.GroupID)
+		group, err := s.settingsGroupReader.GetByID(ctx, item.GroupID)
 		if err != nil {
 			if errors.Is(err, ErrGroupNotFound) {
 				return ErrDefaultSubGroupInvalid.WithMetadata(map[string]string{
@@ -2210,6 +2218,27 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 		}
 	}
 
+	return nil
+}
+
+func (s *SettingService) validateAPIKeyDefaultGroup(ctx context.Context, groupID int64) error {
+	if groupID <= 0 || s.settingsGroupReader == nil {
+		return nil
+	}
+	group, err := s.settingsGroupReader.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(groupID, 10),
+			})
+		}
+		return fmt.Errorf("get api key default group %d: %w", groupID, err)
+	}
+	if !group.IsActive() {
+		return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
+			"group_id": strconv.FormatInt(groupID, 10),
+		})
+	}
 	return nil
 }
 
@@ -2833,6 +2862,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
+		SettingKeyAPIKeyDefaultGroupID:                      "0",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
 		SettingKeyAuthSourceDefaultEmailConcurrency:         "5",
 		SettingKeyAuthSourceDefaultEmailSubscriptions:       "[]",
@@ -3000,6 +3030,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	if rpm, err := strconv.Atoi(settings[SettingKeyDefaultUserRPMLimit]); err == nil && rpm >= 0 {
 		result.DefaultUserRPMLimit = rpm
+	}
+	if groupID, err := strconv.ParseInt(strings.TrimSpace(settings[SettingKeyAPIKeyDefaultGroupID]), 10, 64); err == nil && groupID > 0 {
+		result.APIKeyDefaultGroupID = groupID
 	}
 
 	// 解析浮点数类型

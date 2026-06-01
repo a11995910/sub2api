@@ -56,6 +56,7 @@ type AdminService interface {
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
+	SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
@@ -2122,6 +2123,9 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 			groupKeys = keys
 		}
 	}
+	if err := s.reassignAPIKeysBeforeGroupDelete(ctx, id); err != nil {
+		return err
+	}
 
 	affectedUserIDs, err := s.groupRepo.DeleteCascade(ctx, id)
 	if err != nil {
@@ -2149,6 +2153,94 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+func (s *adminServiceImpl) reassignAPIKeysBeforeGroupDelete(ctx context.Context, groupID int64) error {
+	if s.apiKeyRepo == nil {
+		return nil
+	}
+	count, err := s.apiKeyRepo.CountByGroupID(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return nil
+	}
+	defaultGroupID, err := s.apiKeyDefaultGroupID(ctx)
+	if err != nil {
+		return err
+	}
+	if defaultGroupID <= 0 {
+		return infraerrors.BadRequest(
+			"API_KEY_DEFAULT_GROUP_REQUIRED",
+			"cannot delete group with bound api keys before configuring api key default group",
+		)
+	}
+	if defaultGroupID == groupID {
+		return infraerrors.BadRequest(
+			"API_KEY_DEFAULT_GROUP_SELF_DELETE",
+			"cannot delete the current api key default group while api keys are bound to it",
+		)
+	}
+	defaultGroup, err := s.groupRepo.GetByIDLite(ctx, defaultGroupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(defaultGroupID, 10),
+			})
+		}
+		return err
+	}
+	if !defaultGroup.IsActive() {
+		return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
+			"group_id": strconv.FormatInt(defaultGroupID, 10),
+		})
+	}
+	if _, err := s.apiKeyRepo.UpdateGroupIDByGroup(ctx, groupID, defaultGroupID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *adminServiceImpl) apiKeyDefaultGroupID(ctx context.Context) (int64, error) {
+	if s.settingService == nil || s.settingService.settingRepo == nil {
+		return 0, nil
+	}
+	raw, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyAPIKeyDefaultGroupID)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, nil
+	}
+	return id, nil
+}
+
+func (s *adminServiceImpl) SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error {
+	if s.settingService == nil || s.settingService.settingRepo == nil {
+		return ErrSettingNotFound
+	}
+	if groupID > 0 {
+		group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+		if err != nil {
+			if errors.Is(err, ErrGroupNotFound) {
+				return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
+					"group_id": strconv.FormatInt(groupID, 10),
+				})
+			}
+			return err
+		}
+		if !group.IsActive() {
+			return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(groupID, 10),
+			})
+		}
+	}
+	return s.settingService.settingRepo.Set(ctx, SettingKeyAPIKeyDefaultGroupID, strconv.FormatInt(groupID, 10))
 }
 
 func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error) {

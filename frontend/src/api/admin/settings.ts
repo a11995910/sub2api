@@ -389,6 +389,7 @@ export interface SystemSettings {
   checkin_extra_reward_16: number;
   default_concurrency: number;
   default_user_rpm_limit: number;
+  api_key_default_group_id: number;
   default_subscriptions: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
@@ -650,6 +651,7 @@ export interface UpdateSettingsRequest {
   checkin_extra_reward_16?: number;
   default_concurrency?: number;
   default_user_rpm_limit?: number;
+  api_key_default_group_id?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;

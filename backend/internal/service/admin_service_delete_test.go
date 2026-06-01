@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -181,6 +182,8 @@ type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
 	deleteCalls     []int64
+	groupsByID      map[int64]*Group
+	getByIDLiteIDs  []int64
 }
 
 func (s *groupRepoStub) Create(ctx context.Context, group *Group) error {
@@ -192,7 +195,11 @@ func (s *groupRepoStub) GetByID(ctx context.Context, id int64) (*Group, error) {
 }
 
 func (s *groupRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
-	panic("unexpected GetByIDLite call")
+	s.getByIDLiteIDs = append(s.getByIDLiteIDs, id)
+	if group, ok := s.groupsByID[id]; ok {
+		return group, nil
+	}
+	return nil, ErrGroupNotFound
 }
 
 func (s *groupRepoStub) Update(ctx context.Context, group *Group) error {
@@ -250,9 +257,14 @@ func (s *groupRepoStub) UpdateSortOrders(ctx context.Context, updates []GroupSor
 
 type deleteGroupAPIKeyRepoStub struct {
 	apiKeyRepoStubForGroupUpdate
-	keys         []string
-	listErr      error
-	listGroupIDs []int64
+	keys             []string
+	listErr          error
+	listGroupIDs     []int64
+	countByGroupID   map[int64]int64
+	countErr         error
+	countGroupIDs    []int64
+	updateGroupCalls []groupMigrationCall
+	updateGroupErr   error
 }
 
 func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
@@ -261,6 +273,75 @@ func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, group
 		return nil, s.listErr
 	}
 	return s.keys, nil
+}
+
+type groupMigrationCall struct {
+	oldGroupID int64
+	newGroupID int64
+}
+
+func (s *deleteGroupAPIKeyRepoStub) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	s.countGroupIDs = append(s.countGroupIDs, groupID)
+	if s.countErr != nil {
+		return 0, s.countErr
+	}
+	if s.countByGroupID != nil {
+		return s.countByGroupID[groupID], nil
+	}
+	return 0, nil
+}
+
+func (s *deleteGroupAPIKeyRepoStub) UpdateGroupIDByGroup(ctx context.Context, oldGroupID, newGroupID int64) (int64, error) {
+	s.updateGroupCalls = append(s.updateGroupCalls, groupMigrationCall{
+		oldGroupID: oldGroupID,
+		newGroupID: newGroupID,
+	})
+	if s.updateGroupErr != nil {
+		return 0, s.updateGroupErr
+	}
+	if s.countByGroupID != nil {
+		return s.countByGroupID[oldGroupID], nil
+	}
+	return 0, nil
+}
+
+type deleteGroupSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *deleteGroupSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *deleteGroupSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	if value, ok := s.values[key]; ok {
+		return value, nil
+	}
+	return "", ErrSettingNotFound
+}
+
+func (s *deleteGroupSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = make(map[string]string)
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *deleteGroupSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	panic("unexpected GetMultiple call")
+}
+
+func (s *deleteGroupSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	panic("unexpected SetMultiple call")
+}
+
+func (s *deleteGroupSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *deleteGroupSettingRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
 }
 
 type proxyRepoStub struct {
@@ -569,6 +650,76 @@ func TestAdminService_DeleteGroup_InvalidatesAuthCacheForBoundKeys(t *testing.T)
 	require.Equal(t, []int64{5}, repo.deleteCalls)
 	require.Equal(t, []int64{5}, apiKeyRepo.listGroupIDs)
 	require.Equal(t, []string{"k1", "k2"}, invalidator.keys)
+}
+
+func TestAdminService_DeleteGroup_ReassignsBoundKeysToDefaultGroup(t *testing.T) {
+	repo := &groupRepoStub{
+		groupsByID: map[int64]*Group{
+			9: {ID: 9, Status: StatusActive},
+		},
+	}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{
+		countByGroupID: map[int64]int64{5: 2},
+	}
+	settingRepo := &deleteGroupSettingRepoStub{
+		values: map[string]string{
+			SettingKeyAPIKeyDefaultGroupID: "9",
+		},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:      repo,
+		apiKeyRepo:     apiKeyRepo,
+		settingService: NewSettingService(settingRepo, nil),
+	}
+
+	err := svc.DeleteGroup(context.Background(), 5)
+	require.NoError(t, err)
+	require.Equal(t, []int64{5}, apiKeyRepo.countGroupIDs)
+	require.Equal(t, []int64{9}, repo.getByIDLiteIDs)
+	require.Equal(t, []groupMigrationCall{{oldGroupID: 5, newGroupID: 9}}, apiKeyRepo.updateGroupCalls)
+	require.Equal(t, []int64{5}, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroup_RejectsBoundKeysWithoutDefaultGroup(t *testing.T) {
+	repo := &groupRepoStub{}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{
+		countByGroupID: map[int64]int64{5: 1},
+	}
+	settingRepo := &deleteGroupSettingRepoStub{}
+	svc := &adminServiceImpl{
+		groupRepo:      repo,
+		apiKeyRepo:     apiKeyRepo,
+		settingService: NewSettingService(settingRepo, nil),
+	}
+
+	err := svc.DeleteGroup(context.Background(), 5)
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_DEFAULT_GROUP_REQUIRED", infraerrors.Reason(err))
+	require.Empty(t, apiKeyRepo.updateGroupCalls)
+	require.Empty(t, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroup_RejectsDeletingDefaultGroupWithBoundKeys(t *testing.T) {
+	repo := &groupRepoStub{}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{
+		countByGroupID: map[int64]int64{5: 1},
+	}
+	settingRepo := &deleteGroupSettingRepoStub{
+		values: map[string]string{
+			SettingKeyAPIKeyDefaultGroupID: "5",
+		},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:      repo,
+		apiKeyRepo:     apiKeyRepo,
+		settingService: NewSettingService(settingRepo, nil),
+	}
+
+	err := svc.DeleteGroup(context.Background(), 5)
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_DEFAULT_GROUP_SELF_DELETE", infraerrors.Reason(err))
+	require.Empty(t, apiKeyRepo.updateGroupCalls)
+	require.Empty(t, repo.deleteCalls)
 }
 
 func TestAdminService_DeleteGroup_NotFound(t *testing.T) {

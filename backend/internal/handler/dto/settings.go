@@ -155,6 +155,7 @@ type SystemSettings struct {
 	CheckinExtraReward16         float64                      `json:"checkin_extra_reward_16"`
 	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	APIKeyDefaultGroupID         int64                        `json:"api_key_default_group_id"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

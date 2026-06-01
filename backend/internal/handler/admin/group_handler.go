@@ -385,6 +385,27 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Group deleted successfully"})
 }
 
+// SetAPIKeyDefaultGroup 更新删除已绑定分组时用于接收 Key 的兜底分组。
+// PUT /api/v1/admin/groups/api-key-default
+func (h *GroupHandler) SetAPIKeyDefaultGroup(c *gin.Context) {
+	var req struct {
+		GroupID int64 `json:"group_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.GroupID < 0 {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+	if err := h.adminService.SetAPIKeyDefaultGroup(c.Request.Context(), req.GroupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "API key default group updated"})
+}
+
 // GetStats handles getting group statistics
 // GET /api/v1/admin/groups/:id/stats
 func (h *GroupHandler) GetStats(c *gin.Context) {

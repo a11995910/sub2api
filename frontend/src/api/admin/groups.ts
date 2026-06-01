@@ -125,6 +125,16 @@ export async function deleteGroup(id: number): Promise<{ message: string }> {
 }
 
 /**
+ * 设置删除已绑定分组时接收 API Key 的默认分组。
+ */
+export async function setApiKeyDefaultGroup(groupId: number): Promise<{ message: string }> {
+  const { data } = await apiClient.put<{ message: string }>('/admin/groups/api-key-default', {
+    group_id: groupId
+  })
+  return data
+}
+
+/**
  * Toggle group status
  * @param id - Group ID
  * @param status - New status
@@ -327,6 +337,7 @@ export const groupsAPI = {
   create,
   update,
   delete: deleteGroup,
+  setApiKeyDefaultGroup,
   toggleStatus,
   getStats,
   getGroupApiKeys,

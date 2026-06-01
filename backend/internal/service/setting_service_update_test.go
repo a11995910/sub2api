@@ -84,13 +84,13 @@ func (s *settingAntigravityUARepoStub) Delete(ctx context.Context, key string) e
 	panic("unexpected Delete call")
 }
 
-type defaultSubGroupReaderStub struct {
+type settingsGroupReaderStub struct {
 	byID  map[int64]*Group
 	errBy map[int64]error
 	calls []int64
 }
 
-func (s *defaultSubGroupReaderStub) GetByID(ctx context.Context, id int64) (*Group, error) {
+func (s *settingsGroupReaderStub) GetByID(ctx context.Context, id int64) (*Group, error) {
 	s.calls = append(s.calls, id)
 	if err, ok := s.errBy[id]; ok {
 		return nil, err
@@ -103,13 +103,13 @@ func (s *defaultSubGroupReaderStub) GetByID(ctx context.Context, id int64) (*Gro
 
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
-	groupReader := &defaultSubGroupReaderStub{
+	groupReader := &settingsGroupReaderStub{
 		byID: map[int64]*Group{
 			11: {ID: 11, SubscriptionType: SubscriptionTypeSubscription},
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
-	svc.SetDefaultSubscriptionGroupReader(groupReader)
+	svc.SetSettingsGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
@@ -131,13 +131,13 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testin
 
 func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsNonSubscriptionGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
-	groupReader := &defaultSubGroupReaderStub{
+	groupReader := &settingsGroupReaderStub{
 		byID: map[int64]*Group{
 			12: {ID: 12, SubscriptionType: SubscriptionTypeStandard},
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
-	svc.SetDefaultSubscriptionGroupReader(groupReader)
+	svc.SetSettingsGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
@@ -151,13 +151,13 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsNonSubscripti
 
 func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsNotFoundGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
-	groupReader := &defaultSubGroupReaderStub{
+	groupReader := &settingsGroupReaderStub{
 		errBy: map[int64]error{
 			13: ErrGroupNotFound,
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
-	svc.SetDefaultSubscriptionGroupReader(groupReader)
+	svc.SetSettingsGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
@@ -172,13 +172,13 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsNotFoundGroup
 
 func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsDuplicateGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
-	groupReader := &defaultSubGroupReaderStub{
+	groupReader := &settingsGroupReaderStub{
 		byID: map[int64]*Group{
 			11: {ID: 11, SubscriptionType: SubscriptionTypeSubscription},
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
-	svc.SetDefaultSubscriptionGroupReader(groupReader)
+	svc.SetSettingsGroupReader(groupReader)
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		DefaultSubscriptions: []DefaultSubscriptionSetting{
@@ -205,6 +205,43 @@ func TestSettingService_UpdateSettings_DefaultSubscriptions_RejectsDuplicateGrou
 	require.Error(t, err)
 	require.Equal(t, "DEFAULT_SUBSCRIPTION_GROUP_DUPLICATE", infraerrors.Reason(err))
 	require.Equal(t, "11", infraerrors.FromError(err).Metadata["group_id"])
+	require.Nil(t, repo.updates)
+}
+
+func TestSettingService_UpdateSettings_APIKeyDefaultGroup_ValidGroup(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &settingsGroupReaderStub{
+		byID: map[int64]*Group{
+			21: {ID: 21, Status: StatusActive},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetSettingsGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		APIKeyDefaultGroupID: 21,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{21}, groupReader.calls)
+	require.Equal(t, "21", repo.updates[SettingKeyAPIKeyDefaultGroupID])
+}
+
+func TestSettingService_UpdateSettings_APIKeyDefaultGroup_RejectsInactive(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &settingsGroupReaderStub{
+		byID: map[int64]*Group{
+			21: {ID: 21, Status: StatusDisabled},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetSettingsGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		APIKeyDefaultGroupID: 21,
+	})
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_DEFAULT_GROUP_INVALID", infraerrors.Reason(err))
+	require.Equal(t, "21", infraerrors.FromError(err).Metadata["group_id"])
 	require.Nil(t, repo.updates)
 }
 

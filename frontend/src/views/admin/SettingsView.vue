@@ -3123,6 +3123,23 @@
                     {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
                   </p>
                 </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.defaults.apiKeyDefaultGroup") }}
+                  </label>
+                  <Select
+                    v-model="form.api_key_default_group_id"
+                    :options="apiKeyDefaultGroupOptions"
+                    :placeholder="
+                      t('admin.settings.defaults.noApiKeyDefaultGroup')
+                    "
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.apiKeyDefaultGroupHint") }}
+                  </p>
+                </div>
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -6926,6 +6943,7 @@ const adminApiKeyExists = ref(false);
 const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
+const activeGroups = ref<AdminGroup[]>([]);
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // Overload Cooldown (529) 状态
@@ -7100,6 +7118,7 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
+  api_key_default_group_id: 0,
   site_name: "Sub2API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
@@ -7528,6 +7547,18 @@ const defaultSubscriptionGroupOptions = computed<
   })),
 );
 
+const apiKeyDefaultGroupOptions = computed(() => [
+  {
+    value: 0,
+    label: t("admin.settings.defaults.noApiKeyDefaultGroup"),
+  },
+  ...activeGroups.value.map((group) => ({
+    value: group.id,
+    label: group.name,
+    description: group.description,
+  })),
+]);
+
 const registrationEmailSuffixWhitelistSeparatorKeys = new Set([
   " ",
   ",",
@@ -7906,6 +7937,7 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.api_key_default_group_id = Number(settings.api_key_default_group_id) || 0;
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -8012,11 +8044,13 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
-    subscriptionGroups.value = groups.filter(
+    activeGroups.value = groups.filter((group) => group.status === "active");
+    subscriptionGroups.value = activeGroups.value.filter(
       (group) =>
-        group.subscription_type === "subscription" && group.status === "active",
+        group.subscription_type === "subscription",
     );
   } catch (_error: unknown) {
+    activeGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -8256,6 +8290,7 @@ async function saveSettings() {
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      api_key_default_group_id: Number(form.api_key_default_group_id) || 0,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
