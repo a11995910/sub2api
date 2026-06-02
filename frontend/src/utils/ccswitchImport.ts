@@ -1,6 +1,7 @@
 import type { GroupPlatform } from '@/types'
 
-export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.4'
+export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.5'
+export const OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT = 'medium'
 
 export type CcSwitchClientType = 'claude' | 'gemini'
 
@@ -8,6 +9,7 @@ export interface CcSwitchImportConfig {
   app: string
   endpoint: string
   model?: string
+  config?: string
 }
 
 export interface CcSwitchImportDeeplinkInput {
@@ -34,7 +36,8 @@ export function resolveCcSwitchImportConfig(
       return {
         app: 'codex',
         endpoint: baseUrl,
-        model: OPENAI_CC_SWITCH_CODEX_MODEL
+        model: OPENAI_CC_SWITCH_CODEX_MODEL,
+        config: buildCodexProviderConfig(baseUrl)
       }
     case 'gemini':
       return {
@@ -67,8 +70,33 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
   if (config.model) {
     entries.splice(2, 0, ['model', config.model])
   }
+  if (config.config) {
+    entries.push(['config', btoa(toAsciiJavaScriptSource(config.config))])
+  }
 
   return `ccswitch://v1/import?${new URLSearchParams(entries).toString()}`
+}
+
+function buildCodexProviderConfig(baseUrl: string): string {
+  return JSON.stringify({
+    auth: {},
+    config: `model_provider = "OpenAI"
+model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"
+review_model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"
+model_reasoning_effort = "${OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT}"
+disable_response_storage = true
+network_access = "enabled"
+windows_wsl_setup_acknowledged = true
+
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "${baseUrl}"
+wire_api = "responses"
+requires_openai_auth = true
+
+[features]
+goals = true`
+  })
 }
 
 function toAsciiJavaScriptSource(source: string): string {

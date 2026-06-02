@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   OPENAI_CC_SWITCH_CODEX_MODEL,
+  OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT,
   buildCcSwitchImportDeeplink
 } from '@/utils/ccswitchImport'
 import type { GroupPlatform } from '@/types'
@@ -31,7 +32,16 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe('codex')
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+    expect(params.get('configFormat')).toBe('json')
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+
+    const configPayload = JSON.parse(atob(params.get('config') || ''))
+    expect(configPayload.config).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(configPayload.config).toContain(`review_model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(configPayload.config).toContain(
+      `model_reasoning_effort = "${OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT}"`
+    )
+    expect(configPayload.config).toContain(`base_url = "${baseInput.baseUrl}"`)
   })
 
   it('encodes non-Latin1 usage scripts without throwing', () => {

@@ -23,7 +23,7 @@
 3. CC-Switch 用户按系统选择 GitHub Release 中的安装包。
 4. 用户登录平台后进入 `/keys`。
 5. 用户创建 API 密钥，并确认密钥绑定了正确分组。
-6. 用户点击密钥行中的“导入到 CCS”，系统通过 `ccswitch://v1/import` deeplink 将站点地址、密钥、客户端类型和用量脚本交给 CC-Switch。
+6. 用户点击密钥行中的“导入到 CCS”，系统通过 `ccswitch://v1/import` deeplink 将站点地址、密钥、客户端类型、默认模型配置和用量脚本交给 CC-Switch。OpenAI 分组导入为 Codex Provider，默认模型为 `gpt-5.5`，默认 `model_reasoning_effort` 为 `medium`。
 7. 用户在 Codex 或对应客户端中执行简单测试，确认密钥、分组、模型和接口地址可用。
 
 ## 涉及页面与模块
@@ -33,7 +33,7 @@
 - `AppHeader`：登录后顶部导航展示“小白攻略”入口。
 - `/keys`：创建密钥、查看密钥、使用密钥、导入到 CCS。
 - `UseKeyModal`：根据密钥分组展示 Codex CLI、Claude Code、Gemini CLI、OpenCode 等配置示例。
-- `ccswitchImport` 工具：生成 CC-Switch deeplink。
+- `ccswitchImport` 工具：生成 CC-Switch deeplink，并为 OpenAI 分组写入 Codex 默认模型和推理强度配置。
 
 ## 涉及接口
 
@@ -48,7 +48,7 @@
 攻略页面不新增数据表，不写入数据库。关联数据来自既有模块：
 
 - API 密钥数据：由 `/keys` 页面创建和管理。
-- 用户分组数据：决定“使用密钥”和“导入到 CCS”时生成的客户端配置类型。
+- 用户分组数据：决定“使用密钥”和“导入到 CCS”时生成的客户端配置类型；OpenAI 分组导入 CCS 时使用 Codex 配置，默认模型为 `gpt-5.5`，默认推理强度为 `medium`。
 - 公共设置：包括站点名称、Logo、API Base URL、是否隐藏 CCS 导入按钮。
 
 ## 边界与异常处理
