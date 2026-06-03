@@ -1,83 +1,252 @@
 <template>
   <AppLayout>
-    <div class="creative-shell">
-      <aside class="creative-history">
-        <div class="flex items-center gap-2">
-          <button class="creative-new-button" @click="startNewConversation">
-            <Icon name="sparkles" size="sm" />
-            新建创作
-          </button>
-          <button class="creative-icon-button" title="清空历史" @click="clearConversations">
-            <Icon name="trash" size="sm" />
-          </button>
-        </div>
-
-        <div class="creative-history-list">
-          <button
-            v-for="conversation in conversations"
-            :key="conversation.id"
-            class="creative-history-item"
-            :class="{ 'creative-history-item-active': conversation.id === activeConversationId }"
-            @click="selectConversation(conversation.id)"
-          >
-            <span class="truncate text-sm font-semibold text-slate-700 dark:text-slate-100">{{ conversation.title }}</span>
-            <span class="mt-1 text-xs text-slate-400">{{ conversation.turns.length }} 次 · {{ formatConversationTime(conversation.updatedAt) }}</span>
-          </button>
-
-          <div v-if="conversations.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-500 dark:border-dark-700 dark:text-dark-400">
-            暂无创作历史。发送第一张图后会自动保存到本地浏览器。
+    <div class="creative-studio">
+      <aside class="creative-control-panel">
+        <div class="creative-panel-header">
+          <div>
+            <p class="creative-kicker">gpt-image-2</p>
+            <h1>创意绘图</h1>
           </div>
+          <button class="creative-icon-button" title="新建创作" @click="startNewConversation">
+            <Icon name="plus" size="sm" />
+          </button>
         </div>
+
+        <section class="creative-section">
+          <div class="creative-section-title">
+            <Icon name="edit" size="sm" />
+            <span>提示词</span>
+          </div>
+          <textarea
+            v-model="prompt"
+            class="creative-prompt"
+            :placeholder="referenceImages.length ? '描述参考图要如何变化、保留或重绘...' : '输入你要生成的画面、主体、风格、镜头、材质和用途...'"
+            @keydown.meta.enter.prevent="submit"
+            @keydown.ctrl.enter.prevent="submit"
+          />
+          <div class="creative-prompt-actions">
+            <button class="creative-secondary-button" @click="marketOpen = true">
+              <Icon name="globe" size="xs" />
+              提示词市场
+            </button>
+            <span>{{ prompt.trim().length }} 字</span>
+          </div>
+        </section>
+
+        <section class="creative-section">
+          <div class="creative-section-title">
+            <Icon name="key" size="sm" />
+            <span>账号与产出</span>
+          </div>
+          <label class="creative-field">
+            <span>API 密钥</span>
+            <select v-model.number="selectedApiKeyId">
+              <option :value="0">选择 OpenAI 图片分组密钥</option>
+              <option v-for="key in drawableKeys" :key="key.id" :value="key.id">
+                {{ key.name }} · {{ maskKey(key.key) }}
+              </option>
+            </select>
+          </label>
+          <div class="creative-inline-grid">
+            <label class="creative-field">
+              <span>数量</span>
+              <input v-model.number="imageCount" min="1" max="4" type="number">
+            </label>
+            <label class="creative-field">
+              <span>格式</span>
+              <select v-model="outputFormat">
+                <option v-for="item in CREATIVE_OUTPUT_FORMAT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="creative-section">
+          <div class="creative-section-title">
+            <Icon name="grid" size="sm" />
+            <span>尺寸与分辨率</span>
+          </div>
+          <label class="creative-field">
+            <span>快速尺寸</span>
+            <select v-model="quickSizeValue">
+              <option v-for="item in creativeSizeOptions" :key="item.value || 'auto'" :value="item.value">
+                {{ item.label }}
+              </option>
+              <option v-if="showCurrentSizeOption" :value="currentImageSize">
+                {{ formatImageSizeDisplay(currentImageSize) }} · {{ currentImageBillingTier }}
+              </option>
+            </select>
+          </label>
+          <div class="creative-inline-grid">
+            <label class="creative-field">
+              <span>尺寸模式</span>
+              <select v-model="sizeSelection.mode">
+                <option v-for="item in IMAGE_SIZE_MODE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+            <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
+              <span>分辨率</span>
+              <select v-model="sizeSelection.resolution">
+                <option v-for="item in IMAGE_RESOLUTION_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+          </div>
+          <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
+            <span>画幅比例</span>
+            <select v-model="sizeSelection.aspectRatio">
+              <option v-for="item in IMAGE_ASPECT_RATIO_OPTIONS" :key="item.value || 'auto'" :value="item.value">{{ item.label }}</option>
+            </select>
+          </label>
+          <label v-if="sizeSelection.mode === 'ratio' && sizeSelection.aspectRatio === CUSTOM_IMAGE_ASPECT_RATIO" class="creative-field">
+            <span>自定义比例</span>
+            <input v-model="sizeSelection.customRatio" placeholder="16:9">
+          </label>
+          <div v-if="sizeSelection.mode === 'custom'" class="creative-inline-grid">
+            <label class="creative-field">
+              <span>宽度</span>
+              <input v-model="sizeSelection.customWidth" inputmode="numeric">
+            </label>
+            <label class="creative-field">
+              <span>高度</span>
+              <input v-model="sizeSelection.customHeight" inputmode="numeric">
+            </label>
+          </div>
+          <div class="creative-size-summary">
+            <span>{{ formatImageSizeDisplay(currentImageSize) }}</span>
+            <strong>{{ currentImageBillingTier }}</strong>
+          </div>
+        </section>
+
+        <section class="creative-section">
+          <div class="creative-section-title">
+            <Icon name="image" size="sm" />
+            <span>参考图</span>
+          </div>
+          <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="handleFileChange">
+          <button class="creative-upload" @click="fileInputRef?.click()">
+            <Icon name="upload" size="sm" />
+            <span>上传参考图</span>
+          </button>
+          <div v-if="referenceImages.length" class="creative-reference-grid">
+            <div v-for="reference in referenceImages" :key="reference.id" class="creative-reference-item">
+              <img :src="reference.dataUrl" :alt="reference.name" referrerpolicy="no-referrer">
+              <div v-if="reference.loading" class="creative-reference-overlay">
+                <Icon name="refresh" size="xs" class="animate-spin" />
+              </div>
+              <div v-else-if="reference.loadError" class="creative-reference-overlay creative-reference-overlay-error" title="参考图加载失败">
+                <Icon name="x" size="xs" />
+              </div>
+              <button title="移除参考图" @click="removeReference(reference.id)">
+                <Icon name="x" size="xs" />
+              </button>
+            </div>
+          </div>
+          <p v-else class="creative-muted">无参考图时走文生图；添加参考图后自动走图片编辑接口。</p>
+        </section>
+
+        <button class="creative-generate-button" :disabled="isSubmitting || hasLoadingReferences" @click="submit">
+          <Icon v-if="isSubmitting || hasLoadingReferences" name="refresh" size="sm" class="animate-spin" />
+          <Icon v-else name="sparkles" size="sm" />
+          {{ isSubmitting ? '提交中...' : '开始生成' }}
+        </button>
+        <p class="creative-cost">{{ estimatedConsumptionLabel }}</p>
+
+        <section class="creative-section creative-history-section">
+          <div class="creative-section-title creative-history-title">
+            <span><Icon name="clock" size="sm" /> 最近任务</span>
+            <button title="清空历史" @click="clearConversations">
+              <Icon name="trash" size="xs" />
+            </button>
+          </div>
+          <div class="creative-history-list">
+            <button
+              v-for="conversation in conversations"
+              :key="conversation.id"
+              class="creative-history-item"
+              :class="{ 'creative-history-item-active': conversation.id === activeConversationId }"
+              @click="selectConversation(conversation.id)"
+            >
+              <span>{{ conversation.title }}</span>
+              <small>{{ conversation.turns.length }} 次 · {{ formatConversationTime(conversation.updatedAt) }}</small>
+            </button>
+            <p v-if="conversations.length === 0" class="creative-muted">提交第一张图后会在这里保存本地历史。</p>
+          </div>
+        </section>
       </aside>
 
-      <section class="creative-main">
+      <section class="creative-canvas">
+        <div class="creative-canvas-topbar">
+          <div>
+            <p class="creative-kicker">结果展示区</p>
+            <h2>{{ activeConversation?.title || '等待生成' }}</h2>
+          </div>
+          <div class="creative-topbar-actions">
+            <button class="creative-secondary-button" @click="syncCreativeDrawingTasks">
+              <Icon name="refresh" size="xs" />
+              同步任务
+            </button>
+            <button class="creative-secondary-button" @click="startNewConversation">
+              <Icon name="plus" size="xs" />
+              新建
+            </button>
+          </div>
+        </div>
+
         <div v-if="activeConversation?.turns.length" class="creative-turns">
           <article v-for="turn in activeConversation.turns" :key="turn.id" class="creative-turn">
-            <div class="creative-turn-meta">
-              <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-dark-800 dark:text-dark-200">
-                {{ turn.mode === 'edit' ? '参考图作画' : '文生图' }}
-              </span>
-              <span>{{ turn.model }}</span>
-              <span>{{ formatImageSizeDisplay(turn.size) }}</span>
-              <span>{{ turn.count }} 张</span>
-              <span>{{ formatConversationTime(turn.createdAt) }}</span>
-            </div>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700 dark:text-dark-200">{{ turn.prompt }}</p>
+            <header class="creative-turn-header">
+              <div class="creative-turn-meta">
+                <span>{{ turn.mode === 'edit' ? '参考图作画' : '文生图' }}</span>
+                <span>{{ formatImageSizeDisplay(turn.size) }}</span>
+                <span>{{ turn.count }} 张</span>
+                <span>{{ formatConversationTime(turn.createdAt) }}</span>
+              </div>
+              <button class="creative-mini-action" title="重试这个提示词" @click="retryTurnPrompt(turn)">
+                <Icon name="refresh" size="xs" />
+                重试
+              </button>
+            </header>
+            <p class="creative-turn-prompt">{{ turn.prompt }}</p>
 
-            <div v-if="turn.references.length" class="mt-3 flex flex-wrap gap-2">
+            <div v-if="turn.references.length" class="creative-turn-references">
               <img
                 v-for="reference in turn.references"
                 :key="reference.id"
                 :src="reference.dataUrl"
                 :alt="reference.name"
-                class="h-16 w-16 rounded-2xl object-cover ring-1 ring-slate-200 dark:ring-dark-700"
                 referrerpolicy="no-referrer"
               >
             </div>
 
-            <div v-if="turn.status === 'generating'" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div v-if="turn.status === 'generating'" class="creative-results-grid">
               <div v-for="index in Math.max(turn.count, 1)" :key="index" class="creative-image-skeleton">
-                <Icon name="sparkles" size="lg" class="animate-pulse text-blue-600" />
+                <Icon name="sparkles" size="lg" class="animate-pulse" />
                 <span>生成中</span>
               </div>
             </div>
 
-            <div v-else-if="turn.status === 'error'" class="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200">
+            <div v-else-if="turn.status === 'error'" class="creative-error">
               {{ turn.error || '生成失败' }}
             </div>
 
-            <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div v-else class="creative-results-grid">
               <figure v-for="(image, index) in turn.images" :key="image.id" class="creative-result">
-                <button class="block w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-dark-800" @click="previewImage = buildStoredImageUrl(image)">
-                  <img :src="buildStoredImageUrl(image)" :alt="turn.prompt" class="creative-result-image" referrerpolicy="no-referrer">
+                <button class="creative-result-preview" @click="previewImage = buildStoredImageUrl(image)">
+                  <img :src="buildStoredImageUrl(image)" :alt="turn.prompt" referrerpolicy="no-referrer">
                 </button>
-                <figcaption class="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-dark-400">
-                  <span class="truncate">{{ image.revised_prompt || image.size || `结果 ${index + 1}` }}</span>
-                  <div class="flex shrink-0 items-center gap-1">
-                    <button class="creative-mini-button" title="作为参考图继续创作" @click="useResultAsReference(image, index)">
+                <figcaption>
+                  <span>{{ image.revised_prompt || image.size || `结果 ${index + 1}` }}</span>
+                  <div>
+                    <button title="下载图片" @click="downloadImage(image, index)">
+                      <Icon name="download" size="xs" />
+                    </button>
+                    <button title="加入参考图" @click="useResultAsReference(image, index)">
                       <Icon name="image" size="xs" />
                     </button>
-                    <a class="creative-mini-button" title="打开图片" :href="buildStoredImageUrl(image)" target="_blank" rel="noreferrer">
+                    <button title="重试提示词" @click="retryTurnPrompt(turn)">
+                      <Icon name="refresh" size="xs" />
+                    </button>
+                    <a title="打开图片" :href="buildStoredImageUrl(image)" target="_blank" rel="noreferrer">
                       <Icon name="externalLink" size="xs" />
                     </a>
                   </div>
@@ -87,161 +256,15 @@
           </article>
         </div>
 
-        <div v-else class="creative-empty">
-          <div class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-dark-800 dark:text-dark-200">
-            <Icon name="sparkles" size="xs" class="text-blue-600" />
-            生图预设
-          </div>
-          <h1 class="mt-4 text-4xl font-bold tracking-normal text-slate-950 dark:text-white md:text-5xl">
-            Turn ideas into images
-          </h1>
-          <p class="mx-auto mt-4 max-w-xl text-center text-base leading-7 text-slate-600 dark:text-dark-300">
-            选择一组真实案例预设快速开始，也可以直接在下方输入自己的画面描述。
-          </p>
-
-          <div class="mt-8 grid w-full max-w-6xl gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <article v-for="preset in IMAGE_PROMPT_PRESETS" :key="preset.id" class="creative-preset">
-              <div class="relative aspect-[16/10] overflow-hidden bg-slate-100">
-                <img :src="preset.imageSrc" :alt="preset.title" class="h-full w-full object-cover">
-                <span class="absolute bottom-2 left-2 rounded-full bg-white/90 px-2 py-1 text-xs font-bold text-slate-900">{{ preset.size }}</span>
-                <span class="absolute bottom-2 right-2 rounded-full bg-black/45 px-2 py-1 text-xs font-bold text-white">{{ preset.count }} 张</span>
-              </div>
-              <div class="flex flex-1 flex-col p-4 text-center">
-                <h3 class="font-semibold text-slate-950 dark:text-white">{{ preset.title }}</h3>
-                <p class="mt-2 min-h-[48px] text-sm leading-6 text-slate-600 dark:text-dark-300">{{ preset.hint }}</p>
-                <button class="mt-auto border-t border-slate-100 pt-3 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:border-dark-800" @click="applyPreset(preset)">
-                  套用这个预设
-                </button>
-              </div>
-            </article>
-          </div>
+        <div v-else class="creative-empty-state">
+          <Icon name="image" size="xl" />
+          <h2>右侧会展示生成结果</h2>
+          <p>在左侧选择 Key、分辨率、尺寸模式并输入提示词。生成完成后可下载、重试或把结果加入参考图继续创作。</p>
         </div>
-
       </section>
     </div>
 
     <PromptMarketDialog v-model:open="marketOpen" @apply="applyMarketPrompt" />
-
-    <teleport to="body">
-      <div class="creative-composer-wrap" :class="{ 'creative-composer-wrap-collapsed': appStore.sidebarCollapsed }">
-        <div v-if="referenceImages.length" class="creative-reference-strip">
-          <div v-for="reference in referenceImages" :key="reference.id" class="relative h-16 w-16">
-            <img :src="reference.dataUrl" :alt="reference.name" class="h-full w-full rounded-2xl object-cover shadow-sm ring-1 ring-slate-200 dark:ring-dark-700" referrerpolicy="no-referrer">
-            <div v-if="reference.loading" class="creative-reference-loading">
-              <Icon name="refresh" size="xs" class="animate-spin" />
-            </div>
-            <div v-else-if="reference.loadError" class="creative-reference-error" title="参考图加载失败">
-              <Icon name="x" size="xs" />
-            </div>
-            <button class="absolute -right-1 -top-1 rounded-full bg-white p-1 text-slate-500 shadow hover:text-red-600 dark:bg-dark-800" title="移除参考图" @click="removeReference(reference.id)">
-              <Icon name="x" size="xs" />
-            </button>
-          </div>
-        </div>
-
-        <div class="creative-composer">
-          <textarea
-            v-model="prompt"
-            class="creative-textarea"
-            :placeholder="referenceImages.length ? '描述如何参考这些图片生成新图...' : '输入画面描述，使用 gpt-image-2 直接生成图片...'"
-            @keydown.meta.enter.prevent="submit"
-            @keydown.ctrl.enter.prevent="submit"
-          />
-
-          <div class="creative-toolbar">
-            <div class="creative-toolbar-main flex flex-wrap items-center gap-2">
-              <span class="creative-pill creative-pill-active">
-                <Icon name="image" size="xs" />
-                作画
-              </span>
-              <select v-model="quickSizeValue" class="creative-select creative-size-select" title="尺寸">
-                <option v-for="item in creativeSizeOptions" :key="item.value || 'auto'" :value="item.value">
-                  尺寸 {{ item.label }}
-                </option>
-                <option v-if="showCurrentSizeOption" :value="currentImageSize">
-                  尺寸 {{ formatImageSizeDisplay(currentImageSize) }} · {{ currentImageBillingTier }}
-                </option>
-              </select>
-              <button class="creative-pill" @click="marketOpen = true">
-                <Icon name="globe" size="xs" />
-                热门模板
-              </button>
-              <button class="creative-pill" @click="paramsOpen = !paramsOpen">
-                <Icon name="filter" size="xs" />
-                参数
-              </button>
-            </div>
-
-            <div class="creative-toolbar-actions flex items-center gap-2">
-              <input ref="fileInputRef" type="file" accept="image/*" multiple class="hidden" @change="handleFileChange">
-              <button class="creative-icon-button" title="上传参考图" @click="fileInputRef?.click()">
-                <Icon name="upload" size="sm" />
-              </button>
-              <button class="creative-send" :disabled="isSubmitting || hasLoadingReferences" title="发送" @click="submit">
-                <Icon v-if="isSubmitting || hasLoadingReferences" name="refresh" size="sm" class="animate-spin" />
-                <Icon v-else name="arrowUp" size="sm" />
-              </button>
-            </div>
-          </div>
-
-          <div v-if="paramsOpen" class="creative-params">
-            <label class="creative-field">
-              <span>API 密钥</span>
-              <select v-model.number="selectedApiKeyId">
-                <option :value="0">选择 OpenAI 分组密钥</option>
-                <option v-for="key in drawableKeys" :key="key.id" :value="key.id">
-                  {{ key.name }} · {{ maskKey(key.key) }}
-                </option>
-              </select>
-            </label>
-            <label class="creative-field">
-              <span>数量</span>
-              <input v-model.number="imageCount" min="1" max="4" type="number">
-            </label>
-            <label class="creative-field">
-              <span>尺寸模式</span>
-              <select v-model="sizeSelection.mode">
-                <option v-for="item in IMAGE_SIZE_MODE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
-              </select>
-            </label>
-            <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
-              <span>比例</span>
-              <select v-model="sizeSelection.aspectRatio">
-                <option v-for="item in IMAGE_ASPECT_RATIO_OPTIONS" :key="item.value || 'auto'" :value="item.value">{{ item.label }}</option>
-              </select>
-            </label>
-            <label v-if="sizeSelection.mode === 'ratio'" class="creative-field">
-              <span>分辨率</span>
-              <select v-model="sizeSelection.resolution">
-                <option v-for="item in IMAGE_RESOLUTION_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
-              </select>
-            </label>
-            <label v-if="sizeSelection.mode === 'ratio' && sizeSelection.aspectRatio === CUSTOM_IMAGE_ASPECT_RATIO" class="creative-field">
-              <span>自定义比例</span>
-              <input v-model="sizeSelection.customRatio" placeholder="16:9">
-            </label>
-            <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
-              <span>宽度</span>
-              <input v-model="sizeSelection.customWidth" inputmode="numeric">
-            </label>
-            <label v-if="sizeSelection.mode === 'custom'" class="creative-field">
-              <span>高度</span>
-              <input v-model="sizeSelection.customHeight" inputmode="numeric">
-            </label>
-            <label class="creative-field">
-              <span>格式</span>
-              <select v-model="outputFormat">
-                <option v-for="item in CREATIVE_OUTPUT_FORMAT_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="mt-2 flex items-center justify-end px-2 text-xs text-slate-400">
-            <span>{{ estimatedConsumptionLabel }}</span>
-          </div>
-        </div>
-      </div>
-    </teleport>
 
     <teleport to="body">
       <transition name="fade">
@@ -287,7 +310,6 @@ import {
   getImageSizeSelectionFromSize,
   type ImageSizeSelection
 } from '@/features/creativeDrawing/imageOptions'
-import { IMAGE_PROMPT_PRESETS, type ImagePromptPreset } from '@/features/creativeDrawing/imagePresets'
 import PromptMarketDialog from '@/features/creativeDrawing/PromptMarketDialog.vue'
 import { getPromptApplyReferenceImageUrls, type BananaPrompt } from '@/features/creativeDrawing/promptMarket'
 import {
@@ -316,7 +338,6 @@ const prompt = ref('')
 const fixedCreativeImageModel: CreativeImageModel = 'gpt-image-2'
 const outputFormat = ref<CreativeOutputFormat>('png')
 const imageCount = ref(1)
-const paramsOpen = ref(false)
 const marketOpen = ref(false)
 const isSubmitting = ref(false)
 const previewImage = ref('')
@@ -583,15 +604,6 @@ async function ensureReferencesReady() {
   return true
 }
 
-async function applyPreset(preset: ImagePromptPreset) {
-  prompt.value = preset.prompt
-  imageCount.value = preset.count
-  applySizeFromPreset(preset.size)
-  const reference = createRemoteReference(preset.imageSrc, 0, 'preset')
-  referenceImages.value = [reference]
-  void hydrateReferenceImages([reference.id])
-}
-
 function applyMarketPrompt(marketPrompt: BananaPrompt) {
   prompt.value = marketPrompt.prompt
   const urls = getPromptApplyReferenceImageUrls(marketPrompt)
@@ -644,7 +656,6 @@ async function submit() {
     return
   }
   if (!selectedApiKey.value) {
-    paramsOpen.value = true
     appStore.showWarning(drawableKeys.value.length ? '请选择用于作画的 OpenAI 分组密钥' : '请先创建并绑定允许图片生成的 OpenAI 分组 API 密钥')
     return
   }
@@ -858,6 +869,38 @@ function useResultAsReference(image: CreativeStoredImage, index: number) {
   }
   referenceImages.value = [reference]
   prompt.value = '参考这张图，生成一张同风格的新图。'
+  appStore.showSuccess('已加入参考图')
+}
+
+function retryTurnPrompt(turn: CreativeTurn) {
+  prompt.value = turn.prompt
+  imageCount.value = normalizeImageCount(turn.count)
+  outputFormat.value = turn.outputFormat
+  Object.assign(sizeSelection, turn.sizeSelection || getImageSizeSelectionFromSize(turn.size))
+  referenceImages.value = turn.references.map((reference) => ({ ...reference }))
+}
+
+function getImageDownloadName(image: CreativeStoredImage, index: number) {
+  const format = image.output_format === 'jpeg' ? 'jpg' : image.output_format || outputFormat.value || 'png'
+  return `creative-drawing-${index + 1}.${format}`
+}
+
+async function downloadImage(image: CreativeStoredImage, index: number) {
+  const url = buildStoredImageUrl(image)
+  if (!url) {
+    appStore.showWarning('当前图片没有可下载地址')
+    return
+  }
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = getImageDownloadName(image, index)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  } catch (err) {
+    appStore.showError(err instanceof Error ? err.message : '下载图片失败')
+  }
 }
 
 function maskKey(key: string) {
@@ -881,275 +924,198 @@ function formatConversationTime(value: string) {
 </script>
 
 <style scoped>
-.creative-shell {
+.creative-studio {
   display: grid;
-  min-height: calc(100vh - 8rem);
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  min-height: calc(100vh - 7.5rem);
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
   gap: 1rem;
 }
 
-.creative-history {
+.creative-control-panel,
+.creative-canvas {
+  min-width: 0;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.96);
+  box-shadow: 0 16px 40px rgb(15 23 42 / 0.06);
+}
+
+.dark .creative-control-panel,
+.dark .creative-canvas {
+  border-color: rgb(31 41 55);
+  background: rgb(15 23 42 / 0.96);
+}
+
+.creative-control-panel {
   position: sticky;
-  top: 5.5rem;
-  height: calc(100vh - 7.5rem);
+  top: 5rem;
+  display: flex;
+  max-height: calc(100vh - 6rem);
+  flex-direction: column;
   overflow-y: auto;
-  border-right: 1px solid rgb(226 232 240);
-  padding-right: 1rem;
+  border-radius: 0.5rem;
+  padding: 1rem;
 }
 
-.dark .creative-history {
-  border-right-color: rgb(31 41 55);
-}
-
-.creative-main {
-  position: relative;
+.creative-canvas {
   display: flex;
-  min-height: calc(100vh - 8rem);
+  min-height: calc(100vh - 7.5rem);
   flex-direction: column;
-  padding-bottom: 21rem;
+  border-radius: 0.5rem;
+  padding: 1rem;
 }
 
-.creative-empty {
+.creative-panel-header,
+.creative-canvas-topbar,
+.creative-turn-header,
+.creative-history-title {
   display: flex;
-  flex: 1 1 auto;
-  min-height: calc(100vh - 26rem);
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2rem 0 1rem;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
-.creative-new-button,
-.creative-send,
+.creative-panel-header h1,
+.creative-canvas-topbar h2,
+.creative-empty-state h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: rgb(15 23 42);
+}
+
+.dark .creative-panel-header h1,
+.dark .creative-canvas-topbar h2,
+.dark .creative-empty-state h2 {
+  color: white;
+}
+
+.creative-kicker {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: rgb(37 99 235);
+  text-transform: uppercase;
+}
+
+.creative-section {
+  margin-top: 0.875rem;
+  border-top: 1px solid rgb(241 245 249);
+  padding-top: 0.875rem;
+}
+
+.dark .creative-section {
+  border-top-color: rgb(31 41 55);
+}
+
+.creative-section-title,
+.creative-section-title span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.creative-section-title {
+  margin-bottom: 0.625rem;
+  font-size: 0.83rem;
+  font-weight: 800;
+  color: rgb(51 65 85);
+}
+
+.dark .creative-section-title {
+  color: rgb(226 232 240);
+}
+
 .creative-icon-button,
-.creative-pill,
-.creative-mini-button {
+.creative-secondary-button,
+.creative-generate-button,
+.creative-upload,
+.creative-mini-action,
+.creative-result figcaption button,
+.creative-result figcaption a,
+.creative-history-title button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  transition: all 0.15s ease;
-}
-
-.creative-new-button {
-  min-height: 2.75rem;
-  flex: 1 1 auto;
-  border-radius: 9999px;
-  background: rgb(15 23 42);
-  padding: 0 1rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: white;
-  box-shadow: 0 10px 25px rgb(15 23 42 / 0.16);
+  border-radius: 0.5rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .creative-icon-button {
-  height: 2.75rem;
-  width: 2.75rem;
-  border-radius: 9999px;
+  height: 2.25rem;
+  width: 2.25rem;
   border: 1px solid rgb(226 232 240);
   background: white;
   color: rgb(71 85 105);
-  box-shadow: 0 8px 18px rgb(15 23 42 / 0.08);
 }
 
-.dark .creative-icon-button {
+.creative-secondary-button,
+.creative-mini-action {
+  min-height: 2.25rem;
+  border: 1px solid rgb(226 232 240);
+  background: white;
+  padding: 0 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: rgb(71 85 105);
+}
+
+.creative-secondary-button:hover,
+.creative-icon-button:hover,
+.creative-mini-action:hover {
+  border-color: rgb(191 219 254);
+  color: rgb(37 99 235);
+}
+
+.dark .creative-icon-button,
+.dark .creative-secondary-button,
+.dark .creative-mini-action {
   border-color: rgb(55 65 81);
   background: rgb(17 24 39);
   color: rgb(203 213 225);
 }
 
-.creative-history-item {
-  display: flex;
+.creative-prompt {
+  min-height: 11rem;
   width: 100%;
-  flex-direction: column;
-  align-items: flex-start;
-  border-radius: 1rem;
-  padding: 0.75rem 1rem;
-  text-align: left;
-  transition: background 0.15s ease;
-}
-
-.creative-history-item:hover,
-.creative-history-item-active {
-  background: rgb(241 245 249);
-}
-
-.creative-history-list {
-  margin-top: 1.5rem;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.dark .creative-history-item:hover,
-.dark .creative-history-item-active {
-  background: rgb(17 24 39);
-}
-
-.creative-preset {
-  display: flex;
-  min-height: 340px;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 1.375rem;
-  border: 1px solid rgb(241 245 249);
-  background: white;
-  box-shadow: 0 4px 14px rgb(15 23 42 / 0.06);
-}
-
-.dark .creative-preset {
-  border-color: rgb(31 41 55);
-  background: rgb(17 24 39);
-}
-
-.creative-composer-wrap {
-  position: fixed;
-  bottom: max(1.5rem, env(safe-area-inset-bottom));
-  left: calc(16rem + 2rem);
-  right: 2rem;
-  z-index: 80;
-  width: auto;
-  max-height: calc(100dvh - 2rem);
-  pointer-events: none;
-}
-
-.creative-composer-wrap-collapsed {
-  left: calc(72px + 2rem);
-}
-
-.creative-composer-wrap > * {
-  pointer-events: auto;
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 980px;
-}
-
-.creative-reference-strip {
-  margin-bottom: 0.75rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.creative-reference-loading,
-.creative-reference-error {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 1rem;
-  background: rgb(15 23 42 / 0.5);
-  color: white;
-}
-
-.creative-reference-error {
-  background: rgb(220 38 38 / 0.72);
-}
-
-.creative-composer {
-  border-radius: 1.75rem;
+  resize: vertical;
+  border-radius: 0.5rem;
   border: 1px solid rgb(226 232 240);
-  background: rgb(255 255 255 / 0.96);
-  padding: 1rem;
-  box-shadow: 0 24px 70px rgb(15 23 42 / 0.18);
-  backdrop-filter: blur(14px);
-}
-
-.dark .creative-composer {
-  border-color: rgb(31 41 55);
-  background: rgb(15 23 42 / 0.96);
-}
-
-.creative-textarea {
-  min-height: 7rem;
-  max-height: 15rem;
-  width: 100%;
-  resize: none;
-  border: 0;
-  background: transparent;
-  padding: 0.5rem 0.75rem;
+  background: rgb(248 250 252);
+  padding: 0.875rem;
+  font-size: 0.92rem;
+  line-height: 1.7;
   color: rgb(15 23 42);
-  overflow-y: auto;
   outline: none;
 }
 
-.dark .creative-textarea {
+.creative-prompt:focus,
+.creative-field input:focus,
+.creative-field select:focus {
+  border-color: rgb(37 99 235);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.12);
+}
+
+.dark .creative-prompt {
+  border-color: rgb(55 65 81);
+  background: rgb(10 15 26);
   color: white;
 }
 
-.creative-toolbar {
+.creative-prompt-actions,
+.creative-size-summary,
+.creative-cost {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border-top: 1px solid rgb(241 245 249);
-  padding-top: 0.75rem;
+  color: rgb(100 116 139);
 }
 
-.creative-toolbar-main,
-.creative-toolbar-actions {
-  min-width: 0;
-}
-
-.dark .creative-toolbar {
-  border-top-color: rgb(31 41 55);
-}
-
-.creative-pill,
-.creative-select {
-  min-height: 2.25rem;
-  border-radius: 9999px;
-  border: 1px solid rgb(226 232 240);
-  background: white;
-  padding: 0 0.875rem;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: rgb(71 85 105);
-}
-
-.creative-pill-active {
-  border-color: rgb(191 219 254);
-  background: rgb(239 246 255);
-  color: rgb(37 99 235);
-}
-
-.creative-size-select {
-  min-width: 12.25rem;
-}
-
-.dark .creative-pill,
-.dark .creative-select {
-  border-color: rgb(55 65 81);
-  background: rgb(17 24 39);
-  color: rgb(226 232 240);
-}
-
-.creative-send {
-  height: 2.75rem;
-  width: 2.75rem;
-  border-radius: 9999px;
-  background: rgb(15 23 42);
-  color: white;
-}
-
-.creative-send:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.creative-params {
-  margin-top: 0.875rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
-  border-top: 1px solid rgb(241 245 249);
-  padding-top: 0.875rem;
-}
-
-.dark .creative-params {
-  border-top-color: rgb(31 41 55);
+.creative-prompt-actions {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
 }
 
 .creative-field {
@@ -1157,21 +1123,27 @@ function formatConversationTime(value: string) {
   min-width: 0;
   flex-direction: column;
   gap: 0.375rem;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 800;
   color: rgb(100 116 139);
+}
+
+.creative-field + .creative-field,
+.creative-inline-grid + .creative-field,
+.creative-field + .creative-inline-grid {
+  margin-top: 0.625rem;
 }
 
 .creative-field input,
 .creative-field select {
-  height: 2.5rem;
+  height: 2.45rem;
   min-width: 0;
-  border-radius: 0.875rem;
+  border-radius: 0.5rem;
   border: 1px solid rgb(226 232 240);
   background: white;
-  padding: 0 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 600;
+  padding: 0 0.7rem;
+  font-size: 0.86rem;
+  font-weight: 650;
   color: rgb(15 23 42);
   outline: none;
 }
@@ -1183,297 +1155,431 @@ function formatConversationTime(value: string) {
   color: white;
 }
 
-.creative-turns {
-  margin: 0 auto;
+.creative-inline-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.625rem;
+}
+
+.creative-size-summary {
+  margin-top: 0.625rem;
+  border-radius: 0.5rem;
+  background: rgb(239 246 255);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: rgb(30 64 175);
+}
+
+.dark .creative-size-summary {
+  background: rgb(30 58 138 / 0.22);
+  color: rgb(191 219 254);
+}
+
+.creative-upload {
   width: 100%;
-  max-width: 980px;
-  flex: 1 1 auto;
-  padding: 0.5rem 0 2rem;
+  min-height: 3rem;
+  border: 1px dashed rgb(148 163 184);
+  background: rgb(248 250 252);
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: rgb(71 85 105);
+}
+
+.dark .creative-upload {
+  border-color: rgb(71 85 105);
+  background: rgb(10 15 26);
+  color: rgb(203 213 225);
+}
+
+.creative-reference-grid,
+.creative-turn-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.creative-reference-grid {
+  margin-top: 0.625rem;
+}
+
+.creative-reference-item {
+  position: relative;
+  height: 4.5rem;
+  width: 4.5rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: rgb(241 245 249);
+}
+
+.creative-reference-item img,
+.creative-turn-references img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.creative-reference-item button {
+  position: absolute;
+  right: 0.25rem;
+  top: 0.25rem;
+  border-radius: 9999px;
+  background: rgb(15 23 42 / 0.72);
+  padding: 0.2rem;
+  color: white;
+}
+
+.creative-reference-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(15 23 42 / 0.5);
+  color: white;
+}
+
+.creative-reference-overlay-error {
+  background: rgb(220 38 38 / 0.74);
+}
+
+.creative-muted {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: rgb(100 116 139);
+}
+
+.creative-generate-button {
+  margin-top: 0.875rem;
+  min-height: 2.8rem;
+  width: 100%;
+  background: rgb(15 23 42);
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: white;
+}
+
+.creative-generate-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.dark .creative-generate-button {
+  background: rgb(37 99 235);
+}
+
+.creative-cost {
+  margin: 0.5rem 0 0;
+  justify-content: center;
+  font-size: 0.75rem;
+}
+
+.creative-history-section {
+  padding-bottom: 0.25rem;
+}
+
+.creative-history-title button {
+  height: 1.8rem;
+  width: 1.8rem;
+  color: rgb(100 116 139);
+}
+
+.creative-history-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.creative-history-item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+}
+
+.creative-history-item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: rgb(51 65 85);
+}
+
+.creative-history-item small {
+  font-size: 0.72rem;
+  color: rgb(100 116 139);
+}
+
+.creative-history-item:hover,
+.creative-history-item-active {
+  background: rgb(241 245 249);
+}
+
+.dark .creative-history-item:hover,
+.dark .creative-history-item-active {
+  background: rgb(17 24 39);
+}
+
+.dark .creative-history-item span {
+  color: rgb(226 232 240);
+}
+
+.creative-canvas-topbar {
+  border-bottom: 1px solid rgb(241 245 249);
+  padding-bottom: 0.875rem;
+}
+
+.dark .creative-canvas-topbar {
+  border-bottom-color: rgb(31 41 55);
+}
+
+.creative-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.creative-turns {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1rem;
 }
 
 .creative-turn {
-  border-bottom: 1px solid rgb(226 232 240);
-  padding: 1.25rem 0;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  padding: 0.875rem;
 }
 
 .dark .creative-turn {
-  border-bottom-color: rgb(31 41 55);
+  border-color: rgb(31 41 55);
 }
 
 .creative-turn-meta {
   display: flex;
   flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.creative-turn-meta span {
+  border-radius: 9999px;
+  background: rgb(241 245 249);
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: rgb(71 85 105);
+}
+
+.dark .creative-turn-meta span {
+  background: rgb(17 24 39);
+  color: rgb(203 213 225);
+}
+
+.creative-turn-prompt {
+  margin: 0.75rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.92rem;
+  line-height: 1.8;
+  color: rgb(51 65 85);
+}
+
+.dark .creative-turn-prompt {
+  color: rgb(226 232 240);
+}
+
+.creative-turn-references {
+  margin-top: 0.75rem;
+}
+
+.creative-turn-references img {
+  height: 4rem;
+  width: 4rem;
+  border-radius: 0.5rem;
+}
+
+.creative-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.875rem;
+  margin-top: 0.875rem;
+}
+
+.creative-image-skeleton,
+.creative-result-preview {
+  display: flex;
+  min-height: 18rem;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: rgb(100 116 139);
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: rgb(241 245 249);
+}
+
+.dark .creative-image-skeleton,
+.dark .creative-result-preview {
+  background: rgb(17 24 39);
+}
+
+.creative-image-skeleton {
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: rgb(37 99 235);
 }
 
 .creative-result {
   min-width: 0;
 }
 
-.creative-result-image {
-  aspect-ratio: 1 / 1;
-  max-height: 520px;
-  min-height: 220px;
+.creative-result-preview {
+  width: 100%;
+  overflow: hidden;
+}
+
+.creative-result-preview img {
+  max-height: 34rem;
   width: 100%;
   object-fit: contain;
 }
 
-.creative-mini-button {
-  height: 1.75rem;
-  width: 1.75rem;
-  border-radius: 9999px;
+.creative-result figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  color: rgb(100 116 139);
+}
+
+.creative-result figcaption span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.creative-result figcaption div {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.25rem;
+}
+
+.creative-result figcaption button,
+.creative-result figcaption a {
+  height: 1.85rem;
+  width: 1.85rem;
   background: rgb(241 245 249);
   color: rgb(71 85 105);
 }
 
-.dark .creative-mini-button {
+.dark .creative-result figcaption button,
+.dark .creative-result figcaption a {
   background: rgb(31 41 55);
   color: rgb(203 213 225);
 }
 
-.creative-image-skeleton {
+.creative-error {
+  margin-top: 0.875rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(254 202 202);
+  background: rgb(254 242 242);
+  padding: 0.875rem;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: rgb(185 28 28);
+}
+
+.dark .creative-error {
+  border-color: rgb(127 29 29);
+  background: rgb(127 29 29 / 0.2);
+  color: rgb(254 202 202);
+}
+
+.creative-empty-state {
   display: flex;
-  min-height: 220px;
+  flex: 1 1 auto;
+  min-height: 28rem;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  border-radius: 1.25rem;
-  background: rgb(241 245 249);
-  font-size: 0.875rem;
-  font-weight: 700;
+  text-align: center;
   color: rgb(100 116 139);
 }
 
-.dark .creative-image-skeleton {
-  background: rgb(17 24 39);
-  color: rgb(203 213 225);
+.creative-empty-state p {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.75;
 }
 
-@media (max-width: 1024px) {
-  .creative-shell {
+@media (max-width: 1180px) {
+  .creative-studio {
+    grid-template-columns: minmax(290px, 340px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .creative-studio {
     display: block;
-    min-height: auto;
   }
 
-  .creative-history {
+  .creative-control-panel {
     position: relative;
     top: auto;
-    height: auto;
     max-height: none;
-    overflow: visible;
-    border-right: 0;
-    border-bottom: 1px solid rgb(226 232 240);
     margin-bottom: 1rem;
-    padding-bottom: 1rem;
-    padding-right: 0;
   }
 
-  .creative-history-list {
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-    padding-bottom: 0.25rem;
-    scroll-snap-type: x mandatory;
-  }
-
-  .creative-history-item {
-    min-width: 13rem;
-    scroll-snap-align: start;
-  }
-
-  .creative-main {
-    min-height: auto;
-    padding-bottom: 20rem;
-  }
-
-  .creative-empty {
-    min-height: auto;
-    justify-content: flex-start;
-    padding-bottom: 18rem;
-  }
-
-  .creative-composer-wrap,
-  .creative-composer-wrap-collapsed {
-    bottom: max(1rem, env(safe-area-inset-bottom));
-    left: 1rem;
-    right: 1rem;
+  .creative-canvas {
+    min-height: 32rem;
   }
 }
 
-@media (max-width: 768px) {
-  .creative-shell {
-    gap: 0;
-  }
-
-  .creative-main {
-    padding-bottom: 18rem;
-  }
-
-  .creative-empty {
-    align-items: stretch;
-    padding: 1rem 0 17rem;
-  }
-
-  .creative-empty > * {
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .creative-empty h1 {
-    font-size: 2rem;
-    line-height: 1.15;
-    text-align: center;
-  }
-
-  .creative-empty p {
-    max-width: 24rem;
-    font-size: 0.9375rem;
-  }
-
-  .creative-preset {
-    min-height: auto;
-    border-radius: 1rem;
-  }
-
-  .creative-turns {
-    padding: 0 0 1rem;
-  }
-
-  .creative-turn {
-    padding: 1rem 0;
-  }
-
-  .creative-turn-meta {
-    gap: 0.375rem;
-    font-size: 0.6875rem;
-  }
-
-  .creative-turn p {
-    font-size: 0.875rem;
-    line-height: 1.75;
-  }
-
-  .creative-result-image,
-  .creative-image-skeleton {
-    min-height: 180px;
-    max-height: 70dvh;
-  }
-
-  .creative-reference-strip {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 0.25rem;
-  }
-
-  .creative-composer-wrap,
-  .creative-composer-wrap-collapsed {
-    bottom: 0;
-    left: 0;
-    right: 0;
-    max-height: 72dvh;
-    overflow-y: auto;
-    padding: 0 0.75rem max(0.75rem, env(safe-area-inset-bottom));
-    pointer-events: auto;
-  }
-
-  .creative-composer-wrap > * {
-    max-width: none;
-  }
-
-  .creative-composer {
-    border-radius: 1.25rem 1.25rem 0 0;
+@media (max-width: 640px) {
+  .creative-control-panel,
+  .creative-canvas {
     padding: 0.75rem;
   }
 
-  .creative-textarea {
-    min-height: 5.5rem;
-    max-height: 9rem;
-    padding: 0.375rem 0.5rem;
-    font-size: 0.9375rem;
-    line-height: 1.65;
-  }
-
-  .creative-toolbar {
+  .creative-panel-header,
+  .creative-canvas-topbar,
+  .creative-turn-header {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: stretch;
-    gap: 0.625rem;
   }
 
-  .creative-toolbar-main {
-    display: flex;
+  .creative-topbar-actions,
+  .creative-secondary-button,
+  .creative-mini-action {
     width: 100%;
   }
 
-  .creative-toolbar-main > * {
-    flex: 1 1 calc(50% - 0.25rem);
-  }
-
-  .creative-toolbar-main .creative-pill-active {
-    flex: 0 0 auto;
-  }
-
-  .creative-size-select {
-    min-width: 0;
-    flex-basis: 100%;
-    width: 100%;
-  }
-
-  .creative-toolbar-actions {
-    justify-content: flex-end;
-  }
-
-  .creative-params {
-    max-height: 38dvh;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    overflow-y: auto;
-    gap: 0.625rem;
-  }
-
-  .creative-field input,
-  .creative-field select {
-    height: 2.25rem;
-    border-radius: 0.75rem;
-    font-size: 0.8125rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .creative-main {
-    padding-bottom: 17rem;
-  }
-
-  .creative-empty {
-    padding-bottom: 16rem;
-  }
-
-  .creative-history-item {
-    min-width: 11.5rem;
-  }
-
-  .creative-new-button {
-    min-height: 2.5rem;
-    font-size: 0.8125rem;
-  }
-
-  .creative-pill,
-  .creative-select {
-    min-height: 2.2rem;
-    padding: 0 0.7rem;
-    font-size: 0.75rem;
-  }
-
-  .creative-icon-button,
-  .creative-send {
-    height: 2.5rem;
-    width: 2.5rem;
-  }
-
-  .creative-params {
+  .creative-inline-grid {
     grid-template-columns: 1fr;
+  }
+
+  .creative-results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .creative-image-skeleton,
+  .creative-result-preview {
+    min-height: 14rem;
+  }
+
+  .creative-result figcaption {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
