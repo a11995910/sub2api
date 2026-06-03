@@ -95,7 +95,7 @@ func (r *creativeDrawingRepository) MarkStaleRunning(ctx context.Context, timeou
 			completed_at = $3,
 			updated_at = $3
 		WHERE status = $4
-			AND COALESCE(started_at, updated_at, created_at) < $3 - ($5 * INTERVAL '1 second')
+			AND COALESCE(started_at, updated_at, created_at) < $3::timestamptz - ($5::bigint * INTERVAL '1 second')
 	`, service.CreativeDrawingTaskStatusError, message, completedAt.UTC(), service.CreativeDrawingTaskStatusRunning, int64(timeout.Seconds()))
 	if err != nil {
 		return 0, err
