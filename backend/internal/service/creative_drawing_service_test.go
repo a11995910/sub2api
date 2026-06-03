@@ -92,6 +92,27 @@ func TestParseCreativeDrawingGatewayStreamImagesReadsCompletedEvent(t *testing.T
 	require.Equal(t, int64(1710000000), images[0].CreatedAt)
 }
 
+func TestParseCreativeDrawingGatewayImagesReturnsSuccessErrorPayload(t *testing.T) {
+	_, err := parseCreativeDrawingGatewayImages([]byte(
+		`{"error":{"code":"upstream_error","message":"upstream returned Cloudflare challenge page"}}`,
+	), &CreativeDrawingTask{Mode: CreativeDrawingModeEdit})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Cloudflare challenge")
+}
+
+func TestParseCreativeDrawingGatewayImagesKeepsNormalDataPayload(t *testing.T) {
+	images, err := parseCreativeDrawingGatewayImages([]byte(
+		`{"created":1710000000,"data":[{"b64_json":"ZmluYWw="}]}`,
+	), &CreativeDrawingTask{OutputFormat: "png", Size: "3840x2160"})
+
+	require.NoError(t, err)
+	require.Len(t, images, 1)
+	require.Equal(t, "ZmluYWw=", images[0].B64JSON)
+	require.Equal(t, "png", images[0].OutputFormat)
+	require.Equal(t, "3840x2160", images[0].Size)
+}
+
 func TestParseCreativeDrawingGatewayStreamImagesReturnsStreamError(t *testing.T) {
 	_, err := parseCreativeDrawingGatewayStreamImages([]byte(
 		"data: {\"type\":\"error\",\"error\":{\"message\":\"upstream image stream idle\"}}\n\n",

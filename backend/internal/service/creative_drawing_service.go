@@ -509,6 +509,9 @@ func extractCreativeDrawingGatewayError(body []byte, status int) string {
 }
 
 func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) ([]CreativeDrawingImageResult, error) {
+	if message := extractCreativeDrawingGatewaySuccessError(body); message != "" {
+		return nil, errors.New(message)
+	}
 	var payload struct {
 		Created      int64                        `json:"created"`
 		OutputFormat string                       `json:"output_format"`
@@ -541,6 +544,29 @@ func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) (
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+func extractCreativeDrawingGatewaySuccessError(body []byte) string {
+	if !gjson.ValidBytes(body) {
+		return ""
+	}
+	hasExplicitError := gjson.GetBytes(body, "error").Exists() || gjson.GetBytes(body, "response.error").Exists()
+	if !hasExplicitError && gjson.GetBytes(body, "data").Exists() {
+		return ""
+	}
+	for _, path := range []string{
+		"error.message",
+		"response.error.message",
+		"message",
+		"detail",
+		"error.code",
+		"response.error.code",
+	} {
+		if msg := strings.TrimSpace(gjson.GetBytes(body, path).String()); msg != "" {
+			return msg
+		}
+	}
+	return ""
 }
 
 func isCreativeDrawingEventStream(headers http.Header) bool {
