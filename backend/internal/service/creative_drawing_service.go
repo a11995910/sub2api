@@ -103,6 +103,9 @@ func (s *CreativeDrawingService) CreateTask(ctx context.Context, userID int64, r
 }
 
 func (s *CreativeDrawingService) GetTask(ctx context.Context, userID int64, id string) (*CreativeDrawingTask, error) {
+	if _, err := s.repo.MarkStaleRunning(ctx, creativeDrawingTaskTimeout, "图片生成超时，请重试", time.Now().UTC()); err != nil {
+		logger.L().Warn("creative_drawing.mark_stale_running_failed", zap.Error(err))
+	}
 	task, err := s.repo.GetByID(ctx, strings.TrimSpace(id))
 	if err != nil {
 		return nil, err
