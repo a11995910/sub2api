@@ -862,9 +862,26 @@ function shouldHideCreativeTask(task: CreativeDrawingTask) {
 
 function ensureTaskConversation(task: CreativeDrawingTask) {
   const id = task.id
-  const existing = conversations.value.find((item) => item.id === id)
+  const existing = conversations.value.find((item) => {
+    return item.id === id ||
+      item.id === task.conversation_id ||
+      item.turns.some((turn) => turn.id === task.turn_id || turn.taskId === task.id)
+  })
   if (existing) {
-    return existing
+    if (existing.id === id) {
+      return existing
+    }
+    const normalized = {
+      ...existing,
+      id,
+      title: buildConversationTitle(task.prompt),
+      updatedAt: task.updated_at || existing.updatedAt
+    }
+    conversations.value = conversations.value.map((item) => item.id === existing.id ? normalized : item)
+    if (activeConversationId.value === existing.id) {
+      activeConversationId.value = id
+    }
+    return normalized
   }
   const createdAt = task.created_at || new Date().toISOString()
   const conversation: CreativeConversation = {
