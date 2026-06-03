@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -20,6 +21,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -28,7 +30,10 @@ var (
 	ErrCreativeDrawingInvalidTask  = infraerrors.BadRequest("CREATIVE_DRAWING_INVALID_TASK", "invalid creative drawing task")
 )
 
-const creativeDrawingTaskTimeout = 30 * time.Minute
+const (
+	creativeDrawingTaskTimeout        = 30 * time.Minute
+	creativeDrawingStreamScanMaxBytes = 128 * 1024 * 1024
+)
 
 type CreativeDrawingRepository interface {
 	Create(ctx context.Context, task *CreativeDrawingTask) error
@@ -230,6 +235,9 @@ func (s *CreativeDrawingService) forwardTask(ctx context.Context, task *Creative
 	}
 	req.Header.Set("Authorization", "Bearer "+key.Key)
 	req.Header.Set("Accept", "application/json")
+	if task.Mode == CreativeDrawingModeEdit {
+		req.Header.Set("Accept", "text/event-stream")
+	}
 	req.Header.Set("User-Agent", "sub2api-creative-drawing-worker")
 
 	resp, err := s.httpClient.Do(req)
@@ -243,6 +251,16 @@ func (s *CreativeDrawingService) forwardTask(ctx context.Context, task *Creative
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, errors.New(extractCreativeDrawingGatewayError(respBody, resp.StatusCode))
+	}
+	if task.Mode == CreativeDrawingModeEdit && isCreativeDrawingEventStream(resp.Header) {
+		images, err := parseCreativeDrawingGatewayStreamImages(respBody, task)
+		if err != nil {
+			return nil, err
+		}
+		if len(images) == 0 {
+			return nil, fmt.Errorf("图片接口没有返回可展示的图片")
+		}
+		return images, nil
 	}
 	images, err := parseCreativeDrawingGatewayImages(respBody, task)
 	if err != nil {
@@ -333,6 +351,11 @@ func buildCreativeDrawingEditMultipartBody(task *CreativeDrawingTask) (io.Reader
 		"n":               fmt.Sprint(task.Count),
 		"response_format": "b64_json",
 		"output_format":   normalizeCreativeDrawingOutputFormat(task.OutputFormat),
+	}
+	if task.Mode == CreativeDrawingModeEdit {
+		// 4K 参考图作画耗时更长，流式请求可让上游持续返回进度事件，避免长时间无响应被网关 504 截断。
+		fields["stream"] = "true"
+		fields["partial_images"] = "2"
 	}
 	if strings.TrimSpace(task.Size) != "" {
 		fields["size"] = strings.TrimSpace(task.Size)
@@ -518,6 +541,83 @@ func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) (
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+func isCreativeDrawingEventStream(headers http.Header) bool {
+	contentType := strings.ToLower(strings.TrimSpace(headers.Get("Content-Type")))
+	return strings.Contains(contentType, "text/event-stream")
+}
+
+func parseCreativeDrawingGatewayStreamImages(body []byte, task *CreativeDrawingTask) ([]CreativeDrawingImageResult, error) {
+	out := make([]CreativeDrawingImageResult, 0, maxCreativeDrawingCount(task))
+	var streamErr string
+	var acc openAISSEDataAccumulator
+
+	processPayload := func(data []byte) {
+		if len(data) == 0 || !gjson.ValidBytes(data) {
+			return
+		}
+		eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
+		if eventType == "error" {
+			if msg := strings.TrimSpace(gjson.GetBytes(data, "error.message").String()); msg != "" {
+				streamErr = msg
+			} else if msg := strings.TrimSpace(gjson.GetBytes(data, "message").String()); msg != "" {
+				streamErr = msg
+			}
+			return
+		}
+		if !strings.HasSuffix(eventType, ".completed") && eventType != "image_generation.completed" {
+			return
+		}
+		image := creativeDrawingImageResultFromStreamPayload(data, task)
+		if strings.TrimSpace(image.URL) == "" && strings.TrimSpace(image.B64JSON) == "" {
+			return
+		}
+		out = append(out, image)
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64*1024), creativeDrawingStreamScanMaxBytes)
+	for scanner.Scan() {
+		acc.AddLine(scanner.Text(), processPayload)
+	}
+	acc.Flush(processPayload)
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 && streamErr != "" {
+		return nil, errors.New(streamErr)
+	}
+	return out, nil
+}
+
+func creativeDrawingImageResultFromStreamPayload(data []byte, task *CreativeDrawingTask) CreativeDrawingImageResult {
+	item := CreativeDrawingImageResult{
+		ID:            uuid.NewString(),
+		B64JSON:       strings.TrimSpace(gjson.GetBytes(data, "b64_json").String()),
+		URL:           strings.TrimSpace(gjson.GetBytes(data, "url").String()),
+		RevisedPrompt: strings.TrimSpace(gjson.GetBytes(data, "revised_prompt").String()),
+		OutputFormat:  strings.TrimSpace(gjson.GetBytes(data, "output_format").String()),
+		Size:          strings.TrimSpace(gjson.GetBytes(data, "size").String()),
+		CreatedAt:     gjson.GetBytes(data, "created_at").Int(),
+	}
+	if item.OutputFormat == "" {
+		item.OutputFormat = task.OutputFormat
+	}
+	if item.Size == "" {
+		item.Size = task.Size
+	}
+	if item.CreatedAt == 0 {
+		item.CreatedAt = time.Now().Unix()
+	}
+	return item
+}
+
+func maxCreativeDrawingCount(task *CreativeDrawingTask) int {
+	if task != nil && task.Count > 0 {
+		return task.Count
+	}
+	return 1
 }
 
 func firstNonEmptyCreativeString(values ...string) string {
