@@ -73,13 +73,20 @@ func (r *creativeDrawingRepository) ListByUserID(ctx context.Context, userID int
 	return scanCreativeDrawingTasks(rows)
 }
 
-func (r *creativeDrawingRepository) ListPending(ctx context.Context, limit int) ([]service.CreativeDrawingTask, error) {
+func (r *creativeDrawingRepository) ListPending(ctx context.Context, limit int, runningTimeout time.Duration) ([]service.CreativeDrawingTask, error) {
+	if runningTimeout <= 0 {
+		runningTimeout = time.Minute
+	}
 	rows, err := r.db.QueryContext(ctx, creativeDrawingTaskSelectSQL()+`
 		WHERE status = $1
-			OR (status = $2 AND updated_at < NOW() - INTERVAL '2 minutes' AND started_at > NOW() - INTERVAL '8 minutes')
+			OR (
+				status = $2
+				AND updated_at < NOW() - INTERVAL '2 minutes'
+				AND COALESCE(started_at, updated_at, created_at) > NOW() - ($4::bigint * INTERVAL '1 second')
+			)
 		ORDER BY created_at ASC
 		LIMIT $3
-	`, service.CreativeDrawingTaskStatusQueued, service.CreativeDrawingTaskStatusRunning, limit)
+	`, service.CreativeDrawingTaskStatusQueued, service.CreativeDrawingTaskStatusRunning, limit, int64(runningTimeout.Seconds()))
 	if err != nil {
 		return nil, err
 	}

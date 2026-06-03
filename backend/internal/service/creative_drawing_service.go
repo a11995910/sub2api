@@ -28,13 +28,13 @@ var (
 	ErrCreativeDrawingInvalidTask  = infraerrors.BadRequest("CREATIVE_DRAWING_INVALID_TASK", "invalid creative drawing task")
 )
 
-const creativeDrawingTaskTimeout = 8 * time.Minute
+const creativeDrawingTaskTimeout = 30 * time.Minute
 
 type CreativeDrawingRepository interface {
 	Create(ctx context.Context, task *CreativeDrawingTask) error
 	GetByID(ctx context.Context, id string) (*CreativeDrawingTask, error)
 	ListByUserID(ctx context.Context, userID int64, limit int) ([]CreativeDrawingTask, error)
-	ListPending(ctx context.Context, limit int) ([]CreativeDrawingTask, error)
+	ListPending(ctx context.Context, limit int, runningTimeout time.Duration) ([]CreativeDrawingTask, error)
 	MarkStaleRunning(ctx context.Context, timeout time.Duration, message string, completedAt time.Time) (int64, error)
 	MarkRunning(ctx context.Context, id string, startedAt time.Time) (*CreativeDrawingTask, error)
 	MarkSuccess(ctx context.Context, id string, images []CreativeDrawingImageResult, completedAt time.Time) error
@@ -147,10 +147,7 @@ func (s *CreativeDrawingService) executeTask(id string) {
 	images, err := s.forwardTaskWithRetry(ctx, task)
 	now := time.Now().UTC()
 	if err != nil {
-		msg := err.Error()
-		if msg == "" {
-			msg = "图片生成失败"
-		}
+		msg := normalizeCreativeDrawingTaskError(err, task)
 		if markErr := s.repo.MarkError(context.Background(), task.ID, msg, now); markErr != nil {
 			logger.L().Warn("creative_drawing.mark_error_failed", zap.String("task_id", task.ID), zap.Error(markErr))
 		}
@@ -185,7 +182,7 @@ func (s *CreativeDrawingService) recoverPendingTasks() {
 	time.Sleep(2 * time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	tasks, err := s.repo.ListPending(ctx, 20)
+	tasks, err := s.repo.ListPending(ctx, 20, creativeDrawingTaskTimeout)
 	if err != nil {
 		logger.L().Warn("creative_drawing.recover_pending_failed", zap.Error(err))
 		return
@@ -266,6 +263,23 @@ func isCreativeDrawingInternalTransportError(err error) bool {
 	}
 	var netErr net.Error
 	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func normalizeCreativeDrawingTaskError(err error, task *CreativeDrawingTask) string {
+	if err == nil {
+		return "图片生成失败"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "context deadline exceeded") {
+		if task != nil && task.Mode == CreativeDrawingModeEdit {
+			return "参考图作画超时，请重试；4K 参考图作画耗时较长，可先降低分辨率确认效果"
+		}
+		return "图片生成超时，请重试"
+	}
+	msg := strings.TrimSpace(err.Error())
+	if msg == "" {
+		return "图片生成失败"
+	}
+	return msg
 }
 
 func validateCreativeDrawingCreateRequest(req CreativeDrawingCreateTaskRequest) error {
