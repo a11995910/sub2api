@@ -51,6 +51,8 @@ export type CreativeConversation = {
 
 const STORAGE_KEY = 'sub2api:creative-drawing:conversations'
 const ACTIVE_STORAGE_KEY = 'sub2api:creative-drawing:active-conversation'
+const HIDDEN_TASKS_STORAGE_KEY = 'sub2api:creative-drawing:hidden-tasks'
+const HIDDEN_BEFORE_STORAGE_KEY = 'sub2api:creative-drawing:hidden-before'
 const MAX_CONVERSATIONS = 80
 const IMAGE_STORE_DB_NAME = 'sub2api-creative-drawing'
 const IMAGE_STORE_DB_VERSION = 1
@@ -392,6 +394,51 @@ export function saveActiveCreativeConversationId(id: string) {
     return
   }
   localStorage.setItem(ACTIVE_STORAGE_KEY, id)
+}
+
+export function loadHiddenCreativeDrawingTaskIds() {
+  if (typeof localStorage === 'undefined') {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HIDDEN_TASKS_STORAGE_KEY) || '[]')
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+  } catch {
+    return []
+  }
+}
+
+export function saveHiddenCreativeDrawingTaskIds(ids: string[]) {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  const unique = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean))).slice(0, 500)
+  localStorage.setItem(HIDDEN_TASKS_STORAGE_KEY, JSON.stringify(unique))
+}
+
+export function loadHiddenCreativeDrawingBefore() {
+  if (typeof localStorage === 'undefined') {
+    return ''
+  }
+  const value = localStorage.getItem(HIDDEN_BEFORE_STORAGE_KEY) || ''
+  if (!value) {
+    return ''
+  }
+  return Number.isNaN(new Date(value).getTime()) ? '' : value
+}
+
+export function saveHiddenCreativeDrawingBefore(value: string) {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  if (!value) {
+    localStorage.removeItem(HIDDEN_BEFORE_STORAGE_KEY)
+    return
+  }
+  localStorage.setItem(HIDDEN_BEFORE_STORAGE_KEY, value)
 }
 
 export function readFileAsDataUrl(file: File) {

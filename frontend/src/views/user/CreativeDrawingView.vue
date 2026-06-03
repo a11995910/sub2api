@@ -167,7 +167,7 @@
               @click="selectConversation(conversation.id)"
             >
               <span>{{ conversation.title }}</span>
-              <small>{{ conversation.turns.length }} 次 · {{ formatConversationTime(conversation.updatedAt) }}</small>
+              <small>{{ getConversationSummary(conversation) }} · {{ formatConversationTime(conversation.updatedAt) }}</small>
             </button>
             <p v-if="conversations.length === 0" class="creative-muted">提交第一张图后会在这里保存本地历史。</p>
           </div>
@@ -319,11 +319,15 @@ import {
   hydrateCreativeConversationImages,
   loadActiveCreativeConversationId,
   loadCreativeConversations,
+  loadHiddenCreativeDrawingBefore,
+  loadHiddenCreativeDrawingTaskIds,
   persistCreativeStoredImages,
   readFileAsDataUrl,
   resultToReferenceImage,
   saveActiveCreativeConversationId,
   saveCreativeConversations,
+  saveHiddenCreativeDrawingBefore,
+  saveHiddenCreativeDrawingTaskIds,
   type CreativeConversation,
   type CreativeReferenceImage,
   type CreativeStoredImage,
@@ -347,6 +351,9 @@ const selectedApiKeyId = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 let taskSyncTimer: number | null = null
 let isTaskSyncing = false
+const hiddenTaskIds = ref<Set<string>>(new Set())
+const hiddenTaskBefore = ref('')
+const notifiedTaskIds = new Set<string>()
 
 const sizeSelection = reactive<ImageSizeSelection>({
   mode: 'auto',
@@ -396,7 +403,9 @@ watch(drawableKeys, (keys) => {
 })
 
 onMounted(async () => {
-  conversations.value = loadCreativeConversations()
+  hiddenTaskIds.value = new Set(loadHiddenCreativeDrawingTaskIds())
+  hiddenTaskBefore.value = loadHiddenCreativeDrawingBefore()
+  conversations.value = normalizeSingleTurnConversations(loadCreativeConversations())
   activeConversationId.value = loadActiveCreativeConversationId() || conversations.value[0]?.id || ''
   conversations.value = await hydrateCreativeConversationImages(conversations.value)
   await loadApiKeys()
@@ -434,7 +443,34 @@ function selectConversation(id: string) {
   referenceImages.value = []
 }
 
+function normalizeSingleTurnConversations(items: CreativeConversation[]) {
+  return items.flatMap((conversation) => {
+    if (conversation.turns.length <= 1) {
+      return [conversation]
+    }
+    return conversation.turns.map((turn) => ({
+      id: turn.taskId || turn.id || createId(),
+      title: buildConversationTitle(turn.prompt),
+      createdAt: turn.createdAt || conversation.createdAt,
+      updatedAt: turn.createdAt || conversation.updatedAt,
+      turns: [turn]
+    }))
+  })
+}
+
 function clearConversations() {
+  const nextHiddenIds = new Set(hiddenTaskIds.value)
+  conversations.value.forEach((conversation) => {
+    conversation.turns.forEach((turn) => {
+      if (turn.taskId) {
+        nextHiddenIds.add(turn.taskId)
+      }
+    })
+  })
+  hiddenTaskIds.value = nextHiddenIds
+  hiddenTaskBefore.value = new Date().toISOString()
+  saveHiddenCreativeDrawingTaskIds(Array.from(nextHiddenIds))
+  saveHiddenCreativeDrawingBefore(hiddenTaskBefore.value)
   conversations.value = []
   activeConversationId.value = ''
   prompt.value = ''
@@ -443,10 +479,7 @@ function clearConversations() {
   applySizeFromPreset('')
 }
 
-function ensureConversation(seedPrompt: string) {
-  if (activeConversation.value) {
-    return activeConversation.value
-  }
+function createTaskConversation(seedPrompt: string) {
   const now = new Date().toISOString()
   const conversation: CreativeConversation = {
     id: createId(),
@@ -466,12 +499,12 @@ function updateConversation(conversation: CreativeConversation, updater: (item: 
 
 function addOrUpdateTurn(conversation: CreativeConversation, turn: CreativeTurn) {
   updateConversation(conversation, (item) => {
-    const turns = item.turns.some((existing) => existing.id === turn.id)
-      ? item.turns.map((existing) => existing.id === turn.id ? turn : existing)
-      : [...item.turns, turn]
+    const turns = item.turns.some((existing) => existing.id === turn.id || existing.taskId === turn.taskId)
+      ? item.turns.map((existing) => (existing.id === turn.id || existing.taskId === turn.taskId) ? turn : existing)
+      : [turn]
     return {
       ...item,
-      title: item.turns.length === 0 ? buildConversationTitle(turn.prompt) : item.title,
+      title: buildConversationTitle(turn.prompt),
       updatedAt: new Date().toISOString(),
       turns
     }
@@ -665,7 +698,7 @@ async function submit() {
   }
   const size = buildImageSize(sizeSelection)
   const count = normalizeImageCount(imageCount.value)
-  const conversation = ensureConversation(text)
+  const conversation = createTaskConversation(text)
   const now = new Date().toISOString()
   const references = referenceImages.value.map((item) => ({ ...item }))
   const turn: CreativeTurn = {
@@ -709,7 +742,6 @@ async function submit() {
     })
     await applyCreativeDrawingTask(task, { notify: false })
     void pollCreativeDrawingTask(task.id)
-    appStore.showSuccess('创作任务已提交，完成后会自动回写')
   } catch (err) {
     const failedTurn: CreativeTurn = {
       ...turn,
@@ -748,6 +780,9 @@ async function syncCreativeDrawingTasks() {
   try {
     const tasks = await listCreativeDrawingTasks(80)
     for (const task of tasks) {
+      if (shouldHideCreativeTask(task)) {
+        continue
+      }
       await applyCreativeDrawingTask(task, { notify: false })
     }
   } catch {
@@ -773,6 +808,9 @@ async function pollCreativeDrawingTask(taskId: string) {
 }
 
 async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { notify: boolean }) {
+  if (shouldHideCreativeTask(task)) {
+    return
+  }
   const conversation = ensureTaskConversation(task)
   const existingTurn = conversation.turns.find((turn) => turn.id === task.turn_id || turn.taskId === task.id)
   const baseTurn = existingTurn || buildTurnFromTask(task)
@@ -804,16 +842,30 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
     nextTurn.images = storedImages
   }
   addOrUpdateTurn(conversation, nextTurn)
-  if (options.notify && task.status === 'success') {
+  if (options.notify && task.status === 'success' && !notifiedTaskIds.has(task.id)) {
+    notifiedTaskIds.add(task.id)
     appStore.showSuccess('图片生成完成')
   }
-  if (options.notify && task.status === 'error') {
+  if (options.notify && task.status === 'error' && !notifiedTaskIds.has(task.id)) {
+    notifiedTaskIds.add(task.id)
     appStore.showError(nextTurn.error || '图片生成失败')
   }
 }
 
+function shouldHideCreativeTask(task: CreativeDrawingTask) {
+  if (hiddenTaskIds.value.has(task.id)) {
+    return true
+  }
+  if (!hiddenTaskBefore.value) {
+    return false
+  }
+  const clearTime = new Date(hiddenTaskBefore.value).getTime()
+  const taskTime = new Date(task.created_at).getTime()
+  return Number.isFinite(clearTime) && Number.isFinite(taskTime) && taskTime <= clearTime
+}
+
 function ensureTaskConversation(task: CreativeDrawingTask) {
-  const id = task.conversation_id || `task-${task.id}`
+  const id = task.id
   const existing = conversations.value.find((item) => item.id === id)
   if (existing) {
     return existing
@@ -859,6 +911,16 @@ function buildTurnFromTask(task: CreativeDrawingTask): CreativeTurn {
     error: task.error,
     createdAt: task.created_at || new Date().toISOString()
   }
+}
+
+function getConversationSummary(conversation: CreativeConversation) {
+  const turn = conversation.turns[0]
+  if (!turn) {
+    return '空记录'
+  }
+  const count = Math.max(turn.images.length, turn.count || 1)
+  const status = turn.status === 'success' ? '成功' : turn.status === 'error' ? '失败' : '生成中'
+  return `${status} · ${count} 张`
 }
 
 function normalizeTaskOutputFormat(value?: string): CreativeOutputFormat {
