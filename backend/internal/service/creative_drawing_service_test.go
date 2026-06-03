@@ -100,3 +100,22 @@ func TestParseCreativeDrawingGatewayStreamImagesReturnsStreamError(t *testing.T)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "upstream image stream idle")
 }
+
+func TestParseCreativeDrawingGatewayStreamImagesReturnsTopLevelError(t *testing.T) {
+	_, err := parseCreativeDrawingGatewayStreamImages([]byte(
+		"data: {\"error\":{\"code\":\"upstream_error\",\"message\":\"upstream returned Cloudflare challenge page\"}}\n\n"+
+			"data: [DONE]\n\n",
+	), &CreativeDrawingTask{Mode: CreativeDrawingModeEdit})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Cloudflare challenge")
+}
+
+func TestParseCreativeDrawingGatewayStreamImagesReturnsResponseFailedError(t *testing.T) {
+	_, err := parseCreativeDrawingGatewayStreamImages([]byte(
+		"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"upstream did not return image output\"}}}\n\n",
+	), &CreativeDrawingTask{Mode: CreativeDrawingModeEdit})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "upstream did not return image output")
+}

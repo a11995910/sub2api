@@ -558,11 +558,10 @@ func parseCreativeDrawingGatewayStreamImages(body []byte, task *CreativeDrawingT
 			return
 		}
 		eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
-		if eventType == "error" {
-			if msg := strings.TrimSpace(gjson.GetBytes(data, "error.message").String()); msg != "" {
-				streamErr = msg
-			} else if msg := strings.TrimSpace(gjson.GetBytes(data, "message").String()); msg != "" {
-				streamErr = msg
+		if isCreativeDrawingGatewayStreamErrorEvent(eventType, data) {
+			streamErr = extractCreativeDrawingGatewayStreamError(data)
+			if streamErr == "" {
+				streamErr = "图片生成失败"
 			}
 			return
 		}
@@ -589,6 +588,28 @@ func parseCreativeDrawingGatewayStreamImages(body []byte, task *CreativeDrawingT
 		return nil, errors.New(streamErr)
 	}
 	return out, nil
+}
+
+func isCreativeDrawingGatewayStreamErrorEvent(eventType string, data []byte) bool {
+	if eventType == "error" || eventType == "response.failed" {
+		return true
+	}
+	return gjson.GetBytes(data, "error").Exists() || gjson.GetBytes(data, "response.error").Exists()
+}
+
+func extractCreativeDrawingGatewayStreamError(data []byte) string {
+	for _, path := range []string{
+		"error.message",
+		"response.error.message",
+		"message",
+		"error.code",
+		"response.error.code",
+	} {
+		if msg := strings.TrimSpace(gjson.GetBytes(data, path).String()); msg != "" {
+			return msg
+		}
+	}
+	return ""
 }
 
 func creativeDrawingImageResultFromStreamPayload(data []byte, task *CreativeDrawingTask) CreativeDrawingImageResult {
