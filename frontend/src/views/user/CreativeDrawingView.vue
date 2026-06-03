@@ -741,7 +741,7 @@ async function submit() {
       }))
     })
     await applyCreativeDrawingTask(task, { notify: false })
-    void pollCreativeDrawingTask(task.id)
+    void pollCreativeDrawingTask(task.id, true)
   } catch (err) {
     const failedTurn: CreativeTurn = {
       ...turn,
@@ -792,18 +792,18 @@ async function syncCreativeDrawingTasks() {
   }
 }
 
-async function pollCreativeDrawingTask(taskId: string) {
+async function pollCreativeDrawingTask(taskId: string, notify = true) {
   if (!taskId) {
     return
   }
   try {
     const task = await getCreativeDrawingTask(taskId)
-    await applyCreativeDrawingTask(task, { notify: true })
+    await applyCreativeDrawingTask(task, { notify })
     if (task.status === 'queued' || task.status === 'running') {
-      window.setTimeout(() => void pollCreativeDrawingTask(taskId), 3500)
+      window.setTimeout(() => void pollCreativeDrawingTask(taskId, notify), 3500)
     }
   } catch {
-    window.setTimeout(() => void pollCreativeDrawingTask(taskId), 5000)
+    window.setTimeout(() => void pollCreativeDrawingTask(taskId, notify), 5000)
   }
 }
 
@@ -824,7 +824,7 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
   if (task.status === 'success') {
     const hasResultPayload = task.images.some((item) => item.url || item.source_url || item.b64_json)
     if (!hasResultPayload) {
-      void pollCreativeDrawingTask(task.id)
+      void pollCreativeDrawingTask(task.id, options.notify)
       addOrUpdateTurn(conversation, nextTurn)
       return
     }
@@ -842,10 +842,6 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
     nextTurn.images = storedImages
   }
   addOrUpdateTurn(conversation, nextTurn)
-  if (options.notify && task.status === 'success' && !notifiedTaskIds.has(task.id)) {
-    notifiedTaskIds.add(task.id)
-    appStore.showSuccess('图片生成完成')
-  }
   if (options.notify && task.status === 'error' && !notifiedTaskIds.has(task.id)) {
     notifiedTaskIds.add(task.id)
     appStore.showError(nextTurn.error || '图片生成失败')
