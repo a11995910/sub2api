@@ -3,12 +3,15 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"syscall"
 	"time"
@@ -25,11 +28,14 @@ var (
 	ErrCreativeDrawingInvalidTask  = infraerrors.BadRequest("CREATIVE_DRAWING_INVALID_TASK", "invalid creative drawing task")
 )
 
+const creativeDrawingTaskTimeout = 8 * time.Minute
+
 type CreativeDrawingRepository interface {
 	Create(ctx context.Context, task *CreativeDrawingTask) error
 	GetByID(ctx context.Context, id string) (*CreativeDrawingTask, error)
 	ListByUserID(ctx context.Context, userID int64, limit int) ([]CreativeDrawingTask, error)
 	ListPending(ctx context.Context, limit int) ([]CreativeDrawingTask, error)
+	MarkStaleRunning(ctx context.Context, timeout time.Duration, message string, completedAt time.Time) (int64, error)
 	MarkRunning(ctx context.Context, id string, startedAt time.Time) (*CreativeDrawingTask, error)
 	MarkSuccess(ctx context.Context, id string, images []CreativeDrawingImageResult, completedAt time.Time) error
 	MarkError(ctx context.Context, id string, message string, completedAt time.Time) error
@@ -47,7 +53,7 @@ func NewCreativeDrawingService(repo CreativeDrawingRepository, apiKeyService *AP
 		repo:          repo,
 		apiKeyService: apiKeyService,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Minute,
+			Timeout: creativeDrawingTaskTimeout,
 		},
 		baseURL: resolveCreativeDrawingInternalBaseURL(cfg),
 	}
@@ -111,11 +117,23 @@ func (s *CreativeDrawingService) ListTasks(ctx context.Context, userID int64, li
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	return s.repo.ListByUserID(ctx, userID, limit)
+	if _, err := s.repo.MarkStaleRunning(ctx, creativeDrawingTaskTimeout, "图片生成超时，请重试", time.Now().UTC()); err != nil {
+		logger.L().Warn("creative_drawing.mark_stale_running_failed", zap.Error(err))
+	}
+	tasks, err := s.repo.ListByUserID(ctx, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	for i := range tasks {
+		tasks[i].RequestJSON = nil
+		tasks[i].ReferenceImages = summarizeCreativeDrawingReferences(tasks[i].ReferenceImages)
+		tasks[i].Images = summarizeCreativeDrawingResults(tasks[i].Images)
+	}
+	return tasks, nil
 }
 
 func (s *CreativeDrawingService) executeTask(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), creativeDrawingTaskTimeout)
 	defer cancel()
 
 	task, err := s.repo.MarkRunning(ctx, id, time.Now().UTC())
@@ -186,20 +204,31 @@ func (s *CreativeDrawingService) forwardTask(ctx context.Context, task *Creative
 	if body == nil {
 		body = buildCreativeDrawingGatewayBody(task)
 	}
-	rawBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshal creative drawing request: %w", err)
-	}
 	endpoint := "/v1/images/generations"
+	var req *http.Request
 	if task.Mode == CreativeDrawingModeEdit {
 		endpoint = "/v1/images/edits"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+endpoint, bytes.NewReader(rawBody))
-	if err != nil {
-		return nil, err
+		editBody, contentType, err := buildCreativeDrawingEditMultipartBody(task)
+		if err != nil {
+			return nil, err
+		}
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+endpoint, editBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", contentType)
+	} else {
+		rawBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshal creative drawing request: %w", err)
+		}
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+endpoint, bytes.NewReader(rawBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+key.Key)
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "sub2api-creative-drawing-worker")
 
@@ -276,6 +305,96 @@ func buildCreativeDrawingGatewayBody(task *CreativeDrawingTask) map[string]any {
 		body["images"] = images
 	}
 	return body
+}
+
+func buildCreativeDrawingEditMultipartBody(task *CreativeDrawingTask) (io.Reader, string, error) {
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	fields := map[string]string{
+		"model":           resolveCreativeDrawingGatewayModel(task.Model),
+		"prompt":          task.Prompt,
+		"n":               fmt.Sprint(task.Count),
+		"response_format": "b64_json",
+		"output_format":   normalizeCreativeDrawingOutputFormat(task.OutputFormat),
+	}
+	if strings.TrimSpace(task.Size) != "" {
+		fields["size"] = strings.TrimSpace(task.Size)
+	}
+	for name, value := range fields {
+		if err := writer.WriteField(name, value); err != nil {
+			return nil, "", err
+		}
+	}
+	for index, reference := range task.ReferenceImages {
+		dataURL := strings.TrimSpace(reference.DataURL)
+		if dataURL == "" {
+			continue
+		}
+		mimeType, data, err := parseCreativeDrawingDataURL(dataURL)
+		if err != nil {
+			return nil, "", err
+		}
+		filename := strings.TrimSpace(reference.Name)
+		if filename == "" {
+			filename = fmt.Sprintf("reference-%d.%s", index+1, creativeDrawingExtensionFromMime(mimeType))
+		}
+		header := make(textproto.MIMEHeader)
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, strings.ReplaceAll(filename, `"`, "")))
+		header.Set("Content-Type", mimeType)
+		part, err := writer.CreatePart(header)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := part.Write(data); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+	return &buffer, writer.FormDataContentType(), nil
+}
+
+func parseCreativeDrawingDataURL(value string) (string, []byte, error) {
+	prefix, payload, ok := strings.Cut(value, ",")
+	if !ok || !strings.HasPrefix(prefix, "data:") || !strings.Contains(prefix, ";base64") {
+		return "", nil, infraerrors.BadRequest("CREATIVE_DRAWING_REFERENCE_INVALID", "参考图格式无效，请重新上传")
+	}
+	mimeType := strings.TrimPrefix(strings.TrimSuffix(prefix, ";base64"), "data:")
+	data, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return "", nil, infraerrors.BadRequest("CREATIVE_DRAWING_REFERENCE_INVALID", "参考图解析失败，请重新上传")
+	}
+	return mimeType, data, nil
+}
+
+func creativeDrawingExtensionFromMime(mimeType string) string {
+	switch strings.ToLower(strings.TrimSpace(mimeType)) {
+	case "image/jpeg", "image/jpg":
+		return "jpg"
+	case "image/webp":
+		return "webp"
+	default:
+		return "png"
+	}
+}
+
+func summarizeCreativeDrawingReferences(input []CreativeDrawingReference) []CreativeDrawingReference {
+	out := make([]CreativeDrawingReference, 0, len(input))
+	for _, item := range input {
+		item.DataURL = ""
+		out = append(out, item)
+	}
+	return out
+}
+
+func summarizeCreativeDrawingResults(input []CreativeDrawingImageResult) []CreativeDrawingImageResult {
+	out := make([]CreativeDrawingImageResult, 0, len(input))
+	for _, item := range input {
+		item.B64JSON = ""
+		out = append(out, item)
+	}
+	return out
 }
 
 func normalizeCreativeDrawingReferences(input []CreativeDrawingReference) []CreativeDrawingReference {

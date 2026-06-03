@@ -76,7 +76,7 @@ func (r *creativeDrawingRepository) ListByUserID(ctx context.Context, userID int
 func (r *creativeDrawingRepository) ListPending(ctx context.Context, limit int) ([]service.CreativeDrawingTask, error) {
 	rows, err := r.db.QueryContext(ctx, creativeDrawingTaskSelectSQL()+`
 		WHERE status = $1
-			OR (status = $2 AND updated_at < NOW() - INTERVAL '2 minutes')
+			OR (status = $2 AND updated_at < NOW() - INTERVAL '2 minutes' AND started_at > NOW() - INTERVAL '8 minutes')
 		ORDER BY created_at ASC
 		LIMIT $3
 	`, service.CreativeDrawingTaskStatusQueued, service.CreativeDrawingTaskStatusRunning, limit)
@@ -85,6 +85,22 @@ func (r *creativeDrawingRepository) ListPending(ctx context.Context, limit int) 
 	}
 	defer rows.Close()
 	return scanCreativeDrawingTasks(rows)
+}
+
+func (r *creativeDrawingRepository) MarkStaleRunning(ctx context.Context, timeout time.Duration, message string, completedAt time.Time) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE creative_drawing_tasks
+		SET status = $1,
+			error = $2,
+			completed_at = $3,
+			updated_at = $3
+		WHERE status = $4
+			AND COALESCE(started_at, updated_at, created_at) < $3 - ($5 * INTERVAL '1 second')
+	`, service.CreativeDrawingTaskStatusError, message, completedAt.UTC(), service.CreativeDrawingTaskStatusRunning, int64(timeout.Seconds()))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (r *creativeDrawingRepository) MarkRunning(ctx context.Context, id string, startedAt time.Time) (*service.CreativeDrawingTask, error) {

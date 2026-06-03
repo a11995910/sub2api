@@ -346,6 +346,7 @@ const apiKeys = ref<ApiKey[]>([])
 const selectedApiKeyId = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 let taskSyncTimer: number | null = null
+let isTaskSyncing = false
 
 const sizeSelection = reactive<ImageSizeSelection>({
   mode: 'auto',
@@ -740,6 +741,10 @@ function hasGeneratingTasks() {
 }
 
 async function syncCreativeDrawingTasks() {
+  if (isTaskSyncing) {
+    return
+  }
+  isTaskSyncing = true
   try {
     const tasks = await listCreativeDrawingTasks(80)
     for (const task of tasks) {
@@ -747,6 +752,8 @@ async function syncCreativeDrawingTasks() {
     }
   } catch {
     // 同步失败不打断页面使用，下一轮轮询会继续尝试。
+  } finally {
+    isTaskSyncing = false
   }
 }
 
@@ -773,10 +780,16 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
     ...baseTurn,
     id: task.turn_id || baseTurn.id,
     taskId: task.id,
-    status: task.status === 'success' ? 'success' : task.status === 'error' ? 'error' : 'generating',
+    status: task.status === 'success' && task.images.length === 0 ? 'generating' : task.status === 'success' ? 'success' : task.status === 'error' ? 'error' : 'generating',
     error: task.status === 'error' ? task.error || '图片生成失败' : undefined
   }
   if (task.status === 'success') {
+    const hasResultPayload = task.images.some((item) => item.url || item.source_url || item.b64_json)
+    if (!hasResultPayload) {
+      void pollCreativeDrawingTask(task.id)
+      addOrUpdateTurn(conversation, nextTurn)
+      return
+    }
     const storedImages = task.images.map((item, index): CreativeStoredImage => ({
       id: item.id || createId(),
       url: item.url || '',
