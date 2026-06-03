@@ -220,8 +220,12 @@
 
             <div v-if="turn.status === 'generating'" class="creative-results-grid">
               <div v-for="index in Math.max(turn.count, 1)" :key="index" class="creative-image-skeleton">
-                <Icon name="sparkles" size="lg" class="animate-pulse" />
-                <span>生成中</span>
+                <div class="creative-processing-spinner" aria-hidden="true"></div>
+                <div class="creative-processing-title">正在处理图片...</div>
+                <div class="creative-processing-elapsed">
+                  <span>已运行</span>
+                  <strong>{{ formatTurnElapsedTime(turn) }}</strong>
+                </div>
               </div>
             </div>
 
@@ -351,6 +355,8 @@ const selectedApiKeyId = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 let taskSyncTimer: number | null = null
 let isTaskSyncing = false
+const elapsedNow = ref(Date.now())
+let elapsedTimer: number | null = null
 const hiddenTaskIds = ref<Set<string>>(new Set())
 const hiddenTaskBefore = ref('')
 const notifiedTaskIds = new Set<string>()
@@ -393,6 +399,9 @@ const estimatedConsumptionLabel = computed(() => {
   return `预计消耗 ${count} 张 · ${currentImageBillingTier.value} 图片单位`
 })
 const hasLoadingReferences = computed(() => referenceImages.value.some((item) => item.loading))
+const hasGeneratingTurns = computed(() => {
+  return conversations.value.some((conversation) => conversation.turns.some((turn) => turn.status === 'generating'))
+})
 
 watch(conversations, (items) => saveCreativeConversations(items), { deep: true })
 watch(activeConversationId, (id) => saveActiveCreativeConversationId(id))
@@ -401,6 +410,13 @@ watch(drawableKeys, (keys) => {
     selectedApiKeyId.value = keys[0].id
   }
 })
+watch(hasGeneratingTurns, (generating) => {
+  if (generating) {
+    startElapsedTimer()
+  } else {
+    stopElapsedTimer()
+  }
+}, { immediate: true })
 
 onMounted(async () => {
   hiddenTaskIds.value = new Set(loadHiddenCreativeDrawingTaskIds())
@@ -418,7 +434,42 @@ onBeforeUnmount(() => {
     window.clearInterval(taskSyncTimer)
     taskSyncTimer = null
   }
+  stopElapsedTimer()
 })
+
+function startElapsedTimer() {
+  elapsedNow.value = Date.now()
+  if (elapsedTimer) {
+    return
+  }
+  elapsedTimer = window.setInterval(() => {
+    elapsedNow.value = Date.now()
+  }, 1000)
+}
+
+function stopElapsedTimer() {
+  if (!elapsedTimer) {
+    return
+  }
+  window.clearInterval(elapsedTimer)
+  elapsedTimer = null
+}
+
+function formatTurnElapsedTime(turn: CreativeTurn) {
+  const startedAt = new Date(turn.createdAt).getTime()
+  if (!Number.isFinite(startedAt)) {
+    return '00:00'
+  }
+  const totalSeconds = Math.max(0, Math.floor((elapsedNow.value - startedAt) / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const padTime = (value: number) => String(value).padStart(2, '0')
+  if (hours > 0) {
+    return `${padTime(hours)}:${padTime(minutes)}:${padTime(seconds)}`
+  }
+  return `${padTime(minutes)}:${padTime(seconds)}`
+}
 
 async function loadApiKeys() {
   try {
@@ -1506,20 +1557,126 @@ function formatConversationTime(value: string) {
   align-items: center;
   justify-content: center;
   border-radius: 0.5rem;
+}
+
+.creative-result-preview {
   background: rgb(241 245 249);
 }
 
-.dark .creative-image-skeleton,
 .dark .creative-result-preview {
   background: rgb(17 24 39);
 }
 
 .creative-image-skeleton {
   flex-direction: column;
-  gap: 0.75rem;
-  font-size: 0.88rem;
+  gap: 0.8rem;
+  border: 1px solid rgb(226 232 240);
+  background:
+    radial-gradient(circle at 50% 28%, rgb(255 255 255), rgb(248 250 252) 38%, rgb(241 245 249) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    0 14px 34px rgb(15 23 42 / 0.06);
+  color: rgb(15 23 42);
+}
+
+.dark .creative-image-skeleton {
+  border-color: rgb(30 41 59);
+  background:
+    radial-gradient(circle at 50% 28%, rgb(30 41 59), rgb(17 24 39) 44%, rgb(15 23 42) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(148 163 184 / 0.08),
+    0 14px 34px rgb(0 0 0 / 0.18);
+  color: rgb(226 232 240);
+}
+
+.creative-processing-spinner {
+  position: relative;
+  height: 4.75rem;
+  width: 4.75rem;
+  border-radius: 9999px;
+  background: rgb(255 255 255);
+  box-shadow:
+    0 16px 30px rgb(15 23 42 / 0.08),
+    inset 0 0 0 1px rgb(226 232 240);
+}
+
+.creative-processing-spinner::before {
+  content: '';
+  position: absolute;
+  inset: 0.75rem;
+  border-radius: inherit;
+  border: 0.25rem solid rgb(219 234 254);
+  border-top-color: rgb(37 99 235);
+  animation: creative-spin 0.9s linear infinite;
+}
+
+.creative-processing-spinner::after {
+  content: '';
+  position: absolute;
+  inset: 1.75rem;
+  border-radius: inherit;
+  background: rgb(248 250 252);
+  box-shadow: inset 0 0 0 1px rgb(226 232 240);
+}
+
+.dark .creative-processing-spinner {
+  background: rgb(15 23 42);
+  box-shadow:
+    0 16px 30px rgb(0 0 0 / 0.24),
+    inset 0 0 0 1px rgb(51 65 85);
+}
+
+.dark .creative-processing-spinner::before {
+  border-color: rgb(30 64 175 / 0.45);
+  border-top-color: rgb(96 165 250);
+}
+
+.dark .creative-processing-spinner::after {
+  background: rgb(17 24 39);
+  box-shadow: inset 0 0 0 1px rgb(51 65 85);
+}
+
+.creative-processing-title {
+  font-size: 0.95rem;
   font-weight: 800;
+  color: rgb(30 41 59);
+}
+
+.dark .creative-processing-title {
+  color: rgb(241 245 249);
+}
+
+.creative-processing-elapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(219 234 254);
+  background: rgb(239 246 255);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  color: rgb(71 85 105);
+}
+
+.creative-processing-elapsed strong {
+  font-variant-numeric: tabular-nums;
   color: rgb(37 99 235);
+}
+
+.dark .creative-processing-elapsed {
+  border-color: rgb(30 64 175 / 0.55);
+  background: rgb(30 64 175 / 0.18);
+  color: rgb(203 213 225);
+}
+
+.dark .creative-processing-elapsed strong {
+  color: rgb(147 197 253);
+}
+
+@keyframes creative-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .creative-result {
