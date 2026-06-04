@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"testing"
 	"time"
 
@@ -34,6 +35,14 @@ func TestNormalizeCreativeDrawingTaskErrorKeepsGatewayMessage(t *testing.T) {
 	got := normalizeCreativeDrawingTaskError(errors.New("上游图片接口返回 400"), &CreativeDrawingTask{Mode: CreativeDrawingModeEdit})
 
 	require.Equal(t, "上游图片接口返回 400", got)
+}
+
+func TestIsCreativeDrawingRetryableError(t *testing.T) {
+	require.True(t, isCreativeDrawingRetryableError(newCreativeDrawingGatewayError(http.StatusBadGateway, "temporary upstream error")))
+	require.True(t, isCreativeDrawingRetryableError(errors.New("upstream image stream idle for 15m0s")))
+	require.True(t, isCreativeDrawingRetryableError(errors.New("image stream data interval timeout")))
+	require.False(t, isCreativeDrawingRetryableError(newCreativeDrawingGatewayError(http.StatusBadRequest, "invalid image request")))
+	require.False(t, isCreativeDrawingRetryableError(errors.New("invalid image request")))
 }
 
 func TestBuildCreativeDrawingEditMultipartBodyEnablesStreaming(t *testing.T) {
@@ -90,6 +99,34 @@ func TestParseCreativeDrawingGatewayStreamImagesReadsCompletedEvent(t *testing.T
 	require.Equal(t, "webp", images[0].OutputFormat)
 	require.Equal(t, "3840x2160", images[0].Size)
 	require.Equal(t, int64(1710000000), images[0].CreatedAt)
+}
+
+func TestParseCreativeDrawingGatewayStreamImagesReadsResponseOutputItemDone(t *testing.T) {
+	images, err := parseCreativeDrawingGatewayStreamImages([]byte(
+		"data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"image_generation_call\",\"result\":\"UmVzcG9uc2VJbWFnZQ==\",\"revised_prompt\":\"画一张海报\",\"output_format\":\"png\",\"size\":\"1024x1024\"}}\n\n"+
+			"data: [DONE]\n\n",
+	), &CreativeDrawingTask{Mode: CreativeDrawingModeEdit, OutputFormat: "webp", Size: "3840x2160"})
+
+	require.NoError(t, err)
+	require.Len(t, images, 1)
+	require.Equal(t, "UmVzcG9uc2VJbWFnZQ==", images[0].B64JSON)
+	require.Equal(t, "画一张海报", images[0].RevisedPrompt)
+	require.Equal(t, "png", images[0].OutputFormat)
+	require.Equal(t, "1024x1024", images[0].Size)
+}
+
+func TestParseCreativeDrawingGatewayImagesReadsResponsesOutputPayload(t *testing.T) {
+	images, err := parseCreativeDrawingGatewayImages([]byte(
+		`{"created_at":1710000001,"output":[{"type":"image_generation_call","result":"T25lSW1hZ2U=","revised_prompt":"画一张海报","output_format":"webp","size":"3840x2160"}]}`,
+	), &CreativeDrawingTask{OutputFormat: "png", Size: "1024x1024"})
+
+	require.NoError(t, err)
+	require.Len(t, images, 1)
+	require.Equal(t, "T25lSW1hZ2U=", images[0].B64JSON)
+	require.Equal(t, "画一张海报", images[0].RevisedPrompt)
+	require.Equal(t, "webp", images[0].OutputFormat)
+	require.Equal(t, "3840x2160", images[0].Size)
+	require.Equal(t, int64(1710000001), images[0].CreatedAt)
 }
 
 func TestParseCreativeDrawingGatewayImagesReturnsSuccessErrorPayload(t *testing.T) {

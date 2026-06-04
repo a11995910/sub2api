@@ -171,13 +171,13 @@ func (s *CreativeDrawingService) forwardTaskWithRetry(ctx context.Context, task 
 			return images, nil
 		}
 		lastErr = err
-		if !isCreativeDrawingInternalTransportError(err) {
+		if !isCreativeDrawingRetryableError(err) {
 			break
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(time.Duration(attempt+1) * time.Second):
+		case <-time.After(time.Duration(attempt+1) * 2 * time.Second):
 		}
 	}
 	return nil, lastErr
@@ -250,7 +250,7 @@ func (s *CreativeDrawingService) forwardTask(ctx context.Context, task *Creative
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errors.New(extractCreativeDrawingGatewayError(respBody, resp.StatusCode))
+		return nil, newCreativeDrawingGatewayError(resp.StatusCode, extractCreativeDrawingGatewayError(respBody, resp.StatusCode))
 	}
 	if task.Mode == CreativeDrawingModeEdit && isCreativeDrawingEventStream(resp.Header) {
 		images, err := parseCreativeDrawingGatewayStreamImages(respBody, task)
@@ -272,7 +272,27 @@ func (s *CreativeDrawingService) forwardTask(ctx context.Context, task *Creative
 	return images, nil
 }
 
-func isCreativeDrawingInternalTransportError(err error) bool {
+type creativeDrawingGatewayError struct {
+	StatusCode int
+	Message    string
+}
+
+func newCreativeDrawingGatewayError(statusCode int, message string) *creativeDrawingGatewayError {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = fmt.Sprintf("图片请求失败：%d", statusCode)
+	}
+	return &creativeDrawingGatewayError{StatusCode: statusCode, Message: message}
+}
+
+func (e *creativeDrawingGatewayError) Error() string {
+	if e == nil {
+		return "图片生成失败"
+	}
+	return e.Message
+}
+
+func isCreativeDrawingRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -280,7 +300,33 @@ func isCreativeDrawingInternalTransportError(err error) bool {
 		return true
 	}
 	var netErr net.Error
-	return errors.As(err, &netErr) && netErr.Timeout()
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	var gatewayErr *creativeDrawingGatewayError
+	if errors.As(err, &gatewayErr) {
+		return gatewayErr.StatusCode == http.StatusBadGateway ||
+			gatewayErr.StatusCode == http.StatusServiceUnavailable ||
+			gatewayErr.StatusCode == http.StatusGatewayTimeout
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	for _, needle := range []string{
+		"upstream image stream idle",
+		"image stream data interval timeout",
+		"image stream incomplete",
+		"upstream request failed",
+		"图片请求失败：502",
+		"图片请求失败：503",
+		"图片请求失败：504",
+		"status 502",
+		"status 503",
+		"status 504",
+	} {
+		if strings.Contains(msg, strings.ToLower(needle)) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeCreativeDrawingTaskError(err error, task *CreativeDrawingTask) string {
@@ -512,6 +558,8 @@ func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) (
 	if message := extractCreativeDrawingGatewaySuccessError(body); message != "" {
 		return nil, errors.New(message)
 	}
+	taskOutputFormat := creativeDrawingTaskOutputFormat(task)
+	taskSize := creativeDrawingTaskSize(task)
 	var payload struct {
 		Created      int64                        `json:"created"`
 		OutputFormat string                       `json:"output_format"`
@@ -527,10 +575,10 @@ func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) (
 			item.ID = uuid.NewString()
 		}
 		if item.OutputFormat == "" {
-			item.OutputFormat = firstNonEmptyCreativeString(payload.OutputFormat, task.OutputFormat)
+			item.OutputFormat = firstNonEmptyCreativeString(payload.OutputFormat, taskOutputFormat)
 		}
 		if item.Size == "" {
-			item.Size = firstNonEmptyCreativeString(payload.Size, task.Size)
+			item.Size = firstNonEmptyCreativeString(payload.Size, taskSize)
 		}
 		if item.CreatedAt == 0 {
 			item.CreatedAt = payload.Created
@@ -542,6 +590,9 @@ func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) (
 			continue
 		}
 		out = append(out, item)
+	}
+	if len(out) == 0 {
+		out = append(out, creativeDrawingImageResultsFromPayload(gjson.ParseBytes(body), task)...)
 	}
 	return out, nil
 }
@@ -591,14 +642,10 @@ func parseCreativeDrawingGatewayStreamImages(body []byte, task *CreativeDrawingT
 			}
 			return
 		}
-		if !strings.HasSuffix(eventType, ".completed") && eventType != "image_generation.completed" {
+		if !isCreativeDrawingGatewayStreamImageEvent(eventType, data) {
 			return
 		}
-		image := creativeDrawingImageResultFromStreamPayload(data, task)
-		if strings.TrimSpace(image.URL) == "" && strings.TrimSpace(image.B64JSON) == "" {
-			return
-		}
-		out = append(out, image)
+		out = append(out, creativeDrawingImageResultsFromStreamPayload(data, task)...)
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(body))
@@ -623,6 +670,17 @@ func isCreativeDrawingGatewayStreamErrorEvent(eventType string, data []byte) boo
 	return gjson.GetBytes(data, "error").Exists() || gjson.GetBytes(data, "response.error").Exists()
 }
 
+func isCreativeDrawingGatewayStreamImageEvent(eventType string, data []byte) bool {
+	switch eventType {
+	case "image_generation.completed", "image_edit.completed", "response.completed", "response.done":
+		return true
+	case "response.output_item.done":
+		return gjson.GetBytes(data, "item.type").String() == "image_generation_call"
+	default:
+		return strings.HasSuffix(eventType, ".completed") && strings.Contains(eventType, "image")
+	}
+}
+
 func extractCreativeDrawingGatewayStreamError(data []byte) string {
 	for _, path := range []string{
 		"error.message",
@@ -638,26 +696,152 @@ func extractCreativeDrawingGatewayStreamError(data []byte) string {
 	return ""
 }
 
-func creativeDrawingImageResultFromStreamPayload(data []byte, task *CreativeDrawingTask) CreativeDrawingImageResult {
+func creativeDrawingImageResultsFromStreamPayload(data []byte, task *CreativeDrawingTask) []CreativeDrawingImageResult {
+	return creativeDrawingImageResultsFromPayload(gjson.ParseBytes(data), task)
+}
+
+func creativeDrawingImageResultsFromPayload(root gjson.Result, task *CreativeDrawingTask) []CreativeDrawingImageResult {
+	if !root.Exists() {
+		return nil
+	}
+	out := make([]CreativeDrawingImageResult, 0, maxCreativeDrawingCount(task))
+	add := func(item CreativeDrawingImageResult) {
+		if strings.TrimSpace(item.URL) == "" && strings.TrimSpace(item.B64JSON) == "" {
+			return
+		}
+		out = append(out, item)
+	}
+	add(creativeDrawingImageResultFromNode(root, root, task))
+	add(creativeDrawingImageResultFromNode(root.Get("item"), root, task))
+	for _, path := range []string{"response.output", "output", "data"} {
+		for _, item := range root.Get(path).Array() {
+			add(creativeDrawingImageResultFromNode(item, root, task))
+			for _, content := range item.Get("content").Array() {
+				add(creativeDrawingImageResultFromNode(content, root, task))
+			}
+			for _, content := range item.Get("image.content").Array() {
+				add(creativeDrawingImageResultFromNode(content, root, task))
+			}
+		}
+	}
+	return dedupeCreativeDrawingImageResults(out)
+}
+
+func creativeDrawingImageResultFromNode(node gjson.Result, root gjson.Result, task *CreativeDrawingTask) CreativeDrawingImageResult {
+	if !node.Exists() || !node.IsObject() {
+		return CreativeDrawingImageResult{}
+	}
+	taskOutputFormat := creativeDrawingTaskOutputFormat(task)
+	taskSize := creativeDrawingTaskSize(task)
+	nodeType := strings.ToLower(strings.TrimSpace(node.Get("type").String()))
+	if nodeType != "" && !strings.Contains(nodeType, "image") {
+		return CreativeDrawingImageResult{}
+	}
+	b64 := normalizeOpenAIImageBase64(firstNonEmptyCreativeGJSON(
+		node.Get("b64_json"),
+		node.Get("result"),
+		node.Get("base64"),
+		node.Get("image_base64"),
+		node.Get("image.b64_json"),
+		node.Get("image.result"),
+	))
+	url := firstNonEmptyCreativeGJSON(
+		node.Get("url"),
+		node.Get("image_url"),
+		node.Get("download_url"),
+		node.Get("image.url"),
+		node.Get("image.image_url"),
+		node.Get("image.download_url"),
+	)
+	outputFormat := firstNonEmptyCreativeString(
+		node.Get("output_format").String(),
+		creativeDrawingOutputFormatFromMime(node.Get("mime_type").String()),
+		creativeDrawingOutputFormatFromMime(node.Get("image.mime_type").String()),
+		taskOutputFormat,
+	)
+	createdAt := node.Get("created_at").Int()
+	if createdAt == 0 {
+		createdAt = root.Get("created_at").Int()
+	}
+	if createdAt == 0 {
+		createdAt = root.Get("created").Int()
+	}
 	item := CreativeDrawingImageResult{
 		ID:            uuid.NewString(),
-		B64JSON:       strings.TrimSpace(gjson.GetBytes(data, "b64_json").String()),
-		URL:           strings.TrimSpace(gjson.GetBytes(data, "url").String()),
-		RevisedPrompt: strings.TrimSpace(gjson.GetBytes(data, "revised_prompt").String()),
-		OutputFormat:  strings.TrimSpace(gjson.GetBytes(data, "output_format").String()),
-		Size:          strings.TrimSpace(gjson.GetBytes(data, "size").String()),
-		CreatedAt:     gjson.GetBytes(data, "created_at").Int(),
-	}
-	if item.OutputFormat == "" {
-		item.OutputFormat = task.OutputFormat
-	}
-	if item.Size == "" {
-		item.Size = task.Size
+		B64JSON:       b64,
+		URL:           strings.TrimSpace(url),
+		SourceURL:     strings.TrimSpace(url),
+		RevisedPrompt: firstNonEmptyCreativeString(node.Get("revised_prompt").String(), root.Get("revised_prompt").String()),
+		OutputFormat:  outputFormat,
+		Size:          firstNonEmptyCreativeString(node.Get("size").String(), taskSize),
+		CreatedAt:     createdAt,
 	}
 	if item.CreatedAt == 0 {
 		item.CreatedAt = time.Now().Unix()
 	}
 	return item
+}
+
+func creativeDrawingTaskOutputFormat(task *CreativeDrawingTask) string {
+	if task == nil {
+		return ""
+	}
+	return task.OutputFormat
+}
+
+func creativeDrawingTaskSize(task *CreativeDrawingTask) string {
+	if task == nil {
+		return ""
+	}
+	return task.Size
+}
+
+func firstNonEmptyCreativeGJSON(values ...gjson.Result) string {
+	for _, value := range values {
+		if s := strings.TrimSpace(value.String()); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func creativeDrawingOutputFormatFromMime(mimeType string) string {
+	switch strings.ToLower(strings.TrimSpace(mimeType)) {
+	case "image/jpeg", "image/jpg":
+		return "jpeg"
+	case "image/webp":
+		return "webp"
+	case "image/png":
+		return "png"
+	default:
+		return ""
+	}
+}
+
+func dedupeCreativeDrawingImageResults(input []CreativeDrawingImageResult) []CreativeDrawingImageResult {
+	if len(input) == 0 {
+		return input
+	}
+	seen := make(map[string]struct{}, len(input))
+	out := make([]CreativeDrawingImageResult, 0, len(input))
+	for _, item := range input {
+		key := strings.TrimSpace(item.B64JSON)
+		if key == "" {
+			key = strings.TrimSpace(item.URL)
+		}
+		if key == "" {
+			continue
+		}
+		if len(key) > 96 {
+			key = key[:96]
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }
 
 func maxCreativeDrawingCount(task *CreativeDrawingTask) int {

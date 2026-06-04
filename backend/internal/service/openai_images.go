@@ -41,7 +41,7 @@ const (
 	openAIChatGPTStartURL          = "https://chatgpt.com/"
 	openAIChatGPTFilesURL          = "https://chatgpt.com/backend-api/files"
 	openAIImageBackendUserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-	openAIImageMaxDownloadBytes    = 20 << 20 // 20MB per image download
+	openAIImageMaxDownloadBytes    = 64 << 20 // 单张结果图下载上限，4K PNG 可能超过 20MB。
 	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
 )
@@ -1299,12 +1299,16 @@ func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImages
 		}
 		return nil, fmt.Errorf("download image url failed: %s", message)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxDownloadBytes))
+	data, err := readOpenAIImageDownloadBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read image url body: %w", err)
 	}
 	if len(data) == 0 {
 		return nil, fmt.Errorf("image url returned empty body")
+	}
+	contentType := normalizeOpenAIImagesContentType(resp.Header.Get("Content-Type"), data)
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, fmt.Errorf("image url did not return an image")
 	}
 	return data, nil
 }
@@ -1941,7 +1945,26 @@ func downloadOpenAIImageBytes(ctx context.Context, client *req.Client, headers h
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, newOpenAIImageStatusError(resp, "download image bytes failed")
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxDownloadBytes))
+	data, err := readOpenAIImageDownloadBody(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	contentType := normalizeOpenAIImagesContentType(resp.Header.Get("Content-Type"), data)
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, fmt.Errorf("download image bytes failed: response is not an image")
+	}
+	return data, nil
+}
+
+func readOpenAIImageDownloadBody(body io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, openAIImageMaxDownloadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > openAIImageMaxDownloadBytes {
+		return nil, fmt.Errorf("image exceeds %d bytes", openAIImageMaxDownloadBytes)
+	}
+	return data, nil
 }
 
 type openAIImageStatusError struct {

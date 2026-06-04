@@ -1598,6 +1598,29 @@ func TestOpenAIGatewayServiceMaterializeOpenAIResponsesImageURLs_DownloadsURLAsB
 	require.Equal(t, "image/*,*/*;q=0.8", upstream.requests[0].Header.Get("Accept"))
 }
 
+func TestOpenAIGatewayServiceMaterializeOpenAIResponsesImageURLsRejectsNonImageBody(t *testing.T) {
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+			Body:       io.NopCloser(strings.NewReader("<html>upstream error</html>")),
+		},
+	}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	_, err := svc.materializeOpenAIResponsesImageURLs(
+		context.Background(),
+		[]openAIResponsesImageResult{{URL: "https://files.example.com/generated.webp?sig=1"}},
+		http.Header{"User-Agent": []string{"test-agent"}},
+		"",
+		42,
+		3,
+	)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response is not an image")
+}
+
 func TestOpenAIGatewayServiceHandleOpenAIImagesOAuthNonStreamingResponse_MaterializesDownloadURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	responseBody := "data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000014,\"output\":[{\"id\":\"ig_url\",\"type\":\"image_generation_call\",\"result\":\"\",\"image\":{\"download_url\":\"https://files.example.com/generated.webp?sig=1\",\"mime_type\":\"image/webp\"}}]}}\n\n" +
