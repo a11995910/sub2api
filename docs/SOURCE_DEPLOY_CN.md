@@ -54,6 +54,39 @@ git rev-parse --short HEAD
 
 执行 `git pull --ff-only` 前，`git status --short` 应为空。如果有未提交改动，必须先确认来源，不能直接覆盖或回滚。
 
+## 线上域名与 Nginx
+
+当前 VPS 的 Sub2API 通过系统 Nginx 对外提供 HTTPS 访问，后端容器入口为本机 `127.0.0.1:8080`。
+
+线上域名配置如下：
+
+| 域名 | Nginx 配置 | 证书来源 | 证书路径 | 说明 |
+| --- | --- | --- | --- | --- |
+| `fast.youkeduo.site` | `/etc/nginx/sites-available/fast.youkeduo.site` | Certbot 自动管理 | `/etc/letsencrypt/live/fast.youkeduo.site/` | 主访问域名 |
+| `img.hctoken.top` | `/etc/nginx/sites-available/img.hctoken.top` | `*.hctoken.top` 通配符证书手动部署 | `/etc/nginx/ssl/img.hctoken.top/` | 新增访问域名，HTTP 自动跳转 HTTPS |
+
+`img.hctoken.top` 当前证书文件固定为：
+
+```bash
+/etc/nginx/ssl/img.hctoken.top/fullchain.pem
+/etc/nginx/ssl/img.hctoken.top/privkey.pem
+```
+
+该证书不是 Certbot 自动续期证书。证书到期前需要替换新的 `fullchain.pem` 和 `privkey.pem`，替换后执行：
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+替换证书前应先校验证书是否覆盖 `img.hctoken.top`，并确认私钥匹配：
+
+```bash
+openssl x509 -in fullchain.pem -noout -subject -issuer -dates
+openssl x509 -in fullchain.pem -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
+openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
+```
+
 ## 编译要求
 
 部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标：
