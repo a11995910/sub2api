@@ -107,6 +107,19 @@ function isDisplayableStoredImageUrl(url: string) {
   return /^(https?:\/\/|\/\/|\/)/i.test(url.trim())
 }
 
+function isProtectedStoredImageUrl(url: string) {
+  const trimmed = url.trim()
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) {
+    return false
+  }
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.port === '3000' && parsed.pathname.startsWith('/images/')
+  } catch {
+    return false
+  }
+}
+
 export function hasInlineStoredImagePayload(image: Pick<CreativeStoredImage, 'url' | 'b64_json'>) {
   return Boolean(normalizeStoredImageBase64(image.b64_json) || normalizeStoredImageBase64(image.url))
 }
@@ -122,13 +135,13 @@ export function buildStoredImageUrl(image: Pick<CreativeStoredImage, 'url' | 'so
   if (b64) {
     return `data:${storedImageMimeType(image.output_format)};base64,${b64}`
   }
-  if (url && isDisplayableStoredImageUrl(url) && !/^blob:/i.test(url)) {
+  if (url && isDisplayableStoredImageUrl(url) && !/^blob:/i.test(url) && !isProtectedStoredImageUrl(url)) {
     return url
   }
-  if (sourceURL && isDisplayableStoredImageUrl(sourceURL) && !/^blob:/i.test(sourceURL)) {
+  if (sourceURL && isDisplayableStoredImageUrl(sourceURL) && !/^blob:/i.test(sourceURL) && !isProtectedStoredImageUrl(sourceURL)) {
     return sourceURL
   }
-  return isDataImageURL(url) ? '' : url
+  return isDataImageURL(url) || isProtectedStoredImageUrl(url) ? '' : url
 }
 
 function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {

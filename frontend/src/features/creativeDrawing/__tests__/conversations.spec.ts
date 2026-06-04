@@ -75,7 +75,7 @@ describe('creativeDrawing conversations', () => {
   })
 
   it('不会把远程图片 URL 当作 base64 渲染或写入缓存', () => {
-    const url = 'http://192.0.2.10:3000/images/generated.png'
+    const url = 'https://static.example.com/images/generated.png'
 
     expect(normalizeStoredImageBase64(url)).toBe('')
     expect(buildStoredImageUrl({ url, b64_json: url, output_format: 'png' })).toBe(url)
@@ -85,6 +85,16 @@ describe('creativeDrawing conversations', () => {
       b64_json: url,
       output_format: 'png'
     })).toBe(url)
+  })
+
+  it('受保护的 chatgpt2api 图片地址没有 base64 时不作为展示源', () => {
+    const url = 'http://192.220.24.46:3000/images/2026/06/04/generated.png'
+
+    expect(normalizeStoredImageBase64(url)).toBe('')
+    expect(buildStoredImageUrl({ url, b64_json: url, output_format: 'png' })).toBe('')
+    expect(buildStoredImageUrl({ url: '', source_url: url, b64_json: url, output_format: 'png' })).toBe('')
+    expect(buildStoredImageUrl({ url, b64_json: 'UE5H', output_format: 'png' })).toBe('data:image/png;base64,UE5H')
+    expect(resultToReferenceImage({ id: 'image-1', url, output_format: 'png' }, 0)).toBeNull()
   })
 
   it('读取持久化历史时把遗留生成中轮次标记为中断', () => {
