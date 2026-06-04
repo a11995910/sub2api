@@ -1,10 +1,10 @@
 import type { CreativeDrawingTask, CreativeImageResult } from '@/api/creativeDrawing'
-import type { CreativeStoredImage, CreativeTurn } from './conversations'
+import { normalizeStoredImageBase64, type CreativeStoredImage, type CreativeTurn } from './conversations'
 
 const RECENT_TASK_DETAIL_HYDRATE_LIMIT = 8
 
 function hasInlineImagePayload(image: Pick<CreativeImageResult | CreativeStoredImage, 'url' | 'b64_json'>) {
-  return Boolean((image.b64_json || '').trim() || /^data:image\//i.test((image.url || '').trim()))
+  return Boolean(normalizeStoredImageBase64(image.b64_json) || normalizeStoredImageBase64(image.url))
 }
 
 export function hasInlineCreativeImagePayload(images: Array<Pick<CreativeImageResult | CreativeStoredImage, 'url' | 'b64_json'>> | undefined) {

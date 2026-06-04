@@ -79,6 +79,20 @@ describe('creativeDrawing task result hydration', () => {
     expect(shouldHydrateCreativeTaskFromList(task, 0)).toBe(false)
   })
 
+  it('b64_json 被上游错误写成远程 URL 时仍需要补拉详情', () => {
+    const task = createTask({
+      images: [{
+        id: 'image-1',
+        url: '',
+        b64_json: 'http://192.0.2.10:3000/images/generated.png',
+        output_format: 'png'
+      }]
+    })
+
+    expect(shouldFetchFullCreativeTaskResult(task)).toBe(true)
+    expect(shouldHydrateCreativeTaskFromList(task, 0)).toBe(true)
+  })
+
   it('本地轮次已经有 base64 缓存时不重复补拉详情', () => {
     const task = createTask()
     const turn = createTurn({

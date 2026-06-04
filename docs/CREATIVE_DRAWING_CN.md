@@ -41,13 +41,13 @@
 
 创意绘图任务只保存用户选择的 API Key ID，不把 API Key 明文写入任务表。worker 执行时会重新按用户所有权读取密钥，再使用该 API Key 作为 `Authorization: Bearer <key>` 调用图片网关，仍沿用现有网关鉴权、分组调度、计费、限额和使用记录逻辑。
 
-图片生成和编辑请求默认要求上游返回 `b64_json`。当 OpenAI APIKey 类型上游兼容服务仅返回受保护的 `url`、`image_url` 或 `download_url` 时，网关会使用同一次上游请求的鉴权头在服务端下载图片内容，并补齐 `data[].b64_json`，避免浏览器直接访问上游受保护图片地址导致结果无法显示。服务端下载结果图时会校验响应必须是图片内容，并限制单张结果图不超过 64MB，避免把上游错误页或被截断的大图保存成不可展示图片。
+图片生成和编辑请求默认要求上游返回 `b64_json`。当 OpenAI APIKey 类型上游兼容服务仅返回受保护的 `url`、`image_url` 或 `download_url`，或把图片地址错误写入 `b64_json` 时，网关会使用同一次上游请求的鉴权头在服务端下载图片内容，并补齐真正的 `data[].b64_json`，避免浏览器直接访问上游受保护图片地址导致结果无法显示。服务端下载结果图时会校验响应必须是图片内容，并限制单张结果图不超过 64MB，避免把上游错误页或被截断的大图保存成不可展示图片。
 
 图片上游返回 `502`、`503` 或 `504` 这类临时不可用错误时，网关会先在同一个已选账号上最多重试 3 次；参数错误、鉴权错误和限流错误不走该兜底，避免掩盖真实配置或请求问题。池模式账号仍保留原有 `401`、`403`、`429` 同账号重试策略。创意绘图 worker 调用图片网关时还会对网络超时、连接重置、网关 `502` / `503` / `504`、流式空闲超时和上游临时请求失败做任务级重试，单个任务最多尝试 2 次，最终仍失败时把真实错误信息写入任务错误字段。
 
 参考图作画任务默认以流式图片编辑请求提交到网关，并请求上游返回最多 2 张中间进度图；worker 只持久化最终完成图。这样可以让 4K 参考图作画在长时间执行时持续保持上游数据流，减少非流式请求长时间无响应导致的 `504`。
 
-流式图片编辑返回错误事件时，worker 会识别 `type=error`、`response.failed` 以及顶层 `error.message` 等常见格式；即使上游以 HTTP 200 返回错误 JSON，也会优先提取真实错误原因并写入任务错误信息，避免误显示为“图片接口没有返回可展示的图片”。流式成功事件兼容 `image_edit.completed`、`image_generation.completed`、`response.completed`、`response.done` 和 `response.output_item.done` 等返回形态；非流式返回也会兼容 Responses 风格的 `output[].result`、`output[].b64_json`、`download_url`、`url` 和 `image_url`。
+流式图片编辑返回错误事件时，worker 会识别 `type=error`、`response.failed` 以及顶层 `error.message` 等常见格式；即使上游以 HTTP 200 返回错误 JSON，也会优先提取真实错误原因并写入任务错误信息，避免误显示为“图片接口没有返回可展示的图片”。流式成功事件兼容 `image_edit.completed`、`image_generation.completed`、`response.completed`、`response.done` 和 `response.output_item.done` 等返回形态；非流式返回也会兼容 Responses 风格的 `output[].result`、`output[].b64_json`、`download_url`、`url` 和 `image_url`。当 `result` 或 `b64_json` 字段中实际是图片 URL 时，任务结果会归一化为 URL 指针，不会把 URL 当作 base64 写入或展示。
 
 图片编辑请求支持参考图随任务持久化：
 
@@ -77,7 +77,7 @@
 - 当前选中会话
 - 热门模板收藏
 
-创作会话历史的轻量元数据保存在 `localStorage`；生成图的 base64 正文会优先写入浏览器 IndexedDB，并在读取历史时恢复为可展示 `data:image/...` 地址。这样可以避免 2K/4K 大图直接写入 `localStorage` 触发浏览器配额，导致完成后的历史仍停留在“生成中”或图片丢失。
+创作会话历史的轻量元数据保存在 `localStorage`；生成图的真实 base64 正文会优先写入浏览器 IndexedDB，并在读取历史时恢复为可展示 `data:image/...` 地址。远程图片 URL 不会被当作 base64 写入 IndexedDB；如果任务结果只有上游 URL 指针，页面会继续补拉任务详情或展示可访问 URL，避免出现 `data:image/png;base64,http://...` 这类坏图地址。这样可以避免 2K/4K 大图直接写入 `localStorage` 触发浏览器配额，导致完成后的历史仍停留在“生成中”或图片丢失。
 
 新提交的创意绘图轮次会带有后端任务 ID。页面刷新、浏览器关闭或网络中断后，重新进入页面会通过任务 ID 或任务列表查询后端真实状态：
 

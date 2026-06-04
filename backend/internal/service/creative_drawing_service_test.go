@@ -130,6 +130,41 @@ func TestParseCreativeDrawingGatewayImagesReadsResponsesOutputPayload(t *testing
 	require.Equal(t, int64(1710000001), images[0].CreatedAt)
 }
 
+func TestParseCreativeDrawingGatewayImagesTreatsResultURLAsURL(t *testing.T) {
+	images, err := parseCreativeDrawingGatewayImages([]byte(
+		`{"created_at":1710000001,"output":[{"type":"image_generation_call","result":"http://192.0.2.10:3000/images/generated.png","output_format":"png"}]}`,
+	), &CreativeDrawingTask{OutputFormat: "png"})
+
+	require.NoError(t, err)
+	require.Len(t, images, 1)
+	require.Empty(t, images[0].B64JSON)
+	require.Equal(t, "http://192.0.2.10:3000/images/generated.png", images[0].URL)
+	require.Equal(t, "http://192.0.2.10:3000/images/generated.png", images[0].SourceURL)
+}
+
+func TestParseCreativeDrawingGatewayImagesCleansURLFromB64JSON(t *testing.T) {
+	images, err := parseCreativeDrawingGatewayImages([]byte(
+		`{"created":1710000000,"data":[{"b64_json":"http://192.0.2.10:3000/images/generated.png"}]}`,
+	), &CreativeDrawingTask{OutputFormat: "png"})
+
+	require.NoError(t, err)
+	require.Len(t, images, 1)
+	require.Empty(t, images[0].B64JSON)
+	require.Equal(t, "http://192.0.2.10:3000/images/generated.png", images[0].URL)
+}
+
+func TestNormalizeCreativeDrawingImageResultsCleansPersistedURLFromB64JSON(t *testing.T) {
+	images := NormalizeCreativeDrawingImageResults([]CreativeDrawingImageResult{
+		{ID: "image-1", B64JSON: "http://192.0.2.10:3000/images/generated.png", OutputFormat: "png"},
+	})
+
+	require.Len(t, images, 1)
+	require.Equal(t, "image-1", images[0].ID)
+	require.Empty(t, images[0].B64JSON)
+	require.Equal(t, "http://192.0.2.10:3000/images/generated.png", images[0].URL)
+	require.Equal(t, "http://192.0.2.10:3000/images/generated.png", images[0].SourceURL)
+}
+
 func TestParseCreativeDrawingGatewayImagesReturnsSuccessErrorPayload(t *testing.T) {
 	_, err := parseCreativeDrawingGatewayImages([]byte(
 		`{"error":{"code":"upstream_error","message":"upstream returned Cloudflare challenge page"}}`,

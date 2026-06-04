@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildStoredImageUrl,
   loadCreativeConversations,
+  normalizeStoredImageBase64,
   resultToReferenceImage,
   saveCreativeConversations,
   type CreativeConversation
@@ -71,6 +72,19 @@ describe('creativeDrawing conversations', () => {
     expect(buildStoredImageUrl({ ...image, b64_json: 'QUJD' })).toBe('data:image/webp;base64,QUJD')
     expect(resultToReferenceImage({ ...image, b64_json: 'QUJD' }, 0)?.dataUrl).toBe('data:image/webp;base64,QUJD')
     expect(buildStoredImageUrl({ url: 'file-service://file_123', b64_json: 'QUJD', output_format: 'webp' })).toBe('data:image/webp;base64,QUJD')
+  })
+
+  it('不会把远程图片 URL 当作 base64 渲染或写入缓存', () => {
+    const url = 'http://192.0.2.10:3000/images/generated.png'
+
+    expect(normalizeStoredImageBase64(url)).toBe('')
+    expect(buildStoredImageUrl({ url, b64_json: url, output_format: 'png' })).toBe(url)
+    expect(buildStoredImageUrl({
+      url: '',
+      source_url: url,
+      b64_json: url,
+      output_format: 'png'
+    })).toBe(url)
   })
 
   it('读取持久化历史时把遗留生成中轮次标记为中断', () => {

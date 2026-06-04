@@ -129,6 +129,9 @@ function normalizeBase64ImageSource(value: string, outputFormat?: string) {
   if (/^data:image\//i.test(trimmed)) {
     return trimmed
   }
+  if (isLikelyNonBase64ImagePointer(trimmed)) {
+    return ''
+  }
   const normalized = normalizeBase64ImagePayload(trimmed)
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) {
     return ''
@@ -151,9 +154,14 @@ function normalizeBase64ImagePayload(value: string) {
   }
   if (/^data:image\//i.test(trimmed)) {
     const [, content = ''] = trimmed.split(',', 2)
-    return content.replace(/\s+/g, '')
+    const normalized = content.replace(/\s+/g, '')
+    return /^[A-Za-z0-9+/]+={0,2}$/.test(normalized) ? normalized : ''
   }
-  return trimmed.replace(/\s+/g, '')
+  if (isLikelyNonBase64ImagePointer(trimmed)) {
+    return ''
+  }
+  const normalized = trimmed.replace(/\s+/g, '')
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(normalized) ? normalized : ''
 }
 
 function normalizeDisplayableImageSource(value: string) {
@@ -173,6 +181,10 @@ function normalizeDisplayableImageSource(value: string) {
   return ''
 }
 
+function isLikelyNonBase64ImagePointer(value: string) {
+  return /^(https?:\/\/|blob:|file-service:|\/\/)/i.test(value.trim())
+}
+
 function normalizeGatewayImageItem(
   item: Record<string, unknown>,
   index: number,
@@ -181,7 +193,7 @@ function normalizeGatewayImageItem(
   const outputFormat = firstString(item.output_format, context.outputFormat)
   const rawB64 = firstString(item.b64_json, item.base64, item.image_base64, item.result)
   const b64 = normalizeBase64ImagePayload(rawB64)
-  const itemURL = normalizeDisplayableImageSource(firstString(item.url, item.image_url, item.download_url))
+  const itemURL = normalizeDisplayableImageSource(firstString(item.url, item.image_url, item.download_url, item.result))
   const url = normalizeBase64ImageSource(rawB64, outputFormat) || itemURL
 
   return {
