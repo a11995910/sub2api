@@ -221,6 +221,7 @@ func scanCreativeDrawingTask(row creativeDrawingScanner) (*service.CreativeDrawi
 	if len(imagesRaw) > 0 {
 		_ = json.Unmarshal(imagesRaw, &task.Images)
 	}
+	task.Images = service.NormalizeCreativeDrawingImageResults(task.Images)
 	if task.ReferenceImages == nil {
 		task.ReferenceImages = []service.CreativeDrawingReference{}
 	}

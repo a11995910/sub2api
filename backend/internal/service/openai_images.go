@@ -1222,6 +1222,7 @@ func (s *OpenAIGatewayService) inlineOpenAIImagesResponseURLs(body []byte, opts 
 			item.Get("url").String(),
 			item.Get("image_url").String(),
 			item.Get("download_url").String(),
+			imageURLFromInvalidOpenAIImageBase64(item.Get("b64_json").String()),
 		)
 		if imageURL == "" {
 			continue
@@ -1236,6 +1237,21 @@ func (s *OpenAIGatewayService) inlineOpenAIImagesResponseURLs(body []byte, opts 
 		}
 	}
 	return rewritten, nil
+}
+
+func imageURLFromInvalidOpenAIImageBase64(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || normalizeOpenAIImageBase64(trimmed) != "" {
+		return ""
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "//") ||
+		strings.HasPrefix(lower, "/") {
+		return trimmed
+	}
+	return ""
 }
 
 func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImagesNonStreamingResponseOptions, rawURL string) ([]byte, error) {

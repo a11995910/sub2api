@@ -78,26 +78,45 @@ function storedImageMimeType(format?: string) {
   }
 }
 
-function normalizeStoredImageBase64(value?: string) {
+function isDataImageURL(value: string) {
+  return /^data:image\//i.test(value.trim())
+}
+
+function isLikelyNonBase64URL(value: string) {
+  return /^(https?:\/\/|blob:|file-service:|\/\/)/i.test(value.trim())
+}
+
+export function normalizeStoredImageBase64(value?: string) {
   const trimmed = (value || '').trim()
   if (!trimmed) {
     return ''
   }
-  if (/^data:image\//i.test(trimmed)) {
-    const [, content = ''] = trimmed.split(',', 2)
-    return content.replace(/\s+/g, '')
+  if (isLikelyNonBase64URL(trimmed)) {
+    return ''
   }
-  return trimmed.replace(/\s+/g, '')
+  if (isDataImageURL(trimmed)) {
+    const [, content = ''] = trimmed.split(',', 2)
+    const normalized = content.replace(/\s+/g, '')
+    return /^[A-Za-z0-9+/]+={0,2}$/.test(normalized) ? normalized : ''
+  }
+  const normalized = trimmed.replace(/\s+/g, '')
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(normalized) ? normalized : ''
 }
 
 function isDisplayableStoredImageUrl(url: string) {
-  return /^(data:image\/|https?:\/\/|\/\/|\/)/i.test(url)
+  return /^(https?:\/\/|\/\/|\/)/i.test(url.trim())
 }
 
-export function buildStoredImageUrl(image: Pick<CreativeStoredImage, 'url' | 'b64_json' | 'output_format'>) {
+export function hasInlineStoredImagePayload(image: Pick<CreativeStoredImage, 'url' | 'b64_json'>) {
+  return Boolean(normalizeStoredImageBase64(image.b64_json) || normalizeStoredImageBase64(image.url))
+}
+
+export function buildStoredImageUrl(image: Pick<CreativeStoredImage, 'url' | 'source_url' | 'b64_json' | 'output_format'>) {
   const url = (image.url || '').trim()
-  if (url && /^data:image\//i.test(url)) {
-    return url
+  const sourceURL = (image.source_url || '').trim()
+  const urlB64 = normalizeStoredImageBase64(url)
+  if (urlB64) {
+    return `data:${storedImageMimeType(image.output_format)};base64,${urlB64}`
   }
   const b64 = normalizeStoredImageBase64(image.b64_json)
   if (b64) {
@@ -106,7 +125,10 @@ export function buildStoredImageUrl(image: Pick<CreativeStoredImage, 'url' | 'b6
   if (url && isDisplayableStoredImageUrl(url) && !/^blob:/i.test(url)) {
     return url
   }
-  return url
+  if (sourceURL && isDisplayableStoredImageUrl(sourceURL) && !/^blob:/i.test(sourceURL)) {
+    return sourceURL
+  }
+  return isDataImageURL(url) ? '' : url
 }
 
 function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {
@@ -125,11 +147,11 @@ function hydrateStoredImage(image: CreativeStoredImage): CreativeStoredImage {
 }
 
 function serializeStoredImage(image: CreativeStoredImage): CreativeStoredImage {
-  const b64 = normalizeStoredImageBase64(image.b64_json)
+  const b64 = normalizeStoredImageBase64(image.b64_json) || normalizeStoredImageBase64(image.url)
   const url = (image.url || '').trim()
   const sourceURL = (image.source_url || '').trim()
   const imageStoreID = (image.image_store_id || '').trim()
-  const persistedURL = b64 && /^data:image\//i.test(url) ? sourceURL : url
+  const persistedURL = b64 && isDataImageURL(url) ? sourceURL : isDataImageURL(url) && sourceURL ? sourceURL : url
   return {
     ...image,
     url: persistedURL,
@@ -215,7 +237,9 @@ function getImageRecord(store: IDBObjectStore, id: string) {
 export async function persistCreativeStoredImages(images: CreativeStoredImage[]) {
   const pendingRecords: Array<{ image: CreativeStoredImage; record: CreativeStoredImageRecord }> = []
   images.forEach((image) => {
-    const b64 = normalizeStoredImageBase64(image.b64_json || image.url)
+    const b64 = normalizeStoredImageBase64(image.b64_json) || normalizeStoredImageBase64(image.url)
+    image.b64_json = b64 || undefined
+    image.url = buildStoredImageUrl(image)
     if (!b64) {
       return
     }
@@ -279,11 +303,11 @@ export async function hydrateCreativeConversationImages(conversations: CreativeC
         ...turn,
         images: (turn.images || []).map((image) => {
           if (normalizeStoredImageBase64(image.b64_json)) {
-            return image
+            return hydrateStoredImage(image)
           }
           const record = image.image_store_id ? recordByID.get(image.image_store_id) : undefined
           if (!record?.b64_json) {
-            return image
+            return hydrateStoredImage(image)
           }
           const hydrated = {
             ...image,

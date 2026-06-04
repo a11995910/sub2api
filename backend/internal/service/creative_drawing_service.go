@@ -478,8 +478,21 @@ func summarizeCreativeDrawingReferences(input []CreativeDrawingReference) []Crea
 func summarizeCreativeDrawingResults(input []CreativeDrawingImageResult) []CreativeDrawingImageResult {
 	out := make([]CreativeDrawingImageResult, 0, len(input))
 	for _, item := range input {
+		item = normalizeCreativeDrawingImageResult(item)
 		item.B64JSON = ""
 		out = append(out, item)
+	}
+	return out
+}
+
+func NormalizeCreativeDrawingImageResults(input []CreativeDrawingImageResult) []CreativeDrawingImageResult {
+	out := make([]CreativeDrawingImageResult, 0, len(input))
+	for _, item := range input {
+		normalized := normalizeCreativeDrawingImageResult(item)
+		if strings.TrimSpace(normalized.URL) == "" && strings.TrimSpace(normalized.B64JSON) == "" {
+			continue
+		}
+		out = append(out, normalized)
 	}
 	return out
 }
@@ -572,6 +585,7 @@ func parseCreativeDrawingGatewayImages(body []byte, task *CreativeDrawingTask) (
 	}
 	out := make([]CreativeDrawingImageResult, 0, len(payload.Data))
 	for i, item := range payload.Data {
+		item = normalizeCreativeDrawingImageResult(item)
 		if item.ID == "" {
 			item.ID = uuid.NewString()
 		}
@@ -738,14 +752,15 @@ func creativeDrawingImageResultFromNode(node gjson.Result, root gjson.Result, ta
 	if nodeType != "" && !strings.Contains(nodeType, "image") {
 		return CreativeDrawingImageResult{}
 	}
-	b64 := normalizeOpenAIImageBase64(firstNonEmptyCreativeGJSON(
+	rawImagePayload := firstNonEmptyCreativeGJSON(
 		node.Get("b64_json"),
 		node.Get("result"),
 		node.Get("base64"),
 		node.Get("image_base64"),
 		node.Get("image.b64_json"),
 		node.Get("image.result"),
-	))
+	)
+	b64 := normalizeOpenAIImageBase64(rawImagePayload)
 	url := firstNonEmptyCreativeGJSON(
 		node.Get("url"),
 		node.Get("image_url"),
@@ -754,6 +769,9 @@ func creativeDrawingImageResultFromNode(node gjson.Result, root gjson.Result, ta
 		node.Get("image.image_url"),
 		node.Get("image.download_url"),
 	)
+	if strings.TrimSpace(url) == "" && isCreativeDrawingDisplayableImageURL(rawImagePayload) {
+		url = rawImagePayload
+	}
 	outputFormat := firstNonEmptyCreativeString(
 		node.Get("output_format").String(),
 		creativeDrawingOutputFormatFromMime(node.Get("mime_type").String()),
@@ -780,7 +798,37 @@ func creativeDrawingImageResultFromNode(node gjson.Result, root gjson.Result, ta
 	if item.CreatedAt == 0 {
 		item.CreatedAt = time.Now().Unix()
 	}
+	return normalizeCreativeDrawingImageResult(item)
+}
+
+func normalizeCreativeDrawingImageResult(item CreativeDrawingImageResult) CreativeDrawingImageResult {
+	rawURL := strings.TrimSpace(item.URL)
+	rawSourceURL := strings.TrimSpace(item.SourceURL)
+	rawB64 := strings.TrimSpace(item.B64JSON)
+	b64 := normalizeOpenAIImageBase64(rawB64)
+	if b64 == "" && isCreativeDrawingDisplayableImageURL(rawB64) && rawURL == "" {
+		rawURL = rawB64
+	}
+	item.B64JSON = b64
+	item.URL = rawURL
+	if rawSourceURL == "" && isCreativeDrawingDisplayableImageURL(rawURL) {
+		rawSourceURL = rawURL
+	}
+	item.SourceURL = rawSourceURL
 	return item
+}
+
+func isCreativeDrawingDisplayableImageURL(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "//") ||
+		strings.HasPrefix(lower, "/") ||
+		strings.HasPrefix(lower, "data:image/")
 }
 
 func creativeDrawingTaskOutputFormat(task *CreativeDrawingTask) string {
