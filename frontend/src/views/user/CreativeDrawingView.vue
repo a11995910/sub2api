@@ -317,6 +317,10 @@ import {
 import PromptMarketDialog from '@/features/creativeDrawing/PromptMarketDialog.vue'
 import { getPromptApplyReferenceImageUrls, type BananaPrompt } from '@/features/creativeDrawing/promptMarket'
 import {
+  shouldFetchFullCreativeTaskResult,
+  shouldHydrateCreativeTaskFromList
+} from '@/features/creativeDrawing/taskResults'
+import {
   buildConversationTitle,
   buildStoredImageUrl,
   createId,
@@ -830,11 +834,20 @@ async function syncCreativeDrawingTasks() {
   isTaskSyncing = true
   try {
     const tasks = await listCreativeDrawingTasks(80)
-    for (const task of tasks) {
+    for (const [index, task] of tasks.entries()) {
       if (shouldHideCreativeTask(task)) {
         continue
       }
-      await applyCreativeDrawingTask(task, { notify: false })
+      const existingTurn = findCreativeDrawingTaskTurn(task)
+      let taskForApply = task
+      if (shouldHydrateCreativeTaskFromList(task, index, existingTurn)) {
+        try {
+          taskForApply = await getCreativeDrawingTask(task.id)
+        } catch {
+          // 列表同步失败不影响页面继续轮询；下一轮会再次尝试补齐完整图片结果。
+        }
+      }
+      await applyCreativeDrawingTask(taskForApply, { notify: false })
     }
   } catch {
     // 同步失败不打断页面使用，下一轮轮询会继续尝试。
@@ -863,7 +876,7 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
     return
   }
   const conversation = ensureTaskConversation(task)
-  const existingTurn = conversation.turns.find((turn) => turn.id === task.turn_id || turn.taskId === task.id)
+  const existingTurn = findCreativeDrawingTaskTurn(task, conversation)
   const baseTurn = existingTurn || buildTurnFromTask(task)
   const nextTurn: CreativeTurn = {
     ...baseTurn,
@@ -879,14 +892,25 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
       addOrUpdateTurn(conversation, nextTurn)
       return
     }
-    const storedImages = task.images.map((item, index): CreativeStoredImage => ({
+    let resultTask = task
+    if (shouldFetchFullCreativeTaskResult(task, existingTurn)) {
+      try {
+        const fullTask = await getCreativeDrawingTask(task.id)
+        if (fullTask.id === task.id && fullTask.status === 'success' && fullTask.images.some((item) => item.url || item.source_url || item.b64_json)) {
+          resultTask = fullTask
+        }
+      } catch {
+        // 详情补拉失败时先保留列表中的图片地址；下一轮同步会再次尝试补齐 base64。
+      }
+    }
+    const storedImages = resultTask.images.map((item, index): CreativeStoredImage => ({
       id: item.id || createId(),
       url: item.url || '',
       source_url: item.source_url,
       b64_json: item.b64_json,
       revised_prompt: item.revised_prompt,
       output_format: item.output_format,
-      size: item.size || task.size || '',
+      size: item.size || resultTask.size || '',
       created_at: item.created_at || Date.now() + index
     }))
     await persistCreativeStoredImages(storedImages)
@@ -897,6 +921,17 @@ async function applyCreativeDrawingTask(task: CreativeDrawingTask, options: { no
     notifiedTaskIds.add(task.id)
     appStore.showError(nextTurn.error || '图片生成失败')
   }
+}
+
+function findCreativeDrawingTaskTurn(task: CreativeDrawingTask, conversation?: CreativeConversation) {
+  const conversationsToSearch = conversation ? [conversation] : conversations.value
+  for (const item of conversationsToSearch) {
+    const turn = item.turns.find((candidate) => candidate.id === task.turn_id || candidate.taskId === task.id)
+    if (turn) {
+      return turn
+    }
+  }
+  return undefined
 }
 
 function shouldHideCreativeTask(task: CreativeDrawingTask) {
