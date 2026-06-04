@@ -31,7 +31,8 @@ var (
 )
 
 const (
-	creativeDrawingTaskTimeout        = 30 * time.Minute
+	creativeDrawingTaskTimeout        = 12 * time.Minute
+	creativeDrawingMaxAttempts        = 2
 	creativeDrawingStreamScanMaxBytes = 128 * 1024 * 1024
 )
 
@@ -165,7 +166,7 @@ func (s *CreativeDrawingService) executeTask(id string) {
 
 func (s *CreativeDrawingService) forwardTaskWithRetry(ctx context.Context, task *CreativeDrawingTask) ([]CreativeDrawingImageResult, error) {
 	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < creativeDrawingMaxAttempts; attempt++ {
 		images, err := s.forwardTask(ctx, task)
 		if err == nil {
 			return images, nil

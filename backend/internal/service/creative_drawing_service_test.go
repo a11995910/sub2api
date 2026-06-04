@@ -14,8 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCreativeDrawingTaskTimeoutAllowsImageGatewayRetries(t *testing.T) {
-	require.Equal(t, 30*time.Minute, creativeDrawingTaskTimeout)
+func TestCreativeDrawingTaskTimeoutAllowsSlowImageGatewayButBoundsStuckTasks(t *testing.T) {
+	require.Equal(t, 12*time.Minute, creativeDrawingTaskTimeout)
+	require.Equal(t, 2, creativeDrawingMaxAttempts)
 }
 
 func TestNormalizeCreativeDrawingTaskErrorMapsDeadlineForEdit(t *testing.T) {
