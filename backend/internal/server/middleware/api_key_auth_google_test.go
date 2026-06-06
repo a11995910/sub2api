@@ -56,6 +56,9 @@ func (f fakeAPIKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
 func (f fakeAPIKeyRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
+func (f fakeAPIKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
 func (f fakeAPIKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }
@@ -75,6 +78,9 @@ func (f fakeAPIKeyRepo) SearchAPIKeys(ctx context.Context, userID int64, keyword
 	return nil, errors.New("not implemented")
 }
 func (f fakeAPIKeyRepo) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+func (f fakeAPIKeyRepo) UpdateGroupIDByGroup(ctx context.Context, oldGroupID, newGroupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
 }
 func (f fakeAPIKeyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {

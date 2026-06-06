@@ -4,7 +4,7 @@ import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 
 const routeState = vi.hoisted(() => ({
-  path: '/purchase',
+  path: '/payment',
   query: {} as Record<string, unknown>,
 }))
 
@@ -172,7 +172,7 @@ function oauthOrderFixture() {
     payment_type: 'wxpay',
     result_type: 'oauth_required' as const,
     oauth: {
-      authorize_url: '/api/v1/auth/oauth/wechat/payment/start?payment_type=wxpay&redirect=%2Fpurchase%3Ffrom%3Dwechat',
+      authorize_url: '/api/v1/auth/oauth/wechat/payment/start?payment_type=wxpay&redirect=%2Fpayment%3Ffrom%3Dwechat',
       appid: 'wx123',
       scope: 'snsapi_base',
       redirect_url: '/auth/wechat/payment/callback',
@@ -182,7 +182,7 @@ function oauthOrderFixture() {
 
 describe('PaymentView WeChat JSAPI flow', () => {
   beforeEach(() => {
-    routeState.path = '/purchase'
+    routeState.path = '/payment'
     routeState.query = {
       wechat_resume: '1',
       wechat_resume_token: 'resume-token-123',
@@ -221,7 +221,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(routerReplace).toHaveBeenCalledWith({ path: '/purchase', query: {} })
+    expect(routerReplace).toHaveBeenCalledWith({ path: '/payment', query: {} })
     expect(routerPush).toHaveBeenCalledWith({
       path: '/payment/result',
       query: {
@@ -334,7 +334,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
 
     const originalLocation = window.location
     const locationState = {
-      href: 'http://localhost/purchase',
+      href: 'http://localhost/payment',
       origin: 'http://localhost',
     }
     Object.defineProperty(window, 'location', {
@@ -353,7 +353,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(routerReplace).toHaveBeenCalledWith({ path: '/purchase', query: {} })
+    expect(routerReplace).toHaveBeenCalledWith({ path: '/payment', query: {} })
     expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
       payment_type: 'wxpay',
       order_type: 'subscription',
@@ -362,7 +362,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     }))
     expect(locationState.href).toContain('/api/v1/auth/oauth/wechat/payment/start?')
     expect(new URL(locationState.href, 'http://localhost').searchParams.get('redirect')).toBe(
-      '/purchase?from=wechat&payment_type=wxpay&order_type=subscription&plan_id=7',
+      '/payment?from=wechat&payment_type=wxpay&order_type=subscription&plan_id=7',
     )
 
     Object.defineProperty(window, 'location', {

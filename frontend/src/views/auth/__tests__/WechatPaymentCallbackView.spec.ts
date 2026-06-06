@@ -63,14 +63,14 @@ describe('WechatPaymentCallbackView', () => {
     })
   })
 
-  it('redirects back to purchase with an opaque resume token from hash fragment', async () => {
-    locationState.current.hash = '#wechat_resume_token=resume-token-123&redirect=%2Fpurchase%3Ffrom%3Dwechat'
+  it('redirects back to payment with an opaque resume token from hash fragment', async () => {
+    locationState.current.hash = '#wechat_resume_token=resume-token-123&redirect=%2Fpayment%3Ffrom%3Dwechat'
 
     mount(WechatPaymentCallbackView)
     await flushPromises()
 
     expect(replaceMock).toHaveBeenCalledWith({
-      path: '/purchase',
+      path: '/payment',
       query: {
         from: 'wechat',
         wechat_resume: '1',
@@ -79,7 +79,7 @@ describe('WechatPaymentCallbackView', () => {
     })
   })
 
-  it('redirects legacy openid callback payloads back to purchase while preserving resume context', async () => {
+  it('redirects legacy openid callback payloads back to payment while preserving resume context', async () => {
     locationState.current.hash =
       '#openid=openid-123&state=oauth-state&scope=snsapi_base&payment_type=wxpay_direct&amount=128&order_type=subscription&plan_id=7&redirect=%2Fpayment%3Ffrom%3Dwechat'
 
@@ -87,7 +87,7 @@ describe('WechatPaymentCallbackView', () => {
     await flushPromises()
 
     expect(replaceMock).toHaveBeenCalledWith({
-      path: '/purchase',
+      path: '/payment',
       query: {
         from: 'wechat',
         wechat_resume: '1',

@@ -358,12 +358,14 @@ export const useAppStore = defineStore('app', () => {
         channel_monitor_default_interval_seconds: 60,
         available_channels_enabled: false,
         risk_control_enabled: false,
+        service_quota_enabled: false,
         affiliate_enabled: false,
         checkin_enabled: false,
         checkin_content: '每日签到',
         checkin_daily_reward: 0,
         checkin_extra_reward_4: 0,
         checkin_extra_reward_16: 0,
+        allow_user_view_error_requests: false,
       }
     }
 

@@ -772,6 +772,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCheckinRewardMin,
 		SettingKeyCheckinRewardMax,
 		SettingKeyRiskControlEnabled,
+		SettingKeyAllowUserViewErrorRequests,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -891,6 +892,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CheckinExtraReward16: checkinSettings.ExtraReward16,
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
+
+		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
 	}, nil
 }
 
@@ -1033,6 +1036,17 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	return AvailableChannelsRuntime{
 		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
 	}
+}
+
+// IsUserErrorViewAllowed reads the user-facing error-requests visibility switch
+// directly from the settings store. Fail-closed: on error returns false (opt-in default).
+func (s *SettingService) IsUserErrorViewAllowed(ctx context.Context) bool {
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyAllowUserViewErrorRequests})
+	if err != nil {
+		slog.Warn("failed to get allow_user_view_error_requests setting, defaulting to false", "error", err)
+		return false
+	}
+	return vals[SettingKeyAllowUserViewErrorRequests] == "true"
 }
 
 // GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。
@@ -1265,6 +1279,7 @@ type PublicSettingsInjectionPayload struct {
 	CheckinExtraReward4                  float64 `json:"checkin_extra_reward_4"`
 	CheckinExtraReward16                 float64 `json:"checkin_extra_reward_16"`
 	RiskControlEnabled                   bool    `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests           bool    `json:"allow_user_view_error_requests"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1332,6 +1347,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		CheckinExtraReward4:                  settings.CheckinExtraReward4,
 		CheckinExtraReward16:                 settings.CheckinExtraReward16,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
+		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
 	}, nil
 }
 
@@ -2030,6 +2046,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		}
 		updates[SettingKeyDefaultPlatformQuotas] = string(blob)
 	}
+
+	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
 	return updates, nil
 }
@@ -2954,6 +2972,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
 		SettingPaymentVisibleMethodWxpayEnabled:      "false",
 		openAIAdvancedSchedulerSettingKey:            "false",
+
+		SettingKeyAllowUserViewErrorRequests: "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -3519,6 +3539,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			result.DefaultPlatformQuotas = parsed
 		}
 	}
+
+	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
 }
