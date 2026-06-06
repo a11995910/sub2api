@@ -22,6 +22,8 @@
 - 提交前必须检查 diff，确保只包含本次任务相关内容。
 - 提交说明使用中文，格式保持简洁，例如 `docs: 规范源码定制上线流程`。
 - `AGENTS.md` 被 `.gitignore` 忽略，首次加入仓库时必须使用 `git add -f AGENTS.md`。
+- 任何生产构建前，本地相关改动必须先完成 Git 提交并推送到远端；严禁用未提交工作区直接构建生产产物。
+- VPS 上线前必须在 `/opt/sub2api-src` 执行 `git pull --ff-only`，并核对线上源码 commit 与本次构建 commit 一致。
 
 ## VPS 与生产操作
 
@@ -44,16 +46,27 @@
 /opt/sub2api-src
 ```
 
-上线必须从 `/opt/sub2api-src` 同源 Git 仓库完整构建：
+生产上线默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只允许构建并替换 Linux amd64 的定制二进制。
+
+默认构建方式为本地完整构建 Linux amd64 二进制，再上传到 VPS；构建前必须保证本地改动已提交并推送：
+
+```bash
+cd /Users/wangjun/Documents/GitHub/sub2api
+git status --short
+git log -1 --oneline
+pnpm --dir frontend install --frozen-lockfile
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
+file backend/bin/server
+shasum -a 256 backend/bin/server
+```
+
+线上替换前必须从 `/opt/sub2api-src` 拉取同一 Git commit，用于保证运行产物有可追溯源码：
 
 ```bash
 cd /opt/sub2api-src
 git status --short
 git pull --ff-only
 git rev-parse HEAD
-pnpm --dir frontend install --frozen-lockfile
-make build-deploy
-./backend/bin/server --version
 ```
 
 严禁使用以下方式覆盖线上：
@@ -62,18 +75,21 @@ make build-deploy
 - 只执行 `go build -tags embed`，但没有重新构建同一次源码对应的前端资源。
 - 从未知源码目录或工作区有未确认改动的目录编译线上二进制。
 - 不备份当前二进制就直接替换挂载文件。
+- 重建 Docker 镜像后直接上线，除非已经确认本次改动确实涉及容器环境。
 
-替换必须先备份：
+替换必须先上传新二进制，再备份当前文件：
 
 ```bash
+scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
+
 ts=$(date +%Y%m%d-%H%M%S)
 cp /opt/sub2api-deploy/custom/sub2api-pool-overview \
   /opt/sub2api-deploy/custom/sub2api-pool-overview.bak-$ts
-cp /opt/sub2api-src/backend/bin/server \
+cp /tmp/sub2api-pool-overview.new \
   /opt/sub2api-deploy/custom/sub2api-pool-overview
 chmod +x /opt/sub2api-deploy/custom/sub2api-pool-overview
 cd /opt/sub2api-deploy
-docker compose restart sub2api
+docker compose up -d --force-recreate --no-deps sub2api
 ```
 
 上线后必须验证：
@@ -86,6 +102,30 @@ curl -I https://fast.youkeduo.site/purchase
 curl -I https://fast.youkeduo.site/models
 docker compose logs --tail=200 sub2api
 ```
+
+上线验证通过后必须执行清理，避免 VPS 构建缓存、旧镜像和二进制备份持续膨胀：
+
+```bash
+docker builder prune -af
+keep_images="$(docker ps --format '{{.Image}}' | sort -u)"
+latest_backup="$(docker images --format '{{.Repository}}:{{.Tag}}' 'weishaw/sub2api' \
+  | awk '/^weishaw\/sub2api:backup-/ {print}' | sort -r | head -n1)"
+docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | while read -r ref image_id; do
+  printf '%s\n' "$keep_images" | grep -qx "$ref" && continue
+  [ -n "$latest_backup" ] && [ "$ref" = "$latest_backup" ] && continue
+  case "$ref" in
+    weishaw/sub2api:backup-*|golang:*|node:*|alpine:*|'<none>:<none>')
+      docker rmi "$ref" 2>/dev/null || docker rmi "$image_id" 2>/dev/null || true
+      ;;
+  esac
+done
+docker image prune -f
+find /opt/sub2api-deploy/custom -maxdepth 1 -type f \
+  -name 'sub2api-pool-overview.bak-*' -printf '%T@ %p\n' \
+  | sort -nr | awk 'NR>1 {print $2}' | xargs -r rm -f
+```
+
+清理规则：保留当前运行二进制和最近一次 `.bak-*` 回滚备份；Docker 镜像只保留正在使用的镜像，以及确有回滚价值的一份 `weishaw/sub2api:backup-*` 备份镜像。
 
 还必须人工或接口回归管理端账号页：
 

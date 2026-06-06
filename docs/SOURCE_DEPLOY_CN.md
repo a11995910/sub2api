@@ -1,13 +1,16 @@
 # Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。线上 `sub2api` 当前使用自定义二进制挂载运行，必须从服务器上的同源源码目录完整构建前端和后端，再替换挂载文件。
+本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。线上 `sub2api` 当前使用自定义二进制挂载运行，默认不重建 Docker 镜像；每次上线应在本地完整构建 Linux amd64 二进制，再让 VPS 拉取同一 Git commit，最后替换挂载文件。
 
 ## 强制原则
 
-- 线上定制二进制只能从 `/opt/sub2api-src` 构建，不允许使用本地临时打包的 `backend` 目录直接覆盖线上。
+- 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
+- VPS `/opt/sub2api-src` 必须拉取到本次构建对应的同一 commit，确保线上运行产物有可追溯源码。
+- 默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只替换 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
 - 每次上线必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
 - 不允许只执行 `go build -tags embed` 就覆盖线上，除非已经确认前端资源是同一次源码构建生成的最新产物。
 - 替换线上二进制前必须备份当前文件，替换后必须验证容器状态、健康接口、管理端账号页面和日志。
+- 验证通过后必须清理 Docker 构建缓存、未使用镜像和旧二进制备份；只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
 
 ## 源码仓库
@@ -22,6 +25,22 @@ git add .
 git commit -m "说明本次修改"
 git push
 ```
+
+## 本地构建与提交要求
+
+本地开发完成后，必须先提交并推送。生产构建只能从干净工作区执行：
+
+```bash
+cd /Users/wangjun/Documents/GitHub/sub2api
+git status --short
+git add 本次相关文件
+git commit -m "说明本次修改"
+git push
+git rev-parse HEAD
+git log -1 --oneline
+```
+
+如 `git status --short` 仍有未提交改动，必须确认这些改动与本次构建无关；否则禁止继续上线。
 
 ## VPS 源码目录
 
@@ -89,7 +108,7 @@ openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 
 ## 编译要求
 
-部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标：
+部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标。
 
 编译机器需要先准备：
 
@@ -97,17 +116,29 @@ openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 - Node.js / pnpm：用于构建 `frontend`
 - make：用于执行仓库根目录的构建目标
 
+默认在本地构建 Linux amd64 二进制：
+
 ```bash
-cd /opt/sub2api-src
+cd /Users/wangjun/Documents/GitHub/sub2api
 pnpm --dir frontend install --frozen-lockfile
-make build-deploy
-./backend/bin/server --version
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
+file backend/bin/server
+shasum -a 256 backend/bin/server
 ```
 
 构建产物位置：
 
 ```bash
 backend/bin/server
+```
+
+如果本地构建环境不可用，才允许改用 VPS `/opt/sub2api-src` 构建：
+
+```bash
+cd /opt/sub2api-src
+pnpm --dir frontend install --frozen-lockfile
+make build-deploy
+./backend/bin/server --version
 ```
 
 上线前应记录本次构建对应的 Git commit：
@@ -128,14 +159,22 @@ git log -1 --oneline
 替换流程：
 
 ```bash
+scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
+
+cd /opt/sub2api-src
+git status --short
+git pull --ff-only
+git rev-parse HEAD
+git log -1 --oneline
+
 ts=$(date +%Y%m%d-%H%M%S)
 cp /opt/sub2api-deploy/custom/sub2api-pool-overview \
   /opt/sub2api-deploy/custom/sub2api-pool-overview.bak-$ts
-cp /opt/sub2api-src/backend/bin/server \
+cp /tmp/sub2api-pool-overview.new \
   /opt/sub2api-deploy/custom/sub2api-pool-overview
 chmod +x /opt/sub2api-deploy/custom/sub2api-pool-overview
 cd /opt/sub2api-deploy
-docker compose restart sub2api
+docker compose up -d --force-recreate --no-deps sub2api
 ```
 
 如果 Docker Compose 服务名变化，先用 `docker compose ps` 确认实际服务名，再重启对应服务。
@@ -158,6 +197,40 @@ docker compose logs --tail=200 sub2api
 - 前端页面刷新不出现 404
 - 管理端 `/admin/accounts` 能正常打开，账号列表接口 `/api/v1/admin/accounts` 不出现 5xx
 - 日志中没有启动失败、前端资源缺失、数据库迁移失败或账号列表序列化异常
+
+## 构建后清理
+
+上线验证通过后必须清理一次 VPS 构建缓存和旧备份，避免磁盘持续膨胀。
+
+```bash
+docker builder prune -af
+keep_images="$(docker ps --format '{{.Image}}' | sort -u)"
+latest_backup="$(docker images --format '{{.Repository}}:{{.Tag}}' 'weishaw/sub2api' \
+  | awk '/^weishaw\/sub2api:backup-/ {print}' | sort -r | head -n1)"
+docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | while read -r ref image_id; do
+  printf '%s\n' "$keep_images" | grep -qx "$ref" && continue
+  [ -n "$latest_backup" ] && [ "$ref" = "$latest_backup" ] && continue
+  case "$ref" in
+    weishaw/sub2api:backup-*|golang:*|node:*|alpine:*|'<none>:<none>')
+      docker rmi "$ref" 2>/dev/null || docker rmi "$image_id" 2>/dev/null || true
+      ;;
+  esac
+done
+docker image prune -f
+find /opt/sub2api-deploy/custom -maxdepth 1 -type f \
+  -name 'sub2api-pool-overview.bak-*' -printf '%T@ %p\n' \
+  | sort -nr | awk 'NR>1 {print $2}' | xargs -r rm -f
+docker system df
+ls -lt /opt/sub2api-deploy/custom/sub2api-pool-overview*
+```
+
+清理要求：
+
+- 保留当前运行中的 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
+- 只保留最近一份 `sub2api-pool-overview.bak-*` 回滚备份。
+- `docker builder prune -af` 清理构建缓存。
+- 镜像清理必须先保护正在运行的容器镜像；如果存在多个 `weishaw/sub2api:backup-*`，只保留最近一份确有回滚价值的备份镜像。
+- 不删除 `data`、`postgres_data`、`redis_data`、数据库卷或任何业务数据目录。
 
 ## 回滚
 

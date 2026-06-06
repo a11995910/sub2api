@@ -424,7 +424,7 @@ rm -rf data/ postgres_data/ redis_data/
 
 从源码编译安装，适合开发或定制需求。
 
-> **生产定制上线必须先阅读 [Sub2API 源码定制上线说明](docs/SOURCE_DEPLOY_CN.md)。当前 VPS 的 `sub2api` 使用自定义二进制挂载运行，必须在 `/opt/sub2api-src` 同源源码目录执行 `make build-deploy`，完整构建前端和后端嵌入产物后再备份替换线上文件。严禁只打包本地 `backend` 目录或只执行临时 `go build -tags embed` 覆盖线上。**
+> **生产定制上线必须先阅读 [Sub2API 源码定制上线说明](docs/SOURCE_DEPLOY_CN.md)。当前 VPS 的 `sub2api` 使用自定义二进制挂载运行，默认不重建 Docker 镜像；每次上线必须先提交并推送 Git，再本地完整构建 Linux amd64 前后端嵌入产物，同时让 VPS `/opt/sub2api-src` 拉取同一 commit，最后备份并替换线上挂载文件。严禁用未提交工作区、只打包本地 `backend` 目录或只执行临时 `go build -tags embed` 覆盖线上。**
 
 #### 前置条件
 
