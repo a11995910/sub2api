@@ -18,6 +18,8 @@ export interface UserAvailableGroup {
   is_exclusive: boolean
   /** 是否允许该分组使用图片生成能力。 */
   allow_image_generation: boolean
+  /** 是否对该分组的图片生成结果自动执行 4K 超分。 */
+  image_super_resolution_enabled?: boolean
   /** true = 图片生成使用独立倍率；false = 共用当前有效分组倍率。 */
   image_rate_independent: boolean
   /** 图片生成独立倍率，仅 image_rate_independent=true 时生效。 */

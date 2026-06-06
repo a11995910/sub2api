@@ -5,6 +5,7 @@
 用户侧核心入口：
 
 - `灵石充值`：用户在 `/purchase` 页面内嵌外部小铺购买余额兑换码，购买后前往 `/redeem` 兑换灵石余额。
+- `在线充值`：用户在 `/payment` 页面使用内置支付渠道直接充值灵石余额或购买订阅，入口受 `payment_enabled` 控制。
 - `我的订阅`：用户在 `/subscriptions` 页面查看订阅用量，并直接使用灵石兑换可售订阅套餐。
 - `模型广场`：用户在 `/models` 查看当前可调用模型、可用分组，以及按用户有效倍率计算后的灵石价格。
 - `模型测试台`：用户在 `/model-test` 选择模型、分组和对应 API Key，通过真实 `/v1` 网关在线测试文本或图片模型。
@@ -28,7 +29,7 @@ https://pay.ldxp.cn/shop/R5D7AG9X
 - 当前灵石余额展示。
 - 跳转兑换页 `/redeem` 的按钮。
 
-充值页只展示灵石充值相关内容，不再承载订阅购买入口。订阅套餐统一在“我的订阅”页面用灵石兑换。
+充值页只展示外部小铺兑换码充值相关内容，不再承载订阅购买入口。订阅套餐统一在“我的订阅”页面用灵石兑换；内置支付的余额充值和订阅购买入口独立放在 `/payment`，避免和外部小铺入口互相覆盖。
 
 后端 CSP 已在 `backend/internal/server/middleware/security_headers.go` 中把 `https://pay.ldxp.cn` 加入 `frame-src`。如果目标站点自身后续增加禁止嵌入的响应头或 CSP，iframe 仍可能空白；此时用户可使用“新窗口打开”购买兑换码，再回到兑换页使用。
 
@@ -138,5 +139,5 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 - 前端构建：`./node_modules/.bin/vite build`
 - 源码部署编译：`make build-deploy`
 - 后端测试：`go test ./...`
-- 部署后检查 `/purchase`、`/redeem`、`/subscriptions`、`/models`、`/model-test`、管理端邀请返利记录和用户侧菜单显示。
+- 部署后检查 `/purchase`、`/payment`、`/orders`、`/redeem`、`/subscriptions`、`/models`、`/model-test`、管理端邀请返利记录和用户侧菜单显示。
 - 使用浏览器开发者工具确认响应头 `Content-Security-Policy` 的 `frame-src` 包含 `https://pay.ldxp.cn`。

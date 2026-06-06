@@ -13,18 +13,19 @@ import (
 // 订阅 vs 标准（SubscriptionType）、默认倍率（RateMultiplier）。用户专属倍率
 // 不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
 type AvailableGroupRef struct {
-	ID                   int64
-	Name                 string
-	Platform             string
-	SubscriptionType     string
-	RateMultiplier       float64
-	IsExclusive          bool
-	AllowImageGeneration bool
-	ImageRateIndependent bool
-	ImageRateMultiplier  float64
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
+	ID                          int64
+	Name                        string
+	Platform                    string
+	SubscriptionType            string
+	RateMultiplier              float64
+	IsExclusive                 bool
+	AllowImageGeneration        bool
+	ImageSuperResolutionEnabled bool
+	ImageRateIndependent        bool
+	ImageRateMultiplier         float64
+	ImagePrice1K                *float64
+	ImagePrice2K                *float64
+	ImagePrice4K                *float64
 }
 
 // AvailableChannel 可用渠道视图：用于「可用渠道」页面展示渠道基础信息 +
@@ -65,18 +66,19 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 	for i := range groups {
 		g := groups[i]
 		groupByID[g.ID] = AvailableGroupRef{
-			ID:                   g.ID,
-			Name:                 g.Name,
-			Platform:             g.Platform,
-			SubscriptionType:     g.SubscriptionType,
-			RateMultiplier:       g.RateMultiplier,
-			IsExclusive:          g.IsExclusive,
-			AllowImageGeneration: g.AllowImageGeneration,
-			ImageRateIndependent: g.ImageRateIndependent,
-			ImageRateMultiplier:  g.ImageRateMultiplier,
-			ImagePrice1K:         g.ImagePrice1K,
-			ImagePrice2K:         g.ImagePrice2K,
-			ImagePrice4K:         g.ImagePrice4K,
+			ID:                          g.ID,
+			Name:                        g.Name,
+			Platform:                    g.Platform,
+			SubscriptionType:            g.SubscriptionType,
+			RateMultiplier:              g.RateMultiplier,
+			IsExclusive:                 g.IsExclusive,
+			AllowImageGeneration:        g.AllowImageGeneration,
+			ImageSuperResolutionEnabled: g.ImageSuperResolutionEnabled,
+			ImageRateIndependent:        g.ImageRateIndependent,
+			ImageRateMultiplier:         g.ImageRateMultiplier,
+			ImagePrice1K:                g.ImagePrice1K,
+			ImagePrice2K:                g.ImagePrice2K,
+			ImagePrice4K:                g.ImagePrice4K,
 		}
 	}
 

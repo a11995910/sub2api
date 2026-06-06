@@ -382,6 +382,7 @@ export default {
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Spirit Stones Recharge',
+    onlineRecharge: 'Online Recharge',
     docs: 'Docs',
     beginnerGuide: 'Beginner Guide',
     myOrders: 'My Orders',
@@ -2344,6 +2345,8 @@ export default {
         title: 'Image Generation Pricing',
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
         allowImageGeneration: 'Allow image generation for this group',
+        imageSuperResolution: 'Auto 4K super resolution',
+        imageSuperResolutionHint: 'Generated images are upscaled before being returned.',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
@@ -6951,6 +6954,7 @@ export default {
   // Payment System
   payment: {
     title: 'Spirit Stones Recharge',
+    description: 'Top up Spirit Stones or purchase subscriptions through built-in payment channels',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
     creditedBalance: 'Credited Balance',

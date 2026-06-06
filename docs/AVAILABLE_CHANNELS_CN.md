@@ -10,11 +10,12 @@
 
 - `rate_multiplier`：分组默认文本倍率。
 - `allow_image_generation`：该分组是否允许图片生成。
+- `image_super_resolution_enabled`：该分组的图片生成结果是否会在返回前自动执行 4K 超分。
 - `image_rate_independent`：图片生成是否使用独立倍率。
 - `image_rate_multiplier`：图片独立倍率，仅 `image_rate_independent=true` 时生效。
 - `image_price_1k`、`image_price_2k`、`image_price_4k`：图片生成 1K、2K、4K 单张基础价；为空时后端真实计费会回退默认图片价格。
 
-前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。
+前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。开启自动 4K 超分的图片分组会由网关在图片结果返回前调用超分服务，超分失败时保留原图返回并记录日志。
 
 ## API Key 默认分组
 

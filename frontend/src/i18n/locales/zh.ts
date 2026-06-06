@@ -382,6 +382,7 @@ export default {
     github: 'GitHub',
     mySubscriptions: '我的订阅',
     buySubscription: '灵石充值',
+    onlineRecharge: '在线充值',
     docs: '文档',
     beginnerGuide: '小白攻略',
     myOrders: '我的订单',
@@ -2427,6 +2428,8 @@ export default {
         title: '图片生成计费',
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
         allowImageGeneration: '允许当前分组生图',
+        imageSuperResolution: '自动 4K 超分',
+        imageSuperResolutionHint: '开启后，当前分组的生图结果会在返回前自动超分。',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',
         modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
@@ -7130,6 +7133,7 @@ export default {
   // Payment System
   payment: {
     title: '灵石充值',
+    description: '通过内置支付渠道充值灵石余额或购买订阅',
     amountLabel: '充值金额',
     paymentAmount: '支付金额',
     creditedBalance: '到账余额',

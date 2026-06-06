@@ -101,6 +101,7 @@ function groupFixture(overrides: Partial<Record<string, unknown>>) {
     weekly_limit_usd: null,
     monthly_limit_usd: null,
     allow_image_generation: false,
+    image_super_resolution_enabled: false,
     image_rate_independent: false,
     image_rate_multiplier: 1,
     image_price_1k: null,

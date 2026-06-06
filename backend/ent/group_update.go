@@ -289,6 +289,20 @@ func (_u *GroupUpdate) SetNillableAllowImageGeneration(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
+func (_u *GroupUpdate) SetImageSuperResolutionEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetImageSuperResolutionEnabled(v)
+	return _u
+}
+
+// SetNillableImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageSuperResolutionEnabled(*v)
+	}
+	return _u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_u *GroupUpdate) SetImageRateIndependent(v bool) *GroupUpdate {
 	_u.mutation.SetImageRateIndependent(v)
@@ -1028,6 +1042,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
+		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 	}
@@ -1698,6 +1715,20 @@ func (_u *GroupUpdateOne) SetAllowImageGeneration(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableAllowImageGeneration(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
+func (_u *GroupUpdateOne) SetImageSuperResolutionEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageSuperResolutionEnabled(v)
+	return _u
+}
+
+// SetNillableImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageSuperResolutionEnabled(*v)
 	}
 	return _u
 }
@@ -2470,6 +2501,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
+		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)

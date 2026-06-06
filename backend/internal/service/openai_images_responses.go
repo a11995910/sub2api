@@ -977,6 +977,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	results = s.applyOpenAIResponsesSuperResolution(ctx, c, results)
 	if len(results) > 0 {
 		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
 	}
@@ -1129,6 +1130,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
+			finalResults = s.applyOpenAIResponsesSuperResolution(ctx, c, finalResults)
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -1185,6 +1187,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
 				return err
 			}
+			materializedResults = s.applyOpenAIResponsesSuperResolution(ctx, c, materializedResults)
 			for _, img := range materializedResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				key := openAIResponsesImageResultKey("", img)

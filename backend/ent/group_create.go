@@ -231,6 +231,20 @@ func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
+func (_c *GroupCreate) SetImageSuperResolutionEnabled(v bool) *GroupCreate {
+	_c.mutation.SetImageSuperResolutionEnabled(v)
+	return _c
+}
+
+// SetNillableImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageSuperResolutionEnabled(*v)
+	}
+	return _c
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_c *GroupCreate) SetImageRateIndependent(v bool) *GroupCreate {
 	_c.mutation.SetImageRateIndependent(v)
@@ -664,6 +678,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowImageGeneration
 		_c.mutation.SetAllowImageGeneration(v)
 	}
+	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
+		v := group.DefaultImageSuperResolutionEnabled
+		_c.mutation.SetImageSuperResolutionEnabled(v)
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
 		_c.mutation.SetImageRateIndependent(v)
@@ -774,6 +792,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
+	}
+	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
+		return &ValidationError{Name: "image_super_resolution_enabled", err: errors.New(`ent: missing required field "Group.image_super_resolution_enabled"`)}
 	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
@@ -908,6 +929,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
 		_node.AllowImageGeneration = value
+	}
+	if value, ok := _c.mutation.ImageSuperResolutionEnabled(); ok {
+		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
+		_node.ImageSuperResolutionEnabled = value
 	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -1370,6 +1395,18 @@ func (u *GroupUpsert) SetAllowImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowImageGeneration)
+	return u
+}
+
+// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
+func (u *GroupUpsert) SetImageSuperResolutionEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldImageSuperResolutionEnabled, v)
+	return u
+}
+
+// UpdateImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageSuperResolutionEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldImageSuperResolutionEnabled)
 	return u
 }
 
@@ -2005,6 +2042,20 @@ func (u *GroupUpsertOne) SetAllowImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
+func (u *GroupUpsertOne) SetImageSuperResolutionEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageSuperResolutionEnabled(v)
+	})
+}
+
+// UpdateImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageSuperResolutionEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageSuperResolutionEnabled()
 	})
 }
 
@@ -2860,6 +2911,20 @@ func (u *GroupUpsertBulk) SetAllowImageGeneration(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
+func (u *GroupUpsertBulk) SetImageSuperResolutionEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageSuperResolutionEnabled(v)
+	})
+}
+
+// UpdateImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageSuperResolutionEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageSuperResolutionEnabled()
 	})
 }
 

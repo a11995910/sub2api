@@ -137,6 +137,7 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		"rate_multiplier",
 		"is_exclusive",
 		"allow_image_generation",
+		"image_super_resolution_enabled",
 		"image_rate_independent",
 		"image_rate_multiplier",
 		"image_price_1k",
@@ -171,13 +172,14 @@ func TestFilterUserVisibleGroups_ExposesImageControls(t *testing.T) {
 	// 因此用户可见分组 DTO 必须携带图片开关及图片独立倍率。
 	groups := []service.AvailableGroupRef{
 		{
-			ID:                   9,
-			Name:                 "image",
-			Platform:             "openai",
-			RateMultiplier:       0.3,
-			AllowImageGeneration: true,
-			ImageRateIndependent: true,
-			ImageRateMultiplier:  1.2,
+			ID:                          9,
+			Name:                        "image",
+			Platform:                    "openai",
+			RateMultiplier:              0.3,
+			AllowImageGeneration:        true,
+			ImageSuperResolutionEnabled: true,
+			ImageRateIndependent:        true,
+			ImageRateMultiplier:         1.2,
 		},
 	}
 
@@ -185,6 +187,7 @@ func TestFilterUserVisibleGroups_ExposesImageControls(t *testing.T) {
 
 	require.Len(t, visible, 1)
 	require.True(t, visible[0].AllowImageGeneration)
+	require.True(t, visible[0].ImageSuperResolutionEnabled)
 	require.True(t, visible[0].ImageRateIndependent)
 	require.Equal(t, 1.2, visible[0].ImageRateMultiplier)
 }

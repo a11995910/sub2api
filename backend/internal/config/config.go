@@ -720,6 +720,14 @@ type GatewayConfig struct {
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// ImageSuperResolutionURL: 图片生成结果自动 4K 超分服务地址，留空表示不调用。
+	ImageSuperResolutionURL string `mapstructure:"image_super_resolution_url"`
+	// ImageSuperResolutionAPIKey: 调用超分服务时传递的 X-API-Key。
+	ImageSuperResolutionAPIKey string `mapstructure:"image_super_resolution_api_key"`
+	// ImageSuperResolutionTimeoutSeconds: 单张图片超分调用超时（秒）。
+	ImageSuperResolutionTimeoutSeconds int `mapstructure:"image_super_resolution_timeout_seconds"`
+	// ImageSuperResolutionMaxImages: 单次响应最多自动超分图片数，0 表示不限制。
+	ImageSuperResolutionMaxImages int `mapstructure:"image_super_resolution_max_images"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -1837,6 +1845,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.image_super_resolution_url", "")
+	viper.SetDefault("gateway.image_super_resolution_api_key", "")
+	viper.SetDefault("gateway.image_super_resolution_timeout_seconds", 240)
+	viper.SetDefault("gateway.image_super_resolution_max_images", 0)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
@@ -2415,6 +2427,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ImageConcurrency.MaxConcurrentRequests < 0 {
 		return fmt.Errorf("gateway.image_concurrency.max_concurrent_requests must be non-negative")
+	}
+	if c.Gateway.ImageSuperResolutionTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.image_super_resolution_timeout_seconds must be non-negative")
+	}
+	if c.Gateway.ImageSuperResolutionMaxImages < 0 {
+		return fmt.Errorf("gateway.image_super_resolution_max_images must be non-negative")
 	}
 	switch strings.TrimSpace(c.Gateway.ImageConcurrency.OverflowMode) {
 	case "", ImageConcurrencyOverflowModeReject, ImageConcurrencyOverflowModeWait:

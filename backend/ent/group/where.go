@@ -130,6 +130,11 @@ func AllowImageGeneration(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowImageGeneration, v))
 }
 
+// ImageSuperResolutionEnabled applies equality check predicate on the "image_super_resolution_enabled" field. It's identical to ImageSuperResolutionEnabledEQ.
+func ImageSuperResolutionEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageSuperResolutionEnabled, v))
+}
+
 // ImageRateIndependent applies equality check predicate on the "image_rate_independent" field. It's identical to ImageRateIndependentEQ.
 func ImageRateIndependent(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
@@ -923,6 +928,16 @@ func AllowImageGenerationEQ(v bool) predicate.Group {
 // AllowImageGenerationNEQ applies the NEQ predicate on the "allow_image_generation" field.
 func AllowImageGenerationNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowImageGeneration, v))
+}
+
+// ImageSuperResolutionEnabledEQ applies the EQ predicate on the "image_super_resolution_enabled" field.
+func ImageSuperResolutionEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageSuperResolutionEnabled, v))
+}
+
+// ImageSuperResolutionEnabledNEQ applies the NEQ predicate on the "image_super_resolution_enabled" field.
+func ImageSuperResolutionEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageSuperResolutionEnabled, v))
 }
 
 // ImageRateIndependentEQ applies the EQ predicate on the "image_rate_independent" field.
