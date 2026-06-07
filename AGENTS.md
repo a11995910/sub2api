@@ -58,7 +58,6 @@ pnpm --dir frontend install --frozen-lockfile
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
 file backend/bin/server
 shasum -a 256 backend/bin/server
-./backend/bin/server --version
 ```
 
 线上替换前必须从 `/opt/sub2api-src` 拉取同一 Git commit，用于保证运行产物有可追溯源码：
@@ -90,6 +89,7 @@ live=/opt/sub2api-deploy/custom/sub2api-pool-overview
 candidate=${live}.new
 install -m 0755 /tmp/sub2api-pool-overview.new "$candidate"
 sha256sum /tmp/sub2api-pool-overview.new "$candidate"
+timeout 5 /tmp/sub2api-pool-overview.new --version
 
 ts=$(date +%Y%m%d-%H%M%S)
 cp -a "$live" "$live.bak-$ts"

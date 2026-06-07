@@ -9,7 +9,7 @@
 - 默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只替换 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
 - 每次上线必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
 - 不允许只执行 `go build -tags embed` 就覆盖线上，除非已经确认前端资源是同一次源码构建生成的最新产物。
-- 构建产物必须包含 Git commit 和提交时间，`./backend/bin/server --version` 的 commit 必须与待上线 commit 一致。
+- 构建产物必须包含 Git commit 和提交时间；本地交叉编译的 Linux amd64 产物上传到 VPS 后，`/tmp/sub2api-pool-overview.new --version` 的 commit 必须与待上线 commit 一致。
 - 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
 - 验证通过后必须清理 Docker 构建缓存、未使用镜像和旧二进制备份；只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
@@ -126,7 +126,6 @@ pnpm --dir frontend install --frozen-lockfile
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
 file backend/bin/server
 shasum -a 256 backend/bin/server
-./backend/bin/server --version
 ```
 
 构建产物位置：
@@ -165,13 +164,13 @@ git log -1 --oneline
 替换流程：
 
 ```bash
-# 本地执行，并记录完整 commit、构建版本和 SHA256。
+# 本地执行，并记录完整 commit 和 SHA256。
 git rev-parse HEAD
-./backend/bin/server --version
 shasum -a 256 backend/bin/server
 scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
 
 # VPS 执行。expected_commit 必须填写上一步记录的完整 commit。
+timeout 5 /tmp/sub2api-pool-overview.new --version
 cd /opt/sub2api-src
 git status --short
 git pull --ff-only
