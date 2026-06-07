@@ -51,7 +51,7 @@
 import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDollarAmount, formatSpiritStones } from '@/utils/format'
+import { formatDollarAmount, formatSpiritStones, formatTokenCountM } from '@/utils/format'
 
 defineProps<{ stats: AdminUsageStatsResponse | null }>()
 
@@ -67,7 +67,7 @@ const formatTokens = (value: number) => {
   return value.toLocaleString()
 }
 
-const formatFullTokens = (value: number) => value.toLocaleString()
+const formatFullTokens = formatTokenCountM
 
 const formatActualCost = (value: number) => formatSpiritStones(value, { fractionDigits: 4 })
 const formatOriginalCost = (value: number) => formatDollarAmount(value, { fractionDigits: 4 })

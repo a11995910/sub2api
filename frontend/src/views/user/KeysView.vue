@@ -434,6 +434,7 @@
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :description="(option as unknown as GroupOption).description"
                 :allow-image-generation="(option as unknown as GroupOption).allowImageGeneration"
+                :access-countdown="(option as unknown as GroupOption).accessCountdown"
                 :selected="selected"
               />
             </template>
@@ -1030,6 +1031,7 @@
               :user-rate-multiplier="option.userRate"
               :description="option.description"
               :allow-image-generation="option.allowImageGeneration"
+              :access-countdown="option.accessCountdown"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
                 (!selectedKeyForGroup?.group_id && option.value === null)
@@ -1096,6 +1098,8 @@ interface GroupOption {
   subscriptionType: SubscriptionType
   platform: GroupPlatform
   allowImageGeneration: boolean
+  accessExpiresAt: string | null
+  accessCountdown: string | null
 }
 
 const appStore = useAppStore()
@@ -1257,7 +1261,9 @@ const groupOptions = computed(() =>
     userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
     platform: group.platform,
-    allowImageGeneration: group.allow_image_generation
+    allowImageGeneration: group.allow_image_generation,
+    accessExpiresAt: group.access_expires_at ?? null,
+    accessCountdown: formatGroupAccessCountdown(group.access_expires_at ?? null)
   }))
 )
 
@@ -1779,6 +1785,21 @@ function formatResetTime(resetAt: string | null): string {
   if (days > 0) return `${days}d ${hours}h`
   if (hours > 0) return `${hours}h ${mins}m`
   return `${mins}m`
+}
+
+function formatGroupAccessCountdown(expiresAt: string | null): string | null {
+  if (!expiresAt) return null
+  const diff = new Date(expiresAt).getTime() - now.value.getTime()
+  if (!Number.isFinite(diff) || diff <= 0) return null
+  const days = Math.floor(diff / 86400000)
+  const hours = Math.floor((diff % 86400000) / 3600000)
+  const mins = Math.floor((diff % 3600000) / 60000)
+  const text = days > 0
+    ? `${days}天${hours}小时`
+    : hours > 0
+      ? `${hours}小时${mins}分钟`
+      : `${Math.max(mins, 1)}分钟`
+  return t('keys.groupAccessCountdown', { time: text })
 }
 
 onMounted(() => {

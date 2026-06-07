@@ -140,6 +140,8 @@ export interface AffiliatePaymentReward {
   validity_days: number
   reward_mode: 'standard_group_access' | 'subscription_quota' | string
   rate_multiplier: number
+  current_expires_at?: string | null
+  access_source?: string | null
 }
 
 export interface UserAffiliateDetail {
@@ -543,6 +545,8 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  access_expires_at?: string | null
+  access_source?: string | null
   created_at: string
   updated_at: string
 }

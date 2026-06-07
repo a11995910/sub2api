@@ -835,6 +835,7 @@ export default {
     resetNow: '即将重置',
     expiration: '密钥有效期',
     expiresInDays: '{days} 天',
+    groupAccessCountdown: '限时剩余 {time}',
     extendDays: '+{days} 天',
     customDate: '自定义',
     expirationDate: '过期时间',
@@ -934,6 +935,9 @@ export default {
     cacheRead: '读取',
     cacheReadFull: '缓存读取',
     cacheWrite: '写入',
+    cacheHit: '缓存命中',
+    cacheCreate: '缓存写入',
+    cacheHitRate: '缓存命中率',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
@@ -1252,6 +1256,14 @@ export default {
     linkCopied: '邀请链接已复制',
     loadFailed: '加载邀请返利数据失败',
     transferFailed: '转入余额失败',
+    rewardCard: {
+      badge: '重要邀请奖励',
+      title: '获得 {days} 天「{group}」使用权',
+      standardDescription: '好友完成支付后立即发放，天数可累加；请求按该分组 {rate} 倍率正常扣余额，到期后自动回到默认分组。',
+      subscriptionDescription: '好友完成支付后立即发放，天数可累加；请求按订阅额度消耗。',
+      countdown: '当前剩余 {time}',
+      expired: '已到期'
+    },
     stats: {
       rebateRate: '我的返利比例',
       rebateRateHint: '被邀请用户每次充值后你可获得的返利比例',

@@ -76,6 +76,11 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+
+	// AccessExpiresAt/AccessSource 仅用于用户侧可用分组展示当前限时授权。
+	// nil 表示公开分组、永久授权、普通订阅或未提供该元数据。
+	AccessExpiresAt *time.Time
+	AccessSource    string
 }
 
 func (g *Group) IsActive() bool {

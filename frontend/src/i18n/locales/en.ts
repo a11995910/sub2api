@@ -831,6 +831,7 @@ export default {
     resetNow: 'Resetting soon',
     expiration: 'Expiration',
     expiresInDays: '{days} days',
+    groupAccessCountdown: 'Limited access left {time}',
     extendDays: '+{days} days',
     customDate: 'Custom',
     expirationDate: 'Expiration Date',
@@ -930,6 +931,9 @@ export default {
     cacheRead: 'Read',
     cacheReadFull: 'Cache Read',
     cacheWrite: 'Write',
+    cacheHit: 'Cache Hit',
+    cacheCreate: 'Cache Write',
+    cacheHitRate: 'Cache Hit Rate',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
@@ -1248,6 +1252,14 @@ export default {
     linkCopied: 'Invite link copied',
     loadFailed: 'Failed to load affiliate data',
     transferFailed: 'Failed to transfer affiliate quota',
+    rewardCard: {
+      badge: 'Important invite reward',
+      title: 'Get {days} days of "{group}" access',
+      standardDescription: 'Issued after your friend completes a payment. Days stack; requests use your balance at the group rate multiplier {rate}, then return to the default group after expiry.',
+      subscriptionDescription: 'Issued after your friend completes a payment. Days stack; requests consume subscription quota.',
+      countdown: 'Current remaining {time}',
+      expired: 'Expired'
+    },
     stats: {
       rebateRate: 'My Rebate Rate',
       rebateRateHint: 'What you earn each time an invitee recharges',

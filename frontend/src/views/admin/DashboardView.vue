@@ -265,7 +265,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import { formatDollarAmount, formatSpiritStones } from '@/utils/format'
+import { formatDollarAmount, formatSpiritStones, formatTokenCountM } from '@/utils/format'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
@@ -506,9 +506,7 @@ const formatNumber = (value: number): string => {
   return value.toLocaleString()
 }
 
-const formatFullTokens = (value: number | undefined): string => {
-  return (value ?? 0).toLocaleString()
-}
+const formatFullTokens = formatTokenCountM
 
 const formatActualCostPlain = (value: number): string => formatSpiritStones(value, { fractionDigits: 2 }).replace(/\s+/g, '')
 const formatOriginalCostPlain = (value: number): string => formatDollarAmount(value, { fractionDigits: 2 }).replace(/\s+/g, '')

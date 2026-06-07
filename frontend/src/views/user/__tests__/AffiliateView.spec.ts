@@ -18,6 +18,13 @@ const messages: Record<string, string> = {
   'affiliate.copyCode': '复制邀请码',
   'affiliate.copyLink': '复制链接',
   'affiliate.loadFailed': '加载邀请返利数据失败',
+  'affiliate.rewardCard.badge': '重要邀请奖励',
+  'affiliate.rewardCard.title': '获得 {days} 天「{group}」使用权',
+  'affiliate.rewardCard.standardDescription':
+    '好友完成支付后立即发放，天数可累加；请求按该分组 {rate} 倍率正常扣余额，到期后自动回到默认分组。',
+  'affiliate.rewardCard.subscriptionDescription': '好友完成支付后立即发放，天数可累加；请求按订阅额度消耗。',
+  'affiliate.rewardCard.countdown': '当前剩余 {time}',
+  'affiliate.rewardCard.expired': '已到期',
   'affiliate.stats.rebateRate': '我的返利比例',
   'affiliate.stats.rebateRateHint': '被邀请用户每次充值后你可获得的返利比例',
   'affiliate.stats.invitedUsers': '邀请人数',
@@ -142,11 +149,15 @@ describe('AffiliateView', () => {
       validity_days: 5,
       reward_mode: 'standard_group_access',
       rate_multiplier: 0.7,
+      current_expires_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
     }))
 
     const wrapper = await mountAffiliateView()
     const text = wrapper.text()
 
+    expect(text).toContain('重要邀请奖励')
+    expect(text).toContain('获得 5 天「VIP 专线」使用权')
+    expect(text).toContain('当前剩余')
     expect(text).toContain('被邀请用户完成支付后，你还会获得 5 天「VIP 专线」使用权')
     expect(text).toContain('请求按该分组 0.7 倍率正常扣余额')
     expect(text).toContain('到期后自动回到默认分组')

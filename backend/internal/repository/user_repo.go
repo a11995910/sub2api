@@ -971,6 +971,38 @@ RETURNING expires_at
 	return result, nil
 }
 
+func (r *userRepository) ListActiveUserGroupAccessMeta(ctx context.Context, userID int64) (map[int64]service.UserGroupAccessMeta, error) {
+	out := make(map[int64]service.UserGroupAccessMeta)
+	if userID <= 0 {
+		return out, nil
+	}
+
+	rows, err := clientFromContext(ctx, r.client).UserAllowedGroup.Query().
+		Where(
+			userallowedgroup.UserIDEQ(userID),
+			userallowedgroup.Or(
+				userallowedgroup.ExpiresAtIsNil(),
+				userallowedgroup.ExpiresAtGT(time.Now()),
+			),
+		).
+		Order(userallowedgroup.ByGroupID()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range rows {
+		item := rows[i]
+		out[item.GroupID] = service.UserGroupAccessMeta{
+			GroupID:   item.GroupID,
+			Source:    item.Source,
+			ExpiresAt: item.ExpiresAt,
+			Permanent: item.ExpiresAt == nil,
+		}
+	}
+	return out, nil
+}
+
 func (r *userRepository) ExpireTemporaryAllowedGroups(ctx context.Context, input service.ExpireTemporaryAllowedGroupsInput) ([]service.ExpiredTemporaryAllowedGroupResult, error) {
 	if input.ReplacementGroupID <= 0 {
 		return nil, fmt.Errorf("replacement group id is required")

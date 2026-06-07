@@ -208,6 +208,14 @@ func (s affiliateRewardGroupReaderStub) GetByID(_ context.Context, id int64) (*G
 	return s.group, nil
 }
 
+type affiliateGroupAccessReaderStub struct {
+	items map[int64]UserGroupAccessMeta
+}
+
+func (s affiliateGroupAccessReaderStub) ListActiveUserGroupAccessMeta(context.Context, int64) (map[int64]UserGroupAccessMeta, error) {
+	return s.items, nil
+}
+
 func TestGetAffiliateDetailIncludesPaymentReward(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -276,6 +284,80 @@ func TestGetAffiliateDetailIncludesPaymentReward(t *testing.T) {
 			require.InDelta(t, tc.wantRate, detail.PaymentReward.RateMultiplier, 1e-9)
 		})
 	}
+}
+
+func TestGetAffiliateDetailIncludesCurrentRewardExpiresAt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	expiresAt := time.Now().Add(5 * 24 * time.Hour)
+	group := &Group{
+		ID:               9,
+		Name:             "邀请奖励分组",
+		IsExclusive:      true,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   0.7,
+	}
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:                 "true",
+		SettingKeyAffiliateSubscriptionRewardGroup: strconv.FormatInt(group.ID, 10),
+		SettingKeyAffiliateSubscriptionRewardDays:  "5",
+	}}, &config.Config{})
+	repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+		10: {UserID: 10, AffCode: "AFF-CODE", CreatedAt: time.Now()},
+	}}
+	svc := NewAffiliateService(repo, settingSvc, nil, nil)
+	svc.SetRewardGroupReader(affiliateRewardGroupReaderStub{group: group})
+	svc.SetGroupAccessReader(affiliateGroupAccessReaderStub{items: map[int64]UserGroupAccessMeta{
+		group.ID: {
+			GroupID:   group.ID,
+			Source:    UserAllowedGroupSourceAffiliatePaymentReward,
+			ExpiresAt: &expiresAt,
+		},
+	}})
+
+	detail, err := svc.GetAffiliateDetail(ctx, 10)
+	require.NoError(t, err)
+	require.NotNil(t, detail.PaymentReward)
+	require.NotNil(t, detail.PaymentReward.CurrentExpiresAt)
+	require.WithinDuration(t, expiresAt, *detail.PaymentReward.CurrentExpiresAt, time.Second)
+	require.Equal(t, UserAllowedGroupSourceAffiliatePaymentReward, detail.PaymentReward.AccessSource)
+}
+
+func TestGetAffiliateDetailOmitsCountdownForPermanentRewardAccess(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	group := &Group{
+		ID:               9,
+		Name:             "邀请奖励分组",
+		IsExclusive:      true,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   0.7,
+	}
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:                 "true",
+		SettingKeyAffiliateSubscriptionRewardGroup: strconv.FormatInt(group.ID, 10),
+		SettingKeyAffiliateSubscriptionRewardDays:  "5",
+	}}, &config.Config{})
+	repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+		10: {UserID: 10, AffCode: "AFF-CODE", CreatedAt: time.Now()},
+	}}
+	svc := NewAffiliateService(repo, settingSvc, nil, nil)
+	svc.SetRewardGroupReader(affiliateRewardGroupReaderStub{group: group})
+	svc.SetGroupAccessReader(affiliateGroupAccessReaderStub{items: map[int64]UserGroupAccessMeta{
+		group.ID: {
+			GroupID:   group.ID,
+			Source:    UserAllowedGroupSourceManual,
+			Permanent: true,
+		},
+	}})
+
+	detail, err := svc.GetAffiliateDetail(ctx, 10)
+	require.NoError(t, err)
+	require.NotNil(t, detail.PaymentReward)
+	require.Nil(t, detail.PaymentReward.CurrentExpiresAt)
+	require.Empty(t, detail.PaymentReward.AccessSource)
 }
 
 // TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by

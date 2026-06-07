@@ -461,10 +461,14 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
-// ProvideAffiliateService wires affiliate rewards with the group reader used for user-facing reward descriptions.
-func ProvideAffiliateService(repo AffiliateRepository, settingService *SettingService, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *AffiliateService {
+// ProvideAffiliateService wires affiliate rewards with the readers used for user-facing reward descriptions.
+func ProvideAffiliateService(repo AffiliateRepository, settingService *SettingService, groupRepo GroupRepository, userRepo UserRepository, userSubRepo UserSubscriptionRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *AffiliateService {
 	svc := NewAffiliateService(repo, settingService, authCacheInvalidator, billingCacheService)
 	svc.SetRewardGroupReader(groupRepo)
+	if reader, ok := userRepo.(UserGroupAccessMetaReader); ok {
+		svc.SetGroupAccessReader(reader)
+	}
+	svc.SetUserSubscriptionRepository(userSubRepo)
 	return svc
 }
 

@@ -766,14 +766,36 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 
 	// 构建订阅分组 ID 集合
 	subscribedGroupIDs := make(map[int64]bool)
+	subscriptionExpiresAtByGroupID := make(map[int64]time.Time)
 	for _, sub := range activeSubscriptions {
 		subscribedGroupIDs[sub.GroupID] = true
+		if current, ok := subscriptionExpiresAtByGroupID[sub.GroupID]; !ok || sub.ExpiresAt.After(current) {
+			subscriptionExpiresAtByGroupID[sub.GroupID] = sub.ExpiresAt
+		}
+	}
+
+	groupAccessMeta := map[int64]UserGroupAccessMeta{}
+	if reader, ok := s.userRepo.(UserGroupAccessMetaReader); ok {
+		meta, err := reader.ListActiveUserGroupAccessMeta(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("list user group access meta: %w", err)
+		}
+		groupAccessMeta = meta
 	}
 
 	// 过滤出用户有权限的分组
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
 		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
+			if group.IsSubscriptionType() {
+				if expiresAt, ok := subscriptionExpiresAtByGroupID[group.ID]; ok {
+					group.AccessExpiresAt = &expiresAt
+					group.AccessSource = "subscription"
+				}
+			} else if meta, ok := groupAccessMeta[group.ID]; ok && !meta.Permanent && meta.ExpiresAt != nil {
+				group.AccessExpiresAt = meta.ExpiresAt
+				group.AccessSource = meta.Source
+			}
 			availableGroups = append(availableGroups, group)
 		}
 	}

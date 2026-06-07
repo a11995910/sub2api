@@ -48,6 +48,37 @@
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.title') }}</h3>
           <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.description') }}</p>
 
+          <div
+            v-if="paymentRewardCard"
+            class="mt-5 overflow-hidden rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
+          >
+            <div class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex min-w-0 gap-3">
+                <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-white text-amber-600 shadow-sm dark:bg-amber-900/40 dark:text-amber-300">
+                  <Icon name="gift" size="md" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold uppercase text-amber-700 dark:text-amber-300">
+                    {{ t('affiliate.rewardCard.badge') }}
+                  </p>
+                  <p class="mt-1 text-base font-semibold leading-6 text-gray-950 dark:text-white">
+                    {{ paymentRewardCard.title }}
+                  </p>
+                  <p class="mt-1 text-sm leading-6 text-amber-900 dark:text-amber-100">
+                    {{ paymentRewardCard.description }}
+                  </p>
+                </div>
+              </div>
+              <div
+                v-if="paymentRewardCountdown"
+                class="flex flex-shrink-0 items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-amber-800 shadow-sm dark:border-amber-800/60 dark:bg-amber-900/30 dark:text-amber-100"
+              >
+                <Icon name="clock" size="sm" />
+                <span>{{ paymentRewardCountdown }}</span>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-5 grid gap-4 md:grid-cols-2">
             <div class="space-y-2">
               <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('affiliate.yourCode') }}</p>
@@ -143,7 +174,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -163,6 +194,8 @@ const { copyToClipboard } = useClipboard()
 const loading = ref(true)
 const transferring = ref(false)
 const detail = ref<UserAffiliateDetail | null>(null)
+const now = ref(new Date())
+let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 const inviteLink = computed(() => {
   if (!detail.value) return ''
@@ -195,6 +228,34 @@ const paymentRewardTip = computed(() => {
   })
 })
 
+const paymentRewardCard = computed(() => {
+  const reward = detail.value?.payment_reward
+  if (!reward || reward.validity_days <= 0 || reward.group_id <= 0) return null
+  const groupName = resolveRewardGroupName()
+  const title = t('affiliate.rewardCard.title', {
+    days: reward.validity_days,
+    group: groupName,
+  })
+  const description = reward.reward_mode === 'subscription_quota'
+    ? t('affiliate.rewardCard.subscriptionDescription')
+    : t('affiliate.rewardCard.standardDescription', {
+        rate: formatRateMultiplier(reward.rate_multiplier),
+      })
+  return { title, description }
+})
+
+const paymentRewardCountdown = computed(() => {
+  const expiresAt = detail.value?.payment_reward?.current_expires_at
+  const text = formatCountdown(expiresAt)
+  return text ? t('affiliate.rewardCard.countdown', { time: text }) : ''
+})
+
+function resolveRewardGroupName(): string {
+  const reward = detail.value?.payment_reward
+  if (!reward) return ''
+  return reward.group_name?.trim() || t('affiliate.tips.rewardGroupFallback', { id: reward.group_id })
+}
+
 function formatCount(value: number): string {
   return value.toLocaleString()
 }
@@ -203,6 +264,20 @@ function formatRateMultiplier(value: number | null | undefined): string {
   const normalized = Number.isFinite(Number(value)) ? Number(value) : 1
   const rounded = Math.round(normalized * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
+}
+
+function formatCountdown(expiresAt: string | null | undefined): string {
+  if (!expiresAt) return ''
+  const target = new Date(expiresAt).getTime()
+  if (!Number.isFinite(target)) return ''
+  const diff = target - now.value.getTime()
+  if (diff <= 0) return t('affiliate.rewardCard.expired')
+  const days = Math.floor(diff / 86400000)
+  const hours = Math.floor((diff % 86400000) / 3600000)
+  const minutes = Math.floor((diff % 3600000) / 60000)
+  if (days > 0) return `${days}天${hours}小时`
+  if (hours > 0) return `${hours}小时${minutes}分钟`
+  return `${Math.max(minutes, 1)}分钟`
 }
 
 async function loadAffiliateDetail(silent = false): Promise<void> {
@@ -249,5 +324,14 @@ async function transferQuota(): Promise<void> {
 
 onMounted(() => {
   void loadAffiliateDetail()
+  countdownTimer = setInterval(() => {
+    now.value = new Date()
+  }, 60000)
+})
+
+onUnmounted(() => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+  }
 })
 </script>

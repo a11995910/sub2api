@@ -288,6 +288,20 @@ export function formatCompactNumber(
 }
 
 /**
+ * 格式化 Token 数量（最高固定显示到 M，避免大盘统计跳成 B 或长数字）
+ * @param tokens Token 数量
+ * @returns 格式化后的字符串，如 "950", "1.25K", "798.16M"
+ */
+export function formatTokenCountM(tokens: number | null | undefined): string {
+  if (tokens === null || tokens === undefined) return '0'
+
+  const abs = Math.abs(tokens)
+  if (abs >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2)}M`
+  if (abs >= 1_000) return `${(tokens / 1_000).toFixed(2)}K`
+  return tokens.toLocaleString()
+}
+
+/**
  * 格式化倒计时（从现在到目标时间的剩余时间）
  * @param targetDate 目标日期字符串或 Date 对象
  * @returns 倒计时字符串，如 "2h 41m", "3d 5h", "15m"

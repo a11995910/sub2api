@@ -96,11 +96,13 @@ type AffiliateDetail struct {
 }
 
 type AffiliateReward struct {
-	GroupID        int64   `json:"group_id"`
-	GroupName      string  `json:"group_name"`
-	ValidityDays   int     `json:"validity_days"`
-	RewardMode     string  `json:"reward_mode"`
-	RateMultiplier float64 `json:"rate_multiplier"`
+	GroupID          int64      `json:"group_id"`
+	GroupName        string     `json:"group_name"`
+	ValidityDays     int        `json:"validity_days"`
+	RewardMode       string     `json:"reward_mode"`
+	RateMultiplier   float64    `json:"rate_multiplier"`
+	CurrentExpiresAt *time.Time `json:"current_expires_at,omitempty"`
+	AccessSource     string     `json:"access_source,omitempty"`
 }
 
 type AffiliateRepository interface {
@@ -227,6 +229,8 @@ type AffiliateService struct {
 	repo                 AffiliateRepository
 	settingService       *SettingService
 	rewardGroupReader    SettingsGroupReader
+	groupAccessReader    UserGroupAccessMetaReader
+	userSubRepo          UserSubscriptionRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCacheService  *BillingCacheService
 }
@@ -242,6 +246,14 @@ func NewAffiliateService(repo AffiliateRepository, settingService *SettingServic
 
 func (s *AffiliateService) SetRewardGroupReader(reader SettingsGroupReader) {
 	s.rewardGroupReader = reader
+}
+
+func (s *AffiliateService) SetGroupAccessReader(reader UserGroupAccessMetaReader) {
+	s.groupAccessReader = reader
+}
+
+func (s *AffiliateService) SetUserSubscriptionRepository(repo UserSubscriptionRepository) {
+	s.userSubRepo = repo
 }
 
 // IsEnabled reports whether the affiliate (邀请返利) feature is turned on.
@@ -286,7 +298,7 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 		AffFrozenQuota:             summary.AffFrozenQuota,
 		AffHistoryQuota:            summary.AffHistoryQuota,
 		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
-		PaymentReward:              s.resolvePaymentReward(ctx),
+		PaymentReward:              s.resolvePaymentReward(ctx, userID),
 		Invitees:                   invitees,
 	}, nil
 }
@@ -430,7 +442,7 @@ func (s *AffiliateService) GetSubscriptionRewardConfig(ctx context.Context) Affi
 	return AffiliateSubscriptionRewardConfig{GroupID: groupID, ValidityDays: days}
 }
 
-func (s *AffiliateService) resolvePaymentReward(ctx context.Context) *AffiliateReward {
+func (s *AffiliateService) resolvePaymentReward(ctx context.Context, userID int64) *AffiliateReward {
 	if s == nil || s.rewardGroupReader == nil {
 		return nil
 	}
@@ -446,13 +458,46 @@ func (s *AffiliateService) resolvePaymentReward(ctx context.Context) *AffiliateR
 	if group.IsSubscriptionType() {
 		rewardMode = "subscription_quota"
 	}
-	return &AffiliateReward{
+	reward := &AffiliateReward{
 		GroupID:        group.ID,
 		GroupName:      group.Name,
 		ValidityDays:   cfg.ValidityDays,
 		RewardMode:     rewardMode,
 		RateMultiplier: group.RateMultiplier,
 	}
+	if userID > 0 {
+		reward.CurrentExpiresAt, reward.AccessSource = s.resolveCurrentRewardExpiresAt(ctx, userID, group)
+	}
+	return reward
+}
+
+func (s *AffiliateService) resolveCurrentRewardExpiresAt(ctx context.Context, userID int64, rewardGroup *Group) (*time.Time, string) {
+	if s == nil || rewardGroup == nil || userID <= 0 {
+		return nil, ""
+	}
+	if rewardGroup.IsSubscriptionType() {
+		if s.userSubRepo == nil {
+			return nil, ""
+		}
+		sub, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, rewardGroup.ID)
+		if err != nil || sub == nil {
+			return nil, ""
+		}
+		expiresAt := sub.ExpiresAt
+		return &expiresAt, "subscription"
+	}
+	if s.groupAccessReader == nil {
+		return nil, ""
+	}
+	meta, err := s.groupAccessReader.ListActiveUserGroupAccessMeta(ctx, userID)
+	if err != nil {
+		return nil, ""
+	}
+	item, ok := meta[rewardGroup.ID]
+	if !ok || item.Permanent || item.ExpiresAt == nil {
+		return nil, ""
+	}
+	return item.ExpiresAt, item.Source
 }
 
 func (s *AffiliateService) ResolveInviterID(ctx context.Context, inviteeUserID int64) (int64, error) {

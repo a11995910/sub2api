@@ -31,6 +31,13 @@
         <Icon name="sparkles" size="xs" class="h-3 w-3" />
         {{ t('availableChannels.imageEnabled') }}
       </span>
+      <span
+        v-if="accessCountdown"
+        class="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-900/60"
+      >
+        <Icon name="clock" size="xs" class="h-3 w-3" />
+        {{ accessCountdown }}
+      </span>
       <!-- Rate pill (platform color) -->
       <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
         <template v-if="hasCustomRate">
@@ -73,6 +80,7 @@ interface Props {
   selected?: boolean
   showCheckmark?: boolean
   allowImageGeneration?: boolean
+  accessCountdown?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -80,7 +88,8 @@ const props = withDefaults(defineProps<Props>(), {
   selected: false,
   showCheckmark: true,
   userRateMultiplier: null,
-  allowImageGeneration: false
+  allowImageGeneration: false,
+  accessCountdown: null
 })
 
 const { t } = useI18n()
