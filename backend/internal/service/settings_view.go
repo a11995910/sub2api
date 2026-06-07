@@ -142,22 +142,24 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency           int
-	DefaultBalance               float64
-	RiskControlEnabled           bool
-	AffiliateEnabled             bool
-	AffiliateRebateRate          float64
-	AffiliateRebateFreezeHours   int
-	AffiliateRebateDurationDays  int
-	AffiliateRebatePerInviteeCap float64
-	CheckinEnabled               bool
-	CheckinContent               string
-	CheckinDailyReward           float64
-	CheckinExtraReward4          float64
-	CheckinExtraReward16         float64
-	DefaultUserRPMLimit          int
-	DefaultSubscriptions         []DefaultSubscriptionSetting
-	APIKeyDefaultGroupID         int64
+	DefaultConcurrency                 int
+	DefaultBalance                     float64
+	RiskControlEnabled                 bool
+	AffiliateEnabled                   bool
+	AffiliateRebateRate                float64
+	AffiliateRebateFreezeHours         int
+	AffiliateRebateDurationDays        int
+	AffiliateRebatePerInviteeCap       float64
+	AffiliateSubscriptionRewardGroupID int64
+	AffiliateSubscriptionRewardDays    int
+	CheckinEnabled                     bool
+	CheckinContent                     string
+	CheckinDailyReward                 float64
+	CheckinExtraReward4                float64
+	CheckinExtraReward16               float64
+	DefaultUserRPMLimit                int
+	DefaultSubscriptions               []DefaultSubscriptionSetting
+	APIKeyDefaultGroupID               int64
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

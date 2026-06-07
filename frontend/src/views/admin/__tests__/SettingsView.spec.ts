@@ -303,6 +303,8 @@ const baseSettingsResponse = {
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
+  affiliate_subscription_reward_group_id: 0,
+  affiliate_subscription_reward_days: 0,
   checkin_enabled: false,
   checkin_content: "每日签到",
   checkin_daily_reward: 0,

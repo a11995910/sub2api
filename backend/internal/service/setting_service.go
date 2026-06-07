@@ -58,6 +58,10 @@ var (
 		"API_KEY_DEFAULT_GROUP_INVALID",
 		"api key default group must exist and be active",
 	)
+	ErrAffiliateSubscriptionRewardGroupInvalid = infraerrors.BadRequest(
+		"AFFILIATE_SUBSCRIPTION_REWARD_GROUP_INVALID",
+		"affiliate subscription reward group must exist and be subscription type",
+	)
 )
 
 type SettingRepository interface {
@@ -1709,6 +1713,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
+	if err := s.validateAffiliateSubscriptionRewardGroup(ctx, settings.AffiliateSubscriptionRewardGroupID); err != nil {
+		return nil, err
+	}
 	if err := s.validateAPIKeyDefaultGroup(ctx, settings.APIKeyDefaultGroupID); err != nil {
 		return nil, err
 	}
@@ -1955,6 +1962,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		settings.AffiliateRebatePerInviteeCap = AffiliateRebatePerInviteeCapDefault
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
+	if settings.AffiliateSubscriptionRewardGroupID < 0 {
+		settings.AffiliateSubscriptionRewardGroupID = AffiliateSubscriptionRewardGroupDefault
+	}
+	updates[SettingKeyAffiliateSubscriptionRewardGroup] = strconv.FormatInt(settings.AffiliateSubscriptionRewardGroupID, 10)
+	if settings.AffiliateSubscriptionRewardDays < 0 {
+		settings.AffiliateSubscriptionRewardDays = AffiliateSubscriptionRewardDaysDefault
+	}
+	if settings.AffiliateSubscriptionRewardDays > AffiliateSubscriptionRewardDaysMax {
+		settings.AffiliateSubscriptionRewardDays = AffiliateSubscriptionRewardDaysMax
+	}
+	updates[SettingKeyAffiliateSubscriptionRewardDays] = strconv.Itoa(settings.AffiliateSubscriptionRewardDays)
 	updates[SettingKeyCheckinEnabled] = strconv.FormatBool(settings.CheckinEnabled)
 	updates[SettingKeyCheckinContent] = settings.CheckinContent
 	updates[SettingKeyCheckinDailyReward] = strconv.FormatFloat(settings.CheckinDailyReward, 'f', 8, 64)
@@ -2236,6 +2254,27 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 		}
 	}
 
+	return nil
+}
+
+func (s *SettingService) validateAffiliateSubscriptionRewardGroup(ctx context.Context, groupID int64) error {
+	if groupID <= 0 || s.settingsGroupReader == nil {
+		return nil
+	}
+	group, err := s.settingsGroupReader.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			return ErrAffiliateSubscriptionRewardGroupInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(groupID, 10),
+			})
+		}
+		return fmt.Errorf("get affiliate subscription reward group %d: %w", groupID, err)
+	}
+	if !group.IsSubscriptionType() || !group.IsActive() {
+		return ErrAffiliateSubscriptionRewardGroupInvalid.WithMetadata(map[string]string{
+			"group_id": strconv.FormatInt(groupID, 10),
+		})
+	}
 	return nil
 }
 
@@ -2588,6 +2627,30 @@ func (s *SettingService) GetAffiliateRebatePerInviteeCap(ctx context.Context) fl
 	return cap
 }
 
+// GetAffiliateSubscriptionRewardConfig 返回邀请人订阅奖励配置。
+// groupID 或 days 任一为 0 时表示未启用该奖励。
+func (s *SettingService) GetAffiliateSubscriptionRewardConfig(ctx context.Context) (int64, int) {
+	if s == nil || s.settingRepo == nil {
+		return AffiliateSubscriptionRewardGroupDefault, AffiliateSubscriptionRewardDaysDefault
+	}
+	groupID := AffiliateSubscriptionRewardGroupDefault
+	if raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateSubscriptionRewardGroup); err == nil {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr == nil && parsed > 0 {
+			groupID = parsed
+		}
+	}
+	days := AffiliateSubscriptionRewardDaysDefault
+	if raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateSubscriptionRewardDays); err == nil {
+		if parsed, parseErr := strconv.Atoi(strings.TrimSpace(raw)); parseErr == nil && parsed > 0 {
+			if parsed > AffiliateSubscriptionRewardDaysMax {
+				parsed = AffiliateSubscriptionRewardDaysMax
+			}
+			days = parsed
+		}
+	}
+	return groupID, days
+}
+
 // IsPasswordResetEnabled 检查是否启用密码重置功能
 // 要求：必须同时开启邮件验证
 func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {
@@ -2878,6 +2941,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
+		SettingKeyAffiliateSubscriptionRewardGroup:          strconv.FormatInt(AffiliateSubscriptionRewardGroupDefault, 10),
+		SettingKeyAffiliateSubscriptionRewardDays:           strconv.Itoa(AffiliateSubscriptionRewardDaysDefault),
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAPIKeyDefaultGroupID:                      "0",
@@ -3080,6 +3145,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if perInviteeCap, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebatePerInviteeCap], 64); err == nil && perInviteeCap >= 0 {
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
+	}
+	if rewardGroupID, err := strconv.ParseInt(strings.TrimSpace(settings[SettingKeyAffiliateSubscriptionRewardGroup]), 10, 64); err == nil && rewardGroupID > 0 {
+		result.AffiliateSubscriptionRewardGroupID = rewardGroupID
+	}
+	if rewardDays, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAffiliateSubscriptionRewardDays])); err == nil && rewardDays >= 0 {
+		if rewardDays > AffiliateSubscriptionRewardDaysMax {
+			rewardDays = AffiliateSubscriptionRewardDaysMax
+		}
+		result.AffiliateSubscriptionRewardDays = rewardDays
 	}
 	checkinSettings := parseCheckinSettings(settings)
 	result.CheckinEnabled = checkinSettings.Enabled

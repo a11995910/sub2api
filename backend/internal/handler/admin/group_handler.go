@@ -163,6 +163,11 @@ type UpdateGroupRequest struct {
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
 
+// DeleteGroupRequest represents delete group request options.
+type DeleteGroupRequest struct {
+	ReplacementGroupID *int64 `json:"replacement_group_id"`
+}
+
 // List handles listing all groups with pagination
 // GET /api/v1/admin/groups
 func (h *GroupHandler) List(c *gin.Context) {
@@ -380,7 +385,36 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.adminService.DeleteGroup(c.Request.Context(), groupID)
+	var replacementGroupID *int64
+	if raw := strings.TrimSpace(c.Query("replacement_group_id")); raw != "" {
+		parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || parsed < 0 {
+			response.BadRequest(c, "Invalid replacement group ID")
+			return
+		}
+		if parsed > 0 {
+			replacementGroupID = &parsed
+		}
+	}
+	if c.Request.ContentLength > 0 {
+		var req DeleteGroupRequest
+		if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
+			response.BadRequest(c, "Invalid request: "+bindErr.Error())
+			return
+		}
+		if req.ReplacementGroupID != nil {
+			if *req.ReplacementGroupID < 0 {
+				response.BadRequest(c, "Invalid replacement group ID")
+				return
+			}
+			replacementGroupID = nil
+			if *req.ReplacementGroupID > 0 {
+				replacementGroupID = req.ReplacementGroupID
+			}
+		}
+	}
+
+	err = h.adminService.DeleteGroup(c.Request.Context(), groupID, replacementGroupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

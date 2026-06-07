@@ -245,6 +245,46 @@ func TestSettingService_UpdateSettings_APIKeyDefaultGroup_RejectsInactive(t *tes
 	require.Nil(t, repo.updates)
 }
 
+func TestSettingService_UpdateSettings_AffiliateSubscriptionRewardGroup_ValidGroup(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &settingsGroupReaderStub{
+		byID: map[int64]*Group{
+			31: {ID: 31, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetSettingsGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AffiliateSubscriptionRewardGroupID: 31,
+		AffiliateSubscriptionRewardDays:    7,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{31}, groupReader.calls)
+	require.Equal(t, "31", repo.updates[SettingKeyAffiliateSubscriptionRewardGroup])
+	require.Equal(t, "7", repo.updates[SettingKeyAffiliateSubscriptionRewardDays])
+}
+
+func TestSettingService_UpdateSettings_AffiliateSubscriptionRewardGroup_RejectsInvalidGroup(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &settingsGroupReaderStub{
+		byID: map[int64]*Group{
+			32: {ID: 32, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetSettingsGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AffiliateSubscriptionRewardGroupID: 32,
+		AffiliateSubscriptionRewardDays:    7,
+	})
+	require.Error(t, err)
+	require.Equal(t, "AFFILIATE_SUBSCRIPTION_REWARD_GROUP_INVALID", infraerrors.Reason(err))
+	require.Equal(t, "32", infraerrors.FromError(err).Metadata["group_id"])
+	require.Nil(t, repo.updates)
+}
+
 func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Normalized(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})
@@ -274,6 +314,22 @@ func TestParseDefaultSubscriptions_NormalizesValues(t *testing.T) {
 		{GroupID: 11, ValidityDays: 60},
 		{GroupID: 12, ValidityDays: MaxValidityDays},
 	}, got)
+}
+
+func TestSettingService_GetAffiliateSubscriptionRewardConfig_ClampsAndDefaults(t *testing.T) {
+	svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+		SettingKeyAffiliateSubscriptionRewardGroup: "41",
+		SettingKeyAffiliateSubscriptionRewardDays:  "999999",
+	}}, &config.Config{})
+
+	groupID, days := svc.GetAffiliateSubscriptionRewardConfig(context.Background())
+	require.Equal(t, int64(41), groupID)
+	require.Equal(t, AffiliateSubscriptionRewardDaysMax, days)
+
+	emptySvc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{}}, &config.Config{})
+	groupID, days = emptySvc.GetAffiliateSubscriptionRewardConfig(context.Background())
+	require.Equal(t, int64(0), groupID)
+	require.Equal(t, 0, days)
 }
 
 func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {

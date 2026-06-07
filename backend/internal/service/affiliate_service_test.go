@@ -161,6 +161,40 @@ func TestIsEnabled_NilSettingServiceReturnsDefault(t *testing.T) {
 	require.Equal(t, AffiliateEnabledDefault, svc.IsEnabled(context.Background()))
 }
 
+func TestAffiliateSubscriptionRewardConfigRequiresEnabledAffiliate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:                 "false",
+		SettingKeyAffiliateSubscriptionRewardGroup: "9",
+		SettingKeyAffiliateSubscriptionRewardDays:  "3",
+	}}, &config.Config{})
+	svc := &AffiliateService{settingService: settingSvc}
+
+	require.Equal(t, AffiliateSubscriptionRewardConfig{}, svc.GetSubscriptionRewardConfig(ctx))
+}
+
+func TestAffiliateSubscriptionRewardConfigAndInviter(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	inviterID := int64(10)
+	inviteeID := int64(20)
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:                 "true",
+		SettingKeyAffiliateSubscriptionRewardGroup: "9",
+		SettingKeyAffiliateSubscriptionRewardDays:  "3",
+	}}, &config.Config{})
+	repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+		inviteeID: {UserID: inviteeID, InviterID: &inviterID, CreatedAt: time.Now()},
+	}}
+	svc := &AffiliateService{repo: repo, settingService: settingSvc}
+
+	require.Equal(t, AffiliateSubscriptionRewardConfig{GroupID: 9, ValidityDays: 3}, svc.GetSubscriptionRewardConfig(ctx))
+	gotInviterID, err := svc.ResolveInviterID(ctx, inviteeID)
+	require.NoError(t, err)
+	require.Equal(t, inviterID, gotInviterID)
+}
+
 // TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by
 // admin-facing rate setters: nil is always valid (clear), in-range values
 // are accepted, NaN/Inf and out-of-range values produce a typed BadRequest.

@@ -48,24 +48,38 @@
 
 生产上线默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只允许构建并替换 Linux amd64 的定制二进制。
 
-默认构建方式为本地完整构建 Linux amd64 二进制，再上传到 VPS；构建前必须保证本地改动已提交并推送：
+默认构建方式为 VPS 线上同源构建：本地只负责提交并推送代码，生产二进制必须在 VPS `/opt/sub2api-src` 拉取同一 Git commit 后构建。构建前必须保证本地改动已提交并推送：
 
 ```bash
 cd /Users/wangjun/Documents/GitHub/sub2api
 git status --short
 git log -1 --oneline
-pnpm --dir frontend install --frozen-lockfile
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
-file backend/bin/server
-shasum -a 256 backend/bin/server
+git push
+git rev-parse HEAD
 ```
 
-线上替换前必须从 `/opt/sub2api-src` 拉取同一 Git commit，用于保证运行产物有可追溯源码：
+线上构建前必须先清理可再生成缓存，避免系统盘被 Go / Node / Docker 构建缓存打满；默认不设置 `PRUNE_UNUSED_IMAGES=1`，避免误删仍有回滚价值的镜像：
 
 ```bash
 cd /opt/sub2api-src
 git status --short
 git pull --ff-only
+expected_commit='填写本地 git rev-parse HEAD 的输出'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+git log -1 --oneline
+/usr/local/bin/prebuild-cleanup
+pnpm --dir frontend install --frozen-lockfile
+GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
+file backend/bin/server
+sha256sum backend/bin/server
+timeout 5 backend/bin/server --version
+```
+
+线上源码 commit 必须与本次本地推送的 commit 一致，用于保证运行产物有可追溯源码：
+
+```bash
+cd /opt/sub2api-src
+git status --short
 git rev-parse HEAD
 ```
 
@@ -74,27 +88,24 @@ git rev-parse HEAD
 - 从本地电脑打包 `backend` 目录上传后临时编译。
 - 只执行 `go build -tags embed`，但没有重新构建同一次源码对应的前端资源。
 - 从未知源码目录或工作区有未确认改动的目录编译线上二进制。
+- 把本地构建产物作为默认生产产物上传上线；除非 VPS 构建链路不可用且已明确确认应急 fallback。
 - 不备份当前二进制就直接替换挂载文件。
 - 使用 `cp` 直接覆盖仍被容器执行的挂载二进制。
 - 重建 Docker 镜像后直接上线，除非已经确认本次改动确实涉及容器环境。
 
-如果本地构建环境不可用、确需在 VPS 构建，必须先执行 `/usr/local/bin/prebuild-cleanup` 清理可再生成缓存；默认不设置 `PRUNE_UNUSED_IMAGES=1`，避免误删仍有回滚价值的镜像。
-
-替换必须先上传新二进制并核对 SHA256，再通过同目录临时文件原子替换，避免 `Text file busy`：
+替换必须使用 VPS `/opt/sub2api-src/backend/bin/server` 的新二进制并核对 SHA256，再通过同目录临时文件原子替换，避免 `Text file busy`：
 
 ```bash
-scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
-
 live=/opt/sub2api-deploy/custom/sub2api-pool-overview
 candidate=${live}.new
-install -m 0755 /tmp/sub2api-pool-overview.new "$candidate"
-sha256sum /tmp/sub2api-pool-overview.new "$candidate"
-timeout 5 /tmp/sub2api-pool-overview.new --version
+src=/opt/sub2api-src/backend/bin/server
+install -m 0755 "$src" "$candidate"
+sha256sum "$src" "$candidate"
+timeout 5 "$candidate" --version
 
 ts=$(date +%Y%m%d-%H%M%S)
 cp -a "$live" "$live.bak-$ts"
 mv -f "$candidate" "$live"
-rm -f /tmp/sub2api-pool-overview.new
 
 cd /opt/sub2api-deploy
 docker compose up -d --force-recreate --no-deps sub2api

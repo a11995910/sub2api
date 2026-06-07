@@ -280,6 +280,9 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 			return err
 		}
+		if err := s.applyAffiliateSubscriptionRewardForOrder(ctx, o); err != nil {
+			return err
+		}
 		// Code already created and redeemed — just mark completed
 		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 	case redeemActionCreate:
@@ -294,6 +297,9 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+		return err
+	}
+	if err := s.applyAffiliateSubscriptionRewardForOrder(ctx, o); err != nil {
 		return err
 	}
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
@@ -440,6 +446,9 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
+	if err := s.applyAffiliateSubscriptionRewardForOrder(ctx, o); err != nil {
+		return err
+	}
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 }
 
@@ -525,6 +534,210 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return fmt.Errorf("commit affiliate rebate tx: %w", err)
 	}
 	return nil
+}
+
+const (
+	affiliateSubscriptionRewardAppliedAction = "AFFILIATE_SUBSCRIPTION_REWARD_APPLIED"
+	affiliateSubscriptionRewardSkippedAction = "AFFILIATE_SUBSCRIPTION_REWARD_SKIPPED"
+	affiliateSubscriptionRewardFailedAction  = "AFFILIATE_SUBSCRIPTION_REWARD_FAILED"
+)
+
+func (s *PaymentService) applyAffiliateSubscriptionRewardForOrder(ctx context.Context, o *dbent.PaymentOrder) error {
+	if o == nil || o.PayAmount <= 0 || s.affiliateService == nil || s.subscriptionSvc == nil {
+		return nil
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": fmt.Sprintf("begin affiliate subscription reward tx: %v", err),
+		})
+		return fmt.Errorf("begin affiliate subscription reward tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	claimed, err := s.tryClaimAffiliateSubscriptionRewardAudit(txCtx, tx.Client(), o.ID)
+	if err != nil {
+		s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": err.Error(),
+		})
+		return fmt.Errorf("claim affiliate subscription reward audit: %w", err)
+	}
+	if !claimed {
+		return nil
+	}
+
+	cfg := s.affiliateService.GetSubscriptionRewardConfig(txCtx)
+	if cfg.GroupID <= 0 || cfg.ValidityDays <= 0 {
+		return s.skipClaimedAffiliateSubscriptionReward(ctx, txCtx, tx, o.ID, map[string]any{
+			"reason": "affiliate disabled or subscription reward not configured",
+		})
+	}
+	if s.groupRepo != nil {
+		group, err := s.groupRepo.GetByID(txCtx, cfg.GroupID)
+		if err != nil {
+			if errors.Is(err, ErrGroupNotFound) {
+				return s.skipClaimedAffiliateSubscriptionReward(ctx, txCtx, tx, o.ID, map[string]any{
+					"group_id": cfg.GroupID,
+					"reason":   "reward group not found",
+				})
+			}
+			s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+				"error": err.Error(),
+			})
+			return fmt.Errorf("get affiliate subscription reward group: %w", err)
+		}
+		if group == nil || !group.IsActive() || !group.IsSubscriptionType() {
+			return s.skipClaimedAffiliateSubscriptionReward(ctx, txCtx, tx, o.ID, map[string]any{
+				"group_id": cfg.GroupID,
+				"reason":   "reward group inactive or not subscription type",
+			})
+		}
+	}
+
+	inviterID, err := s.affiliateService.ResolveInviterID(txCtx, o.UserID)
+	if err != nil {
+		s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": err.Error(),
+		})
+		return fmt.Errorf("resolve affiliate inviter: %w", err)
+	}
+	if inviterID <= 0 {
+		return s.skipClaimedAffiliateSubscriptionReward(ctx, txCtx, tx, o.ID, map[string]any{
+			"invitee_user_id": o.UserID,
+			"reason":          "no inviter bound",
+		})
+	}
+
+	_, extended, err := s.subscriptionSvc.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
+		UserID:       inviterID,
+		GroupID:      cfg.GroupID,
+		ValidityDays: cfg.ValidityDays,
+		AssignedBy:   0,
+		Notes:        fmt.Sprintf("邀请用户 %d 完成支付订单 %d，奖励 %d 天专属分组使用权", o.UserID, o.ID, cfg.ValidityDays),
+	})
+	if err != nil {
+		s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": err.Error(),
+		})
+		return fmt.Errorf("assign affiliate subscription reward: %w", err)
+	}
+
+	if err := s.updateClaimedAffiliateSubscriptionRewardAudit(txCtx, tx.Client(), o.ID, affiliateSubscriptionRewardAppliedAction, map[string]any{
+		"invitee_user_id": o.UserID,
+		"inviter_user_id": inviterID,
+		"group_id":        cfg.GroupID,
+		"validity_days":   cfg.ValidityDays,
+		"extended":        extended,
+		"order_type":      o.OrderType,
+	}); err != nil {
+		s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": err.Error(),
+		})
+		return fmt.Errorf("update affiliate subscription reward applied audit: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		s.writeAuditLog(ctx, o.ID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": fmt.Sprintf("commit affiliate subscription reward tx: %v", err),
+		})
+		return fmt.Errorf("commit affiliate subscription reward tx: %w", err)
+	}
+	s.invalidateAffiliateSubscriptionRewardCaches(ctx, inviterID, cfg.GroupID)
+	return nil
+}
+
+func (s *PaymentService) skipClaimedAffiliateSubscriptionReward(ctx context.Context, txCtx context.Context, tx *dbent.Tx, orderID int64, detail map[string]any) error {
+	if err := s.updateClaimedAffiliateSubscriptionRewardAudit(txCtx, tx.Client(), orderID, affiliateSubscriptionRewardSkippedAction, detail); err != nil {
+		s.writeAuditLog(ctx, orderID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": err.Error(),
+		})
+		return fmt.Errorf("update affiliate subscription reward skipped audit: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		s.writeAuditLog(ctx, orderID, affiliateSubscriptionRewardFailedAction, "system", map[string]any{
+			"error": fmt.Sprintf("commit affiliate subscription reward tx: %v", err),
+		})
+		return fmt.Errorf("commit affiliate subscription reward tx: %w", err)
+	}
+	return nil
+}
+
+func (s *PaymentService) tryClaimAffiliateSubscriptionRewardAudit(ctx context.Context, client *dbent.Client, orderID int64) (bool, error) {
+	if client == nil {
+		return false, errors.New("nil payment client")
+	}
+	oid := strconv.FormatInt(orderID, 10)
+	detail, _ := json.Marshal(map[string]any{
+		"status": "reserved",
+	})
+	rows, err := client.QueryContext(ctx, `
+INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+SELECT $1::text, '`+affiliateSubscriptionRewardAppliedAction+`', $2::text, 'system', NOW()
+WHERE NOT EXISTS (
+	SELECT 1
+	FROM payment_audit_logs
+	WHERE order_id = $1::text
+	  AND action IN ('`+affiliateSubscriptionRewardAppliedAction+`', '`+affiliateSubscriptionRewardSkippedAction+`')
+)
+ON CONFLICT (order_id, action) DO NOTHING
+RETURNING id`, oid, string(detail))
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	var claimID int64
+	if err := rows.Scan(&claimID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *PaymentService) updateClaimedAffiliateSubscriptionRewardAudit(ctx context.Context, client *dbent.Client, orderID int64, action string, detail map[string]any) error {
+	if client == nil {
+		return errors.New("nil payment client")
+	}
+	oid := strconv.FormatInt(orderID, 10)
+	detailJSON, _ := json.Marshal(detail)
+	updated, err := client.PaymentAuditLog.Update().
+		Where(
+			paymentauditlog.OrderIDEQ(oid),
+			paymentauditlog.ActionEQ(affiliateSubscriptionRewardAppliedAction),
+		).
+		SetAction(action).
+		SetDetail(string(detailJSON)).
+		SetOperator("system").
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return errors.New("affiliate subscription reward claim log not found")
+	}
+	return nil
+}
+
+func (s *PaymentService) invalidateAffiliateSubscriptionRewardCaches(ctx context.Context, userID, groupID int64) {
+	if s.subscriptionSvc != nil {
+		s.subscriptionSvc.InvalidateSubCache(userID, groupID)
+		if s.subscriptionSvc.billingCacheService != nil {
+			go func() {
+				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = s.subscriptionSvc.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			}()
+		}
+	}
+	if s.affiliateService != nil && s.affiliateService.authCacheInvalidator != nil {
+		s.affiliateService.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
 }
 
 func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, client *dbent.Client, orderID int64, baseAmount float64) (bool, error) {

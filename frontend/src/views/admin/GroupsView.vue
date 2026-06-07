@@ -2951,8 +2951,36 @@
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="confirmDelete"
-      @cancel="showDeleteDialog = false"
-    />
+      @cancel="closeDeleteDialog"
+    >
+      <div v-if="deletingGroup" class="space-y-2">
+        <label class="input-label">
+          {{ t("admin.groups.deleteReplacementLabel") }}
+        </label>
+        <Select
+          v-model="deleteReplacementGroupId"
+          :options="deleteReplacementGroupOptions"
+          :disabled="deleteReplacementGroupsLoading"
+          :searchable="true"
+          :placeholder="t('admin.groups.deleteReplacementUseDefault')"
+        />
+        <p class="input-hint">
+          {{ t("admin.groups.deleteReplacementHint") }}
+        </p>
+        <p
+          v-if="deleteReplacementGroupsLoading"
+          class="text-xs text-gray-500 dark:text-gray-400"
+        >
+          {{ t("admin.groups.deleteReplacementLoading") }}
+        </p>
+        <p
+          v-else-if="deleteReplacementGroupOptions.length <= 1"
+          class="text-xs text-amber-600 dark:text-amber-400"
+        >
+          {{ t("admin.groups.deleteReplacementNoCandidates") }}
+        </p>
+      </div>
+    </ConfirmDialog>
 
     <!-- Sort Order Modal -->
     <BaseDialog
@@ -3331,6 +3359,10 @@ const submitting = ref(false);
 const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
 const deletingGroup = ref<AdminGroup | null>(null);
+const deleteReplacementGroups = ref<AdminGroup[]>([]);
+const deleteReplacementGroupsLoading = ref(false);
+const deleteReplacementGroupId = ref<number | null>(null);
+let deleteReplacementRequestId = 0;
 const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
@@ -3795,6 +3827,23 @@ const deleteConfirmMessage = computed(() => {
   return t("admin.groups.deleteConfirm", { name: deletingGroup.value.name });
 });
 
+const deleteReplacementGroupOptions = computed(() => {
+  const currentGroupID = deletingGroup.value?.id;
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.deleteReplacementUseDefault") },
+  ];
+  deleteReplacementGroups.value
+    .filter((group) => group.status === "active" && group.id !== currentGroupID)
+    .forEach((group) => {
+      const platformLabel = t(`admin.groups.platforms.${group.platform}`);
+      options.push({
+        value: group.id,
+        label: `${group.name} (${platformLabel})`,
+      });
+    });
+  return options;
+});
+
 const loadGroups = async () => {
   if (abortController) {
     abortController.abort();
@@ -4228,19 +4277,62 @@ const handleRPMOverrides = (group: AdminGroup) => {
   showRPMOverridesModal.value = true;
 };
 
+const loadDeleteReplacementGroups = async (groupID: number) => {
+  const requestId = ++deleteReplacementRequestId;
+  deleteReplacementGroupsLoading.value = true;
+  try {
+    const allGroups = await adminAPI.groups.getAll();
+    if (
+      requestId === deleteReplacementRequestId &&
+      deletingGroup.value?.id === groupID
+    ) {
+      deleteReplacementGroups.value = allGroups;
+    }
+  } catch (error) {
+    if (
+      requestId === deleteReplacementRequestId &&
+      deletingGroup.value?.id === groupID
+    ) {
+      deleteReplacementGroups.value = groups.value;
+      appStore.showError(t("admin.groups.deleteReplacementLoadFailed"));
+    }
+    console.error("Error loading delete replacement groups:", error);
+  } finally {
+    if (
+      requestId === deleteReplacementRequestId &&
+      deletingGroup.value?.id === groupID
+    ) {
+      deleteReplacementGroupsLoading.value = false;
+    }
+  }
+};
+
 const handleDelete = (group: AdminGroup) => {
   deletingGroup.value = group;
+  deleteReplacementGroupId.value = null;
+  deleteReplacementGroups.value = [];
   showDeleteDialog.value = true;
+  loadDeleteReplacementGroups(group.id);
+};
+
+const closeDeleteDialog = () => {
+  deleteReplacementRequestId += 1;
+  showDeleteDialog.value = false;
+  deletingGroup.value = null;
+  deleteReplacementGroupId.value = null;
+  deleteReplacementGroups.value = [];
+  deleteReplacementGroupsLoading.value = false;
 };
 
 const confirmDelete = async () => {
   if (!deletingGroup.value) return;
 
   try {
-    await adminAPI.groups.delete(deletingGroup.value.id);
+    await adminAPI.groups.delete(deletingGroup.value.id, {
+      replacement_group_id: deleteReplacementGroupId.value,
+    });
     appStore.showSuccess(t("admin.groups.groupDeleted"));
-    showDeleteDialog.value = false;
-    deletingGroup.value = null;
+    closeDeleteDialog();
     loadGroups();
   } catch (error: any) {
     appStore.showError(

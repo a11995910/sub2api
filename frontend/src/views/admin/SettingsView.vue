@@ -5501,6 +5501,40 @@
                 </p>
               </div>
 
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.features.affiliate.subscriptionRewardGroup') }}
+                  </label>
+                  <Select
+                    v-model="form.affiliate_subscription_reward_group_id"
+                    :options="affiliateRewardGroupOptions"
+                    :placeholder="t('admin.settings.features.affiliate.subscriptionRewardGroup')"
+                    searchable
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.settings.features.affiliate.subscriptionRewardGroupDesc') }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.features.affiliate.subscriptionRewardDays') }}
+                  </label>
+                  <input
+                    v-model.number="form.affiliate_subscription_reward_days"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="36500"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.settings.features.affiliate.subscriptionRewardDaysDesc') }}
+                  </p>
+                </div>
+              </div>
+
               <!-- 专属用户管理 -->
               <div class="border-t border-gray-100 pt-6 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
@@ -7138,6 +7172,8 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
+  affiliate_subscription_reward_group_id: 0,
+  affiliate_subscription_reward_days: 0,
   checkin_enabled: false,
   checkin_content: "每日签到",
   checkin_daily_reward: 0,
@@ -7577,6 +7613,14 @@ const defaultSubscriptionGroupOptions = computed<
     rate: group.rate_multiplier,
   })),
 );
+
+const affiliateRewardGroupOptions = computed(() => [
+  {
+    value: 0,
+    label: t("admin.settings.features.affiliate.subscriptionRewardDisabled"),
+  },
+  ...defaultSubscriptionGroupOptions.value,
+]);
 
 const apiKeyDefaultGroupOptions = computed(() => [
   {
@@ -8312,6 +8356,8 @@ async function saveSettings() {
       affiliate_rebate_freeze_hours: Math.max(0, Math.min(720, Number(form.affiliate_rebate_freeze_hours) || 0)),
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
+      affiliate_subscription_reward_group_id: Math.max(0, Number(form.affiliate_subscription_reward_group_id) || 0),
+      affiliate_subscription_reward_days: Math.max(0, Math.min(36500, Math.floor(Number(form.affiliate_subscription_reward_days) || 0))),
       checkin_enabled: form.checkin_enabled,
       checkin_content: form.checkin_content.trim(),
       checkin_daily_reward: checkinDailyReward,

@@ -142,20 +142,22 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency           int                          `json:"default_concurrency"`
-	DefaultBalance               float64                      `json:"default_balance"`
-	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
-	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
-	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
-	AffiliateRebatePerInviteeCap float64                      `json:"affiliate_rebate_per_invitee_cap"`
-	CheckinEnabled               bool                         `json:"checkin_enabled"`
-	CheckinContent               string                       `json:"checkin_content"`
-	CheckinDailyReward           float64                      `json:"checkin_daily_reward"`
-	CheckinExtraReward4          float64                      `json:"checkin_extra_reward_4"`
-	CheckinExtraReward16         float64                      `json:"checkin_extra_reward_16"`
-	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
-	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
-	APIKeyDefaultGroupID         int64                        `json:"api_key_default_group_id"`
+	DefaultConcurrency                 int                          `json:"default_concurrency"`
+	DefaultBalance                     float64                      `json:"default_balance"`
+	AffiliateRebateRate                float64                      `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours         int                          `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays        int                          `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap       float64                      `json:"affiliate_rebate_per_invitee_cap"`
+	AffiliateSubscriptionRewardGroupID int64                        `json:"affiliate_subscription_reward_group_id"`
+	AffiliateSubscriptionRewardDays    int                          `json:"affiliate_subscription_reward_days"`
+	CheckinEnabled                     bool                         `json:"checkin_enabled"`
+	CheckinContent                     string                       `json:"checkin_content"`
+	CheckinDailyReward                 float64                      `json:"checkin_daily_reward"`
+	CheckinExtraReward4                float64                      `json:"checkin_extra_reward_4"`
+	CheckinExtraReward16               float64                      `json:"checkin_extra_reward_16"`
+	DefaultUserRPMLimit                int                          `json:"default_user_rpm_limit"`
+	DefaultSubscriptions               []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	APIKeyDefaultGroupID               int64                        `json:"api_key_default_group_id"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

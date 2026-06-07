@@ -232,6 +232,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
+		AffiliateSubscriptionRewardGroupID:     settings.AffiliateSubscriptionRewardGroupID,
+		AffiliateSubscriptionRewardDays:        settings.AffiliateSubscriptionRewardDays,
 		CheckinEnabled:                         settings.CheckinEnabled,
 		CheckinContent:                         settings.CheckinContent,
 		CheckinDailyReward:                     settings.CheckinDailyReward,
@@ -520,6 +522,8 @@ type UpdateSettingsRequest struct {
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
+	AffiliateSubscriptionRewardGroupID        *int64                            `json:"affiliate_subscription_reward_group_id"`
+	AffiliateSubscriptionRewardDays           *int                              `json:"affiliate_subscription_reward_days"`
 	CheckinEnabled                            *bool                             `json:"checkin_enabled"`
 	CheckinContent                            *string                           `json:"checkin_content"`
 	CheckinDailyReward                        *float64                          `json:"checkin_daily_reward"`
@@ -739,6 +743,23 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRebatePerInviteeCap < 0 {
 		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
+	}
+	affiliateSubscriptionRewardGroupID := previousSettings.AffiliateSubscriptionRewardGroupID
+	if req.AffiliateSubscriptionRewardGroupID != nil {
+		affiliateSubscriptionRewardGroupID = *req.AffiliateSubscriptionRewardGroupID
+	}
+	if affiliateSubscriptionRewardGroupID < 0 {
+		affiliateSubscriptionRewardGroupID = service.AffiliateSubscriptionRewardGroupDefault
+	}
+	affiliateSubscriptionRewardDays := previousSettings.AffiliateSubscriptionRewardDays
+	if req.AffiliateSubscriptionRewardDays != nil {
+		affiliateSubscriptionRewardDays = *req.AffiliateSubscriptionRewardDays
+	}
+	if affiliateSubscriptionRewardDays < 0 {
+		affiliateSubscriptionRewardDays = service.AffiliateSubscriptionRewardDaysDefault
+	}
+	if affiliateSubscriptionRewardDays > service.AffiliateSubscriptionRewardDaysMax {
+		affiliateSubscriptionRewardDays = service.AffiliateSubscriptionRewardDaysMax
 	}
 	checkinEnabled := boolValueOrDefault(req.CheckinEnabled, previousSettings.CheckinEnabled)
 	checkinContent := previousSettings.CheckinContent
@@ -1602,6 +1623,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
+		AffiliateSubscriptionRewardGroupID:     affiliateSubscriptionRewardGroupID,
+		AffiliateSubscriptionRewardDays:        affiliateSubscriptionRewardDays,
 		CheckinEnabled:                         checkinEnabled,
 		CheckinContent:                         checkinContent,
 		CheckinDailyReward:                     checkinDailyReward,
@@ -2056,6 +2079,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
+		AffiliateSubscriptionRewardGroupID:     updatedSettings.AffiliateSubscriptionRewardGroupID,
+		AffiliateSubscriptionRewardDays:        updatedSettings.AffiliateSubscriptionRewardDays,
 		CheckinEnabled:                         updatedSettings.CheckinEnabled,
 		CheckinContent:                         updatedSettings.CheckinContent,
 		CheckinDailyReward:                     updatedSettings.CheckinDailyReward,
@@ -2469,6 +2494,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
 		changed = append(changed, "affiliate_rebate_per_invitee_cap")
+	}
+	if before.AffiliateSubscriptionRewardGroupID != after.AffiliateSubscriptionRewardGroupID {
+		changed = append(changed, "affiliate_subscription_reward_group_id")
+	}
+	if before.AffiliateSubscriptionRewardDays != after.AffiliateSubscriptionRewardDays {
+		changed = append(changed, "affiliate_subscription_reward_days")
 	}
 	if before.CheckinEnabled != after.CheckinEnabled {
 		changed = append(changed, "checkin_enabled")

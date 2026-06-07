@@ -382,6 +382,8 @@ export interface SystemSettings {
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
+  affiliate_subscription_reward_group_id: number;
+  affiliate_subscription_reward_days: number;
   checkin_enabled: boolean;
   checkin_content: string;
   checkin_daily_reward: number;
@@ -647,6 +649,8 @@ export interface UpdateSettingsRequest {
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
   affiliate_rebate_per_invitee_cap?: number;
+  affiliate_subscription_reward_group_id?: number;
+  affiliate_subscription_reward_days?: number;
   checkin_enabled?: boolean;
   checkin_content?: string;
   checkin_daily_reward?: number;

@@ -665,7 +665,7 @@ func TestAdminService_DeleteGroup_Success_WithCacheInvalidation(t *testing.T) {
 		billingCacheService: &BillingCacheService{cache: cache},
 	}
 
-	err := svc.DeleteGroup(context.Background(), 5)
+	err := svc.DeleteGroup(context.Background(), 5, nil)
 	require.NoError(t, err)
 	require.Equal(t, []int64{5}, repo.deleteCalls)
 
@@ -686,7 +686,7 @@ func TestAdminService_DeleteGroup_InvalidatesAuthCacheForBoundKeys(t *testing.T)
 		authCacheInvalidator: invalidator,
 	}
 
-	err := svc.DeleteGroup(context.Background(), 5)
+	err := svc.DeleteGroup(context.Background(), 5, nil)
 	require.NoError(t, err)
 	require.Equal(t, []int64{5}, repo.deleteCalls)
 	require.Equal(t, []int64{5}, apiKeyRepo.listGroupIDs)
@@ -713,11 +713,34 @@ func TestAdminService_DeleteGroup_ReassignsBoundKeysToDefaultGroup(t *testing.T)
 		settingService: NewSettingService(settingRepo, nil),
 	}
 
-	err := svc.DeleteGroup(context.Background(), 5)
+	err := svc.DeleteGroup(context.Background(), 5, nil)
 	require.NoError(t, err)
 	require.Equal(t, []int64{5}, apiKeyRepo.countGroupIDs)
 	require.Equal(t, []int64{9}, repo.getByIDLiteIDs)
 	require.Equal(t, []groupMigrationCall{{oldGroupID: 5, newGroupID: 9}}, apiKeyRepo.updateGroupCalls)
+	require.Equal(t, []int64{5}, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroup_ReassignsBoundKeysToReplacementGroup(t *testing.T) {
+	repo := &groupRepoStub{
+		groupsByID: map[int64]*Group{
+			11: {ID: 11, Status: StatusActive},
+		},
+	}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{
+		countByGroupID: map[int64]int64{5: 2},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:  repo,
+		apiKeyRepo: apiKeyRepo,
+	}
+	replacementGroupID := int64(11)
+
+	err := svc.DeleteGroup(context.Background(), 5, &replacementGroupID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{5}, apiKeyRepo.countGroupIDs)
+	require.Equal(t, []int64{11}, repo.getByIDLiteIDs)
+	require.Equal(t, []groupMigrationCall{{oldGroupID: 5, newGroupID: 11}}, apiKeyRepo.updateGroupCalls)
 	require.Equal(t, []int64{5}, repo.deleteCalls)
 }
 
@@ -733,9 +756,50 @@ func TestAdminService_DeleteGroup_RejectsBoundKeysWithoutDefaultGroup(t *testing
 		settingService: NewSettingService(settingRepo, nil),
 	}
 
-	err := svc.DeleteGroup(context.Background(), 5)
+	err := svc.DeleteGroup(context.Background(), 5, nil)
 	require.Error(t, err)
 	require.Equal(t, "API_KEY_DEFAULT_GROUP_REQUIRED", infraerrors.Reason(err))
+	require.Empty(t, apiKeyRepo.updateGroupCalls)
+	require.Empty(t, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroup_RejectsDeletingReplacementGroupWithBoundKeys(t *testing.T) {
+	repo := &groupRepoStub{}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{
+		countByGroupID: map[int64]int64{5: 1},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:  repo,
+		apiKeyRepo: apiKeyRepo,
+	}
+	replacementGroupID := int64(5)
+
+	err := svc.DeleteGroup(context.Background(), 5, &replacementGroupID)
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_REPLACEMENT_GROUP_SELF_DELETE", infraerrors.Reason(err))
+	require.Empty(t, apiKeyRepo.updateGroupCalls)
+	require.Empty(t, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroup_RejectsInactiveReplacementGroup(t *testing.T) {
+	repo := &groupRepoStub{
+		groupsByID: map[int64]*Group{
+			11: {ID: 11, Status: StatusDisabled},
+		},
+	}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{
+		countByGroupID: map[int64]int64{5: 1},
+	}
+	svc := &adminServiceImpl{
+		groupRepo:  repo,
+		apiKeyRepo: apiKeyRepo,
+	}
+	replacementGroupID := int64(11)
+
+	err := svc.DeleteGroup(context.Background(), 5, &replacementGroupID)
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_REPLACEMENT_GROUP_INVALID", infraerrors.Reason(err))
+	require.Equal(t, []int64{11}, repo.getByIDLiteIDs)
 	require.Empty(t, apiKeyRepo.updateGroupCalls)
 	require.Empty(t, repo.deleteCalls)
 }
@@ -756,7 +820,7 @@ func TestAdminService_DeleteGroup_RejectsDeletingDefaultGroupWithBoundKeys(t *te
 		settingService: NewSettingService(settingRepo, nil),
 	}
 
-	err := svc.DeleteGroup(context.Background(), 5)
+	err := svc.DeleteGroup(context.Background(), 5, nil)
 	require.Error(t, err)
 	require.Equal(t, "API_KEY_DEFAULT_GROUP_SELF_DELETE", infraerrors.Reason(err))
 	require.Empty(t, apiKeyRepo.updateGroupCalls)
@@ -767,7 +831,7 @@ func TestAdminService_DeleteGroup_NotFound(t *testing.T) {
 	repo := &groupRepoStub{deleteErr: ErrGroupNotFound}
 	svc := &adminServiceImpl{groupRepo: repo}
 
-	err := svc.DeleteGroup(context.Background(), 99)
+	err := svc.DeleteGroup(context.Background(), 99, nil)
 	require.ErrorIs(t, err, ErrGroupNotFound)
 }
 
@@ -776,7 +840,7 @@ func TestAdminService_DeleteGroup_Error(t *testing.T) {
 	repo := &groupRepoStub{deleteErr: deleteErr}
 	svc := &adminServiceImpl{groupRepo: repo}
 
-	err := svc.DeleteGroup(context.Background(), 42)
+	err := svc.DeleteGroup(context.Background(), 42, nil)
 	require.ErrorIs(t, err, deleteErr)
 }
 

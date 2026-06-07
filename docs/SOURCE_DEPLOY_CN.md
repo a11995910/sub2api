@@ -1,6 +1,6 @@
 # Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。线上 `sub2api` 当前使用自定义二进制挂载运行，默认不重建 Docker 镜像；每次上线应在本地完整构建 Linux amd64 二进制，再让 VPS 拉取同一 Git commit，最后替换挂载文件。
+本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。线上 `sub2api` 当前使用自定义二进制挂载运行，默认不重建 Docker 镜像；每次上线应先在本地提交并推送 Git，再让 VPS `/opt/sub2api-src` 拉取同一 commit 并在线上构建 Linux amd64 二进制，最后替换挂载文件。
 
 ## 强制原则
 
@@ -9,7 +9,7 @@
 - 默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只替换 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
 - 每次上线必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
 - 不允许只执行 `go build -tags embed` 就覆盖线上，除非已经确认前端资源是同一次源码构建生成的最新产物。
-- 构建产物必须包含 Git commit 和提交时间；本地交叉编译的 Linux amd64 产物上传到 VPS 后，`/tmp/sub2api-pool-overview.new --version` 的 commit 必须与待上线 commit 一致。
+- 构建产物必须包含 Git commit 和提交时间；VPS `/opt/sub2api-src/backend/bin/server --version` 的 commit 必须与待上线 commit 一致。
 - 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
 - 验证通过后必须清理 Docker 构建缓存、未使用镜像和旧二进制备份；只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
@@ -28,9 +28,9 @@ git commit -m "说明本次修改"
 git push
 ```
 
-## 本地构建与提交要求
+## 本地提交与推送要求
 
-本地开发完成后，必须先提交并推送。生产构建只能从干净工作区执行：
+本地开发完成后，必须先提交并推送。生产二进制不在本地构建，VPS 只从已推送的 Git commit 构建：
 
 ```bash
 cd /Users/wangjun/Documents/GitHub/sub2api
@@ -42,7 +42,7 @@ git rev-parse HEAD
 git log -1 --oneline
 ```
 
-如 `git status --short` 仍有未提交改动，必须确认这些改动与本次构建无关；否则禁止继续上线。
+如 `git status --short` 仍有未提交改动，必须确认这些改动与本次上线无关；否则禁止继续上线。
 
 ## VPS 源码目录
 
@@ -112,39 +112,38 @@ openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 
 部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标。
 
-编译机器需要先准备：
+线上编译机器为 VPS `/opt/sub2api-src`。VPS 需要先准备：
 
 - Go：以 `backend/go.mod` 中声明的版本为准
 - Node.js / pnpm：用于构建 `frontend`
 - make：用于执行仓库根目录的构建目标
 
-默认在本地构建 Linux amd64 二进制：
+默认在 VPS `/opt/sub2api-src` 构建 Linux amd64 二进制。构建前必须先清理可再生成缓存，避免系统盘被 Go / Node / Docker 构建缓存打满：
 
 ```bash
-cd /Users/wangjun/Documents/GitHub/sub2api
+cd /opt/sub2api-src
+git status --short
+git pull --ff-only
+expected_commit='填写本地 git rev-parse HEAD 的输出'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+git log -1 --oneline
+/usr/local/bin/prebuild-cleanup
 pnpm --dir frontend install --frozen-lockfile
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
+GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
 file backend/bin/server
-shasum -a 256 backend/bin/server
+sha256sum backend/bin/server
+timeout 5 backend/bin/server --version
 ```
 
 构建产物位置：
 
 ```bash
-backend/bin/server
-```
-
-如果本地构建环境不可用，才允许改用 VPS `/opt/sub2api-src` 构建：
-
-```bash
-/usr/local/bin/prebuild-cleanup
-cd /opt/sub2api-src
-pnpm --dir frontend install --frozen-lockfile
-make build-deploy
-./backend/bin/server --version
+/opt/sub2api-src/backend/bin/server
 ```
 
 `prebuild-cleanup` 默认只清理 Go build cache、apt cache、systemd journal 和 Docker build cache。除非已经确认未使用镜像不再需要回滚，否则不要设置 `PRUNE_UNUSED_IMAGES=1`。
+
+本地构建上传不再作为默认生产路径。只有在 VPS 构建链路不可用、已经明确确认应急 fallback，并且本地构建也严格使用同一 Git commit、完整重建前端嵌入产物、补齐 SHA256 / `--version` / 健康检查时，才允许临时采用本地构建上传。
 
 上线前应记录本次构建对应的 Git commit：
 
@@ -164,29 +163,24 @@ git log -1 --oneline
 替换流程：
 
 ```bash
-# 本地执行，并记录完整 commit 和 SHA256。
-git rev-parse HEAD
-shasum -a 256 backend/bin/server
-scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
-
-# VPS 执行。expected_commit 必须填写上一步记录的完整 commit。
-timeout 5 /tmp/sub2api-pool-overview.new --version
+# VPS 执行。expected_commit 必须填写本地 git rev-parse HEAD 的输出。
 cd /opt/sub2api-src
 git status --short
-git pull --ff-only
 expected_commit='填写本地 git rev-parse HEAD 的输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
+src=/opt/sub2api-src/backend/bin/server
+timeout 5 "$src" --version
+sha256sum "$src"
 
 live=/opt/sub2api-deploy/custom/sub2api-pool-overview
 candidate=${live}.new
-install -m 0755 /tmp/sub2api-pool-overview.new "$candidate"
-sha256sum /tmp/sub2api-pool-overview.new "$candidate"
+install -m 0755 "$src" "$candidate"
+sha256sum "$src" "$candidate"
 
 ts=$(date +%Y%m%d-%H%M%S)
 cp -a "$live" "$live.bak-$ts"
 mv -f "$candidate" "$live"
-rm -f /tmp/sub2api-pool-overview.new
 
 cd /opt/sub2api-deploy
 docker compose up -d --force-recreate --no-deps sub2api

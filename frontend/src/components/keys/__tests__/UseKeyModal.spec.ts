@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import {
+  OPENAI_CC_SWITCH_CODEX_MODEL,
+  OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT
+} from '@/utils/ccswitchImport'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -41,8 +45,11 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('model_provider = "OpenAI"'))
 
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(configToml).toContain(`review_model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(configToml).toContain(
+      `model_reasoning_effort = "${OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT}"`
+    )
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -81,8 +88,11 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('supports_websockets = true'))
 
     expect(configToml).toBeDefined()
-    expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(configToml).toContain(`review_model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(configToml).toContain(
+      `model_reasoning_effort = "${OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT}"`
+    )
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')

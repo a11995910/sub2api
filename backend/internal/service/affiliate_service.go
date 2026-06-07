@@ -209,6 +209,11 @@ type AffiliateUserOverview struct {
 	HistoryQuota        float64 `json:"history_quota"`
 }
 
+type AffiliateSubscriptionRewardConfig struct {
+	GroupID      int64
+	ValidityDays int
+}
+
 type AffiliateService struct {
 	repo                 AffiliateRepository
 	settingService       *SettingService
@@ -397,6 +402,31 @@ func (s *AffiliateService) AccrueInviteRebateWithSource(ctx context.Context, inv
 		return 0, nil
 	}
 	return rebate, nil
+}
+
+func (s *AffiliateService) GetSubscriptionRewardConfig(ctx context.Context) AffiliateSubscriptionRewardConfig {
+	if s == nil || s.settingService == nil || !s.IsEnabled(ctx) {
+		return AffiliateSubscriptionRewardConfig{}
+	}
+	groupID, days := s.settingService.GetAffiliateSubscriptionRewardConfig(ctx)
+	if groupID <= 0 || days <= 0 {
+		return AffiliateSubscriptionRewardConfig{}
+	}
+	return AffiliateSubscriptionRewardConfig{GroupID: groupID, ValidityDays: days}
+}
+
+func (s *AffiliateService) ResolveInviterID(ctx context.Context, inviteeUserID int64) (int64, error) {
+	if s == nil || s.repo == nil || inviteeUserID <= 0 || !s.IsEnabled(ctx) {
+		return 0, nil
+	}
+	inviteeSummary, err := s.repo.EnsureUserAffiliate(ctx, inviteeUserID)
+	if err != nil {
+		return 0, err
+	}
+	if inviteeSummary.InviterID == nil || *inviteeSummary.InviterID <= 0 {
+		return 0, nil
+	}
+	return *inviteeSummary.InviterID, nil
 }
 
 // resolveRebateRatePercent returns the inviter's exclusive rate when set,

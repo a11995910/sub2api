@@ -117,10 +117,20 @@ export async function update(id: number, updates: UpdateGroupRequest): Promise<A
 /**
  * Delete group
  * @param id - Group ID
+ * @param options - Optional delete behavior, such as API key replacement group
  * @returns Success confirmation
  */
-export async function deleteGroup(id: number): Promise<{ message: string }> {
-  const { data } = await apiClient.delete<{ message: string }>(`/admin/groups/${id}`)
+export async function deleteGroup(
+  id: number,
+  options?: { replacement_group_id?: number | null }
+): Promise<{ message: string }> {
+  const payload =
+    options?.replacement_group_id && options.replacement_group_id > 0
+      ? { replacement_group_id: options.replacement_group_id }
+      : undefined
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/groups/${id}`, {
+    data: payload
+  })
   return data
 }
 

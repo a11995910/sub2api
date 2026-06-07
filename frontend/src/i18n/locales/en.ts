@@ -2345,9 +2345,15 @@ export default {
         antigravity: 'Antigravity',
       },
       deleteConfirm:
-        "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
+        "Delete group '{name}'? API keys bound to it will be migrated to the replacement group selected below; if none is selected, the API Key default group will be used.",
       deleteConfirmSubscription:
-        "Are you sure you want to delete subscription group '{name}'? This will invalidate all API keys bound to this subscription and delete all related subscription records. This action cannot be undone.",
+        "Delete subscription group '{name}'? Related subscription records will be deleted. API keys bound to it will be migrated to the replacement group selected below; if none is selected, the API Key default group will be used. This action cannot be undone.",
+      deleteReplacementLabel: 'API Key Replacement Group',
+      deleteReplacementUseDefault: 'Not specified, use API Key default group',
+      deleteReplacementHint: 'Only API keys still bound to this group are migrated. The replacement group must be active; leaving this empty keeps using the API Key default group from system settings.',
+      deleteReplacementLoading: 'Loading replacement groups...',
+      deleteReplacementLoadFailed: 'Failed to load replacement groups; using the current list as candidates',
+      deleteReplacementNoCandidates: 'No other active groups are available. Confirming will try to use the API Key default group.',
       subscription: {
         title: 'Subscription Settings',
         type: 'Billing Type',
@@ -5581,6 +5587,11 @@ export default {
           durationDaysDesc: 'Rebate relationship expires after this many days since invitee registration. 0 = permanent.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
+          subscriptionRewardGroup: 'Payment Reward Group',
+          subscriptionRewardGroupDesc: 'When an invitee pays successfully, grant the inviter access to this subscription group. Leave disabled to skip the reward.',
+          subscriptionRewardDays: 'Payment Reward Days',
+          subscriptionRewardDaysDesc: 'Days added for each successful invited payment. 0 = no reward; after expiry, access naturally falls back to the default group.',
+          subscriptionRewardDisabled: 'No group access reward',
           customUsers: {
             title: 'Per-User Overrides',
             description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',
@@ -5908,7 +5919,7 @@ export default {
         apiBaseUrl: 'API Base URL',
         apiBaseUrlPlaceholder: 'https://api.example.com',
         apiBaseUrlHint:
-          'Used for "Use Key" and "Import to CC Switch" features. Leave empty to use current site URL.',
+          'Used for "Use Key" and "Import to CC Switch" features. Prefer an HTTPS public URL reachable from the client machine; leave empty to use the current site URL. Re-import into CCS after changes.',
         tablePreferencesTitle: 'Global Table Preferences',
         tablePreferencesDescription: 'Configure default pagination behavior for shared table components',
         tableDefaultPageSize: 'Default Rows Per Page',

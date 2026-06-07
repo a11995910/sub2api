@@ -56,7 +56,7 @@ type AdminService interface {
 	GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error)
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
-	DeleteGroup(ctx context.Context, id int64) error
+	DeleteGroup(ctx context.Context, id int64, replacementGroupID *int64) error
 	SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
@@ -2205,7 +2205,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	return group, nil
 }
 
-func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
+func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64, replacementGroupID *int64) error {
 	var groupKeys []string
 	if s.authCacheInvalidator != nil {
 		keys, err := s.apiKeyRepo.ListKeysByGroupID(ctx, id)
@@ -2213,7 +2213,7 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 			groupKeys = keys
 		}
 	}
-	if err := s.reassignAPIKeysBeforeGroupDelete(ctx, id); err != nil {
+	if err := s.reassignAPIKeysBeforeGroupDelete(ctx, id, replacementGroupID); err != nil {
 		return err
 	}
 
@@ -2245,7 +2245,7 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *adminServiceImpl) reassignAPIKeysBeforeGroupDelete(ctx context.Context, groupID int64) error {
+func (s *adminServiceImpl) reassignAPIKeysBeforeGroupDelete(ctx context.Context, groupID int64, replacementGroupID *int64) error {
 	if s.apiKeyRepo == nil {
 		return nil
 	}
@@ -2256,37 +2256,69 @@ func (s *adminServiceImpl) reassignAPIKeysBeforeGroupDelete(ctx context.Context,
 	if count == 0 {
 		return nil
 	}
-	defaultGroupID, err := s.apiKeyDefaultGroupID(ctx)
-	if err != nil {
-		return err
+
+	targetGroupID := int64(0)
+	usingCustomReplacement := false
+	if replacementGroupID != nil && *replacementGroupID > 0 {
+		targetGroupID = *replacementGroupID
+		usingCustomReplacement = true
+	} else {
+		defaultGroupID, err := s.apiKeyDefaultGroupID(ctx)
+		if err != nil {
+			return err
+		}
+		targetGroupID = defaultGroupID
 	}
-	if defaultGroupID <= 0 {
+
+	if targetGroupID <= 0 {
 		return infraerrors.BadRequest(
 			"API_KEY_DEFAULT_GROUP_REQUIRED",
 			"cannot delete group with bound api keys before configuring api key default group",
 		)
 	}
-	if defaultGroupID == groupID {
+	if targetGroupID == groupID {
+		if usingCustomReplacement {
+			return infraerrors.BadRequest(
+				"API_KEY_REPLACEMENT_GROUP_SELF_DELETE",
+				"cannot replace api keys with the group being deleted",
+			)
+		}
 		return infraerrors.BadRequest(
 			"API_KEY_DEFAULT_GROUP_SELF_DELETE",
 			"cannot delete the current api key default group while api keys are bound to it",
 		)
 	}
-	defaultGroup, err := s.groupRepo.GetByIDLite(ctx, defaultGroupID)
+	targetGroup, err := s.groupRepo.GetByIDLite(ctx, targetGroupID)
 	if err != nil {
 		if errors.Is(err, ErrGroupNotFound) {
+			if usingCustomReplacement {
+				return infraerrors.BadRequest(
+					"API_KEY_REPLACEMENT_GROUP_INVALID",
+					"api key replacement group is invalid",
+				).WithMetadata(map[string]string{
+					"group_id": strconv.FormatInt(targetGroupID, 10),
+				})
+			}
 			return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(defaultGroupID, 10),
+				"group_id": strconv.FormatInt(targetGroupID, 10),
 			})
 		}
 		return err
 	}
-	if !defaultGroup.IsActive() {
+	if !targetGroup.IsActive() {
+		if usingCustomReplacement {
+			return infraerrors.BadRequest(
+				"API_KEY_REPLACEMENT_GROUP_INVALID",
+				"api key replacement group is invalid",
+			).WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(targetGroupID, 10),
+			})
+		}
 		return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
-			"group_id": strconv.FormatInt(defaultGroupID, 10),
+			"group_id": strconv.FormatInt(targetGroupID, 10),
 		})
 	}
-	if _, err := s.apiKeyRepo.UpdateGroupIDByGroup(ctx, groupID, defaultGroupID); err != nil {
+	if _, err := s.apiKeyRepo.UpdateGroupIDByGroup(ctx, groupID, targetGroupID); err != nil {
 		return err
 	}
 	return nil
