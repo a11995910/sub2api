@@ -62,12 +62,15 @@
 
 ## 热门模板
 
-热门模板远程读取以下公开数据源：
+热门模板以 `精选模板库 A`、`精选模板库 B` 的中性名称展示，支持模板库、语言、分类、模式、NSFW 和收藏筛选。收藏内容保存在浏览器本地，不写入数据库。
 
-- `glidea/banana-prompt-quicker`
-- `EvoLinkAI/awesome-gpt-image-2-prompts`
+用户侧页面不直接请求或展示上游仓库地址。前端统一通过以下同站接口读取模板文本和图片资源：
 
-热门模板支持来源、语言、分类、模式、NSFW 和收藏筛选。收藏内容保存在浏览器本地，不写入数据库。
+- `GET /api/v1/creative-drawing/prompt-market/libraries/:library/prompts`
+- `GET /api/v1/creative-drawing/prompt-market/libraries/:library/prompts/:language`
+- `GET /api/v1/creative-drawing/prompt-market/assets/:library/*path`
+
+后端只允许 `library-a`、`library-b` 两个内部模板库别名，并把模板文本中的上游图片地址改写为同站图片代理地址；图片代理仅允许访问已知模板库目录，不能作为任意 URL 代理使用。用户复制模板 JSON 时只包含标题、提示词、模式、分类、参考图和作者等创作所需字段，不包含上游来源链接或内部来源标识。
 
 ## 本地数据
 

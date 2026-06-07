@@ -6,7 +6,7 @@
  */
 
 export type BananaPromptMode = 'generate' | 'edit'
-export type PromptMarketSourceId = 'banana-prompt-quicker' | 'awesome-gpt-image-2-prompts'
+export type PromptMarketSourceId = 'library-a' | 'library-b'
 export type PromptMarketLanguage = 'zh-CN' | 'en'
 
 export type PromptMarketLocalization = {
@@ -34,30 +34,43 @@ export type BananaPrompt = {
   localizations?: Partial<Record<PromptMarketLanguage, PromptMarketLocalization>>
 }
 
-export const BANANA_PROMPTS_SOURCE_URL = 'https://github.com/glidea/banana-prompt-quicker'
-export const BANANA_PROMPTS_URL =
-  'https://raw.githubusercontent.com/glidea/banana-prompt-quicker/main/prompts.json'
-export const AWESOME_GPT_IMAGE_2_PROMPTS_SOURCE_URL =
-  'https://github.com/EvoLinkAI/awesome-gpt-image-2-prompts'
-export const AWESOME_GPT_IMAGE_2_PROMPTS_ZH_README_URL =
-  'https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/README_zh-CN.md'
-export const AWESOME_GPT_IMAGE_2_PROMPTS_EN_README_URL =
-  'https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/README.md'
+export const PROMPT_MARKET_API_URL = '/api/v1/creative-drawing/prompt-market'
 
-const AWESOME_GPT_IMAGE_2_PROMPTS_RAW_BASE_URL =
-  'https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/'
+const PROMPT_MARKET_ASSET_BASE_URL = `${PROMPT_MARKET_API_URL}/assets/`
+
+const PROMPT_MARKET_DISPLAY_LABELS: Record<PromptMarketSourceId, string> = {
+  'library-a': '精选模板库 A',
+  'library-b': '精选模板库 B'
+}
+
+const LEGACY_PROMPT_MARKET_SOURCE_MAP: Record<string, PromptMarketSourceId> = {
+  [`banana-${'prompt'}-quicker`]: 'library-a',
+  [`awesome-${'gpt'}-image-2-prompts`]: 'library-b',
+  'library-a': 'library-a',
+  'library-b': 'library-b'
+}
+
+export function normalizePromptMarketSourceId(source: unknown): PromptMarketSourceId {
+  return typeof source === 'string' && LEGACY_PROMPT_MARKET_SOURCE_MAP[source]
+    ? LEGACY_PROMPT_MARKET_SOURCE_MAP[source]
+    : 'library-a'
+}
+
+export function getPromptMarketSourceLabel(source: unknown) {
+  return PROMPT_MARKET_DISPLAY_LABELS[normalizePromptMarketSourceId(source)]
+}
 
 export const PROMPT_MARKET_SOURCE_OPTIONS: {
   value: PromptMarketSourceId
   label: string
 }[] = [
   {
-    value: 'banana-prompt-quicker',
-    label: 'banana-prompt-quicker'
+    value: 'library-a',
+    label: PROMPT_MARKET_DISPLAY_LABELS['library-a']
   },
   {
-    value: 'awesome-gpt-image-2-prompts',
-    label: 'awesome-gpt-image-2-prompts'
+    value: 'library-b',
+    label: PROMPT_MARKET_DISPLAY_LABELS['library-b']
   }
 ]
 
@@ -106,6 +119,24 @@ function normalizeReferenceImageUrls(value: unknown) {
   return value.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
 }
 
+function proxyPromptMarketAssetURL(source: PromptMarketSourceId, value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+  if (trimmed.startsWith(PROMPT_MARKET_ASSET_BASE_URL) || trimmed.startsWith('/api/v1/creative-drawing/prompt-market/assets/')) {
+    return trimmed
+  }
+  const normalized = trimmed
+    .split(/[?#]/, 1)[0]
+    .replace(/^\.\//, '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter((part) => part && part !== '.' && part !== '..')
+    .join('/')
+  return normalized ? `${PROMPT_MARKET_ASSET_BASE_URL}${source}/${normalized}` : ''
+}
+
 function isNsfwPrompt(category: string, title: string, prompt: string) {
   return category === 'NSFW' || NSFW_TEXT_PATTERN.test(`${category}\n${title}\n${prompt}`)
 }
@@ -131,19 +162,20 @@ function normalizePrompt(item: BananaPromptSourceItem, index: number): BananaPro
   }
 
   return {
-    id: `banana-prompt-quicker:${buildPromptId(item, index)}`,
+    id: `library-a:${buildPromptId(item, index)}`,
     title,
-    preview,
+    preview: proxyPromptMarketAssetURL('library-a', preview),
     prompt,
     author,
-    referenceImageUrls: normalizeReferenceImageUrls(item.reference_image_urls),
+    referenceImageUrls: normalizeReferenceImageUrls(item.reference_image_urls)
+      .map((url) => proxyPromptMarketAssetURL('library-a', url)),
     link: typeof item.link === 'string' && item.link.trim() ? item.link.trim() : undefined,
     mode: normalizePromptMode(item.mode),
     category,
     subCategory: typeof item.sub_category === 'string' && item.sub_category.trim() ? item.sub_category.trim() : undefined,
     created: typeof item.created === 'string' && item.created.trim() ? item.created.trim() : undefined,
-    source: 'banana-prompt-quicker',
-    sourceLabel: 'banana-prompt-quicker',
+    source: 'library-a',
+    sourceLabel: PROMPT_MARKET_DISPLAY_LABELS['library-a'],
     isNsfw: category === 'NSFW'
   }
 }
@@ -153,10 +185,7 @@ function normalizeMarkdownImageUrl(value: string) {
   if (!imageUrl) {
     return ''
   }
-  if (/^https?:\/\//i.test(imageUrl)) {
-    return imageUrl
-  }
-  return new URL(imageUrl.replace(/^\.\//, ''), AWESOME_GPT_IMAGE_2_PROMPTS_RAW_BASE_URL).toString()
+  return proxyPromptMarketAssetURL('library-b', imageUrl)
 }
 
 function buildAwesomePromptMergeKey(link: string, preview: string) {
@@ -193,7 +222,7 @@ function normalizeAwesomePromptSection(
   }
 
   return {
-    id: `awesome-gpt-image-2-prompts:${buildAwesomePromptMergeKey(link, preview)}`,
+    id: `library-b:${buildAwesomePromptMergeKey(link, preview)}`,
     title,
     preview,
     referenceImageUrls: [],
@@ -203,8 +232,8 @@ function normalizeAwesomePromptSection(
     mode: 'generate',
     category,
     subCategory: `Case ${caseNumber}`,
-    source: 'awesome-gpt-image-2-prompts',
-    sourceLabel: 'awesome-gpt-image-2-prompts',
+    source: 'library-b',
+    sourceLabel: PROMPT_MARKET_DISPLAY_LABELS['library-b'],
     isNsfw: isNsfwPrompt(category, title, prompt),
     language,
     mergeKey: buildAwesomePromptMergeKey(link, preview),
@@ -288,7 +317,7 @@ function mergeAwesomePrompts(...groups: AwesomePromptDraft[][]) {
 }
 
 export async function fetchBananaPrompts(signal?: AbortSignal) {
-  const response = await fetch(BANANA_PROMPTS_URL, {
+  const response = await fetch(`${PROMPT_MARKET_API_URL}/libraries/a/prompts`, {
     signal,
     headers: {
       Accept: 'application/json'
@@ -311,13 +340,13 @@ export async function fetchBananaPrompts(signal?: AbortSignal) {
 
 export async function fetchAwesomeGptImage2Prompts(signal?: AbortSignal) {
   const [zhResponse, enResponse] = await Promise.all([
-    fetch(AWESOME_GPT_IMAGE_2_PROMPTS_ZH_README_URL, {
+    fetch(`${PROMPT_MARKET_API_URL}/libraries/b/prompts/zh-CN`, {
       signal,
       headers: {
         Accept: 'text/markdown,text/plain'
       }
     }),
-    fetch(AWESOME_GPT_IMAGE_2_PROMPTS_EN_README_URL, {
+    fetch(`${PROMPT_MARKET_API_URL}/libraries/b/prompts/en`, {
       signal,
       headers: {
         Accept: 'text/markdown,text/plain'
@@ -325,10 +354,10 @@ export async function fetchAwesomeGptImage2Prompts(signal?: AbortSignal) {
     })
   ])
   if (!zhResponse.ok) {
-    throw new Error(`读取 awesome-gpt-image-2-prompts 中文提示词失败：${zhResponse.status}`)
+    throw new Error(`读取精选模板库 B 中文提示词失败：${zhResponse.status}`)
   }
   if (!enResponse.ok) {
-    throw new Error(`读取 awesome-gpt-image-2-prompts 英文提示词失败：${enResponse.status}`)
+    throw new Error(`读取精选模板库 B 英文提示词失败：${enResponse.status}`)
   }
 
   const [zhMarkdown, enMarkdown] = await Promise.all([zhResponse.text(), enResponse.text()])
@@ -389,10 +418,7 @@ export function buildPromptJSON(prompt: BananaPrompt) {
       sub_category: prompt.subCategory || undefined,
       reference_image_urls: getPromptReferenceImageUrls(prompt),
       preview: prompt.preview,
-      source: prompt.source,
-      source_label: prompt.sourceLabel,
-      author: prompt.author || undefined,
-      link: prompt.link || undefined
+      author: prompt.author || undefined
     },
     null,
     2

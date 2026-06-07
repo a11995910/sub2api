@@ -67,3 +67,9 @@ type CreativeDrawingCreateTaskRequest struct {
 	OutputFormat    string                     `json:"output_format"`
 	ReferenceImages []CreativeDrawingReference `json:"reference_images"`
 }
+
+type CreativeDrawingPromptMarketAsset struct {
+	URL         string
+	ContentType string
+	Body        []byte
+}

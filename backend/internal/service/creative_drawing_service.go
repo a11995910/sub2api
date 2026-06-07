@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -31,9 +33,20 @@ var (
 )
 
 const (
-	creativeDrawingTaskTimeout        = 12 * time.Minute
-	creativeDrawingMaxAttempts        = 2
-	creativeDrawingStreamScanMaxBytes = 128 * 1024 * 1024
+	creativeDrawingTaskTimeout          = 12 * time.Minute
+	creativeDrawingMaxAttempts          = 2
+	creativeDrawingStreamScanMaxBytes   = 128 * 1024 * 1024
+	creativeDrawingPromptMarketTimeout  = 30 * time.Second
+	creativeDrawingPromptMarketMaxBytes = 10 * 1024 * 1024
+)
+
+const (
+	creativeDrawingPromptMarketBananaPromptsURL      = "https://raw.githubusercontent.com/glidea/banana-prompt-quicker/main/prompts.json"
+	creativeDrawingPromptMarketAwesomeZhURL          = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/README_zh-CN.md"
+	creativeDrawingPromptMarketAwesomeEnURL          = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/README.md"
+	creativeDrawingPromptMarketBananaRawBaseURL      = "https://raw.githubusercontent.com/glidea/banana-prompt-quicker/main/"
+	creativeDrawingPromptMarketAwesomeAPIBaseURL     = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-API-and-Prompts/main/"
+	creativeDrawingPromptMarketAwesomePromptsBaseURL = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/"
 )
 
 type CreativeDrawingRepository interface {
@@ -139,6 +152,86 @@ func (s *CreativeDrawingService) ListTasks(ctx context.Context, userID int64, li
 		tasks[i].Images = summarizeCreativeDrawingResults(tasks[i].Images)
 	}
 	return tasks, nil
+}
+
+func (s *CreativeDrawingService) FetchPromptMarketLibrary(ctx context.Context, library string, language string) ([]byte, string, error) {
+	sourceURL := ""
+	switch strings.TrimSpace(library) {
+	case "a":
+		sourceURL = creativeDrawingPromptMarketBananaPromptsURL
+	case "b":
+		switch strings.TrimSpace(language) {
+		case "zh-CN":
+			sourceURL = creativeDrawingPromptMarketAwesomeZhURL
+		case "en":
+			sourceURL = creativeDrawingPromptMarketAwesomeEnURL
+		default:
+			return nil, "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_LANGUAGE_INVALID", "invalid prompt market language")
+		}
+	default:
+		return nil, "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_LIBRARY_INVALID", "invalid prompt market library")
+	}
+	body, contentType, err := s.fetchPromptMarketBytes(ctx, sourceURL, "application/octet-stream")
+	if err != nil {
+		return nil, "", err
+	}
+	return rewriteCreativeDrawingPromptMarketContent(library, body), contentType, nil
+}
+
+func (s *CreativeDrawingService) FetchPromptMarketAsset(ctx context.Context, libraryAlias string, assetPath string) (*CreativeDrawingPromptMarketAsset, error) {
+	sourceURL, err := resolveCreativeDrawingPromptMarketAssetURL(libraryAlias, assetPath)
+	if err != nil {
+		return nil, err
+	}
+	body, contentType, err := s.fetchPromptMarketBytes(ctx, sourceURL, "image/*")
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_ASSET_INVALID", "prompt market asset is not an image")
+	}
+	return &CreativeDrawingPromptMarketAsset{
+		URL:         sourceURL,
+		ContentType: contentType,
+		Body:        body,
+	}, nil
+}
+
+func (s *CreativeDrawingService) fetchPromptMarketBytes(ctx context.Context, sourceURL string, accept string) ([]byte, string, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, creativeDrawingPromptMarketTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build prompt market request: %w", err)
+	}
+	if strings.TrimSpace(accept) != "" {
+		req.Header.Set("Accept", accept)
+	}
+	req.Header.Set("User-Agent", "sub2api-creative-drawing-prompt-market")
+	client := s.httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch prompt market resource: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_FETCH_FAILED", fmt.Sprintf("fetch prompt market resource failed: %d", resp.StatusCode))
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, creativeDrawingPromptMarketMaxBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read prompt market resource: %w", err)
+	}
+	if int64(len(body)) > creativeDrawingPromptMarketMaxBytes {
+		return nil, "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_TOO_LARGE", "prompt market resource is too large")
+	}
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = http.DetectContentType(body)
+	}
+	return body, contentType, nil
 }
 
 func (s *CreativeDrawingService) executeTask(id string) {
@@ -514,6 +607,69 @@ func normalizeCreativeDrawingReferences(input []CreativeDrawingReference) []Crea
 		})
 	}
 	return out
+}
+
+func resolveCreativeDrawingPromptMarketAssetURL(libraryAlias string, assetPath string) (string, error) {
+	library := strings.TrimSpace(libraryAlias)
+	cleanPath, err := cleanCreativeDrawingPromptMarketAssetPath(assetPath)
+	if err != nil {
+		return "", err
+	}
+	switch library {
+	case "library-a":
+		if strings.HasPrefix(cleanPath, "api/") || strings.HasPrefix(cleanPath, "prompts/") {
+			return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_ASSET_INVALID", "invalid prompt market asset path")
+		}
+		return joinCreativeDrawingPromptMarketURL(creativeDrawingPromptMarketBananaRawBaseURL, cleanPath)
+	case "library-b":
+		switch {
+		case strings.HasPrefix(cleanPath, "api/"):
+			return joinCreativeDrawingPromptMarketURL(creativeDrawingPromptMarketAwesomeAPIBaseURL, strings.TrimPrefix(cleanPath, "api/"))
+		case strings.HasPrefix(cleanPath, "prompts/"):
+			return joinCreativeDrawingPromptMarketURL(creativeDrawingPromptMarketAwesomePromptsBaseURL, strings.TrimPrefix(cleanPath, "prompts/"))
+		default:
+			return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_ASSET_INVALID", "invalid prompt market asset path")
+		}
+	default:
+		return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_LIBRARY_INVALID", "invalid prompt market library")
+	}
+}
+
+func cleanCreativeDrawingPromptMarketAssetPath(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || strings.Contains(trimmed, "\\") || strings.Contains(trimmed, "\x00") {
+		return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_ASSET_INVALID", "invalid prompt market asset path")
+	}
+	if strings.Contains(trimmed, "://") || strings.HasPrefix(trimmed, "//") {
+		return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_ASSET_INVALID", "invalid prompt market asset path")
+	}
+	cleaned := strings.TrimPrefix(path.Clean("/"+trimmed), "/")
+	if cleaned == "" || cleaned == "." {
+		return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_ASSET_INVALID", "invalid prompt market asset path")
+	}
+	return cleaned, nil
+}
+
+func joinCreativeDrawingPromptMarketURL(baseURL string, assetPath string) (string, error) {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("parse prompt market base url: %w", err)
+	}
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/" + strings.TrimPrefix(assetPath, "/")
+	return parsed.String(), nil
+}
+
+func rewriteCreativeDrawingPromptMarketContent(library string, body []byte) []byte {
+	text := string(body)
+	switch strings.TrimSpace(library) {
+	case "a":
+		text = strings.ReplaceAll(text, "https://cdn.jsdelivr.net/gh/glidea/banana-prompt-quicker@main/", "/api/v1/creative-drawing/prompt-market/assets/library-a/")
+		text = strings.ReplaceAll(text, creativeDrawingPromptMarketBananaRawBaseURL, "/api/v1/creative-drawing/prompt-market/assets/library-a/")
+	case "b":
+		text = strings.ReplaceAll(text, creativeDrawingPromptMarketAwesomeAPIBaseURL, "/api/v1/creative-drawing/prompt-market/assets/library-b/api/")
+		text = strings.ReplaceAll(text, creativeDrawingPromptMarketAwesomePromptsBaseURL, "/api/v1/creative-drawing/prompt-market/assets/library-b/prompts/")
+	}
+	return []byte(text)
 }
 
 func resolveCreativeDrawingGatewayModel(model string) string {

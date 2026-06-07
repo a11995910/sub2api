@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getPromptApplyReferenceImageUrls, type BananaPrompt } from '../promptMarket'
+import { buildPromptJSON, getPromptApplyReferenceImageUrls, type BananaPrompt } from '../promptMarket'
 
 function buildPrompt(overrides: Partial<BananaPrompt>): BananaPrompt {
   return {
@@ -11,8 +11,8 @@ function buildPrompt(overrides: Partial<BananaPrompt>): BananaPrompt {
     author: 'tester',
     mode: 'generate',
     category: '海报',
-    source: 'banana-prompt-quicker',
-    sourceLabel: 'banana-prompt-quicker',
+    source: 'library-a',
+    sourceLabel: '精选模板库 A',
     isNsfw: false,
     ...overrides
   }
@@ -51,5 +51,17 @@ describe('promptMarket apply references', () => {
     }))
 
     expect(urls).toEqual([])
+  })
+
+  it('复制 JSON 不暴露模板来源链接和内部来源标识', () => {
+    const json = buildPromptJSON(buildPrompt({
+      link: 'https://github.com/example/repo',
+      sourceLabel: '精选模板库 A'
+    }))
+
+    expect(json).not.toContain('source')
+    expect(json).not.toContain('source_label')
+    expect(json).not.toContain('link')
+    expect(json).not.toContain('github.com')
   })
 })

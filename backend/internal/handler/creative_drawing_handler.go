@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -77,4 +78,43 @@ func (h *CreativeDrawingHandler) CreateTask(c *gin.Context) {
 		return
 	}
 	response.Accepted(c, task)
+}
+
+// GetPromptMarketLibrary 返回用户侧模板市场的原始模板数据。
+// GET /api/v1/creative-drawing/prompt-market/libraries/:library/prompts
+// GET /api/v1/creative-drawing/prompt-market/libraries/:library/prompts/:language
+func (h *CreativeDrawingHandler) GetPromptMarketLibrary(c *gin.Context) {
+	data, contentType, err := h.creativeDrawingService.FetchPromptMarketLibrary(
+		c.Request.Context(),
+		c.Param("library"),
+		c.Param("language"),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "application/octet-stream"
+	}
+	c.Data(http.StatusOK, contentType, data)
+}
+
+// GetPromptMarketAsset 返回模板市场图片资源，避免用户侧页面直接暴露上游仓库地址。
+// GET /api/v1/creative-drawing/prompt-market/assets/:library/*path
+func (h *CreativeDrawingHandler) GetPromptMarketAsset(c *gin.Context) {
+	asset, err := h.creativeDrawingService.FetchPromptMarketAsset(
+		c.Request.Context(),
+		c.Param("library"),
+		c.Param("path"),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	contentType := strings.TrimSpace(asset.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(http.StatusOK, contentType, asset.Body)
 }

@@ -110,6 +110,13 @@ func RegisterUserRoutes(
 		// 创意绘图任务
 		creativeDrawing := authenticated.Group("/creative-drawing")
 		{
+			promptMarket := creativeDrawing.Group("/prompt-market")
+			{
+				promptMarket.GET("/libraries/:library/prompts", h.CreativeDrawing.GetPromptMarketLibrary)
+				promptMarket.GET("/libraries/:library/prompts/:language", h.CreativeDrawing.GetPromptMarketLibrary)
+				promptMarket.GET("/assets/:library/*path", h.CreativeDrawing.GetPromptMarketAsset)
+			}
+
 			tasks := creativeDrawing.Group("/tasks")
 			{
 				tasks.GET("", h.CreativeDrawing.ListTasks)

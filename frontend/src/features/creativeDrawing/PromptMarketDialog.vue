@@ -8,11 +8,7 @@
               <div class="min-w-0">
                 <h2 class="text-2xl font-bold text-gray-950 dark:text-white">热门模板</h2>
                 <p class="mt-2 hidden text-sm leading-6 text-gray-600 dark:text-dark-300 sm:block">
-                  来自
-                  <a :href="BANANA_PROMPTS_SOURCE_URL" target="_blank" rel="noreferrer" class="font-semibold text-blue-600 hover:underline">glidea/banana-prompt-quicker</a>
-                  和
-                  <a :href="AWESOME_GPT_IMAGE_2_PROMPTS_SOURCE_URL" target="_blank" rel="noreferrer" class="font-semibold text-blue-600 hover:underline">EvoLinkAI/awesome-gpt-image-2-prompts</a>
-                  ，可按来源筛选并一键套用到当前生图输入框。
+                  可按模板库、语言、分类和创作模式筛选，并一键套用到当前生图输入框。
                 </p>
               </div>
               <div class="flex shrink-0 items-center gap-2">
@@ -47,7 +43,7 @@
 
             <div class="mt-2 grid gap-2 md:grid-cols-[minmax(180px,1fr)_120px_minmax(160px,1fr)_130px_140px]">
               <select v-model="source" class="market-select">
-                <option value="all">全部来源</option>
+                <option value="all">全部模板库</option>
                 <option v-for="item in PROMPT_MARKET_SOURCE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option>
               </select>
               <select v-model="promptLanguage" class="market-select">
@@ -129,16 +125,6 @@
                         复制 JSON
                       </button>
                       <div class="flex items-center gap-2">
-                        <a
-                          v-if="prompt.link"
-                          :href="prompt.link"
-                          target="_blank"
-                          rel="noreferrer"
-                          class="rounded-full border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-blue-600 dark:border-dark-700 dark:hover:bg-dark-800"
-                          title="打开来源"
-                        >
-                          <Icon name="externalLink" size="sm" />
-                        </a>
                         <button class="rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700" @click="applyPrompt(prompt)">
                           套用
                         </button>
@@ -166,8 +152,6 @@ import { computed, nextTick, ref, watch } from 'vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import {
-  AWESOME_GPT_IMAGE_2_PROMPTS_SOURCE_URL,
-  BANANA_PROMPTS_SOURCE_URL,
   PROMPT_MARKET_SOURCE_OPTIONS,
   buildPromptJSON,
   fetchPromptMarketPrompts,

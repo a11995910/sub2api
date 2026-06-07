@@ -5,6 +5,7 @@ import type {
   PromptMarketLocalization,
   PromptMarketSourceId
 } from './promptMarket'
+import { getPromptMarketSourceLabel, normalizePromptMarketSourceId } from './promptMarket'
 
 export type PromptFavorite = {
   id: string
@@ -93,8 +94,8 @@ export function promptFavoriteToBananaPrompt(favorite: PromptFavorite): BananaPr
     category: favorite.category,
     subCategory: favorite.sub_category,
     created: favorite.created,
-    source: favorite.source,
-    sourceLabel: favorite.source_label,
+    source: normalizePromptMarketSourceId(favorite.source),
+    sourceLabel: getPromptMarketSourceLabel(favorite.source),
     isNsfw: favorite.is_nsfw,
     localizations: normalizeFavoriteLocalizations(favorite.localizations)
   }
@@ -105,7 +106,7 @@ export function bananaPromptToFavorite(prompt: BananaPrompt): PromptFavorite {
   return {
     id: promptFavoriteKey(prompt),
     prompt_id: prompt.id,
-    source: prompt.source,
+    source: normalizePromptMarketSourceId(prompt.source),
     title: prompt.title,
     preview: prompt.preview,
     reference_image_urls: prompt.referenceImageUrls,
@@ -116,7 +117,7 @@ export function bananaPromptToFavorite(prompt: BananaPrompt): PromptFavorite {
     category: prompt.category,
     sub_category: prompt.subCategory,
     created: prompt.created,
-    source_label: prompt.sourceLabel,
+    source_label: getPromptMarketSourceLabel(prompt.source),
     is_nsfw: prompt.isNsfw,
     localizations: prompt.localizations ? localizationsToPayload(prompt.localizations) : undefined,
     favorited_at: now,
