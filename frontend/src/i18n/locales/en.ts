@@ -5588,7 +5588,7 @@ export default {
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
           subscriptionRewardGroup: 'Payment Reward Group',
-          subscriptionRewardGroupDesc: 'When an invitee pays successfully, grant the inviter access to this subscription group. Leave disabled to skip the reward.',
+          subscriptionRewardGroupDesc: 'When an invitee pays successfully, grant the inviter access to this group. Exclusive standard groups keep charging balance by multiplier; subscription groups consume subscription quota. Leave disabled to skip the reward.',
           subscriptionRewardDays: 'Payment Reward Days',
           subscriptionRewardDaysDesc: 'Days added for each successful invited payment. 0 = no reward; after expiry, access naturally falls back to the default group.',
           subscriptionRewardDisabled: 'No group access reward',

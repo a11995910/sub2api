@@ -42129,17 +42129,23 @@ func (m *UserMutation) ResetEdge(name string) error {
 // UserAllowedGroupMutation represents an operation that mutates the UserAllowedGroup nodes in the graph.
 type UserAllowedGroupMutation struct {
 	config
-	op            Op
-	typ           string
-	created_at    *time.Time
-	clearedFields map[string]struct{}
-	user          *int64
-	cleareduser   bool
-	group         *int64
-	clearedgroup  bool
-	done          bool
-	oldValue      func(context.Context) (*UserAllowedGroup, error)
-	predicates    []predicate.UserAllowedGroup
+	op                 Op
+	typ                string
+	created_at         *time.Time
+	expires_at         *time.Time
+	source             *string
+	source_order_id    *int64
+	addsource_order_id *int64
+	notes              *string
+	updated_at         *time.Time
+	clearedFields      map[string]struct{}
+	user               *int64
+	cleareduser        bool
+	group              *int64
+	clearedgroup       bool
+	done               bool
+	oldValue           func(context.Context) (*UserAllowedGroup, error)
+	predicates         []predicate.UserAllowedGroup
 }
 
 var _ ent.Mutation = (*UserAllowedGroupMutation)(nil)
@@ -42237,6 +42243,148 @@ func (m *UserAllowedGroupMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (m *UserAllowedGroupMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *UserAllowedGroupMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *UserAllowedGroupMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[userallowedgroup.FieldExpiresAt] = struct{}{}
+}
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *UserAllowedGroupMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[userallowedgroup.FieldExpiresAt]
+	return ok
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *UserAllowedGroupMutation) ResetExpiresAt() {
+	m.expires_at = nil
+	delete(m.clearedFields, userallowedgroup.FieldExpiresAt)
+}
+
+// SetSource sets the "source" field.
+func (m *UserAllowedGroupMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *UserAllowedGroupMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *UserAllowedGroupMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (m *UserAllowedGroupMutation) SetSourceOrderID(i int64) {
+	m.source_order_id = &i
+	m.addsource_order_id = nil
+}
+
+// SourceOrderID returns the value of the "source_order_id" field in the mutation.
+func (m *UserAllowedGroupMutation) SourceOrderID() (r int64, exists bool) {
+	v := m.source_order_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// AddSourceOrderID adds i to the "source_order_id" field.
+func (m *UserAllowedGroupMutation) AddSourceOrderID(i int64) {
+	if m.addsource_order_id != nil {
+		*m.addsource_order_id += i
+	} else {
+		m.addsource_order_id = &i
+	}
+}
+
+// AddedSourceOrderID returns the value that was added to the "source_order_id" field in this mutation.
+func (m *UserAllowedGroupMutation) AddedSourceOrderID() (r int64, exists bool) {
+	v := m.addsource_order_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearSourceOrderID clears the value of the "source_order_id" field.
+func (m *UserAllowedGroupMutation) ClearSourceOrderID() {
+	m.source_order_id = nil
+	m.addsource_order_id = nil
+	m.clearedFields[userallowedgroup.FieldSourceOrderID] = struct{}{}
+}
+
+// SourceOrderIDCleared returns if the "source_order_id" field was cleared in this mutation.
+func (m *UserAllowedGroupMutation) SourceOrderIDCleared() bool {
+	_, ok := m.clearedFields[userallowedgroup.FieldSourceOrderID]
+	return ok
+}
+
+// ResetSourceOrderID resets all changes to the "source_order_id" field.
+func (m *UserAllowedGroupMutation) ResetSourceOrderID() {
+	m.source_order_id = nil
+	m.addsource_order_id = nil
+	delete(m.clearedFields, userallowedgroup.FieldSourceOrderID)
+}
+
+// SetNotes sets the "notes" field.
+func (m *UserAllowedGroupMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *UserAllowedGroupMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *UserAllowedGroupMutation) ResetNotes() {
+	m.notes = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *UserAllowedGroupMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *UserAllowedGroupMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *UserAllowedGroupMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *UserAllowedGroupMutation) ClearUser() {
 	m.cleareduser = true
@@ -42325,7 +42473,7 @@ func (m *UserAllowedGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserAllowedGroupMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 8)
 	if m.user != nil {
 		fields = append(fields, userallowedgroup.FieldUserID)
 	}
@@ -42334,6 +42482,21 @@ func (m *UserAllowedGroupMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, userallowedgroup.FieldCreatedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, userallowedgroup.FieldExpiresAt)
+	}
+	if m.source != nil {
+		fields = append(fields, userallowedgroup.FieldSource)
+	}
+	if m.source_order_id != nil {
+		fields = append(fields, userallowedgroup.FieldSourceOrderID)
+	}
+	if m.notes != nil {
+		fields = append(fields, userallowedgroup.FieldNotes)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, userallowedgroup.FieldUpdatedAt)
 	}
 	return fields
 }
@@ -42349,6 +42512,16 @@ func (m *UserAllowedGroupMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case userallowedgroup.FieldCreatedAt:
 		return m.CreatedAt()
+	case userallowedgroup.FieldExpiresAt:
+		return m.ExpiresAt()
+	case userallowedgroup.FieldSource:
+		return m.Source()
+	case userallowedgroup.FieldSourceOrderID:
+		return m.SourceOrderID()
+	case userallowedgroup.FieldNotes:
+		return m.Notes()
+	case userallowedgroup.FieldUpdatedAt:
+		return m.UpdatedAt()
 	}
 	return nil, false
 }
@@ -42386,6 +42559,41 @@ func (m *UserAllowedGroupMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetCreatedAt(v)
 		return nil
+	case userallowedgroup.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case userallowedgroup.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case userallowedgroup.FieldSourceOrderID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceOrderID(v)
+		return nil
+	case userallowedgroup.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	case userallowedgroup.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown UserAllowedGroup field %s", name)
 }
@@ -42394,6 +42602,9 @@ func (m *UserAllowedGroupMutation) SetField(name string, value ent.Value) error 
 // this mutation.
 func (m *UserAllowedGroupMutation) AddedFields() []string {
 	var fields []string
+	if m.addsource_order_id != nil {
+		fields = append(fields, userallowedgroup.FieldSourceOrderID)
+	}
 	return fields
 }
 
@@ -42402,6 +42613,8 @@ func (m *UserAllowedGroupMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UserAllowedGroupMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case userallowedgroup.FieldSourceOrderID:
+		return m.AddedSourceOrderID()
 	}
 	return nil, false
 }
@@ -42411,6 +42624,13 @@ func (m *UserAllowedGroupMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UserAllowedGroupMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case userallowedgroup.FieldSourceOrderID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSourceOrderID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown UserAllowedGroup numeric field %s", name)
 }
@@ -42418,7 +42638,14 @@ func (m *UserAllowedGroupMutation) AddField(name string, value ent.Value) error 
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *UserAllowedGroupMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(userallowedgroup.FieldExpiresAt) {
+		fields = append(fields, userallowedgroup.FieldExpiresAt)
+	}
+	if m.FieldCleared(userallowedgroup.FieldSourceOrderID) {
+		fields = append(fields, userallowedgroup.FieldSourceOrderID)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -42431,6 +42658,14 @@ func (m *UserAllowedGroupMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *UserAllowedGroupMutation) ClearField(name string) error {
+	switch name {
+	case userallowedgroup.FieldExpiresAt:
+		m.ClearExpiresAt()
+		return nil
+	case userallowedgroup.FieldSourceOrderID:
+		m.ClearSourceOrderID()
+		return nil
+	}
 	return fmt.Errorf("unknown UserAllowedGroup nullable field %s", name)
 }
 
@@ -42446,6 +42681,21 @@ func (m *UserAllowedGroupMutation) ResetField(name string) error {
 		return nil
 	case userallowedgroup.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case userallowedgroup.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case userallowedgroup.FieldSource:
+		m.ResetSource()
+		return nil
+	case userallowedgroup.FieldSourceOrderID:
+		m.ResetSourceOrderID()
+		return nil
+	case userallowedgroup.FieldNotes:
+		m.ResetNotes()
+		return nil
+	case userallowedgroup.FieldUpdatedAt:
+		m.ResetUpdatedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown UserAllowedGroup field %s", name)

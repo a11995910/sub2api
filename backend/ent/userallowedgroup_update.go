@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -57,6 +58,87 @@ func (_u *UserAllowedGroupUpdate) SetNillableGroupID(v *int64) *UserAllowedGroup
 	return _u
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (_u *UserAllowedGroupUpdate) SetExpiresAt(v time.Time) *UserAllowedGroupUpdate {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdate) SetNillableExpiresAt(v *time.Time) *UserAllowedGroupUpdate {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *UserAllowedGroupUpdate) ClearExpiresAt() *UserAllowedGroupUpdate {
+	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
+// SetSource sets the "source" field.
+func (_u *UserAllowedGroupUpdate) SetSource(v string) *UserAllowedGroupUpdate {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdate) SetNillableSource(v *string) *UserAllowedGroupUpdate {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (_u *UserAllowedGroupUpdate) SetSourceOrderID(v int64) *UserAllowedGroupUpdate {
+	_u.mutation.ResetSourceOrderID()
+	_u.mutation.SetSourceOrderID(v)
+	return _u
+}
+
+// SetNillableSourceOrderID sets the "source_order_id" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdate) SetNillableSourceOrderID(v *int64) *UserAllowedGroupUpdate {
+	if v != nil {
+		_u.SetSourceOrderID(*v)
+	}
+	return _u
+}
+
+// AddSourceOrderID adds value to the "source_order_id" field.
+func (_u *UserAllowedGroupUpdate) AddSourceOrderID(v int64) *UserAllowedGroupUpdate {
+	_u.mutation.AddSourceOrderID(v)
+	return _u
+}
+
+// ClearSourceOrderID clears the value of the "source_order_id" field.
+func (_u *UserAllowedGroupUpdate) ClearSourceOrderID() *UserAllowedGroupUpdate {
+	_u.mutation.ClearSourceOrderID()
+	return _u
+}
+
+// SetNotes sets the "notes" field.
+func (_u *UserAllowedGroupUpdate) SetNotes(v string) *UserAllowedGroupUpdate {
+	_u.mutation.SetNotes(v)
+	return _u
+}
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdate) SetNillableNotes(v *string) *UserAllowedGroupUpdate {
+	if v != nil {
+		_u.SetNotes(*v)
+	}
+	return _u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (_u *UserAllowedGroupUpdate) SetUpdatedAt(v time.Time) *UserAllowedGroupUpdate {
+	_u.mutation.SetUpdatedAt(v)
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UserAllowedGroupUpdate) SetUser(v *User) *UserAllowedGroupUpdate {
 	return _u.SetUserID(v.ID)
@@ -86,6 +168,7 @@ func (_u *UserAllowedGroupUpdate) ClearGroup() *UserAllowedGroupUpdate {
 
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *UserAllowedGroupUpdate) Save(ctx context.Context) (int, error) {
+	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -111,8 +194,21 @@ func (_u *UserAllowedGroupUpdate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (_u *UserAllowedGroupUpdate) defaults() {
+	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		v := userallowedgroup.UpdateDefaultUpdatedAt()
+		_u.mutation.SetUpdatedAt(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (_u *UserAllowedGroupUpdate) check() error {
+	if v, ok := _u.mutation.Source(); ok {
+		if err := userallowedgroup.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "UserAllowedGroup.source": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserAllowedGroup.user"`)
 	}
@@ -133,6 +229,30 @@ func (_u *UserAllowedGroupUpdate) sqlSave(ctx context.Context) (_node int, err e
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(userallowedgroup.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(userallowedgroup.FieldExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(userallowedgroup.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SourceOrderID(); ok {
+		_spec.SetField(userallowedgroup.FieldSourceOrderID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSourceOrderID(); ok {
+		_spec.AddField(userallowedgroup.FieldSourceOrderID, field.TypeInt64, value)
+	}
+	if _u.mutation.SourceOrderIDCleared() {
+		_spec.ClearField(userallowedgroup.FieldSourceOrderID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.Notes(); ok {
+		_spec.SetField(userallowedgroup.FieldNotes, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpdatedAt(); ok {
+		_spec.SetField(userallowedgroup.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -240,6 +360,87 @@ func (_u *UserAllowedGroupUpdateOne) SetNillableGroupID(v *int64) *UserAllowedGr
 	return _u
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (_u *UserAllowedGroupUpdateOne) SetExpiresAt(v time.Time) *UserAllowedGroupUpdateOne {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdateOne) SetNillableExpiresAt(v *time.Time) *UserAllowedGroupUpdateOne {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *UserAllowedGroupUpdateOne) ClearExpiresAt() *UserAllowedGroupUpdateOne {
+	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
+// SetSource sets the "source" field.
+func (_u *UserAllowedGroupUpdateOne) SetSource(v string) *UserAllowedGroupUpdateOne {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdateOne) SetNillableSource(v *string) *UserAllowedGroupUpdateOne {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (_u *UserAllowedGroupUpdateOne) SetSourceOrderID(v int64) *UserAllowedGroupUpdateOne {
+	_u.mutation.ResetSourceOrderID()
+	_u.mutation.SetSourceOrderID(v)
+	return _u
+}
+
+// SetNillableSourceOrderID sets the "source_order_id" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdateOne) SetNillableSourceOrderID(v *int64) *UserAllowedGroupUpdateOne {
+	if v != nil {
+		_u.SetSourceOrderID(*v)
+	}
+	return _u
+}
+
+// AddSourceOrderID adds value to the "source_order_id" field.
+func (_u *UserAllowedGroupUpdateOne) AddSourceOrderID(v int64) *UserAllowedGroupUpdateOne {
+	_u.mutation.AddSourceOrderID(v)
+	return _u
+}
+
+// ClearSourceOrderID clears the value of the "source_order_id" field.
+func (_u *UserAllowedGroupUpdateOne) ClearSourceOrderID() *UserAllowedGroupUpdateOne {
+	_u.mutation.ClearSourceOrderID()
+	return _u
+}
+
+// SetNotes sets the "notes" field.
+func (_u *UserAllowedGroupUpdateOne) SetNotes(v string) *UserAllowedGroupUpdateOne {
+	_u.mutation.SetNotes(v)
+	return _u
+}
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_u *UserAllowedGroupUpdateOne) SetNillableNotes(v *string) *UserAllowedGroupUpdateOne {
+	if v != nil {
+		_u.SetNotes(*v)
+	}
+	return _u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (_u *UserAllowedGroupUpdateOne) SetUpdatedAt(v time.Time) *UserAllowedGroupUpdateOne {
+	_u.mutation.SetUpdatedAt(v)
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UserAllowedGroupUpdateOne) SetUser(v *User) *UserAllowedGroupUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -282,6 +483,7 @@ func (_u *UserAllowedGroupUpdateOne) Select(field string, fields ...string) *Use
 
 // Save executes the query and returns the updated UserAllowedGroup entity.
 func (_u *UserAllowedGroupUpdateOne) Save(ctx context.Context) (*UserAllowedGroup, error) {
+	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -307,8 +509,21 @@ func (_u *UserAllowedGroupUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (_u *UserAllowedGroupUpdateOne) defaults() {
+	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		v := userallowedgroup.UpdateDefaultUpdatedAt()
+		_u.mutation.SetUpdatedAt(v)
+	}
+}
+
 // check runs all checks and user-defined validators on the builder.
 func (_u *UserAllowedGroupUpdateOne) check() error {
+	if v, ok := _u.mutation.Source(); ok {
+		if err := userallowedgroup.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "UserAllowedGroup.source": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserAllowedGroup.user"`)
 	}
@@ -348,6 +563,30 @@ func (_u *UserAllowedGroupUpdateOne) sqlSave(ctx context.Context) (_node *UserAl
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(userallowedgroup.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(userallowedgroup.FieldExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(userallowedgroup.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SourceOrderID(); ok {
+		_spec.SetField(userallowedgroup.FieldSourceOrderID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedSourceOrderID(); ok {
+		_spec.AddField(userallowedgroup.FieldSourceOrderID, field.TypeInt64, value)
+	}
+	if _u.mutation.SourceOrderIDCleared() {
+		_spec.ClearField(userallowedgroup.FieldSourceOrderID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.Notes(); ok {
+		_spec.SetField(userallowedgroup.FieldNotes, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpdatedAt(); ok {
+		_spec.SetField(userallowedgroup.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

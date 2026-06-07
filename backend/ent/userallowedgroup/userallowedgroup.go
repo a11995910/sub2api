@@ -18,6 +18,16 @@ const (
 	FieldGroupID = "group_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldExpiresAt holds the string denoting the expires_at field in the database.
+	FieldExpiresAt = "expires_at"
+	// FieldSource holds the string denoting the source field in the database.
+	FieldSource = "source"
+	// FieldSourceOrderID holds the string denoting the source_order_id field in the database.
+	FieldSourceOrderID = "source_order_id"
+	// FieldNotes holds the string denoting the notes field in the database.
+	FieldNotes = "notes"
+	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
+	FieldUpdatedAt = "updated_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -49,6 +59,11 @@ var Columns = []string{
 	FieldUserID,
 	FieldGroupID,
 	FieldCreatedAt,
+	FieldExpiresAt,
+	FieldSource,
+	FieldSourceOrderID,
+	FieldNotes,
+	FieldUpdatedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -64,6 +79,16 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
+	// DefaultSource holds the default value on creation for the "source" field.
+	DefaultSource string
+	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	SourceValidator func(string) error
+	// DefaultNotes holds the default value on creation for the "notes" field.
+	DefaultNotes string
+	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
+	DefaultUpdatedAt func() time.Time
+	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
+	UpdateDefaultUpdatedAt func() time.Time
 )
 
 // OrderOption defines the ordering options for the UserAllowedGroup queries.
@@ -82,6 +107,31 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// ByExpiresAt orders the results by the expires_at field.
+func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiresAt, opts...).ToFunc()
+}
+
+// BySource orders the results by the source field.
+func BySource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSource, opts...).ToFunc()
+}
+
+// BySourceOrderID orders the results by the source_order_id field.
+func BySourceOrderID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSourceOrderID, opts...).ToFunc()
+}
+
+// ByNotes orders the results by the notes field.
+func ByNotes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNotes, opts...).ToFunc()
+}
+
+// ByUpdatedAt orders the results by the updated_at field.
+func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

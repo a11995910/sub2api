@@ -249,6 +249,26 @@ func TestSettingService_UpdateSettings_AffiliateSubscriptionRewardGroup_ValidGro
 	repo := &settingUpdateRepoStub{}
 	groupReader := &settingsGroupReaderStub{
 		byID: map[int64]*Group{
+			31: {ID: 31, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, IsExclusive: true},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetSettingsGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AffiliateSubscriptionRewardGroupID: 31,
+		AffiliateSubscriptionRewardDays:    7,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{31}, groupReader.calls)
+	require.Equal(t, "31", repo.updates[SettingKeyAffiliateSubscriptionRewardGroup])
+	require.Equal(t, "7", repo.updates[SettingKeyAffiliateSubscriptionRewardDays])
+}
+
+func TestSettingService_UpdateSettings_AffiliateSubscriptionRewardGroup_ValidSubscriptionGroup(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &settingsGroupReaderStub{
+		byID: map[int64]*Group{
 			31: {ID: 31, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription},
 		},
 	}

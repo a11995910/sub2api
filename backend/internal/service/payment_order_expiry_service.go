@@ -16,8 +16,8 @@ const (
 	// paymentOrderExpiryLeaderLockKey gates the periodic reconcile + expiry sweep so
 	// that only one instance issues the upstream payment-provider calls per cycle.
 	paymentOrderExpiryLeaderLockKey = "payment:order:expiry:leader"
-	// paymentOrderExpiryLeaderLockTTL must exceed the combined reconcile + expiry
-	// timeouts (2 * expiryCheckTimeout) so the lock never expires mid-run.
+	// paymentOrderExpiryLeaderLockTTL must exceed the combined reconcile, expiry
+	// and lightweight reward-expiry timeouts so the lock never expires mid-run.
 	paymentOrderExpiryLeaderLockTTL = 3 * time.Minute
 )
 
@@ -115,5 +115,16 @@ func (s *PaymentOrderExpiryService) runOnce() {
 	}
 	if expired > 0 {
 		slog.Info("[PaymentOrderExpiry] expired timed-out orders", "count", expired)
+	}
+
+	rewardCtx, rewardCancel := context.WithTimeout(context.Background(), expiryCheckTimeout)
+	defer rewardCancel()
+	expiredRewards, err := s.paymentSvc.ExpireAffiliateGroupAccessRewards(rewardCtx)
+	if err != nil {
+		slog.Error("[PaymentOrderExpiry] failed to expire affiliate group access rewards", "error", err)
+		return
+	}
+	if expiredRewards > 0 {
+		slog.Info("[PaymentOrderExpiry] expired affiliate group access rewards", "count", expiredRewards)
 	}
 }

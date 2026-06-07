@@ -60,7 +60,7 @@ var (
 	)
 	ErrAffiliateSubscriptionRewardGroupInvalid = infraerrors.BadRequest(
 		"AFFILIATE_SUBSCRIPTION_REWARD_GROUP_INVALID",
-		"affiliate subscription reward group must exist and be subscription type",
+		"affiliate reward group must exist and be active subscription or exclusive standard group",
 	)
 )
 
@@ -2270,7 +2270,7 @@ func (s *SettingService) validateAffiliateSubscriptionRewardGroup(ctx context.Co
 		}
 		return fmt.Errorf("get affiliate subscription reward group %d: %w", groupID, err)
 	}
-	if !group.IsSubscriptionType() || !group.IsActive() {
+	if !group.IsActive() || (!group.IsSubscriptionType() && !group.IsExclusive) {
 		return ErrAffiliateSubscriptionRewardGroupInvalid.WithMetadata(map[string]string{
 			"group_id": strconv.FormatInt(groupID, 10),
 		})
@@ -2627,7 +2627,7 @@ func (s *SettingService) GetAffiliateRebatePerInviteeCap(ctx context.Context) fl
 	return cap
 }
 
-// GetAffiliateSubscriptionRewardConfig 返回邀请人订阅奖励配置。
+// GetAffiliateSubscriptionRewardConfig 返回邀请人支付奖励配置。
 // groupID 或 days 任一为 0 时表示未启用该奖励。
 func (s *SettingService) GetAffiliateSubscriptionRewardConfig(ctx context.Context) (int64, int) {
 	if s == nil || s.settingRepo == nil {
@@ -2649,6 +2649,21 @@ func (s *SettingService) GetAffiliateSubscriptionRewardConfig(ctx context.Contex
 		}
 	}
 	return groupID, days
+}
+
+func (s *SettingService) GetAPIKeyDefaultGroupID(ctx context.Context) int64 {
+	if s == nil || s.settingRepo == nil {
+		return 0
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAPIKeyDefaultGroupID)
+	if err != nil {
+		return 0
+	}
+	groupID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || groupID <= 0 {
+		return 0
+	}
+	return groupID
 }
 
 // IsPasswordResetEnabled 检查是否启用密码重置功能

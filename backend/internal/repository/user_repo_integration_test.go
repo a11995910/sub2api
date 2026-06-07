@@ -8,8 +8,10 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -31,6 +33,7 @@ func (s *UserRepoSuite) SetupTest() {
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
 }
@@ -93,6 +96,110 @@ func (s *UserRepoSuite) mustCreateSubscription(userID, groupID int64, mutate fun
 	sub, err := create.Save(s.ctx)
 	s.Require().NoError(err, "create subscription")
 	return sub
+}
+
+func (s *UserRepoSuite) TestGrantTemporaryAllowedGroup_AccumulatesAndReadPathFiltersExpired() {
+	user := s.mustCreateUser(&service.User{Email: "temporary-group@test.com"})
+	group := s.mustCreateGroup("temporary reward group")
+	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
+	firstOrderID := int64(101)
+
+	first, err := s.repo.GrantTemporaryAllowedGroup(s.ctx, service.TemporaryAllowedGroupGrantInput{
+		UserID:        user.ID,
+		GroupID:       group.ID,
+		ValidityDays:  3,
+		Source:        service.UserAllowedGroupSourceAffiliatePaymentReward,
+		SourceOrderID: &firstOrderID,
+		Notes:         "first reward",
+		Now:           now,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(first.ExpiresAt)
+	s.Require().WithinDuration(now.Add(72*time.Hour), *first.ExpiresAt, time.Second)
+
+	secondOrderID := int64(102)
+	second, err := s.repo.GrantTemporaryAllowedGroup(s.ctx, service.TemporaryAllowedGroupGrantInput{
+		UserID:        user.ID,
+		GroupID:       group.ID,
+		ValidityDays:  2,
+		Source:        service.UserAllowedGroupSourceAffiliatePaymentReward,
+		SourceOrderID: &secondOrderID,
+		Notes:         "second reward",
+		Now:           now.Add(time.Hour),
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(second.ExpiresAt)
+	s.Require().WithinDuration(now.Add(5*24*time.Hour), *second.ExpiresAt, time.Second)
+
+	activeUser, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Contains(activeUser.AllowedGroups, group.ID)
+
+	_, err = s.client.UserAllowedGroup.Update().
+		Where(
+			userallowedgroup.UserIDEQ(user.ID),
+			userallowedgroup.GroupIDEQ(group.ID),
+		).
+		SetExpiresAt(now.Add(-time.Hour)).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	expiredUser, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().NotContains(expiredUser.AllowedGroups, group.ID)
+}
+
+func (s *UserRepoSuite) TestExpireTemporaryAllowedGroups_MigratesKeysAndDeletesExpiredGrant() {
+	user := s.mustCreateUser(&service.User{Email: "expire-temporary-group@test.com"})
+	defaultGroup := s.mustCreateGroup("default replacement group")
+	rewardGroup := s.mustCreateGroup("expired reward group")
+	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
+
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(rewardGroup.ID).
+		SetSource(service.UserAllowedGroupSourceAffiliatePaymentReward).
+		SetExpiresAt(now.Add(-time.Hour)).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	key, err := s.client.APIKey.Create().
+		SetUserID(user.ID).
+		SetKey("sk-temporary-reward-expired").
+		SetName("temporary reward key").
+		SetStatus(service.StatusAPIKeyActive).
+		SetGroupID(rewardGroup.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	items, err := s.repo.ExpireTemporaryAllowedGroups(s.ctx, service.ExpireTemporaryAllowedGroupsInput{
+		Source:             service.UserAllowedGroupSourceAffiliatePaymentReward,
+		ReplacementGroupID: defaultGroup.ID,
+		Now:                now,
+		Limit:              50,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(items, 1)
+	s.Require().Equal(user.ID, items[0].UserID)
+	s.Require().Equal(rewardGroup.ID, items[0].GroupID)
+	s.Require().Equal(defaultGroup.ID, items[0].ReplacementGroupID)
+	s.Require().Equal(int64(1), items[0].MigratedKeys)
+
+	updatedKey, err := s.client.APIKey.Query().
+		Where(apikey.IDEQ(key.ID)).
+		Only(s.ctx)
+	s.Require().NoError(err)
+	s.Require().NotNil(updatedKey.GroupID)
+	s.Require().Equal(defaultGroup.ID, *updatedKey.GroupID)
+
+	exists, err := s.client.UserAllowedGroup.Query().
+		Where(
+			userallowedgroup.UserIDEQ(user.ID),
+			userallowedgroup.GroupIDEQ(rewardGroup.ID),
+		).
+		Exist(s.ctx)
+	s.Require().NoError(err)
+	s.Require().False(exists)
 }
 
 // --- Create / GetByID / GetByEmail / Update / Delete ---

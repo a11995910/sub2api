@@ -50,6 +50,76 @@ func (_c *UserAllowedGroupCreate) SetNillableCreatedAt(v *time.Time) *UserAllowe
 	return _c
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (_c *UserAllowedGroupCreate) SetExpiresAt(v time.Time) *UserAllowedGroupCreate {
+	_c.mutation.SetExpiresAt(v)
+	return _c
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *UserAllowedGroupCreate) SetNillableExpiresAt(v *time.Time) *UserAllowedGroupCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+	}
+	return _c
+}
+
+// SetSource sets the "source" field.
+func (_c *UserAllowedGroupCreate) SetSource(v string) *UserAllowedGroupCreate {
+	_c.mutation.SetSource(v)
+	return _c
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_c *UserAllowedGroupCreate) SetNillableSource(v *string) *UserAllowedGroupCreate {
+	if v != nil {
+		_c.SetSource(*v)
+	}
+	return _c
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (_c *UserAllowedGroupCreate) SetSourceOrderID(v int64) *UserAllowedGroupCreate {
+	_c.mutation.SetSourceOrderID(v)
+	return _c
+}
+
+// SetNillableSourceOrderID sets the "source_order_id" field if the given value is not nil.
+func (_c *UserAllowedGroupCreate) SetNillableSourceOrderID(v *int64) *UserAllowedGroupCreate {
+	if v != nil {
+		_c.SetSourceOrderID(*v)
+	}
+	return _c
+}
+
+// SetNotes sets the "notes" field.
+func (_c *UserAllowedGroupCreate) SetNotes(v string) *UserAllowedGroupCreate {
+	_c.mutation.SetNotes(v)
+	return _c
+}
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_c *UserAllowedGroupCreate) SetNillableNotes(v *string) *UserAllowedGroupCreate {
+	if v != nil {
+		_c.SetNotes(*v)
+	}
+	return _c
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (_c *UserAllowedGroupCreate) SetUpdatedAt(v time.Time) *UserAllowedGroupCreate {
+	_c.mutation.SetUpdatedAt(v)
+	return _c
+}
+
+// SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
+func (_c *UserAllowedGroupCreate) SetNillableUpdatedAt(v *time.Time) *UserAllowedGroupCreate {
+	if v != nil {
+		_c.SetUpdatedAt(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *UserAllowedGroupCreate) SetUser(v *User) *UserAllowedGroupCreate {
 	return _c.SetUserID(v.ID)
@@ -99,6 +169,18 @@ func (_c *UserAllowedGroupCreate) defaults() {
 		v := userallowedgroup.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
+	if _, ok := _c.mutation.Source(); !ok {
+		v := userallowedgroup.DefaultSource
+		_c.mutation.SetSource(v)
+	}
+	if _, ok := _c.mutation.Notes(); !ok {
+		v := userallowedgroup.DefaultNotes
+		_c.mutation.SetNotes(v)
+	}
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		v := userallowedgroup.DefaultUpdatedAt()
+		_c.mutation.SetUpdatedAt(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -111,6 +193,20 @@ func (_c *UserAllowedGroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UserAllowedGroup.created_at"`)}
+	}
+	if _, ok := _c.mutation.Source(); !ok {
+		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "UserAllowedGroup.source"`)}
+	}
+	if v, ok := _c.mutation.Source(); ok {
+		if err := userallowedgroup.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "UserAllowedGroup.source": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Notes(); !ok {
+		return &ValidationError{Name: "notes", err: errors.New(`ent: missing required field "UserAllowedGroup.notes"`)}
+	}
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "UserAllowedGroup.updated_at"`)}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "UserAllowedGroup.user"`)}
@@ -144,6 +240,26 @@ func (_c *UserAllowedGroupCreate) createSpec() (*UserAllowedGroup, *sqlgraph.Cre
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(userallowedgroup.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.ExpiresAt(); ok {
+		_spec.SetField(userallowedgroup.FieldExpiresAt, field.TypeTime, value)
+		_node.ExpiresAt = &value
+	}
+	if value, ok := _c.mutation.Source(); ok {
+		_spec.SetField(userallowedgroup.FieldSource, field.TypeString, value)
+		_node.Source = value
+	}
+	if value, ok := _c.mutation.SourceOrderID(); ok {
+		_spec.SetField(userallowedgroup.FieldSourceOrderID, field.TypeInt64, value)
+		_node.SourceOrderID = &value
+	}
+	if value, ok := _c.mutation.Notes(); ok {
+		_spec.SetField(userallowedgroup.FieldNotes, field.TypeString, value)
+		_node.Notes = value
+	}
+	if value, ok := _c.mutation.UpdatedAt(); ok {
+		_spec.SetField(userallowedgroup.FieldUpdatedAt, field.TypeTime, value)
+		_node.UpdatedAt = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -255,6 +371,84 @@ func (u *UserAllowedGroupUpsert) UpdateGroupID() *UserAllowedGroupUpsert {
 	return u
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (u *UserAllowedGroupUpsert) SetExpiresAt(v time.Time) *UserAllowedGroupUpsert {
+	u.Set(userallowedgroup.FieldExpiresAt, v)
+	return u
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsert) UpdateExpiresAt() *UserAllowedGroupUpsert {
+	u.SetExcluded(userallowedgroup.FieldExpiresAt)
+	return u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *UserAllowedGroupUpsert) ClearExpiresAt() *UserAllowedGroupUpsert {
+	u.SetNull(userallowedgroup.FieldExpiresAt)
+	return u
+}
+
+// SetSource sets the "source" field.
+func (u *UserAllowedGroupUpsert) SetSource(v string) *UserAllowedGroupUpsert {
+	u.Set(userallowedgroup.FieldSource, v)
+	return u
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsert) UpdateSource() *UserAllowedGroupUpsert {
+	u.SetExcluded(userallowedgroup.FieldSource)
+	return u
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (u *UserAllowedGroupUpsert) SetSourceOrderID(v int64) *UserAllowedGroupUpsert {
+	u.Set(userallowedgroup.FieldSourceOrderID, v)
+	return u
+}
+
+// UpdateSourceOrderID sets the "source_order_id" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsert) UpdateSourceOrderID() *UserAllowedGroupUpsert {
+	u.SetExcluded(userallowedgroup.FieldSourceOrderID)
+	return u
+}
+
+// AddSourceOrderID adds v to the "source_order_id" field.
+func (u *UserAllowedGroupUpsert) AddSourceOrderID(v int64) *UserAllowedGroupUpsert {
+	u.Add(userallowedgroup.FieldSourceOrderID, v)
+	return u
+}
+
+// ClearSourceOrderID clears the value of the "source_order_id" field.
+func (u *UserAllowedGroupUpsert) ClearSourceOrderID() *UserAllowedGroupUpsert {
+	u.SetNull(userallowedgroup.FieldSourceOrderID)
+	return u
+}
+
+// SetNotes sets the "notes" field.
+func (u *UserAllowedGroupUpsert) SetNotes(v string) *UserAllowedGroupUpsert {
+	u.Set(userallowedgroup.FieldNotes, v)
+	return u
+}
+
+// UpdateNotes sets the "notes" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsert) UpdateNotes() *UserAllowedGroupUpsert {
+	u.SetExcluded(userallowedgroup.FieldNotes)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *UserAllowedGroupUpsert) SetUpdatedAt(v time.Time) *UserAllowedGroupUpsert {
+	u.Set(userallowedgroup.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsert) UpdateUpdatedAt() *UserAllowedGroupUpsert {
+	u.SetExcluded(userallowedgroup.FieldUpdatedAt)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -325,6 +519,97 @@ func (u *UserAllowedGroupUpsertOne) SetGroupID(v int64) *UserAllowedGroupUpsertO
 func (u *UserAllowedGroupUpsertOne) UpdateGroupID() *UserAllowedGroupUpsertOne {
 	return u.Update(func(s *UserAllowedGroupUpsert) {
 		s.UpdateGroupID()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *UserAllowedGroupUpsertOne) SetExpiresAt(v time.Time) *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertOne) UpdateExpiresAt() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateExpiresAt()
+	})
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *UserAllowedGroupUpsertOne) ClearExpiresAt() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.ClearExpiresAt()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *UserAllowedGroupUpsertOne) SetSource(v string) *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertOne) UpdateSource() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (u *UserAllowedGroupUpsertOne) SetSourceOrderID(v int64) *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetSourceOrderID(v)
+	})
+}
+
+// AddSourceOrderID adds v to the "source_order_id" field.
+func (u *UserAllowedGroupUpsertOne) AddSourceOrderID(v int64) *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.AddSourceOrderID(v)
+	})
+}
+
+// UpdateSourceOrderID sets the "source_order_id" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertOne) UpdateSourceOrderID() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateSourceOrderID()
+	})
+}
+
+// ClearSourceOrderID clears the value of the "source_order_id" field.
+func (u *UserAllowedGroupUpsertOne) ClearSourceOrderID() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.ClearSourceOrderID()
+	})
+}
+
+// SetNotes sets the "notes" field.
+func (u *UserAllowedGroupUpsertOne) SetNotes(v string) *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetNotes(v)
+	})
+}
+
+// UpdateNotes sets the "notes" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertOne) UpdateNotes() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateNotes()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *UserAllowedGroupUpsertOne) SetUpdatedAt(v time.Time) *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertOne) UpdateUpdatedAt() *UserAllowedGroupUpsertOne {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateUpdatedAt()
 	})
 }
 
@@ -541,6 +826,97 @@ func (u *UserAllowedGroupUpsertBulk) SetGroupID(v int64) *UserAllowedGroupUpsert
 func (u *UserAllowedGroupUpsertBulk) UpdateGroupID() *UserAllowedGroupUpsertBulk {
 	return u.Update(func(s *UserAllowedGroupUpsert) {
 		s.UpdateGroupID()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *UserAllowedGroupUpsertBulk) SetExpiresAt(v time.Time) *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertBulk) UpdateExpiresAt() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateExpiresAt()
+	})
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *UserAllowedGroupUpsertBulk) ClearExpiresAt() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.ClearExpiresAt()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *UserAllowedGroupUpsertBulk) SetSource(v string) *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertBulk) UpdateSource() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// SetSourceOrderID sets the "source_order_id" field.
+func (u *UserAllowedGroupUpsertBulk) SetSourceOrderID(v int64) *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetSourceOrderID(v)
+	})
+}
+
+// AddSourceOrderID adds v to the "source_order_id" field.
+func (u *UserAllowedGroupUpsertBulk) AddSourceOrderID(v int64) *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.AddSourceOrderID(v)
+	})
+}
+
+// UpdateSourceOrderID sets the "source_order_id" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertBulk) UpdateSourceOrderID() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateSourceOrderID()
+	})
+}
+
+// ClearSourceOrderID clears the value of the "source_order_id" field.
+func (u *UserAllowedGroupUpsertBulk) ClearSourceOrderID() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.ClearSourceOrderID()
+	})
+}
+
+// SetNotes sets the "notes" field.
+func (u *UserAllowedGroupUpsertBulk) SetNotes(v string) *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetNotes(v)
+	})
+}
+
+// UpdateNotes sets the "notes" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertBulk) UpdateNotes() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateNotes()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *UserAllowedGroupUpsertBulk) SetUpdatedAt(v time.Time) *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *UserAllowedGroupUpsertBulk) UpdateUpdatedAt() *UserAllowedGroupUpsertBulk {
+	return u.Update(func(s *UserAllowedGroupUpsert) {
+		s.UpdateUpdatedAt()
 	})
 }
 

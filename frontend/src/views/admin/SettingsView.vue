@@ -7619,7 +7619,20 @@ const affiliateRewardGroupOptions = computed(() => [
     value: 0,
     label: t("admin.settings.features.affiliate.subscriptionRewardDisabled"),
   },
-  ...defaultSubscriptionGroupOptions.value,
+  ...activeGroups.value
+    .filter(
+      (group) =>
+        group.subscription_type === "subscription" ||
+        (group.subscription_type === "standard" && group.is_exclusive),
+    )
+    .map((group) => ({
+      value: group.id,
+      label: group.name,
+      description: group.description,
+      platform: group.platform,
+      subscriptionType: group.subscription_type,
+      rate: group.rate_multiplier,
+    })),
 ]);
 
 const apiKeyDefaultGroupOptions = computed(() => [

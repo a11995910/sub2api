@@ -34,6 +34,27 @@ func (UserAllowedGroup) Fields() []ent.Field {
 			Immutable().
 			Default(time.Now).
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
+			Comment("专属分组授权过期时间；NULL 表示永久授权"),
+		field.String("source").
+			MaxLen(50).
+			Default("manual").
+			Comment("授权来源：manual / affiliate_payment_reward"),
+		field.Int64("source_order_id").
+			Optional().
+			Nillable().
+			Comment("产生该限时授权的支付订单 ID"),
+		field.String("notes").
+			Default("").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Comment("授权备注"),
+		field.Time("updated_at").
+			Default(time.Now).
+			UpdateDefault(time.Now).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 
@@ -53,5 +74,7 @@ func (UserAllowedGroup) Edges() []ent.Edge {
 func (UserAllowedGroup) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("group_id"),
+		index.Fields("expires_at"),
+		index.Fields("source", "expires_at"),
 	}
 }

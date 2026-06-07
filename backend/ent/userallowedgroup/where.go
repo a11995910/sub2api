@@ -25,6 +25,31 @@ func CreatedAt(v time.Time) predicate.UserAllowedGroup {
 	return predicate.UserAllowedGroup(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// ExpiresAt applies equality check predicate on the "expires_at" field. It's identical to ExpiresAtEQ.
+func ExpiresAt(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldExpiresAt, v))
+}
+
+// Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
+func Source(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceOrderID applies equality check predicate on the "source_order_id" field. It's identical to SourceOrderIDEQ.
+func SourceOrderID(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldSourceOrderID, v))
+}
+
+// Notes applies equality check predicate on the "notes" field. It's identical to NotesEQ.
+func Notes(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldNotes, v))
+}
+
+// UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
+func UpdatedAt(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
 // UserIDEQ applies the EQ predicate on the "user_id" field.
 func UserIDEQ(v int64) predicate.UserAllowedGroup {
 	return predicate.UserAllowedGroup(sql.FieldEQ(FieldUserID, v))
@@ -103,6 +128,276 @@ func CreatedAtLT(v time.Time) predicate.UserAllowedGroup {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.UserAllowedGroup {
 	return predicate.UserAllowedGroup(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// ExpiresAtEQ applies the EQ predicate on the "expires_at" field.
+func ExpiresAtEQ(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldExpiresAt, v))
+}
+
+// ExpiresAtNEQ applies the NEQ predicate on the "expires_at" field.
+func ExpiresAtNEQ(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNEQ(FieldExpiresAt, v))
+}
+
+// ExpiresAtIn applies the In predicate on the "expires_at" field.
+func ExpiresAtIn(vs ...time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIn(FieldExpiresAt, vs...))
+}
+
+// ExpiresAtNotIn applies the NotIn predicate on the "expires_at" field.
+func ExpiresAtNotIn(vs ...time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotIn(FieldExpiresAt, vs...))
+}
+
+// ExpiresAtGT applies the GT predicate on the "expires_at" field.
+func ExpiresAtGT(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGT(FieldExpiresAt, v))
+}
+
+// ExpiresAtGTE applies the GTE predicate on the "expires_at" field.
+func ExpiresAtGTE(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGTE(FieldExpiresAt, v))
+}
+
+// ExpiresAtLT applies the LT predicate on the "expires_at" field.
+func ExpiresAtLT(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLT(FieldExpiresAt, v))
+}
+
+// ExpiresAtLTE applies the LTE predicate on the "expires_at" field.
+func ExpiresAtLTE(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLTE(FieldExpiresAt, v))
+}
+
+// ExpiresAtIsNil applies the IsNil predicate on the "expires_at" field.
+func ExpiresAtIsNil() predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIsNull(FieldExpiresAt))
+}
+
+// ExpiresAtNotNil applies the NotNil predicate on the "expires_at" field.
+func ExpiresAtNotNil() predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotNull(FieldExpiresAt))
+}
+
+// SourceEQ applies the EQ predicate on the "source" field.
+func SourceEQ(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceNEQ applies the NEQ predicate on the "source" field.
+func SourceNEQ(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNEQ(FieldSource, v))
+}
+
+// SourceIn applies the In predicate on the "source" field.
+func SourceIn(vs ...string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIn(FieldSource, vs...))
+}
+
+// SourceNotIn applies the NotIn predicate on the "source" field.
+func SourceNotIn(vs ...string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotIn(FieldSource, vs...))
+}
+
+// SourceGT applies the GT predicate on the "source" field.
+func SourceGT(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGT(FieldSource, v))
+}
+
+// SourceGTE applies the GTE predicate on the "source" field.
+func SourceGTE(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGTE(FieldSource, v))
+}
+
+// SourceLT applies the LT predicate on the "source" field.
+func SourceLT(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLT(FieldSource, v))
+}
+
+// SourceLTE applies the LTE predicate on the "source" field.
+func SourceLTE(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLTE(FieldSource, v))
+}
+
+// SourceContains applies the Contains predicate on the "source" field.
+func SourceContains(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldContains(FieldSource, v))
+}
+
+// SourceHasPrefix applies the HasPrefix predicate on the "source" field.
+func SourceHasPrefix(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldHasPrefix(FieldSource, v))
+}
+
+// SourceHasSuffix applies the HasSuffix predicate on the "source" field.
+func SourceHasSuffix(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldHasSuffix(FieldSource, v))
+}
+
+// SourceEqualFold applies the EqualFold predicate on the "source" field.
+func SourceEqualFold(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEqualFold(FieldSource, v))
+}
+
+// SourceContainsFold applies the ContainsFold predicate on the "source" field.
+func SourceContainsFold(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldContainsFold(FieldSource, v))
+}
+
+// SourceOrderIDEQ applies the EQ predicate on the "source_order_id" field.
+func SourceOrderIDEQ(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldSourceOrderID, v))
+}
+
+// SourceOrderIDNEQ applies the NEQ predicate on the "source_order_id" field.
+func SourceOrderIDNEQ(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNEQ(FieldSourceOrderID, v))
+}
+
+// SourceOrderIDIn applies the In predicate on the "source_order_id" field.
+func SourceOrderIDIn(vs ...int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIn(FieldSourceOrderID, vs...))
+}
+
+// SourceOrderIDNotIn applies the NotIn predicate on the "source_order_id" field.
+func SourceOrderIDNotIn(vs ...int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotIn(FieldSourceOrderID, vs...))
+}
+
+// SourceOrderIDGT applies the GT predicate on the "source_order_id" field.
+func SourceOrderIDGT(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGT(FieldSourceOrderID, v))
+}
+
+// SourceOrderIDGTE applies the GTE predicate on the "source_order_id" field.
+func SourceOrderIDGTE(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGTE(FieldSourceOrderID, v))
+}
+
+// SourceOrderIDLT applies the LT predicate on the "source_order_id" field.
+func SourceOrderIDLT(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLT(FieldSourceOrderID, v))
+}
+
+// SourceOrderIDLTE applies the LTE predicate on the "source_order_id" field.
+func SourceOrderIDLTE(v int64) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLTE(FieldSourceOrderID, v))
+}
+
+// SourceOrderIDIsNil applies the IsNil predicate on the "source_order_id" field.
+func SourceOrderIDIsNil() predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIsNull(FieldSourceOrderID))
+}
+
+// SourceOrderIDNotNil applies the NotNil predicate on the "source_order_id" field.
+func SourceOrderIDNotNil() predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotNull(FieldSourceOrderID))
+}
+
+// NotesEQ applies the EQ predicate on the "notes" field.
+func NotesEQ(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldNotes, v))
+}
+
+// NotesNEQ applies the NEQ predicate on the "notes" field.
+func NotesNEQ(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNEQ(FieldNotes, v))
+}
+
+// NotesIn applies the In predicate on the "notes" field.
+func NotesIn(vs ...string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIn(FieldNotes, vs...))
+}
+
+// NotesNotIn applies the NotIn predicate on the "notes" field.
+func NotesNotIn(vs ...string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotIn(FieldNotes, vs...))
+}
+
+// NotesGT applies the GT predicate on the "notes" field.
+func NotesGT(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGT(FieldNotes, v))
+}
+
+// NotesGTE applies the GTE predicate on the "notes" field.
+func NotesGTE(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGTE(FieldNotes, v))
+}
+
+// NotesLT applies the LT predicate on the "notes" field.
+func NotesLT(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLT(FieldNotes, v))
+}
+
+// NotesLTE applies the LTE predicate on the "notes" field.
+func NotesLTE(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLTE(FieldNotes, v))
+}
+
+// NotesContains applies the Contains predicate on the "notes" field.
+func NotesContains(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldContains(FieldNotes, v))
+}
+
+// NotesHasPrefix applies the HasPrefix predicate on the "notes" field.
+func NotesHasPrefix(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldHasPrefix(FieldNotes, v))
+}
+
+// NotesHasSuffix applies the HasSuffix predicate on the "notes" field.
+func NotesHasSuffix(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldHasSuffix(FieldNotes, v))
+}
+
+// NotesEqualFold applies the EqualFold predicate on the "notes" field.
+func NotesEqualFold(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEqualFold(FieldNotes, v))
+}
+
+// NotesContainsFold applies the ContainsFold predicate on the "notes" field.
+func NotesContainsFold(v string) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldContainsFold(FieldNotes, v))
+}
+
+// UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
+func UpdatedAtEQ(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtNEQ applies the NEQ predicate on the "updated_at" field.
+func UpdatedAtNEQ(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNEQ(FieldUpdatedAt, v))
+}
+
+// UpdatedAtIn applies the In predicate on the "updated_at" field.
+func UpdatedAtIn(vs ...time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtNotIn applies the NotIn predicate on the "updated_at" field.
+func UpdatedAtNotIn(vs ...time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldNotIn(FieldUpdatedAt, vs...))
+}
+
+// UpdatedAtGT applies the GT predicate on the "updated_at" field.
+func UpdatedAtGT(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtGTE applies the GTE predicate on the "updated_at" field.
+func UpdatedAtGTE(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldGTE(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLT applies the LT predicate on the "updated_at" field.
+func UpdatedAtLT(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLT(FieldUpdatedAt, v))
+}
+
+// UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
+func UpdatedAtLTE(v time.Time) predicate.UserAllowedGroup {
+	return predicate.UserAllowedGroup(sql.FieldLTE(FieldUpdatedAt, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

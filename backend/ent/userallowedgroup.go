@@ -23,6 +23,16 @@ type UserAllowedGroup struct {
 	GroupID int64 `json:"group_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// 专属分组授权过期时间；NULL 表示永久授权
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// 授权来源：manual / affiliate_payment_reward
+	Source string `json:"source,omitempty"`
+	// 产生该限时授权的支付订单 ID
+	SourceOrderID *int64 `json:"source_order_id,omitempty"`
+	// 授权备注
+	Notes string `json:"notes,omitempty"`
+	// UpdatedAt holds the value of the "updated_at" field.
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserAllowedGroupQuery when eager-loading is set.
 	Edges        UserAllowedGroupEdges `json:"edges"`
@@ -67,9 +77,11 @@ func (*UserAllowedGroup) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID:
+		case userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID, userallowedgroup.FieldSourceOrderID:
 			values[i] = new(sql.NullInt64)
-		case userallowedgroup.FieldCreatedAt:
+		case userallowedgroup.FieldSource, userallowedgroup.FieldNotes:
+			values[i] = new(sql.NullString)
+		case userallowedgroup.FieldCreatedAt, userallowedgroup.FieldExpiresAt, userallowedgroup.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -103,6 +115,38 @@ func (_m *UserAllowedGroup) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
+			}
+		case userallowedgroup.FieldExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field expires_at", values[i])
+			} else if value.Valid {
+				_m.ExpiresAt = new(time.Time)
+				*_m.ExpiresAt = value.Time
+			}
+		case userallowedgroup.FieldSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field source", values[i])
+			} else if value.Valid {
+				_m.Source = value.String
+			}
+		case userallowedgroup.FieldSourceOrderID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field source_order_id", values[i])
+			} else if value.Valid {
+				_m.SourceOrderID = new(int64)
+				*_m.SourceOrderID = value.Int64
+			}
+		case userallowedgroup.FieldNotes:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field notes", values[i])
+			} else if value.Valid {
+				_m.Notes = value.String
+			}
+		case userallowedgroup.FieldUpdatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
+			} else if value.Valid {
+				_m.UpdatedAt = value.Time
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -157,6 +201,25 @@ func (_m *UserAllowedGroup) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.ExpiresAt; v != nil {
+		builder.WriteString("expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("source=")
+	builder.WriteString(_m.Source)
+	builder.WriteString(", ")
+	if v := _m.SourceOrderID; v != nil {
+		builder.WriteString("source_order_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("notes=")
+	builder.WriteString(_m.Notes)
+	builder.WriteString(", ")
+	builder.WriteString("updated_at=")
+	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteByte(')')
 	return builder.String()
 }

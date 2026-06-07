@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -867,17 +866,185 @@ func normalizedEmailUniquenessLockKey(email string) string {
 }
 
 func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
-	client := clientFromContext(ctx, r.client)
-	err := client.UserAllowedGroup.Create().
-		SetUserID(userID).
-		SetGroupID(groupID).
-		OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
-		DoNothing().
-		Exec(ctx)
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return fmt.Errorf("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+INSERT INTO user_allowed_groups (user_id, group_id, created_at, updated_at, source, expires_at, source_order_id, notes)
+VALUES ($1, $2, NOW(), NOW(), $3, NULL, NULL, '')
+ON CONFLICT (user_id, group_id) DO UPDATE SET
+    source = $3,
+    expires_at = NULL,
+    source_order_id = NULL,
+    updated_at = NOW()
+`, userID, groupID, service.UserAllowedGroupSourceManual)
 	if isSQLNoRowsError(err) {
 		return nil
 	}
 	return err
+}
+
+func (r *userRepository) GrantTemporaryAllowedGroup(ctx context.Context, input service.TemporaryAllowedGroupGrantInput) (*service.TemporaryAllowedGroupGrantResult, error) {
+	if input.UserID <= 0 || input.GroupID <= 0 || input.ValidityDays <= 0 {
+		return nil, fmt.Errorf("invalid temporary allowed group grant input")
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	now := input.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	source := strings.TrimSpace(input.Source)
+	if source == "" {
+		source = service.UserAllowedGroupSourceAffiliatePaymentReward
+	}
+	var sourceOrderID any
+	if input.SourceOrderID != nil {
+		sourceOrderID = *input.SourceOrderID
+	}
+
+	rows, err := exec.QueryContext(ctx, `
+INSERT INTO user_allowed_groups (user_id, group_id, created_at, updated_at, source, source_order_id, notes, expires_at)
+VALUES (
+    $1,
+    $2,
+    $4,
+    $4,
+    $5,
+    $6,
+    $7,
+    LEAST($4::timestamptz + make_interval(days => $3::int), $8::timestamptz)
+)
+ON CONFLICT (user_id, group_id) DO UPDATE SET
+    updated_at = $4,
+    source = CASE
+        WHEN user_allowed_groups.expires_at IS NULL THEN user_allowed_groups.source
+        ELSE EXCLUDED.source
+    END,
+    source_order_id = CASE
+        WHEN user_allowed_groups.expires_at IS NULL THEN user_allowed_groups.source_order_id
+        ELSE EXCLUDED.source_order_id
+    END,
+    notes = CASE
+        WHEN user_allowed_groups.expires_at IS NULL THEN user_allowed_groups.notes
+        WHEN COALESCE(EXCLUDED.notes, '') = '' THEN user_allowed_groups.notes
+        WHEN COALESCE(user_allowed_groups.notes, '') = '' THEN EXCLUDED.notes
+        ELSE user_allowed_groups.notes || E'\n' || EXCLUDED.notes
+    END,
+    expires_at = CASE
+        WHEN user_allowed_groups.expires_at IS NULL THEN NULL
+        WHEN user_allowed_groups.expires_at > $4::timestamptz THEN LEAST(user_allowed_groups.expires_at + make_interval(days => $3::int), $8::timestamptz)
+        ELSE LEAST($4::timestamptz + make_interval(days => $3::int), $8::timestamptz)
+    END
+RETURNING expires_at
+`, input.UserID, input.GroupID, input.ValidityDays, now, source, sourceOrderID, input.Notes, service.MaxExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, sql.ErrNoRows
+	}
+	var expiresAt sql.NullTime
+	if err := rows.Scan(&expiresAt); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := &service.TemporaryAllowedGroupGrantResult{
+		UserID:    input.UserID,
+		GroupID:   input.GroupID,
+		Permanent: !expiresAt.Valid,
+	}
+	if expiresAt.Valid {
+		result.ExpiresAt = &expiresAt.Time
+	}
+	return result, nil
+}
+
+func (r *userRepository) ExpireTemporaryAllowedGroups(ctx context.Context, input service.ExpireTemporaryAllowedGroupsInput) ([]service.ExpiredTemporaryAllowedGroupResult, error) {
+	if input.ReplacementGroupID <= 0 {
+		return nil, fmt.Errorf("replacement group id is required")
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+	now := input.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	source := strings.TrimSpace(input.Source)
+	if source == "" {
+		source = service.UserAllowedGroupSourceAffiliatePaymentReward
+	}
+	limit := input.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+
+	rows, err := exec.QueryContext(ctx, `
+WITH expired AS (
+    SELECT user_id, group_id
+    FROM user_allowed_groups
+    WHERE source = $1
+      AND expires_at IS NOT NULL
+      AND expires_at <= $2
+      AND group_id <> $3
+    ORDER BY expires_at ASC
+    LIMIT $4
+    FOR UPDATE SKIP LOCKED
+),
+migrated AS (
+    UPDATE api_keys k
+    SET group_id = $3,
+        updated_at = $2
+    FROM expired e
+    WHERE k.user_id = e.user_id
+      AND k.group_id = e.group_id
+      AND k.deleted_at IS NULL
+    RETURNING e.user_id, e.group_id, k.id
+),
+deleted AS (
+    DELETE FROM user_allowed_groups uag
+    USING expired e
+    WHERE uag.user_id = e.user_id
+      AND uag.group_id = e.group_id
+    RETURNING e.user_id, e.group_id
+)
+SELECT d.user_id, d.group_id, COUNT(m.id)::bigint AS migrated_keys
+FROM deleted d
+LEFT JOIN migrated m ON m.user_id = d.user_id AND m.group_id = d.group_id
+GROUP BY d.user_id, d.group_id
+ORDER BY d.user_id, d.group_id
+`, source, now, input.ReplacementGroupID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.ExpiredTemporaryAllowedGroupResult, 0)
+	for rows.Next() {
+		var item service.ExpiredTemporaryAllowedGroupResult
+		if err := rows.Scan(&item.UserID, &item.GroupID, &item.MigratedKeys); err != nil {
+			return nil, err
+		}
+		item.ReplacementGroupID = input.ReplacementGroupID
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *userRepository) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
@@ -929,8 +1096,15 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 		return out, nil
 	}
 
-	rows, err := r.client.UserAllowedGroup.Query().
-		Where(userallowedgroup.UserIDIn(userIDs...)).
+	rows, err := clientFromContext(ctx, r.client).UserAllowedGroup.Query().
+		Where(
+			userallowedgroup.UserIDIn(userIDs...),
+			userallowedgroup.Or(
+				userallowedgroup.ExpiresAtIsNil(),
+				userallowedgroup.ExpiresAtGT(time.Now()),
+			),
+		).
+		Order(userallowedgroup.ByUserID(), userallowedgroup.ByGroupID()).
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -938,10 +1112,6 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 
 	for i := range rows {
 		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].GroupID)
-	}
-
-	for userID := range out {
-		sort.Slice(out[userID], func(i, j int) bool { return out[userID][i] < out[userID][j] })
 	}
 
 	return out, nil

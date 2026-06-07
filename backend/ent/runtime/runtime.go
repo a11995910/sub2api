@@ -1916,6 +1916,22 @@ func init() {
 	userallowedgroupDescCreatedAt := userallowedgroupFields[2].Descriptor()
 	// userallowedgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	userallowedgroup.DefaultCreatedAt = userallowedgroupDescCreatedAt.Default.(func() time.Time)
+	// userallowedgroupDescSource is the schema descriptor for source field.
+	userallowedgroupDescSource := userallowedgroupFields[4].Descriptor()
+	// userallowedgroup.DefaultSource holds the default value on creation for the source field.
+	userallowedgroup.DefaultSource = userallowedgroupDescSource.Default.(string)
+	// userallowedgroup.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	userallowedgroup.SourceValidator = userallowedgroupDescSource.Validators[0].(func(string) error)
+	// userallowedgroupDescNotes is the schema descriptor for notes field.
+	userallowedgroupDescNotes := userallowedgroupFields[6].Descriptor()
+	// userallowedgroup.DefaultNotes holds the default value on creation for the notes field.
+	userallowedgroup.DefaultNotes = userallowedgroupDescNotes.Default.(string)
+	// userallowedgroupDescUpdatedAt is the schema descriptor for updated_at field.
+	userallowedgroupDescUpdatedAt := userallowedgroupFields[7].Descriptor()
+	// userallowedgroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userallowedgroup.DefaultUpdatedAt = userallowedgroupDescUpdatedAt.Default.(func() time.Time)
+	// userallowedgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userallowedgroup.UpdateDefaultUpdatedAt = userallowedgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
 	userattributedefinitionMixin := schema.UserAttributeDefinition{}.Mixin()
 	userattributedefinitionMixinHooks1 := userattributedefinitionMixin[1].Hooks()
 	userattributedefinition.Hooks[0] = userattributedefinitionMixinHooks1[0]

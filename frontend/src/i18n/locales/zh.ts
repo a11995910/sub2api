@@ -5748,7 +5748,7 @@ export default {
           perInviteeCap: '单人返利上限',
           perInviteeCapDesc: '每个被邀请用户最多产生的返利总额。0 = 无上限。',
           subscriptionRewardGroup: '支付奖励分组',
-          subscriptionRewardGroupDesc: '被邀请用户支付成功后，为邀请人发放该订阅分组的使用权；不选择则不发放。',
+          subscriptionRewardGroupDesc: '被邀请用户支付成功后，为邀请人发放该分组使用权。标准专属分组按分组倍率正常扣余额；订阅分组按订阅额度消耗。不选择则不发放。',
           subscriptionRewardDays: '支付奖励天数',
           subscriptionRewardDaysDesc: '每次成功邀请并支付后累加的天数。0 = 不发放，过期后自动按默认分组调度。',
           subscriptionRewardDisabled: '不发放分组使用权',
