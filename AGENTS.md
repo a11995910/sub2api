@@ -58,6 +58,7 @@ pnpm --dir frontend install --frozen-lockfile
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
 file backend/bin/server
 shasum -a 256 backend/bin/server
+./backend/bin/server --version
 ```
 
 线上替换前必须从 `/opt/sub2api-src` 拉取同一 Git commit，用于保证运行产物有可追溯源码：
@@ -75,19 +76,26 @@ git rev-parse HEAD
 - 只执行 `go build -tags embed`，但没有重新构建同一次源码对应的前端资源。
 - 从未知源码目录或工作区有未确认改动的目录编译线上二进制。
 - 不备份当前二进制就直接替换挂载文件。
+- 使用 `cp` 直接覆盖仍被容器执行的挂载二进制。
 - 重建 Docker 镜像后直接上线，除非已经确认本次改动确实涉及容器环境。
 
-替换必须先上传新二进制，再备份当前文件：
+如果本地构建环境不可用、确需在 VPS 构建，必须先执行 `/usr/local/bin/prebuild-cleanup` 清理可再生成缓存；默认不设置 `PRUNE_UNUSED_IMAGES=1`，避免误删仍有回滚价值的镜像。
+
+替换必须先上传新二进制并核对 SHA256，再通过同目录临时文件原子替换，避免 `Text file busy`：
 
 ```bash
 scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
 
+live=/opt/sub2api-deploy/custom/sub2api-pool-overview
+candidate=${live}.new
+install -m 0755 /tmp/sub2api-pool-overview.new "$candidate"
+sha256sum /tmp/sub2api-pool-overview.new "$candidate"
+
 ts=$(date +%Y%m%d-%H%M%S)
-cp /opt/sub2api-deploy/custom/sub2api-pool-overview \
-  /opt/sub2api-deploy/custom/sub2api-pool-overview.bak-$ts
-cp /tmp/sub2api-pool-overview.new \
-  /opt/sub2api-deploy/custom/sub2api-pool-overview
-chmod +x /opt/sub2api-deploy/custom/sub2api-pool-overview
+cp -a "$live" "$live.bak-$ts"
+mv -f "$candidate" "$live"
+rm -f /tmp/sub2api-pool-overview.new
+
 cd /opt/sub2api-deploy
 docker compose up -d --force-recreate --no-deps sub2api
 ```

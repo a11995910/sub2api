@@ -1,7 +1,9 @@
 .PHONY: build build-embed generate test test-unit test-integration test-e2e
 
 VERSION ?= $(shell tr -d '\r\n' < ./cmd/server/VERSION)
-LDFLAGS ?= -s -w -X main.Version=$(VERSION)
+COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')
+DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || printf 'unknown')
+LDFLAGS ?= -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.Date=$(DATE)
 
 build:
 	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -trimpath -o bin/server ./cmd/server

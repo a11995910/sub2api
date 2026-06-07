@@ -9,7 +9,9 @@
 - 默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只替换 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
 - 每次上线必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
 - 不允许只执行 `go build -tags embed` 就覆盖线上，除非已经确认前端资源是同一次源码构建生成的最新产物。
-- 替换线上二进制前必须备份当前文件，替换后必须验证容器状态、健康接口、管理端账号页面和日志。
+- 构建产物必须包含 Git commit 和提交时间，`./backend/bin/server --version` 的 commit 必须与待上线 commit 一致。
+- 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。
+- 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
 - 验证通过后必须清理 Docker 构建缓存、未使用镜像和旧二进制备份；只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
 
@@ -124,6 +126,7 @@ pnpm --dir frontend install --frozen-lockfile
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build-deploy
 file backend/bin/server
 shasum -a 256 backend/bin/server
+./backend/bin/server --version
 ```
 
 构建产物位置：
@@ -135,11 +138,14 @@ backend/bin/server
 如果本地构建环境不可用，才允许改用 VPS `/opt/sub2api-src` 构建：
 
 ```bash
+/usr/local/bin/prebuild-cleanup
 cd /opt/sub2api-src
 pnpm --dir frontend install --frozen-lockfile
 make build-deploy
 ./backend/bin/server --version
 ```
+
+`prebuild-cleanup` 默认只清理 Go build cache、apt cache、systemd journal 和 Docker build cache。除非已经确认未使用镜像不再需要回滚，否则不要设置 `PRUNE_UNUSED_IMAGES=1`。
 
 上线前应记录本次构建对应的 Git commit：
 
@@ -159,23 +165,35 @@ git log -1 --oneline
 替换流程：
 
 ```bash
+# 本地执行，并记录完整 commit、构建版本和 SHA256。
+git rev-parse HEAD
+./backend/bin/server --version
+shasum -a 256 backend/bin/server
 scp backend/bin/server root@192.220.24.46:/tmp/sub2api-pool-overview.new
 
+# VPS 执行。expected_commit 必须填写上一步记录的完整 commit。
 cd /opt/sub2api-src
 git status --short
 git pull --ff-only
-git rev-parse HEAD
+expected_commit='填写本地 git rev-parse HEAD 的输出'
+test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 
+live=/opt/sub2api-deploy/custom/sub2api-pool-overview
+candidate=${live}.new
+install -m 0755 /tmp/sub2api-pool-overview.new "$candidate"
+sha256sum /tmp/sub2api-pool-overview.new "$candidate"
+
 ts=$(date +%Y%m%d-%H%M%S)
-cp /opt/sub2api-deploy/custom/sub2api-pool-overview \
-  /opt/sub2api-deploy/custom/sub2api-pool-overview.bak-$ts
-cp /tmp/sub2api-pool-overview.new \
-  /opt/sub2api-deploy/custom/sub2api-pool-overview
-chmod +x /opt/sub2api-deploy/custom/sub2api-pool-overview
+cp -a "$live" "$live.bak-$ts"
+mv -f "$candidate" "$live"
+rm -f /tmp/sub2api-pool-overview.new
+
 cd /opt/sub2api-deploy
 docker compose up -d --force-recreate --no-deps sub2api
 ```
+
+两行 `sha256sum` 的输出必须一致。原子 `mv` 会让现有容器继续使用旧 inode，直到 `force-recreate` 后重新挂载新文件，从而避免直接覆盖运行中二进制导致 `Text file busy`。
 
 如果 Docker Compose 服务名变化，先用 `docker compose ps` 确认实际服务名，再重启对应服务。
 
@@ -184,6 +202,7 @@ docker compose up -d --force-recreate --no-deps sub2api
 ```bash
 cd /opt/sub2api-deploy
 docker compose ps
+/opt/sub2api-deploy/custom/sub2api-pool-overview --version
 curl -I https://fast.youkeduo.site/health
 curl -I https://fast.youkeduo.site/purchase
 curl -I https://fast.youkeduo.site/models
@@ -237,11 +256,11 @@ ls -lt /opt/sub2api-deploy/custom/sub2api-pool-overview*
 如果新版本异常，使用最近一次备份恢复：
 
 ```bash
-cp /opt/sub2api-deploy/custom/sub2api-pool-overview.bak-时间戳 \
-  /opt/sub2api-deploy/custom/sub2api-pool-overview
-chmod +x /opt/sub2api-deploy/custom/sub2api-pool-overview
+live=/opt/sub2api-deploy/custom/sub2api-pool-overview
+install -m 0755 "$live.bak-时间戳" "$live.rollback"
+mv -f "$live.rollback" "$live"
 cd /opt/sub2api-deploy
-docker compose restart sub2api
+docker compose up -d --force-recreate --no-deps sub2api
 docker compose ps
 docker compose logs --tail=200 sub2api
 ```
