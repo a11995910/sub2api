@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 type affiliateRepoSourceStub struct {
 	summaries              map[int64]*AffiliateSummary
+	invitees               []AffiliateInvitee
 	accrueSourceOrderID    *int64
 	accrueSourceRedeemCode *int64
 }
@@ -44,7 +46,7 @@ func (r *affiliateRepoSourceStub) GetAccruedRebateFromInvitee(context.Context, i
 }
 
 func (r *affiliateRepoSourceStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
-	panic("unexpected ThawFrozenQuota call")
+	return 0, nil
 }
 
 func (r *affiliateRepoSourceStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
@@ -52,7 +54,7 @@ func (r *affiliateRepoSourceStub) TransferQuotaToBalance(context.Context, int64)
 }
 
 func (r *affiliateRepoSourceStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
-	panic("unexpected ListInvitees call")
+	return r.invitees, nil
 }
 
 func (r *affiliateRepoSourceStub) UpdateUserAffCode(context.Context, int64, string) error {
@@ -193,6 +195,87 @@ func TestAffiliateSubscriptionRewardConfigAndInviter(t *testing.T) {
 	gotInviterID, err := svc.ResolveInviterID(ctx, inviteeID)
 	require.NoError(t, err)
 	require.Equal(t, inviterID, gotInviterID)
+}
+
+type affiliateRewardGroupReaderStub struct {
+	group *Group
+}
+
+func (s affiliateRewardGroupReaderStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	if s.group == nil || s.group.ID != id {
+		return nil, ErrGroupNotFound
+	}
+	return s.group, nil
+}
+
+func TestGetAffiliateDetailIncludesPaymentReward(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cases := []struct {
+		name       string
+		group      *Group
+		wantMode   string
+		wantRate   float64
+		wantGroup  string
+		wantUserID int64
+	}{
+		{
+			name: "标准专属分组按倍率扣余额",
+			group: &Group{
+				ID:               9,
+				Name:             "VIP 专线",
+				IsExclusive:      true,
+				Status:           StatusActive,
+				SubscriptionType: SubscriptionTypeStandard,
+				RateMultiplier:   0.7,
+			},
+			wantMode:   "standard_group_access",
+			wantRate:   0.7,
+			wantGroup:  "VIP 专线",
+			wantUserID: 10,
+		},
+		{
+			name: "订阅分组按订阅额度消耗",
+			group: &Group{
+				ID:               12,
+				Name:             "Claude 订阅",
+				Status:           StatusActive,
+				SubscriptionType: SubscriptionTypeSubscription,
+				RateMultiplier:   1,
+			},
+			wantMode:   "subscription_quota",
+			wantRate:   1,
+			wantGroup:  "Claude 订阅",
+			wantUserID: 11,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+				SettingKeyAffiliateEnabled:                 "true",
+				SettingKeyAffiliateSubscriptionRewardGroup: strconv.FormatInt(tc.group.ID, 10),
+				SettingKeyAffiliateSubscriptionRewardDays:  "5",
+			}}, &config.Config{})
+			repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+				tc.wantUserID: {UserID: tc.wantUserID, AffCode: "AFF-CODE", CreatedAt: time.Now()},
+			}}
+			svc := NewAffiliateService(repo, settingSvc, nil, nil)
+			svc.SetRewardGroupReader(affiliateRewardGroupReaderStub{group: tc.group})
+
+			detail, err := svc.GetAffiliateDetail(ctx, tc.wantUserID)
+			require.NoError(t, err)
+			require.NotNil(t, detail.PaymentReward)
+			require.Equal(t, tc.group.ID, detail.PaymentReward.GroupID)
+			require.Equal(t, tc.wantGroup, detail.PaymentReward.GroupName)
+			require.Equal(t, 5, detail.PaymentReward.ValidityDays)
+			require.Equal(t, tc.wantMode, detail.PaymentReward.RewardMode)
+			require.InDelta(t, tc.wantRate, detail.PaymentReward.RateMultiplier, 1e-9)
+		})
+	}
 }
 
 // TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by

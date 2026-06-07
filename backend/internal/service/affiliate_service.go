@@ -91,7 +91,16 @@ type AffiliateDetail struct {
 	// 优先用户自己的专属比例（aff_rebate_rate_percent），否则回退到全局比例。
 	// 用于在用户的 /affiliate 页面直观展示「分享后能拿到多少」。
 	EffectiveRebateRatePercent float64            `json:"effective_rebate_rate_percent"`
+	PaymentReward              *AffiliateReward   `json:"payment_reward,omitempty"`
 	Invitees                   []AffiliateInvitee `json:"invitees"`
+}
+
+type AffiliateReward struct {
+	GroupID        int64   `json:"group_id"`
+	GroupName      string  `json:"group_name"`
+	ValidityDays   int     `json:"validity_days"`
+	RewardMode     string  `json:"reward_mode"`
+	RateMultiplier float64 `json:"rate_multiplier"`
 }
 
 type AffiliateRepository interface {
@@ -217,6 +226,7 @@ type AffiliateSubscriptionRewardConfig struct {
 type AffiliateService struct {
 	repo                 AffiliateRepository
 	settingService       *SettingService
+	rewardGroupReader    SettingsGroupReader
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCacheService  *BillingCacheService
 }
@@ -228,6 +238,10 @@ func NewAffiliateService(repo AffiliateRepository, settingService *SettingServic
 		authCacheInvalidator: authCacheInvalidator,
 		billingCacheService:  billingCacheService,
 	}
+}
+
+func (s *AffiliateService) SetRewardGroupReader(reader SettingsGroupReader) {
+	s.rewardGroupReader = reader
 }
 
 // IsEnabled reports whether the affiliate (邀请返利) feature is turned on.
@@ -272,6 +286,7 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 		AffFrozenQuota:             summary.AffFrozenQuota,
 		AffHistoryQuota:            summary.AffHistoryQuota,
 		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
+		PaymentReward:              s.resolvePaymentReward(ctx),
 		Invitees:                   invitees,
 	}, nil
 }
@@ -413,6 +428,31 @@ func (s *AffiliateService) GetSubscriptionRewardConfig(ctx context.Context) Affi
 		return AffiliateSubscriptionRewardConfig{}
 	}
 	return AffiliateSubscriptionRewardConfig{GroupID: groupID, ValidityDays: days}
+}
+
+func (s *AffiliateService) resolvePaymentReward(ctx context.Context) *AffiliateReward {
+	if s == nil || s.rewardGroupReader == nil {
+		return nil
+	}
+	cfg := s.GetSubscriptionRewardConfig(ctx)
+	if cfg.GroupID <= 0 || cfg.ValidityDays <= 0 {
+		return nil
+	}
+	group, err := s.rewardGroupReader.GetByID(ctx, cfg.GroupID)
+	if err != nil || group == nil || !group.IsActive() || (!group.IsSubscriptionType() && !group.IsExclusive) {
+		return nil
+	}
+	rewardMode := "standard_group_access"
+	if group.IsSubscriptionType() {
+		rewardMode = "subscription_quota"
+	}
+	return &AffiliateReward{
+		GroupID:        group.ID,
+		GroupName:      group.Name,
+		ValidityDays:   cfg.ValidityDays,
+		RewardMode:     rewardMode,
+		RateMultiplier: group.RateMultiplier,
+	}
 }
 
 func (s *AffiliateService) ResolveInviterID(ctx context.Context, inviteeUserID int64) (int64, error) {

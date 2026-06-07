@@ -1284,7 +1284,10 @@ export default {
       line1: '将邀请码或邀请链接分享给新用户。',
       line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
       line3: '返利额度可随时转入账户余额。',
-      line4: '新产生的返利需要经过冻结期后才能提现。'
+      line4: '新产生的返利需要经过冻结期后才能提现。',
+      paymentRewardStandard: '被邀请用户完成支付后，你还会获得 {days} 天「{group}」使用权；请求按该分组 {rate} 倍率正常扣余额，天数可累加，到期后自动回到默认分组。',
+      paymentRewardSubscription: '被邀请用户完成支付后，你还会获得 {days} 天「{group}」订阅使用权；请求按订阅额度消耗，天数可累加。',
+      rewardGroupFallback: '分组 #{id}'
     }
   },
 

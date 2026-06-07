@@ -461,6 +461,13 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+// ProvideAffiliateService wires affiliate rewards with the group reader used for user-facing reward descriptions.
+func ProvideAffiliateService(repo AffiliateRepository, settingService *SettingService, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCacheService *BillingCacheService) *AffiliateService {
+	svc := NewAffiliateService(repo, settingService, authCacheInvalidator, billingCacheService)
+	svc.SetRewardGroupReader(groupRepo)
+	return svc
+}
+
 // ProvideBillingCacheService wires BillingCacheService with its RPM dependencies.
 func ProvideBillingCacheService(
 	cache BillingCache,
@@ -578,7 +585,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelService,
 	NewModelPricingResolver,
 	NewContentModerationService,
-	NewAffiliateService,
+	ProvideAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,

@@ -78,7 +78,10 @@
               <li>1. {{ t('affiliate.tips.line1') }}</li>
               <li>2. {{ t('affiliate.tips.line2', { rate: `${formattedRebateRate}%` }) }}</li>
               <li>3. {{ t('affiliate.tips.line3') }}</li>
-              <li v-if="detail.aff_frozen_quota > 0">4. {{ t('affiliate.tips.line4') }}</li>
+              <li v-if="paymentRewardTip">4. {{ paymentRewardTip }}</li>
+              <li v-if="detail.aff_frozen_quota > 0">
+                {{ paymentRewardTip ? 5 : 4 }}. {{ t('affiliate.tips.line4') }}
+              </li>
             </ul>
           </div>
         </div>
@@ -175,8 +178,31 @@ const formattedRebateRate = computed(() => {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
 })
 
+const paymentRewardTip = computed(() => {
+  const reward = detail.value?.payment_reward
+  if (!reward || reward.validity_days <= 0 || reward.group_id <= 0) return ''
+  const groupName = reward.group_name?.trim() || t('affiliate.tips.rewardGroupFallback', { id: reward.group_id })
+  if (reward.reward_mode === 'subscription_quota') {
+    return t('affiliate.tips.paymentRewardSubscription', {
+      days: reward.validity_days,
+      group: groupName,
+    })
+  }
+  return t('affiliate.tips.paymentRewardStandard', {
+    days: reward.validity_days,
+    group: groupName,
+    rate: formatRateMultiplier(reward.rate_multiplier),
+  })
+})
+
 function formatCount(value: number): string {
   return value.toLocaleString()
+}
+
+function formatRateMultiplier(value: number | null | undefined): string {
+  const normalized = Number.isFinite(Number(value)) ? Number(value) : 1
+  const rounded = Math.round(normalized * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
 }
 
 async function loadAffiliateDetail(silent = false): Promise<void> {

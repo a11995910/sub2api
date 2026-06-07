@@ -1280,7 +1280,10 @@ export default {
       line1: 'Share your affiliate code or invite link with new users.',
       line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
-      line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
+      line4: 'Newly earned rebates may have a waiting period before they can be transferred.',
+      paymentRewardStandard: 'When an invitee completes a payment, you also get {days} days of access to "{group}". Requests use your balance at the group rate multiplier {rate}; days stack and expire back to the default group.',
+      paymentRewardSubscription: 'When an invitee completes a payment, you also get {days} days of "{group}" subscription access. Requests consume subscription quota, and days stack.',
+      rewardGroupFallback: 'Group #{id}'
     }
   },
 
