@@ -96,6 +96,7 @@ func (h *CreativeDrawingHandler) GetPromptMarketLibrary(c *gin.Context) {
 	if strings.TrimSpace(contentType) == "" {
 		contentType = "application/octet-stream"
 	}
+	c.Header("Cache-Control", "public, max-age=300")
 	c.Data(http.StatusOK, contentType, data)
 }
 

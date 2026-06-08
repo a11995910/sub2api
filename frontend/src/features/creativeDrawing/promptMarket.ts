@@ -317,7 +317,7 @@ function mergeAwesomePrompts(...groups: AwesomePromptDraft[][]) {
 }
 
 export async function fetchBananaPrompts(signal?: AbortSignal) {
-  const response = await fetch(`${PROMPT_MARKET_API_URL}/libraries/a/prompts`, {
+  const response = await fetch(`${PROMPT_MARKET_API_URL}/libraries/library-a/prompts`, {
     signal,
     headers: {
       Accept: 'application/json'
@@ -340,13 +340,13 @@ export async function fetchBananaPrompts(signal?: AbortSignal) {
 
 export async function fetchAwesomeGptImage2Prompts(signal?: AbortSignal) {
   const [zhResponse, enResponse] = await Promise.all([
-    fetch(`${PROMPT_MARKET_API_URL}/libraries/b/prompts/zh-CN`, {
+    fetch(`${PROMPT_MARKET_API_URL}/libraries/library-b/prompts/zh-CN`, {
       signal,
       headers: {
         Accept: 'text/markdown,text/plain'
       }
     }),
-    fetch(`${PROMPT_MARKET_API_URL}/libraries/b/prompts/en`, {
+    fetch(`${PROMPT_MARKET_API_URL}/libraries/library-b/prompts/en`, {
       signal,
       headers: {
         Accept: 'text/markdown,text/plain'

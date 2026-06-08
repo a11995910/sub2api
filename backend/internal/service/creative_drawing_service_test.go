@@ -165,6 +165,76 @@ func TestNormalizeCreativeDrawingImageResultsCleansPersistedURLFromB64JSON(t *te
 	require.Equal(t, "http://192.0.2.10:3000/images/generated.png", images[0].SourceURL)
 }
 
+func TestResolveCreativeDrawingPromptMarketAssetURLUsesWhitelistedRepositories(t *testing.T) {
+	tests := []struct {
+		name       string
+		library    string
+		assetPath  string
+		wantPrefix string
+		wantPath   string
+	}{
+		{
+			name:       "library-a",
+			library:    "library-a",
+			assetPath:  "/images/example.png",
+			wantPrefix: creativeDrawingPromptMarketBananaRawBaseURL,
+			wantPath:   "images/example.png",
+		},
+		{
+			name:       "library-a legacy alias",
+			library:    "a",
+			assetPath:  "images/example.png",
+			wantPrefix: creativeDrawingPromptMarketBananaRawBaseURL,
+			wantPath:   "images/example.png",
+		},
+		{
+			name:       "library-b new repository",
+			library:    "library-b",
+			assetPath:  "api/images/poster_case151/output.jpg",
+			wantPrefix: creativeDrawingPromptMarketAwesomeAPIBaseURL,
+			wantPath:   "images/poster_case151/output.jpg",
+		},
+		{
+			name:       "library-b legacy repository",
+			library:    "b",
+			assetPath:  "prompts/images/poster_case151/output.jpg",
+			wantPrefix: creativeDrawingPromptMarketAwesomePromptsBaseURL,
+			wantPath:   "images/poster_case151/output.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveCreativeDrawingPromptMarketAssetURL(tt.library, tt.assetPath)
+			require.NoError(t, err)
+			want, err := joinCreativeDrawingPromptMarketURL(tt.wantPrefix, tt.wantPath)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestResolveCreativeDrawingPromptMarketAssetURLRejectsUnsafePath(t *testing.T) {
+	_, err := resolveCreativeDrawingPromptMarketAssetURL("library-b", "https://example.com/image.png")
+	require.Error(t, err)
+
+	_, err = resolveCreativeDrawingPromptMarketAssetURL("library-b", "images/output.jpg")
+	require.Error(t, err)
+}
+
+func TestRewriteCreativeDrawingPromptMarketContentUsesLocalAssetProxy(t *testing.T) {
+	raw := []byte(
+		creativeDrawingPromptMarketAwesomeAPIBaseURL + "images/case/output.jpg\n" +
+			creativeDrawingPromptMarketAwesomePromptsBaseURL + "images/legacy/output.jpg",
+	)
+
+	got := string(rewriteCreativeDrawingPromptMarketContent("library-b", raw))
+
+	require.Contains(t, got, "/api/v1/creative-drawing/prompt-market/assets/library-b/api/images/case/output.jpg")
+	require.Contains(t, got, "/api/v1/creative-drawing/prompt-market/assets/library-b/prompts/images/legacy/output.jpg")
+	require.NotContains(t, got, "raw.githubusercontent.com")
+}
+
 func TestParseCreativeDrawingGatewayImagesReturnsSuccessErrorPayload(t *testing.T) {
 	_, err := parseCreativeDrawingGatewayImages([]byte(
 		`{"error":{"code":"upstream_error","message":"upstream returned Cloudflare challenge page"}}`,

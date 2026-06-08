@@ -8,13 +8,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterUserRoutes 注册用户相关路由（需要认证）
+// RegisterUserRoutes 注册用户侧路由；模板市场为公开只读，其余用户业务接口需要认证。
 func RegisterUserRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	// 创意绘图热门模板只代理白名单仓库的公开素材；图片标签无法携带 JWT，
+	// 因此模板文本与图片资源保持公开只读，任务接口仍放在认证分组内。
+	promptMarket := v1.Group("/creative-drawing/prompt-market")
+	{
+		promptMarket.GET("/libraries/:library/prompts", h.CreativeDrawing.GetPromptMarketLibrary)
+		promptMarket.GET("/libraries/:library/prompts/:language", h.CreativeDrawing.GetPromptMarketLibrary)
+		promptMarket.GET("/assets/:library/*path", h.CreativeDrawing.GetPromptMarketAsset)
+	}
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -110,13 +119,6 @@ func RegisterUserRoutes(
 		// 创意绘图任务
 		creativeDrawing := authenticated.Group("/creative-drawing")
 		{
-			promptMarket := creativeDrawing.Group("/prompt-market")
-			{
-				promptMarket.GET("/libraries/:library/prompts", h.CreativeDrawing.GetPromptMarketLibrary)
-				promptMarket.GET("/libraries/:library/prompts/:language", h.CreativeDrawing.GetPromptMarketLibrary)
-				promptMarket.GET("/assets/:library/*path", h.CreativeDrawing.GetPromptMarketAsset)
-			}
-
 			tasks := creativeDrawing.Group("/tasks")
 			{
 				tasks.GET("", h.CreativeDrawing.ListTasks)

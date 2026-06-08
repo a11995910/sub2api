@@ -42,8 +42,8 @@ const (
 
 const (
 	creativeDrawingPromptMarketBananaPromptsURL      = "https://raw.githubusercontent.com/glidea/banana-prompt-quicker/main/prompts.json"
-	creativeDrawingPromptMarketAwesomeZhURL          = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/README_zh-CN.md"
-	creativeDrawingPromptMarketAwesomeEnURL          = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/README.md"
+	creativeDrawingPromptMarketAwesomeZhURL          = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-API-and-Prompts/main/README_zh-CN.md"
+	creativeDrawingPromptMarketAwesomeEnURL          = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-API-and-Prompts/main/README.md"
 	creativeDrawingPromptMarketBananaRawBaseURL      = "https://raw.githubusercontent.com/glidea/banana-prompt-quicker/main/"
 	creativeDrawingPromptMarketAwesomeAPIBaseURL     = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-API-and-Prompts/main/"
 	creativeDrawingPromptMarketAwesomePromptsBaseURL = "https://raw.githubusercontent.com/EvoLinkAI/awesome-gpt-image-2-prompts/main/"
@@ -155,11 +155,12 @@ func (s *CreativeDrawingService) ListTasks(ctx context.Context, userID int64, li
 }
 
 func (s *CreativeDrawingService) FetchPromptMarketLibrary(ctx context.Context, library string, language string) ([]byte, string, error) {
+	library = normalizeCreativeDrawingPromptMarketLibraryAlias(library)
 	sourceURL := ""
-	switch strings.TrimSpace(library) {
-	case "a":
+	switch library {
+	case "library-a":
 		sourceURL = creativeDrawingPromptMarketBananaPromptsURL
-	case "b":
+	case "library-b":
 		switch strings.TrimSpace(language) {
 		case "zh-CN":
 			sourceURL = creativeDrawingPromptMarketAwesomeZhURL
@@ -610,7 +611,7 @@ func normalizeCreativeDrawingReferences(input []CreativeDrawingReference) []Crea
 }
 
 func resolveCreativeDrawingPromptMarketAssetURL(libraryAlias string, assetPath string) (string, error) {
-	library := strings.TrimSpace(libraryAlias)
+	library := normalizeCreativeDrawingPromptMarketLibraryAlias(libraryAlias)
 	cleanPath, err := cleanCreativeDrawingPromptMarketAssetPath(assetPath)
 	if err != nil {
 		return "", err
@@ -632,6 +633,17 @@ func resolveCreativeDrawingPromptMarketAssetURL(libraryAlias string, assetPath s
 		}
 	default:
 		return "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_LIBRARY_INVALID", "invalid prompt market library")
+	}
+}
+
+func normalizeCreativeDrawingPromptMarketLibraryAlias(value string) string {
+	switch strings.TrimSpace(value) {
+	case "a", "library-a":
+		return "library-a"
+	case "b", "library-b":
+		return "library-b"
+	default:
+		return strings.TrimSpace(value)
 	}
 }
 
@@ -661,11 +673,11 @@ func joinCreativeDrawingPromptMarketURL(baseURL string, assetPath string) (strin
 
 func rewriteCreativeDrawingPromptMarketContent(library string, body []byte) []byte {
 	text := string(body)
-	switch strings.TrimSpace(library) {
-	case "a":
+	switch normalizeCreativeDrawingPromptMarketLibraryAlias(library) {
+	case "library-a":
 		text = strings.ReplaceAll(text, "https://cdn.jsdelivr.net/gh/glidea/banana-prompt-quicker@main/", "/api/v1/creative-drawing/prompt-market/assets/library-a/")
 		text = strings.ReplaceAll(text, creativeDrawingPromptMarketBananaRawBaseURL, "/api/v1/creative-drawing/prompt-market/assets/library-a/")
-	case "b":
+	case "library-b":
 		text = strings.ReplaceAll(text, creativeDrawingPromptMarketAwesomeAPIBaseURL, "/api/v1/creative-drawing/prompt-market/assets/library-b/api/")
 		text = strings.ReplaceAll(text, creativeDrawingPromptMarketAwesomePromptsBaseURL, "/api/v1/creative-drawing/prompt-market/assets/library-b/prompts/")
 	}
