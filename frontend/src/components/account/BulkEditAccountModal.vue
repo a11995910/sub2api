@@ -17,7 +17,14 @@
               d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: targetMode === 'filtered' ? targetPreviewCount : accountIds.length }) }}
+          {{
+            t(
+              targetMode === 'filtered'
+                ? 'admin.accounts.bulkEdit.filteredSelectionInfo'
+                : 'admin.accounts.bulkEdit.selectionInfo',
+              { count: targetMode === 'filtered' ? targetPreviewCount : accountIds.length }
+            )
+          }}
         </p>
       </div>
 
@@ -1113,7 +1120,13 @@
             />
           </svg>
           {{
-            submitting ? t('admin.accounts.bulkEdit.updating') : t('admin.accounts.bulkEdit.submit')
+            submitting
+              ? t('admin.accounts.bulkEdit.updating')
+              : t(
+                targetMode === 'filtered'
+                  ? 'admin.accounts.bulkEdit.updateFiltered'
+                  : 'admin.accounts.bulkEdit.updateSelected'
+              )
           }}
         </button>
       </div>

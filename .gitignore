@@ -120,6 +120,8 @@ tests
 CLAUDE.md
 .claude
 scripts
+!skills/sub2api-admin/scripts/
+!skills/sub2api-admin/scripts/**
 .code-review-state
 #openspec/
 code-reviews/

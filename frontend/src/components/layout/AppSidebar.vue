@@ -694,6 +694,21 @@ const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
+const drawingWorkflowMenuLabel = '绘画工作流'
+
+function isDrawingWorkflowCustomMenu(item: { label: string }): boolean {
+  return item.label === drawingWorkflowMenuLabel
+}
+
+function customMenuToNavItem(item: { id: string; label: string; icon_svg: string }): NavItem {
+  return {
+    path: `/custom/${item.id}`,
+    label: item.label,
+    icon: null,
+    iconSvg: item.icon_svg,
+  }
+}
+
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
@@ -701,6 +716,13 @@ const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 // 模型广场聚合展示模型、分组与倍率后价格，用户侧不再暴露渠道名和渠道状态。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
+  const placeDrawingWorkflowAfterCreativeDrawing = !authStore.isSimpleMode
+  const drawingWorkflowMenuItems = placeDrawingWorkflowAfterCreativeDrawing
+    ? customMenuItemsForUser.value.filter(isDrawingWorkflowCustomMenu)
+    : []
+  const tailCustomMenuItems = placeDrawingWorkflowAfterCreativeDrawing
+    ? customMenuItemsForUser.value.filter(item => !isDrawingWorkflowCustomMenu(item))
+    : customMenuItemsForUser.value
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
@@ -709,6 +731,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/models', label: t('nav.modelMarket'), icon: ChannelIcon, hideInSimpleMode: true },
     { path: '/creative-drawing', label: t('nav.creativeDrawing'), icon: ImageMagicIcon, hideInSimpleMode: true },
+    ...drawingWorkflowMenuItems.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true },
@@ -718,12 +741,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/checkin', label: t('nav.checkin'), icon: CalendarCheckIcon, hideInSimpleMode: true, featureFlag: flagCheckin },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
-      path: `/custom/${item.id}`,
-      label: item.label,
-      icon: null,
-      iconSvg: item.icon_svg,
-    })),
+    ...tailCustomMenuItems.map(customMenuToNavItem),
   )
   return items
 }

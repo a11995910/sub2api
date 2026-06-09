@@ -30,3 +30,15 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar 自定义菜单顺序', () => {
+  it('将绘画工作流自定义菜单放在创意绘图之后', () => {
+    const creativeDrawingIndex = componentSource.indexOf("path: '/creative-drawing'")
+    const drawingWorkflowIndex = componentSource.indexOf('...drawingWorkflowMenuItems.map(customMenuToNavItem)')
+    const modelTestIndex = componentSource.indexOf("path: '/model-test'")
+
+    expect(creativeDrawingIndex).toBeGreaterThanOrEqual(0)
+    expect(drawingWorkflowIndex).toBeGreaterThan(creativeDrawingIndex)
+    expect(modelTestIndex).toBeGreaterThan(drawingWorkflowIndex)
+  })
+})
