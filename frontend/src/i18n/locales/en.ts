@@ -3100,7 +3100,7 @@ export default {
     // Upstream Rate Monitor
     upstreamRateMonitor: {
       title: 'Upstream Rate Monitor',
-      description: 'Monitor group counts and rate snapshots from upstream Sub2API-compatible sites',
+      description: 'Monitor visible group counts and effective rate snapshots for upstream Sub2API accounts',
       searchPlaceholder: 'Search name, URL, or account...',
       allEnabled: 'All status',
       onlyEnabled: 'Enabled only',
@@ -3146,7 +3146,7 @@ export default {
         baseUrl: 'Upstream URL',
         baseUrlPlaceholder: 'https://example.com',
         username: 'Account',
-        usernamePlaceholder: 'Admin email or account',
+        usernamePlaceholder: 'Upstream login email or account',
         password: 'Password',
         passwordPlaceholder: 'Enter upstream login password',
         passwordEditPlaceholder: 'Leave blank to keep current password',
@@ -3170,7 +3170,7 @@ export default {
         image: 'Image',
         superResolution: 'Super Resolution',
         emptyTitle: 'No rate snapshot',
-        emptyDescription: 'Click refresh to log in upstream and read its group rates.',
+        emptyDescription: 'Click refresh to log in upstream and read the account-visible groups and effective rates.',
         columns: {
           group: 'Group',
           platform: 'Platform',

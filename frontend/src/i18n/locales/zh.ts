@@ -3177,7 +3177,7 @@ export default {
     // Upstream Rate Monitor
     upstreamRateMonitor: {
       title: '上游倍率监控',
-      description: '集中监控同类 Sub2API 上游站点的分组数量与倍率快照',
+      description: '集中监控同类 Sub2API 上游账号可用分组数量与有效倍率快照',
       searchPlaceholder: '搜索名称、URL 或账号...',
       allEnabled: '全部状态',
       onlyEnabled: '仅启用',
@@ -3223,7 +3223,7 @@ export default {
         baseUrl: '上游 URL',
         baseUrlPlaceholder: 'https://example.com',
         username: '账号',
-        usernamePlaceholder: '管理员登录邮箱或账号',
+        usernamePlaceholder: '上游登录邮箱或账号',
         password: '密码',
         passwordPlaceholder: '请输入上游登录密码',
         passwordEditPlaceholder: '留空表示不修改',
@@ -3247,7 +3247,7 @@ export default {
         image: '图片',
         superResolution: '超分',
         emptyTitle: '暂无倍率快照',
-        emptyDescription: '点击立即刷新后，系统会登录上游并读取其分组倍率。',
+        emptyDescription: '点击立即刷新后，系统会登录上游并读取该账号可用分组及有效倍率。',
         columns: {
           group: '分组',
           platform: '平台',

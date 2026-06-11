@@ -188,8 +188,15 @@ func (s *UpstreamRateMonitorService) fetchSnapshot(ctx context.Context, m *Upstr
 	if err != nil {
 		return nil, err
 	}
-	groups, err := s.fetchGroups(ctx, m.BaseURL, token)
+	groups, err := s.fetchAvailableGroups(ctx, m.BaseURL, token)
 	if err != nil {
+		return nil, err
+	}
+	rates, err := s.fetchUserGroupRates(ctx, m.BaseURL, token)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyUpstreamGroupRateOverrides(groups, rates); err != nil {
 		return nil, err
 	}
 	return groups, nil
@@ -217,40 +224,46 @@ func (s *UpstreamRateMonitorService) login(ctx context.Context, m *UpstreamRateM
 	return token, nil
 }
 
-func (s *UpstreamRateMonitorService) fetchGroups(ctx context.Context, baseURL, token string) (UpstreamRateSnapshot, error) {
-	page := 1
-	pageSize := 1000
-	out := make(UpstreamRateSnapshot, 0)
-	for {
-		endpoint := joinUpstreamPath(baseURL, "/api/v1/admin/groups")
-		u, err := url.Parse(endpoint)
-		if err != nil {
-			return nil, err
-		}
-		q := u.Query()
-		q.Set("page", strconv.Itoa(page))
-		q.Set("page_size", strconv.Itoa(pageSize))
-		q.Set("sort_by", "sort_order")
-		q.Set("sort_order", "asc")
-		u.RawQuery = q.Encode()
-
-		var env upstreamGroupsEnvelope
-		if err := s.doJSON(ctx, http.MethodGet, u.String(), token, nil, &env); err != nil {
-			return nil, fmt.Errorf("fetch upstream groups failed: %w", err)
-		}
-		if err := validateUpstreamAPIEnvelope(env.Code, env.Message); err != nil {
-			return nil, fmt.Errorf("fetch upstream groups failed: %w", err)
-		}
-		out = append(out, env.Data.Items...)
-		if !env.Data.HasNextPage(page, pageSize) {
-			break
-		}
-		page++
-		if page > 100 {
-			return nil, fmt.Errorf("upstream groups pagination exceeded limit")
-		}
+func (s *UpstreamRateMonitorService) fetchAvailableGroups(ctx context.Context, baseURL, token string) (UpstreamRateSnapshot, error) {
+	var env upstreamAvailableGroupsEnvelope
+	if err := s.doJSON(ctx, http.MethodGet, joinUpstreamPath(baseURL, "/api/v1/groups/available"), token, nil, &env); err != nil {
+		return nil, fmt.Errorf("fetch upstream available groups failed: %w", err)
 	}
-	return out, nil
+	if err := validateUpstreamAPIEnvelope(env.Code, env.Message); err != nil {
+		return nil, fmt.Errorf("fetch upstream available groups failed: %w", err)
+	}
+	if env.Data == nil {
+		return UpstreamRateSnapshot{}, nil
+	}
+	return env.Data, nil
+}
+
+func (s *UpstreamRateMonitorService) fetchUserGroupRates(ctx context.Context, baseURL, token string) (map[int64]float64, error) {
+	var env upstreamUserGroupRatesEnvelope
+	if err := s.doJSON(ctx, http.MethodGet, joinUpstreamPath(baseURL, "/api/v1/groups/rates"), token, nil, &env); err != nil {
+		return nil, fmt.Errorf("fetch upstream user group rates failed: %w", err)
+	}
+	if err := validateUpstreamAPIEnvelope(env.Code, env.Message); err != nil {
+		return nil, fmt.Errorf("fetch upstream user group rates failed: %w", err)
+	}
+	return env.Data, nil
+}
+
+func applyUpstreamGroupRateOverrides(snapshot UpstreamRateSnapshot, rates map[int64]float64) error {
+	if len(snapshot) == 0 || len(rates) == 0 {
+		return nil
+	}
+	for i := range snapshot {
+		rate, ok := rates[snapshot[i].ID]
+		if !ok {
+			continue
+		}
+		if rate <= 0 {
+			return fmt.Errorf("invalid upstream user group rate for group %d", snapshot[i].ID)
+		}
+		snapshot[i].RateMultiplier = rate
+	}
+	return nil
 }
 
 func (s *UpstreamRateMonitorService) doJSON(ctx context.Context, method, endpoint, token string, payload any, out any) error {
@@ -305,36 +318,16 @@ type upstreamLoginEnvelope struct {
 	} `json:"data"`
 }
 
-type upstreamGroupsEnvelope struct {
-	Code    int                `json:"code"`
-	Message string             `json:"message"`
-	Data    upstreamGroupsData `json:"data"`
+type upstreamAvailableGroupsEnvelope struct {
+	Code    int                  `json:"code"`
+	Message string               `json:"message"`
+	Data    UpstreamRateSnapshot `json:"data"`
 }
 
-type upstreamGroupsData struct {
-	Items    []UpstreamRateGroupSnapshot `json:"items"`
-	Total    int64                       `json:"total"`
-	Page     int                         `json:"page"`
-	PageSize int                         `json:"page_size"`
-	Pages    int                         `json:"pages"`
-}
-
-func (d upstreamGroupsData) HasNextPage(fallbackPage, fallbackPageSize int) bool {
-	page := d.Page
-	if page <= 0 {
-		page = fallbackPage
-	}
-	pageSize := d.PageSize
-	if pageSize <= 0 {
-		pageSize = fallbackPageSize
-	}
-	if d.Pages > 0 {
-		return page < d.Pages
-	}
-	if d.Total > 0 {
-		return int64(page*pageSize) < d.Total
-	}
-	return false
+type upstreamUserGroupRatesEnvelope struct {
+	Code    int               `json:"code"`
+	Message string            `json:"message"`
+	Data    map[int64]float64 `json:"data"`
 }
 
 func normalizeUpstreamBaseURL(raw string) (string, error) {
