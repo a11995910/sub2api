@@ -560,6 +560,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/upstream-rate-monitors',
+    name: 'AdminUpstreamRateMonitors',
+    component: () => import('@/views/admin/UpstreamRateMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Upstream Rate Monitor',
+      titleKey: 'admin.upstreamRateMonitor.title',
+      descriptionKey: 'admin.upstreamRateMonitor.description'
+    }
+  },
+  {
     path: '/admin/announcements',
     name: 'AdminAnnouncements',
     component: () => import('@/views/admin/AnnouncementsView.vue'),

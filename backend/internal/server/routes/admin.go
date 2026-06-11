@@ -98,6 +98,9 @@ func RegisterAdminRoutes(
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
 
+		// 上游倍率监控
+		registerUpstreamRateMonitorRoutes(admin, h)
+
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
@@ -341,6 +344,18 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
 		accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
 		accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
+	}
+}
+
+func registerUpstreamRateMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	monitors := admin.Group("/upstream-rate-monitors")
+	{
+		monitors.GET("", h.Admin.UpstreamRateMonitor.List)
+		monitors.POST("", h.Admin.UpstreamRateMonitor.Create)
+		monitors.GET("/:id", h.Admin.UpstreamRateMonitor.Get)
+		monitors.PUT("/:id", h.Admin.UpstreamRateMonitor.Update)
+		monitors.DELETE("/:id", h.Admin.UpstreamRateMonitor.Delete)
+		monitors.POST("/:id/refresh", h.Admin.UpstreamRateMonitor.Refresh)
 	}
 }
 

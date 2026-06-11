@@ -421,6 +421,7 @@ export default {
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
+    upstreamRateMonitor: 'Upstream Rates',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
   },
@@ -3092,6 +3093,92 @@ export default {
           namePlaceholder: 'e.g. Claude Code mimicry',
           description: 'Description',
           descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.'
+        }
+      }
+    },
+
+    // Upstream Rate Monitor
+    upstreamRateMonitor: {
+      title: 'Upstream Rate Monitor',
+      description: 'Monitor group counts and rate snapshots from upstream Sub2API-compatible sites',
+      searchPlaceholder: 'Search name, URL, or account...',
+      allEnabled: 'All status',
+      onlyEnabled: 'Enabled only',
+      onlyDisabled: 'Disabled only',
+      createButton: 'Add Upstream',
+      createTitle: 'Add Upstream Site',
+      editTitle: 'Edit Upstream Site',
+      refreshVisible: 'Refresh Page',
+      refreshNow: 'Refresh Now',
+      viewSnapshot: 'View Rates',
+      refreshSuccess: 'Upstream rates refreshed',
+      refreshFailed: 'Failed to refresh upstream rates',
+      batchRefreshSuccess: 'Refreshed {count} upstream site(s)',
+      batchRefreshPartial: 'Refresh completed: {success} succeeded, {failed} failed',
+      noEnabledRows: 'No enabled upstream sites on this page',
+      createSuccess: 'Upstream site added',
+      updateSuccess: 'Upstream site updated',
+      saveFailed: 'Failed to save upstream site',
+      loadFailed: 'Failed to load upstream rate monitors',
+      deleteSuccess: 'Upstream site deleted',
+      deleteFailed: 'Failed to delete upstream site',
+      deleteConfirm: 'Delete upstream "{name}"? Existing snapshots will also be removed. This cannot be undone.',
+      passwordDecryptFailed: 'Password decryption failed. Re-edit this upstream and enter a fresh password.',
+      groupCount: '{count} group(s)',
+      emptyTitle: 'No upstream rate monitors yet',
+      emptyDescription: 'Add a Sub2API-compatible upstream to read its group count and rate snapshot.',
+      status: {
+        unknown: 'Not refreshed',
+        success: 'Success',
+        failed: 'Failed'
+      },
+      columns: {
+        name: 'Upstream',
+        status: 'Status',
+        groupCount: 'Groups',
+        lastCheckedAt: 'Last Checked',
+        enabled: 'Enabled',
+        actions: 'Actions'
+      },
+      form: {
+        name: 'Name',
+        namePlaceholder: 'e.g. CPA primary',
+        baseUrl: 'Upstream URL',
+        baseUrlPlaceholder: 'https://example.com',
+        username: 'Account',
+        usernamePlaceholder: 'Admin email or account',
+        password: 'Password',
+        passwordPlaceholder: 'Enter upstream login password',
+        passwordEditPlaceholder: 'Leave blank to keep current password',
+        enabled: 'Enable monitor',
+        enabledHint: 'Disabled upstreams keep their config and snapshot, but are skipped by page refresh.'
+      },
+      validation: {
+        nameRequired: 'Name is required',
+        baseUrlRequired: 'Upstream URL is required',
+        usernameRequired: 'Account is required',
+        passwordRequired: 'Password is required'
+      },
+      snapshot: {
+        title: 'Rate Snapshot: {name}',
+        site: 'Upstream URL',
+        status: 'Status',
+        groups: 'Groups',
+        checkedAt: 'Checked At',
+        imageIndependent: 'Image rate independent',
+        exclusive: 'Exclusive',
+        image: 'Image',
+        superResolution: 'Super Resolution',
+        emptyTitle: 'No rate snapshot',
+        emptyDescription: 'Click refresh to log in upstream and read its group rates.',
+        columns: {
+          group: 'Group',
+          platform: 'Platform',
+          rate: 'Text Rate',
+          imageRate: 'Image Rate',
+          subscriptionType: 'Subscription Type',
+          rpmLimit: 'RPM',
+          flags: 'Flags'
         }
       }
     },
