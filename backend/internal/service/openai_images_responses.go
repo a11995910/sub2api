@@ -1116,6 +1116,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	requestSizeTier string,
 	ctx context.Context,
 	upstreamHeaders http.Header,
 	proxyURL string,
@@ -1150,7 +1151,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
-	results = s.applyOpenAIResponsesSuperResolution(ctx, c, results)
+	results = s.applyOpenAIResponsesSuperResolution(ctx, c, results, requestSizeTier)
 	if len(results) > 0 {
 		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
 	}
@@ -1171,6 +1172,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	requestSizeTier string,
 	ctx context.Context,
 	upstreamHeaders http.Header,
 	proxyURL string,
@@ -1303,7 +1305,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
-			finalResults = s.applyOpenAIResponsesSuperResolution(ctx, c, finalResults)
+			finalResults = s.applyOpenAIResponsesSuperResolution(ctx, c, finalResults, requestSizeTier)
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -1360,7 +1362,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
 				return err
 			}
-			materializedResults = s.applyOpenAIResponsesSuperResolution(ctx, c, materializedResults)
+			materializedResults = s.applyOpenAIResponsesSuperResolution(ctx, c, materializedResults, requestSizeTier)
 			for _, img := range materializedResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				key := openAIResponsesImageResultKey("", img)
@@ -1640,6 +1642,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			parsed.ResponseFormat,
 			openAIImagesStreamPrefix(parsed),
 			requestModel,
+			parsed.SizeTier,
 			upstreamCtx,
 			upstreamReq.Header,
 			proxyURL,
@@ -1671,6 +1674,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			c,
 			parsed.ResponseFormat,
 			requestModel,
+			parsed.SizeTier,
 			upstreamCtx,
 			upstreamReq.Header,
 			proxyURL,

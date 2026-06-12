@@ -577,6 +577,170 @@ func findOpenAIImageTestSSEEvent(events []openAIImageTestSSEEvent, name string) 
 	return openAIImageTestSSEEvent{}, false
 }
 
+func TestOpenAIGatewayServiceForwardImages_OAuthSuperResolutionOnlyFor4K(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name              string
+		requestSize       string
+		wantSuperCalls    int
+		wantResultBase64  string
+		wantOutputFormat  string
+		wantResponseSize  string
+		wantImageSizeTier string
+	}{
+		{
+			name:              "2K 请求不触发超分",
+			requestSize:       "2048x2048",
+			wantSuperCalls:    0,
+			wantResultBase64:  "b3JpZ2luYWw=",
+			wantOutputFormat:  "webp",
+			wantResponseSize:  "2048x2048",
+			wantImageSizeTier: "2K",
+		},
+		{
+			name:              "4K 请求触发超分",
+			requestSize:       "3840x2160",
+			wantSuperCalls:    1,
+			wantResultBase64:  "dXBzY2FsZWQtcG5n",
+			wantOutputFormat:  "png",
+			wantResponseSize:  "3840x2160",
+			wantImageSizeTier: "4K",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			superCalls := 0
+			superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				superCalls++
+				require.Equal(t, http.MethodPost, r.Method)
+				require.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+				w.Header().Set("Content-Type", "image/png")
+				_, _ = w.Write([]byte("upscaled-png"))
+			}))
+			defer superServer.Close()
+
+			body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"` + tt.requestSize + `","response_format":"b64_json"}`)
+			req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = req
+			c.Set("api_key", &APIKey{
+				ID: 42,
+				Group: &Group{
+					ID:                          7,
+					AllowImageGeneration:        true,
+					ImageSuperResolutionEnabled: true,
+				},
+			})
+
+			svc := &OpenAIGatewayService{
+				cfg: &config.Config{Gateway: config.GatewayConfig{
+					ImageSuperResolutionURL: superServer.URL,
+				}},
+				httpUpstream: &httpUpstreamRecorder{
+					resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header: http.Header{
+							"Content-Type": []string{"text/event-stream"},
+							"X-Request-Id": []string{"req_img_super"},
+						},
+						Body: io.NopCloser(strings.NewReader(
+							"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"output_format\":\"webp\",\"size\":\"" + tt.requestSize + "\"}],\"output\":[{\"type\":\"image_generation_call\",\"result\":\"b3JpZ2luYWw=\",\"output_format\":\"webp\",\"size\":\"" + tt.requestSize + "\"}]}}\n\n" +
+								"data: [DONE]\n\n",
+						)),
+					},
+				},
+			}
+
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+
+			account := &Account{
+				ID:       1,
+				Name:     "openai-oauth",
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token": "token-123",
+				},
+			}
+
+			result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.wantImageSizeTier, result.ImageSize)
+			require.Equal(t, tt.requestSize, result.ImageInputSize)
+			require.Equal(t, tt.wantSuperCalls, superCalls)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, tt.wantResultBase64, gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+			require.Equal(t, tt.wantOutputFormat, gjson.Get(rec.Body.String(), "output_format").String())
+			require.Equal(t, tt.wantResponseSize, gjson.Get(rec.Body.String(), "size").String())
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeySuperResolutionSkipsNon4K(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	superCalls := 0
+	superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		superCalls++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("upscaled-png"))
+	}))
+	defer superServer.Close()
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"2048x2048","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                          7,
+			AllowImageGeneration:        true,
+			ImageSuperResolutionEnabled: true,
+		},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ImageSuperResolutionURL: superServer.URL,
+		}},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}]}`)),
+			},
+		},
+	}
+
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test"},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, ImageBillingSize2K, result.ImageSize)
+	require.Equal(t, "2048x2048", result.ImageInputSize)
+	require.Equal(t, 0, superCalls)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":3}`)
@@ -1790,6 +1954,7 @@ func TestOpenAIGatewayServiceHandleOpenAIImagesOAuthNonStreamingResponse_Materia
 		c,
 		"b64_json",
 		"gpt-image-2",
+		ImageBillingSize2K,
 		context.Background(),
 		http.Header{"User-Agent": []string{"test-agent"}},
 		"",

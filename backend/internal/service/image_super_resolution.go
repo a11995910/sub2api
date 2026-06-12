@@ -19,7 +19,7 @@ import (
 
 const imageSuperResolutionLogComponent = "service.image_super_resolution"
 
-func (s *OpenAIGatewayService) imageSuperResolutionSkipReason(c *gin.Context) string {
+func (s *OpenAIGatewayService) imageSuperResolutionSkipReason(c *gin.Context, requestSizeTier string) string {
 	if s == nil || s.cfg == nil {
 		return "service_config_missing"
 	}
@@ -39,14 +39,17 @@ func (s *OpenAIGatewayService) imageSuperResolutionSkipReason(c *gin.Context) st
 	if !apiKey.Group.ImageSuperResolutionEnabled {
 		return "group_super_resolution_disabled"
 	}
+	if NormalizeImageBillingTierOrDefault(requestSizeTier) != ImageBillingSize4K {
+		return "request_not_4k"
+	}
 	return ""
 }
 
-func (s *OpenAIGatewayService) shouldApplyImageSuperResolution(c *gin.Context) bool {
-	return s.imageSuperResolutionSkipReason(c) == ""
+func (s *OpenAIGatewayService) shouldApplyImageSuperResolution(c *gin.Context, requestSizeTier string) bool {
+	return s.imageSuperResolutionSkipReason(c, requestSizeTier) == ""
 }
 
-func logImageSuperResolutionDecision(c *gin.Context, phase, reason string) {
+func logImageSuperResolutionDecision(c *gin.Context, phase, reason, requestSizeTier string) {
 	apiKey := getAPIKeyFromContext(c)
 	apiKeyID := int64(0)
 	groupID := int64(0)
@@ -63,15 +66,17 @@ func logImageSuperResolutionDecision(c *gin.Context, phase, reason string) {
 	if strings.TrimSpace(reason) == "" {
 		reason = "apply"
 	}
+	requestSizeTier = NormalizeImageBillingTierOrDefault(requestSizeTier)
 	logger.LegacyPrintf(
 		imageSuperResolutionLogComponent,
-		"image super resolution %s: reason=%s api_key_id=%d group_id=%d allow_image_generation=%t enabled=%t",
+		"image super resolution %s: reason=%s api_key_id=%d group_id=%d allow_image_generation=%t enabled=%t request_size_tier=%s",
 		phase,
 		reason,
 		apiKeyID,
 		groupID,
 		allowImageGeneration,
 		enabled,
+		requestSizeTier,
 	)
 }
 
@@ -165,24 +170,28 @@ func (s *OpenAIGatewayService) applyOpenAIImagesSuperResolutionToJSON(
 	body []byte,
 	opts openAIImagesNonStreamingResponseOptions,
 ) []byte {
-	if reason := s.imageSuperResolutionSkipReason(c); reason != "" {
-		logImageSuperResolutionDecision(c, "skip", reason)
+	requestSizeTier := ""
+	if opts.parsed != nil {
+		requestSizeTier = opts.parsed.SizeTier
+	}
+	if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
+		logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
 		return body
 	}
 	if len(body) == 0 {
-		logImageSuperResolutionDecision(c, "skip", "empty_body")
+		logImageSuperResolutionDecision(c, "skip", "empty_body", requestSizeTier)
 		return body
 	}
 	if !gjson.ValidBytes(body) {
-		logImageSuperResolutionDecision(c, "skip", "invalid_json")
+		logImageSuperResolutionDecision(c, "skip", "invalid_json", requestSizeTier)
 		return body
 	}
 	data := gjson.GetBytes(body, "data")
 	if !data.IsArray() {
-		logImageSuperResolutionDecision(c, "skip", "data_not_array")
+		logImageSuperResolutionDecision(c, "skip", "data_not_array", requestSizeTier)
 		return body
 	}
-	logImageSuperResolutionDecision(c, "apply", "")
+	logImageSuperResolutionDecision(c, "apply", "", requestSizeTier)
 
 	rewritten := body
 	processed := 0
@@ -253,16 +262,17 @@ func (s *OpenAIGatewayService) applyOpenAIResponsesSuperResolution(
 	ctx context.Context,
 	c *gin.Context,
 	results []openAIResponsesImageResult,
+	requestSizeTier string,
 ) []openAIResponsesImageResult {
 	if len(results) == 0 {
-		logImageSuperResolutionDecision(c, "skip", "empty_responses_results")
+		logImageSuperResolutionDecision(c, "skip", "empty_responses_results", requestSizeTier)
 		return results
 	}
-	if reason := s.imageSuperResolutionSkipReason(c); reason != "" {
-		logImageSuperResolutionDecision(c, "skip", reason)
+	if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
+		logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
 		return results
 	}
-	logImageSuperResolutionDecision(c, "apply", "")
+	logImageSuperResolutionDecision(c, "apply", "", requestSizeTier)
 	out := make([]openAIResponsesImageResult, len(results))
 	copy(out, results)
 	maxImages := 0
