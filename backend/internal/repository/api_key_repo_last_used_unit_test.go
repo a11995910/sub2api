@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 func newAPIKeyRepoSQLite(t *testing.T) (*apiKeyRepository, *dbent.Client) {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", "file:api_key_repo_last_used?mode=memory&cache=shared")
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

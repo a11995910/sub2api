@@ -22,7 +22,10 @@ type User struct {
 	Concurrency    int
 	Status         string
 	AllowedGroups  []int64
-	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	// AllowedGroupAccess 保存管理员侧可见的专属分组授权元数据。
+	// key 为 group_id；AllowedGroups 仍保留为兼容旧接口的授权分组 ID 列表。
+	AllowedGroupAccess map[int64]UserGroupAccessMeta
+	TokenVersion       int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool

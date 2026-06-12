@@ -100,12 +100,29 @@ export interface User {
   deleted_at?: string | null
 }
 
+export interface UserAllowedGroupAccess {
+  user_id?: number
+  group_id: number
+  source: string
+  source_order_id?: number | null
+  notes?: string | null
+  created_at?: string
+  updated_at?: string
+  expires_at: string | null
+  permanent: boolean
+  user_email?: string
+  username?: string
+  user_status?: 'active' | 'disabled' | string
+}
+
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
+  // 专属分组授权元数据 (group_id -> access meta)
+  allowed_group_access?: Record<number, UserAllowedGroupAccess>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }
@@ -1560,6 +1577,12 @@ export interface UpdateUserRequest {
   concurrency?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  allowed_group_access?: Array<{
+    group_id: number
+    expires_at: string | null
+    source?: string
+    notes?: string
+  }>
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>

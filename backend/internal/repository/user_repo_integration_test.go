@@ -149,6 +149,66 @@ func (s *UserRepoSuite) TestGrantTemporaryAllowedGroup_AccumulatesAndReadPathFil
 	s.Require().NotContains(expiredUser.AllowedGroups, group.ID)
 }
 
+func (s *UserRepoSuite) TestUpdateAllowedGroups_PreservesExistingTemporaryAccessMeta() {
+	user := s.mustCreateUser(&service.User{Email: "preserve-temporary-access@test.com"})
+	group := s.mustCreateGroup("preserve temporary access group")
+	expiresAt := time.Now().UTC().Add(72 * time.Hour)
+
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(group.ID).
+		SetSource(service.UserAllowedGroupSourceAffiliatePaymentReward).
+		SetExpiresAt(expiresAt).
+		SetNotes("invite reward").
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	user.AllowedGroups = []int64{group.ID}
+	s.Require().NoError(s.repo.Update(s.ctx, user))
+
+	meta, err := s.repo.ListActiveUserGroupAccessMeta(s.ctx, user.ID)
+	s.Require().NoError(err)
+	item := meta[group.ID]
+	s.Require().NotNil(item.ExpiresAt)
+	s.Require().WithinDuration(expiresAt, *item.ExpiresAt, time.Second)
+	s.Require().Equal(service.UserAllowedGroupSourceAffiliatePaymentReward, item.Source)
+	s.Require().Equal("invite reward", item.Notes)
+}
+
+func (s *UserRepoSuite) TestListActiveUserGroupAccessMetaByGroupID_ReturnsUserInfoAndFiltersExpired() {
+	activeUser := s.mustCreateUser(&service.User{Email: "active-access@test.com", Username: "active-access"})
+	expiredUser := s.mustCreateUser(&service.User{Email: "expired-access@test.com", Username: "expired-access"})
+	group := s.mustCreateGroup("access list group")
+	now := time.Now().UTC()
+	expiresAt := now.Add(48 * time.Hour)
+
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(activeUser.ID).
+		SetGroupID(group.ID).
+		SetSource(service.UserAllowedGroupSourceAffiliatePaymentReward).
+		SetExpiresAt(expiresAt).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	_, err = s.client.UserAllowedGroup.Create().
+		SetUserID(expiredUser.ID).
+		SetGroupID(group.ID).
+		SetSource(service.UserAllowedGroupSourceAffiliatePaymentReward).
+		SetExpiresAt(now.Add(-time.Hour)).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	items, total, err := s.repo.ListActiveUserGroupAccessMetaByGroupID(s.ctx, group.ID, 1, 20)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), total)
+	s.Require().Len(items, 1)
+	s.Require().Equal(activeUser.ID, items[0].UserID)
+	s.Require().Equal(activeUser.Email, items[0].UserEmail)
+	s.Require().Equal(activeUser.Username, items[0].Username)
+	s.Require().Equal(service.StatusActive, items[0].UserStatus)
+	s.Require().NotNil(items[0].ExpiresAt)
+	s.Require().WithinDuration(expiresAt, *items[0].ExpiresAt, time.Second)
+}
+
 func (s *UserRepoSuite) TestExpireTemporaryAllowedGroups_MigratesKeysAndDeletesExpiredGrant() {
 	user := s.mustCreateUser(&service.User{Email: "expire-temporary-group@test.com"})
 	defaultGroup := s.mustCreateGroup("default replacement group")

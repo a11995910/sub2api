@@ -67,11 +67,43 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		return nil
 	}
 	return &AdminUser{
-		User:       *base,
-		Notes:      u.Notes,
-		LastUsedAt: u.LastUsedAt,
-		GroupRates: u.GroupRates,
+		User:               *base,
+		Notes:              u.Notes,
+		LastUsedAt:         u.LastUsedAt,
+		GroupRates:         u.GroupRates,
+		AllowedGroupAccess: UserGroupAccessMapFromService(u.AllowedGroupAccess),
 	}
+}
+
+func UserGroupAccessFromService(m *service.UserGroupAccessMeta) *UserGroupAccess {
+	if m == nil {
+		return nil
+	}
+	return &UserGroupAccess{
+		UserID:        m.UserID,
+		GroupID:       m.GroupID,
+		Source:        m.Source,
+		SourceOrderID: m.SourceOrderID,
+		Notes:         m.Notes,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
+		ExpiresAt:     m.ExpiresAt,
+		Permanent:     m.Permanent,
+		UserEmail:     m.UserEmail,
+		Username:      m.Username,
+		UserStatus:    m.UserStatus,
+	}
+}
+
+func UserGroupAccessMapFromService(in map[int64]service.UserGroupAccessMeta) map[int64]UserGroupAccess {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[int64]UserGroupAccess, len(in))
+	for groupID, meta := range in {
+		out[groupID] = *UserGroupAccessFromService(&meta)
+	}
+	return out
 }
 
 func APIKeyFromService(k *service.APIKey) *APIKey {

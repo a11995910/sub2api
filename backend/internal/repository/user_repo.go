@@ -46,24 +46,21 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
-	tx, err := r.client.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return err
-	}
-
-	var txClient *dbent.Client
 	txCtx := ctx
-	if err == nil {
+	txClient := r.client
+	var tx *dbent.Tx
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		// 外层服务已开启事务时复用同一个 tx client，避免本方法悄悄开启第二个事务。
+		txClient = existingTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil {
+			return err
+		}
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 		txCtx = dbent.NewTxContext(ctx, tx)
-	} else {
-		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			txClient = existingTx.Client()
-		} else {
-			txClient = r.client
-		}
 	}
 
 	releaseEmailLock, err := lockRepositoryScopedKeys(
@@ -183,24 +180,21 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	}
 
 	// 使用 ent 事务包裹用户更新与 allowed_groups 同步，避免跨层事务不一致。
-	tx, err := r.client.Tx(ctx)
-	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-		return err
-	}
-
-	var txClient *dbent.Client
 	txCtx := ctx
-	if err == nil {
+	txClient := r.client
+	var tx *dbent.Tx
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		// 外层服务已开启事务时复用同一个 tx client，保证用户字段与授权集合原子提交。
+		txClient = existingTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil {
+			return err
+		}
 		defer func() { _ = tx.Rollback() }()
 		txClient = tx.Client()
 		txCtx = dbent.NewTxContext(ctx, tx)
-	} else {
-		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
-		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-			txClient = existingTx.Client()
-		} else {
-			txClient = r.client
-		}
 	}
 
 	releaseEmailLock, err := lockRepositoryScopedKeys(
@@ -907,8 +901,9 @@ func (r *userRepository) GrantTemporaryAllowedGroup(ctx context.Context, input s
 
 	now := input.Now
 	if now.IsZero() {
-		now = time.Now()
+		now = time.Now().UTC()
 	}
+	now = now.UTC()
 	source := strings.TrimSpace(input.Source)
 	if source == "" {
 		source = service.UserAllowedGroupSourceAffiliatePaymentReward
@@ -983,20 +978,37 @@ RETURNING expires_at
 }
 
 func (r *userRepository) ListActiveUserGroupAccessMeta(ctx context.Context, userID int64) (map[int64]service.UserGroupAccessMeta, error) {
-	out := make(map[int64]service.UserGroupAccessMeta)
 	if userID <= 0 {
+		return map[int64]service.UserGroupAccessMeta{}, nil
+	}
+	byUser, err := r.ListActiveUserGroupAccessMetaByUserIDs(ctx, []int64{userID})
+	if err != nil {
+		return nil, err
+	}
+	if out, ok := byUser[userID]; ok {
 		return out, nil
 	}
+	return map[int64]service.UserGroupAccessMeta{}, nil
+}
 
+func (r *userRepository) ListActiveUserGroupAccessMetaByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]service.UserGroupAccessMeta, error) {
+	out := make(map[int64]map[int64]service.UserGroupAccessMeta, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	uniqueUserIDs := uniquePositiveInt64s(userIDs)
+	if len(uniqueUserIDs) == 0 {
+		return out, nil
+	}
 	rows, err := clientFromContext(ctx, r.client).UserAllowedGroup.Query().
 		Where(
-			userallowedgroup.UserIDEQ(userID),
+			userallowedgroup.UserIDIn(uniqueUserIDs...),
 			userallowedgroup.Or(
 				userallowedgroup.ExpiresAtIsNil(),
-				userallowedgroup.ExpiresAtGT(time.Now()),
+				userallowedgroup.ExpiresAtGT(time.Now().UTC()),
 			),
 		).
-		Order(userallowedgroup.ByGroupID()).
+		Order(userallowedgroup.ByUserID(), userallowedgroup.ByGroupID()).
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -1004,14 +1016,54 @@ func (r *userRepository) ListActiveUserGroupAccessMeta(ctx context.Context, user
 
 	for i := range rows {
 		item := rows[i]
-		out[item.GroupID] = service.UserGroupAccessMeta{
-			GroupID:   item.GroupID,
-			Source:    item.Source,
-			ExpiresAt: item.ExpiresAt,
-			Permanent: item.ExpiresAt == nil,
+		if out[item.UserID] == nil {
+			out[item.UserID] = make(map[int64]service.UserGroupAccessMeta)
 		}
+		out[item.UserID][item.GroupID] = userAllowedGroupEntityToAccessMeta(item)
 	}
 	return out, nil
+}
+
+func (r *userRepository) ListActiveUserGroupAccessMetaByGroupID(ctx context.Context, groupID int64, page, pageSize int) ([]service.UserGroupAccessMeta, int64, error) {
+	if groupID <= 0 {
+		return []service.UserGroupAccessMeta{}, 0, nil
+	}
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	q := clientFromContext(ctx, r.client).UserAllowedGroup.Query().
+		Where(
+			userallowedgroup.GroupIDEQ(groupID),
+			userallowedgroup.Or(
+				userallowedgroup.ExpiresAtIsNil(),
+				userallowedgroup.ExpiresAtGT(time.Now().UTC()),
+			),
+		)
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := q.
+		WithUser(func(uq *dbent.UserQuery) {
+			uq.Select(dbuser.FieldID, dbuser.FieldEmail, dbuser.FieldUsername, dbuser.FieldStatus)
+		}).
+		Order(userallowedgroup.ByExpiresAt(entsql.OrderNullsLast()), userallowedgroup.ByUserID()).
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]service.UserGroupAccessMeta, 0, len(rows))
+	for i := range rows {
+		meta := userAllowedGroupEntityToAccessMeta(rows[i])
+		if rows[i].Edges.User != nil {
+			meta.UserEmail = rows[i].Edges.User.Email
+			meta.Username = rows[i].Edges.User.Username
+			meta.UserStatus = rows[i].Edges.User.Status
+		}
+		out = append(out, meta)
+	}
+	return out, int64(total), nil
 }
 
 func (r *userRepository) ExpireTemporaryAllowedGroups(ctx context.Context, input service.ExpireTemporaryAllowedGroupsInput) ([]service.ExpiredTemporaryAllowedGroupResult, error) {
@@ -1024,8 +1076,9 @@ func (r *userRepository) ExpireTemporaryAllowedGroups(ctx context.Context, input
 	}
 	now := input.Now
 	if now.IsZero() {
-		now = time.Now()
+		now = time.Now().UTC()
 	}
+	now = now.UTC()
 	source := strings.TrimSpace(input.Source)
 	if source == "" {
 		source = service.UserAllowedGroupSourceAffiliatePaymentReward
@@ -1144,7 +1197,7 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 			userallowedgroup.UserIDIn(userIDs...),
 			userallowedgroup.Or(
 				userallowedgroup.ExpiresAtIsNil(),
-				userallowedgroup.ExpiresAtGT(time.Now()),
+				userallowedgroup.ExpiresAtGT(time.Now().UTC()),
 			),
 		).
 		Order(userallowedgroup.ByUserID(), userallowedgroup.ByGroupID()).
@@ -1160,30 +1213,123 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 	return out, nil
 }
 
+func userAllowedGroupEntityToAccessMeta(item *dbent.UserAllowedGroup) service.UserGroupAccessMeta {
+	if item == nil {
+		return service.UserGroupAccessMeta{}
+	}
+	return service.UserGroupAccessMeta{
+		UserID:        item.UserID,
+		GroupID:       item.GroupID,
+		Source:        item.Source,
+		SourceOrderID: item.SourceOrderID,
+		Notes:         item.Notes,
+		CreatedAt:     item.CreatedAt,
+		UpdatedAt:     item.UpdatedAt,
+		ExpiresAt:     item.ExpiresAt,
+		Permanent:     item.ExpiresAt == nil,
+	}
+}
+
+func uniquePositiveInt64s(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	out := make([]int64, 0, len(values))
+	for _, id := range values {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func clampUserAllowedGroupExpiresAt(expiresAt *time.Time) *time.Time {
+	if expiresAt == nil {
+		return nil
+	}
+	t := expiresAt.UTC()
+	if t.After(service.MaxExpiresAt) {
+		t = service.MaxExpiresAt
+	}
+	return &t
+}
+
+func normalizeUserAllowedGroupSource(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return service.UserAllowedGroupSourceManual
+	}
+	return source
+}
+
+func (r *userRepository) SyncUserAllowedGroupAccess(ctx context.Context, userID int64, entries []service.UserAllowedGroupAccessInput) error {
+	if userID <= 0 {
+		return fmt.Errorf("invalid user id")
+	}
+	return r.syncUserAllowedGroupAccessWithClient(ctx, clientFromContext(ctx, r.client), userID, entries)
+}
+
 // syncUserAllowedGroupsWithClient 在 ent client/事务内同步用户允许分组：
 // 仅操作 user_allowed_groups 联接表，legacy users.allowed_groups 列已弃用。
+// 兼容旧请求：只改授权集合，保留仍被选中分组的 expires_at/source 等元数据。
 func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, client *dbent.Client, userID int64, groupIDs []int64) error {
+	entries := make([]service.UserAllowedGroupAccessInput, 0, len(groupIDs))
+	for _, groupID := range uniquePositiveInt64s(groupIDs) {
+		entries = append(entries, service.UserAllowedGroupAccessInput{GroupID: groupID})
+	}
+	return r.syncUserAllowedGroupAccessWithClient(ctx, client, userID, entries)
+}
+
+func (r *userRepository) syncUserAllowedGroupAccessWithClient(ctx context.Context, client *dbent.Client, userID int64, entries []service.UserAllowedGroupAccessInput) error {
 	if client == nil {
 		return nil
 	}
 
-	// Keep join table as the source of truth for reads.
-	if _, err := client.UserAllowedGroup.Delete().Where(userallowedgroup.UserIDEQ(userID)).Exec(ctx); err != nil {
-		return err
-	}
-
-	unique := make(map[int64]struct{}, len(groupIDs))
-	for _, id := range groupIDs {
-		if id <= 0 {
+	now := time.Now().UTC()
+	unique := make(map[int64]service.UserAllowedGroupAccessInput, len(entries))
+	for _, entry := range entries {
+		if entry.GroupID <= 0 {
 			continue
 		}
-		unique[id] = struct{}{}
+		if entry.ExpiresAtSet && entry.ExpiresAt != nil {
+			expiresAt := clampUserAllowedGroupExpiresAt(entry.ExpiresAt)
+			if !expiresAt.After(now) {
+				return fmt.Errorf("allowed group %d expires_at must be in the future", entry.GroupID)
+			}
+			entry.ExpiresAt = expiresAt
+		}
+		entry.Source = normalizeUserAllowedGroupSource(entry.Source)
+		unique[entry.GroupID] = entry
+	}
+
+	keepIDs := make([]int64, 0, len(unique))
+	for groupID := range unique {
+		keepIDs = append(keepIDs, groupID)
+	}
+
+	deleteQ := client.UserAllowedGroup.Delete().Where(userallowedgroup.UserIDEQ(userID))
+	if len(keepIDs) > 0 {
+		deleteQ = deleteQ.Where(userallowedgroup.GroupIDNotIn(keepIDs...))
+	}
+	if _, err := deleteQ.Exec(ctx); err != nil {
+		return err
 	}
 
 	if len(unique) > 0 {
 		creates := make([]*dbent.UserAllowedGroupCreate, 0, len(unique))
-		for groupID := range unique {
-			creates = append(creates, client.UserAllowedGroup.Create().SetUserID(userID).SetGroupID(groupID))
+		for groupID, entry := range unique {
+			create := client.UserAllowedGroup.Create().
+				SetUserID(userID).
+				SetGroupID(groupID).
+				SetSource(entry.Source).
+				SetNotes(entry.Notes)
+			if entry.ExpiresAtSet {
+				create.SetNillableExpiresAt(entry.ExpiresAt)
+			}
+			creates = append(creates, create)
 		}
 		if err := client.UserAllowedGroup.
 			CreateBulk(creates...).
@@ -1193,6 +1339,29 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 			if isSQLNoRowsError(err) {
 				return nil
 			}
+			return err
+		}
+	}
+
+	for groupID, entry := range unique {
+		if !entry.ExpiresAtSet && strings.TrimSpace(entry.Source) == service.UserAllowedGroupSourceManual && strings.TrimSpace(entry.Notes) == "" {
+			continue
+		}
+		update := client.UserAllowedGroup.Update().
+			Where(userallowedgroup.UserIDEQ(userID), userallowedgroup.GroupIDEQ(groupID)).
+			SetSource(entry.Source).
+			SetNotes(entry.Notes)
+		if entry.ExpiresAtSet {
+			if entry.ExpiresAt != nil {
+				update.SetExpiresAt(*entry.ExpiresAt)
+			} else {
+				update.ClearExpiresAt()
+			}
+			if entry.Source == service.UserAllowedGroupSourceManual {
+				update.ClearSourceOrderID()
+			}
+		}
+		if _, err := update.Save(ctx); err != nil {
 			return err
 		}
 	}

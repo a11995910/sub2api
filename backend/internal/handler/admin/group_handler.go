@@ -541,6 +541,28 @@ func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {
 	response.Success(c, entries)
 }
 
+// GetGroupAllowedUsers handles listing users authorized for an exclusive standard group.
+// GET /api/v1/admin/groups/:id/allowed-users
+func (h *GroupHandler) GetGroupAllowedUsers(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+
+	items, total, err := h.adminService.GetGroupAllowedUsers(c.Request.Context(), groupID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.UserGroupAccess, 0, len(items))
+	for i := range items {
+		out = append(out, *dto.UserGroupAccessFromService(&items[i]))
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
 // ClearGroupRateMultipliers handles clearing all rate multipliers for a group
 // DELETE /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) ClearGroupRateMultipliers(c *gin.Context) {

@@ -61,18 +61,26 @@ type CreateUserRequest struct {
 // UpdateUserRequest represents admin update user request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateUserRequest struct {
-	Email         string   `json:"email" binding:"omitempty,email"`
-	Password      string   `json:"password" binding:"omitempty,min=6"`
-	Username      *string  `json:"username"`
-	Notes         *string  `json:"notes"`
-	Balance       *float64 `json:"balance"`
-	Concurrency   *int     `json:"concurrency"`
-	RPMLimit      *int     `json:"rpm_limit"`
-	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
-	AllowedGroups *[]int64 `json:"allowed_groups"`
+	Email              string                       `json:"email" binding:"omitempty,email"`
+	Password           string                       `json:"password" binding:"omitempty,min=6"`
+	Username           *string                      `json:"username"`
+	Notes              *string                      `json:"notes"`
+	Balance            *float64                     `json:"balance"`
+	Concurrency        *int                         `json:"concurrency"`
+	RPMLimit           *int                         `json:"rpm_limit"`
+	Status             string                       `json:"status" binding:"omitempty,oneof=active disabled"`
+	AllowedGroups      *[]int64                     `json:"allowed_groups"`
+	AllowedGroupAccess *[]AllowedGroupAccessRequest `json:"allowed_group_access"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64 `json:"group_rates"`
+}
+
+type AllowedGroupAccessRequest struct {
+	GroupID   int64      `json:"group_id"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Source    string     `json:"source"`
+	Notes     string     `json:"notes"`
 }
 
 // UpdateBalanceRequest represents balance update request
@@ -297,17 +305,32 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	// 使用指针类型直接传递，nil 表示未提供该字段
+	var accessInput *[]service.UserAllowedGroupAccessInput
+	if req.AllowedGroupAccess != nil {
+		items := make([]service.UserAllowedGroupAccessInput, 0, len(*req.AllowedGroupAccess))
+		for _, item := range *req.AllowedGroupAccess {
+			items = append(items, service.UserAllowedGroupAccessInput{
+				GroupID:      item.GroupID,
+				ExpiresAtSet: true,
+				ExpiresAt:    item.ExpiresAt,
+				Source:       item.Source,
+				Notes:        item.Notes,
+			})
+		}
+		accessInput = &items
+	}
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		RPMLimit:      req.RPMLimit,
-		Status:        req.Status,
-		AllowedGroups: req.AllowedGroups,
-		GroupRates:    req.GroupRates,
+		Email:              req.Email,
+		Password:           req.Password,
+		Username:           req.Username,
+		Notes:              req.Notes,
+		Balance:            req.Balance,
+		Concurrency:        req.Concurrency,
+		RPMLimit:           req.RPMLimit,
+		Status:             req.Status,
+		AllowedGroups:      req.AllowedGroups,
+		AllowedGroupAccess: accessInput,
+		GroupRates:         req.GroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

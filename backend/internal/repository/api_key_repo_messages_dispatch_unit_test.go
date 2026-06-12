@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -72,4 +73,62 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.Equal(t, key.Name, got.Name)
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
+}
+
+func TestAPIKeyRepository_GetByKeyForAuth_FiltersExpiredAllowedGroups_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-active-groups@test.com")
+
+	permanentGroup, err := client.Group.Create().
+		SetName("g-auth-permanent").
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	activeTemporaryGroup, err := client.Group.Create().
+		SetName("g-auth-temporary-active").
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	expiredTemporaryGroup, err := client.Group.Create().
+		SetName("g-auth-temporary-expired").
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	_, err = client.UserAllowedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(permanentGroup.ID).
+		SetSource(service.UserAllowedGroupSourceManual).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.UserAllowedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(activeTemporaryGroup.ID).
+		SetSource(service.UserAllowedGroupSourceAffiliatePaymentReward).
+		SetExpiresAt(now.Add(time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.UserAllowedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(expiredTemporaryGroup.ID).
+		SetSource(service.UserAllowedGroupSourceAffiliatePaymentReward).
+		SetExpiresAt(now.Add(-time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	key := &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-getbykey-auth-active-groups",
+		Name:   "Active Groups Key",
+		Status: service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.NotNil(t, got.User)
+	require.ElementsMatch(t, []int64{permanentGroup.ID, activeTemporaryGroup.ID}, got.User.AllowedGroups)
+	require.NotContains(t, got.User.AllowedGroups, expiredTemporaryGroup.ID)
 }

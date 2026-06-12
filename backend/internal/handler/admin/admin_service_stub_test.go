@@ -317,6 +317,10 @@ func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) (
 	return nil, nil
 }
 
+func (s *stubAdminService) GetGroupAllowedUsers(_ context.Context, _ int64, _, _ int) ([]service.UserGroupAccessMeta, int64, error) {
+	return nil, 0, nil
+}
+
 func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64) error {
 	return nil
 }

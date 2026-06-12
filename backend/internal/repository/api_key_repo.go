@@ -108,9 +108,6 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		WithUser(func(q *dbent.UserQuery) {
-			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
-				gq.Select(group.FieldID)
-			})
 		}).
 		WithGroup().
 		Only(ctx)
@@ -120,7 +117,11 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.loadActiveAllowedGroupsForAPIKeyUsers(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
@@ -160,9 +161,6 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldLastActiveAt,
 				user.FieldRpmLimit,
 			)
-			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
-				gq.Select(group.FieldID)
-			})
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
 			q.Select(
@@ -204,7 +202,40 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.loadActiveAllowedGroupsForAPIKeyUsers(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *apiKeyRepository) loadActiveAllowedGroupsForAPIKeyUsers(ctx context.Context, keys ...*service.APIKey) error {
+	userIDs := make([]int64, 0, len(keys))
+	seen := make(map[int64]struct{}, len(keys))
+	for _, key := range keys {
+		if key == nil || key.User == nil || key.User.ID <= 0 {
+			continue
+		}
+		if _, ok := seen[key.User.ID]; ok {
+			continue
+		}
+		seen[key.User.ID] = struct{}{}
+		userIDs = append(userIDs, key.User.ID)
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+	allowedByUser, err := (&userRepository{client: r.client, sql: r.sql}).loadAllowedGroups(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if key == nil || key.User == nil {
+			continue
+		}
+		key.User.AllowedGroups = allowedByUser[key.User.ID]
+	}
+	return nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
@@ -735,14 +766,6 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
-		if allowed := m.Edges.User.Edges.AllowedGroups; len(allowed) > 0 {
-			out.User.AllowedGroups = make([]int64, 0, len(allowed))
-			for _, g := range allowed {
-				if g != nil {
-					out.User.AllowedGroups = append(out.User.AllowedGroups, g.ID)
-				}
-			}
-		}
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)

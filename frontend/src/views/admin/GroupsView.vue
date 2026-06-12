@@ -297,6 +297,14 @@
                 <span class="text-xs">{{ t("common.edit") }}</span>
               </button>
               <button
+                v-if="row.is_exclusive && row.subscription_type === 'standard'"
+                @click="handleAllowedUsers(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-dark-700 dark:hover:text-indigo-400"
+              >
+                <Icon name="users" size="sm" />
+                <span class="text-xs">用户</span>
+              </button>
+              <button
                 @click="handleRateMultipliers(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-600 dark:hover:bg-dark-700 dark:hover:text-purple-400"
               >
@@ -3087,6 +3095,12 @@
       @close="showRPMOverridesModal = false"
       @success="loadGroups"
     />
+
+    <GroupAllowedUsersModal
+      :show="showAllowedUsersModal"
+      :group="allowedUsersGroup"
+      @close="closeAllowedUsersModal"
+    />
   </AppLayout>
 </template>
 
@@ -3110,6 +3124,7 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import GroupAllowedUsersModal from "@/components/admin/group/GroupAllowedUsersModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
@@ -3367,6 +3382,8 @@ const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
+const showAllowedUsersModal = ref(false);
+const allowedUsersGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
@@ -4275,6 +4292,16 @@ const handleRateMultipliers = (group: AdminGroup) => {
 const handleRPMOverrides = (group: AdminGroup) => {
   rpmOverridesGroup.value = group;
   showRPMOverridesModal.value = true;
+};
+
+const handleAllowedUsers = (group: AdminGroup) => {
+  allowedUsersGroup.value = group;
+  showAllowedUsersModal.value = true;
+};
+
+const closeAllowedUsersModal = () => {
+  showAllowedUsersModal.value = false;
+  allowedUsersGroup.value = null;
 };
 
 const loadDeleteReplacementGroups = async (groupID: number) => {

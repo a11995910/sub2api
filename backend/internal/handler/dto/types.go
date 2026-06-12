@@ -46,6 +46,23 @@ type AdminUser struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
+	// AllowedGroupAccess 专属分组授权元数据，key 为 group_id。
+	AllowedGroupAccess map[int64]UserGroupAccess `json:"allowed_group_access,omitempty"`
+}
+
+type UserGroupAccess struct {
+	UserID        int64      `json:"user_id,omitempty"`
+	GroupID       int64      `json:"group_id"`
+	Source        string     `json:"source"`
+	SourceOrderID *int64     `json:"source_order_id,omitempty"`
+	Notes         string     `json:"notes,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	Permanent     bool       `json:"permanent"`
+	UserEmail     string     `json:"user_email,omitempty"`
+	Username      string     `json:"username,omitempty"`
+	UserStatus    string     `json:"user_status,omitempty"`
 }
 
 type APIKey struct {

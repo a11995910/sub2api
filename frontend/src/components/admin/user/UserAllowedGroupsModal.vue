@@ -37,7 +37,7 @@
                 ? 'border-primary-400 bg-primary-50/50 shadow-sm dark:border-primary-500 dark:bg-primary-900/20'
                 : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-dark-500'"
             >
-              <div class="flex items-center gap-4">
+              <div class="flex items-start gap-4">
                 <!-- 复选框 -->
                 <div class="flex-shrink-0">
                   <label class="relative flex h-6 w-6 cursor-pointer items-center justify-center">
@@ -72,6 +72,58 @@
                     <span class="text-gray-500 dark:text-gray-400">
                       {{ t('admin.users.defaultRate') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ config.defaultRate }}x</span>
                     </span>
+                  </div>
+                  <div v-if="config.isSelected" class="mt-3 grid gap-3 lg:grid-cols-[auto_minmax(220px,1fr)] lg:items-start">
+                    <div class="inline-flex w-fit rounded-lg border border-gray-200 bg-white p-1 text-xs dark:border-dark-600 dark:bg-dark-700">
+                      <button
+                        type="button"
+                        @click="setAccessMode(config.groupId, 'permanent')"
+                        :class="[
+                          'rounded-md px-3 py-1.5 font-medium transition-colors',
+                          config.accessMode === 'permanent'
+                            ? 'bg-primary-500 text-white shadow-sm'
+                            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-600'
+                        ]"
+                      >
+                        永久
+                      </button>
+                      <button
+                        type="button"
+                        @click="setAccessMode(config.groupId, 'temporary')"
+                        :class="[
+                          'rounded-md px-3 py-1.5 font-medium transition-colors',
+                          config.accessMode === 'temporary'
+                            ? 'bg-primary-500 text-white shadow-sm'
+                            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-600'
+                        ]"
+                      >
+                        限时
+                      </button>
+                    </div>
+                    <div class="space-y-1.5">
+                      <input
+                        v-if="config.accessMode === 'temporary'"
+                        type="datetime-local"
+                        :value="config.expiresAtLocal"
+                        @input="updateExpiresAt(config.groupId, ($event.target as HTMLInputElement).value)"
+                        class="input"
+                      />
+                      <div class="flex flex-wrap items-center gap-2 text-xs">
+                        <span
+                          :class="[
+                            'inline-flex items-center rounded-full px-2 py-0.5 font-medium',
+                            config.accessMode === 'temporary'
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          ]"
+                        >
+                          {{ accessSummary(config) }}
+                        </span>
+                        <span v-if="config.source && config.source !== 'manual'" class="text-gray-500 dark:text-gray-400">
+                          来源: {{ sourceLabel(config.source) }}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -195,6 +247,10 @@ interface GroupRateConfig {
   defaultRate: number
   customRate: number | null
   isSelected: boolean
+  accessMode: 'permanent' | 'temporary'
+  expiresAtLocal: string
+  source: string
+  notes: string
 }
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
@@ -215,6 +271,46 @@ const publicGroups = computed(() => groups.value.filter((g) => !g.is_exclusive))
 const exclusiveGroupConfigs = computed(() => groupConfigs.value.filter((c) => c.isExclusive))
 const publicGroupConfigs = computed(() => groupConfigs.value.filter((c) => !c.isExclusive))
 
+const toDateTimeLocal = (value?: string | null): string => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const dateTimeLocalToISO = (value: string): string | null => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString()
+}
+
+const formatRemaining = (value: string | null): string => {
+  if (!value) return '永久有效'
+  const expiresAt = new Date(value)
+  const diffMs = expiresAt.getTime() - Date.now()
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return '已过期'
+  const totalMinutes = Math.ceil(diffMs / 60000)
+  const days = Math.floor(totalMinutes / 1440)
+  const hours = Math.floor((totalMinutes % 1440) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return `剩余 ${days} 天 ${hours} 小时`
+  if (hours > 0) return `剩余 ${hours} 小时 ${minutes} 分钟`
+  return `剩余 ${minutes} 分钟`
+}
+
+const sourceLabel = (source: string): string => {
+  if (source === 'affiliate_payment_reward') return '邀请奖励'
+  if (source === 'manual') return '手动授权'
+  return source
+}
+
+const accessSummary = (config: GroupRateConfig): string => {
+  if (config.accessMode === 'permanent') return '永久有效'
+  return formatRemaining(dateTimeLocalToISO(config.expiresAtLocal))
+}
+
 watch(
   () => props.show,
   (v) => {
@@ -234,6 +330,7 @@ const load = async () => {
     // 初始化配置
     const userAllowedGroups = props.user?.allowed_groups || []
     const userGroupRates = props.user?.group_rates || {}
+    const accessByGroup = props.user?.allowed_group_access || {}
 
     // 保存原始专属倍率，用于检测删除操作
     originalGroupRates.value = { ...userGroupRates }
@@ -248,6 +345,10 @@ const load = async () => {
       // 专属分组：检查是否在 allowed_groups 中
       // 公开分组：始终选中
       isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : true,
+      accessMode: accessByGroup[g.id]?.expires_at ? 'temporary' : 'permanent',
+      expiresAtLocal: toDateTimeLocal(accessByGroup[g.id]?.expires_at),
+      source: accessByGroup[g.id]?.source || 'manual',
+      notes: accessByGroup[g.id]?.notes || '',
     }))
   } catch (error) {
     console.error('Failed to load groups:', error)
@@ -261,6 +362,23 @@ const toggleExclusiveGroup = (groupId: number) => {
   if (config && config.isExclusive) {
     config.isSelected = !config.isSelected
   }
+}
+
+const setAccessMode = (groupId: number, mode: 'permanent' | 'temporary') => {
+  const config = groupConfigs.value.find((c) => c.groupId === groupId)
+  if (!config) return
+  config.accessMode = mode
+  if (mode === 'temporary' && !config.expiresAtLocal) {
+    const nextMonth = new Date()
+    nextMonth.setMonth(nextMonth.getMonth() + 1)
+    config.expiresAtLocal = toDateTimeLocal(nextMonth.toISOString())
+  }
+}
+
+const updateExpiresAt = (groupId: number, value: string) => {
+  const config = groupConfigs.value.find((c) => c.groupId === groupId)
+  if (!config) return
+  config.expiresAtLocal = value
 }
 
 const updateCustomRate = (groupId: number, value: string) => {
@@ -282,6 +400,23 @@ const handleSave = async () => {
   try {
     // 构建 allowed_groups（仅包含专属分组中被勾选的）
     const allowedGroups = groupConfigs.value.filter((c) => c.isExclusive && c.isSelected).map((c) => c.groupId)
+    const allowedGroupAccess = groupConfigs.value
+      .filter((c) => c.isExclusive && c.isSelected)
+      .map((c) => ({
+        group_id: c.groupId,
+        expires_at: c.accessMode === 'temporary' ? dateTimeLocalToISO(c.expiresAtLocal) : null,
+        source: c.source || 'manual',
+        notes: c.notes || ''
+      }))
+
+    const invalidAccess = groupConfigs.value.find(
+      (c) => c.isExclusive && c.isSelected && c.accessMode === 'temporary' && !dateTimeLocalToISO(c.expiresAtLocal)
+    )
+    if (invalidAccess) {
+      appStore.showError(`${invalidAccess.groupName} 需要设置有效的到期时间`)
+      submitting.value = false
+      return
+    }
 
     // 构建 group_rates
     // - 有新专属倍率: 设置为该值
@@ -301,6 +436,7 @@ const handleSave = async () => {
 
     await adminAPI.users.update(props.user.id, {
       allowed_groups: allowedGroups,
+      allowed_group_access: allowedGroupAccess,
       group_rates: Object.keys(groupRates).length > 0 ? groupRates : undefined,
     })
 

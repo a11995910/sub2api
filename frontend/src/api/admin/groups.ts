@@ -9,7 +9,8 @@ import type {
   GroupPlatform,
   CreateGroupRequest,
   UpdateGroupRequest,
-  PaginatedResponse
+  PaginatedResponse,
+  UserAllowedGroupAccess
 } from '@/types'
 
 /**
@@ -229,6 +230,21 @@ export async function getGroupRateMultipliers(id: number): Promise<GroupRateMult
 }
 
 /**
+ * Get users authorized for an exclusive standard group.
+ */
+export async function getGroupAllowedUsers(
+  id: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<UserAllowedGroupAccess>> {
+  const { data } = await apiClient.get<PaginatedResponse<UserAllowedGroupAccess>>(
+    `/admin/groups/${id}/allowed-users`,
+    { params: { page, page_size: pageSize } }
+  )
+  return data
+}
+
+/**
  * Update group sort orders
  * @param updates - Array of { id, sort_order } objects
  * @returns Success confirmation
@@ -363,6 +379,7 @@ export const groupsAPI = {
   toggleStatus,
   getStats,
   getGroupApiKeys,
+  getGroupAllowedUsers,
   getGroupRateMultipliers,
   clearGroupRateMultipliers,
   batchSetGroupRateMultipliers,

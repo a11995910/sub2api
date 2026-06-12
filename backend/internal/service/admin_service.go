@@ -68,6 +68,7 @@ type AdminService interface {
 	ClearGroupRPMOverrides(ctx context.Context, groupID int64) error
 	BatchSetGroupRPMOverrides(ctx context.Context, groupID int64, entries []GroupRPMOverrideInput) error
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+	GetGroupAllowedUsers(ctx context.Context, groupID int64, page, pageSize int) ([]UserGroupAccessMeta, int64, error)
 
 	// API Key management (admin)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
@@ -153,6 +154,8 @@ type UpdateUserInput struct {
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	// AllowedGroupAccess 保存专属分组授权有效期；nil 表示不修改，非 nil 表示同步授权集合和时间。
+	AllowedGroupAccess *[]UserAllowedGroupAccessInput
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -653,6 +656,7 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 			s.loadUserGroupRatesOneByOne(ctx, users)
 		}
 	}
+	s.loadUserAllowedGroupAccessBatch(ctx, users)
 	return users, result.Total, nil
 }
 
@@ -668,6 +672,44 @@ func (s *adminServiceImpl) loadUserGroupRatesOneByOne(ctx context.Context, users
 		}
 		users[i].GroupRates = rates
 	}
+}
+
+func (s *adminServiceImpl) loadUserAllowedGroupAccessBatch(ctx context.Context, users []User) {
+	if len(users) == 0 {
+		return
+	}
+	reader, ok := s.userRepo.(UserGroupAccessAdminRepository)
+	if !ok {
+		return
+	}
+	userIDs := make([]int64, 0, len(users))
+	for i := range users {
+		userIDs = append(userIDs, users[i].ID)
+	}
+	accessByUser, err := reader.ListActiveUserGroupAccessMetaByUserIDs(ctx, userIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "failed to load user allowed group access: err=%v", err)
+		return
+	}
+	for i := range users {
+		users[i].AllowedGroupAccess = accessByUser[users[i].ID]
+	}
+}
+
+func (s *adminServiceImpl) loadUserAllowedGroupAccess(ctx context.Context, user *User) {
+	if user == nil {
+		return
+	}
+	reader, ok := s.userRepo.(UserGroupAccessAdminRepository)
+	if !ok {
+		return
+	}
+	accessByUser, err := reader.ListActiveUserGroupAccessMetaByUserIDs(ctx, []int64{user.ID})
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "failed to load user allowed group access: user_id=%d err=%v", user.ID, err)
+		return
+	}
+	user.AllowedGroupAccess = accessByUser[user.ID]
 }
 
 func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error) {
@@ -690,6 +732,7 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 			user.GroupRates = rates
 		}
 	}
+	s.loadUserAllowedGroupAccess(ctx, user)
 	return user, nil
 }
 
@@ -752,6 +795,20 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 			}
 		}
 	}
+	if input.AllowedGroupAccess != nil {
+		now := time.Now().UTC()
+		for _, entry := range *input.AllowedGroupAccess {
+			if entry.GroupID <= 0 {
+				continue
+			}
+			if entry.ExpiresAtSet && entry.ExpiresAt != nil && !entry.ExpiresAt.After(now) {
+				return nil, infraerrors.BadRequest(
+					"INVALID_ALLOWED_GROUP_EXPIRES_AT",
+					fmt.Sprintf("allowed group %d expires_at must be in the future", entry.GroupID),
+				)
+			}
+		}
+	}
 
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -768,6 +825,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
 	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
+	allowedGroupAccessUpdated := input.AllowedGroupAccess != nil
+	var accessRepo UserGroupAccessAdminRepository
+	if input.AllowedGroupAccess != nil {
+		var ok bool
+		accessRepo, ok = s.userRepo.(UserGroupAccessAdminRepository)
+		if !ok {
+			return nil, fmt.Errorf("user group access repository is not configured")
+		}
+	}
 
 	if input.Email != "" {
 		user.Email = input.Email
@@ -797,13 +863,47 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		user.RPMLimit = *input.RPMLimit
 	}
 
-	if input.AllowedGroups != nil {
+	if input.AllowedGroupAccess != nil {
+		allowedGroups := make([]int64, 0, len(*input.AllowedGroupAccess))
+		for _, entry := range *input.AllowedGroupAccess {
+			if entry.GroupID > 0 {
+				allowedGroups = append(allowedGroups, entry.GroupID)
+			}
+		}
+		user.AllowedGroups = allowedGroups
+	} else if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if input.AllowedGroupAccess != nil {
+		if s.entClient != nil {
+			tx, err := s.entClient.Tx(ctx)
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = tx.Rollback() }()
+			opCtx := dbent.NewTxContext(ctx, tx)
+			if err := s.userRepo.Update(opCtx, user); err != nil {
+				return nil, err
+			}
+			if err := accessRepo.SyncUserAllowedGroupAccess(opCtx, user.ID, *input.AllowedGroupAccess); err != nil {
+				return nil, err
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := s.userRepo.Update(ctx, user); err != nil {
+				return nil, err
+			}
+			if err := accessRepo.SyncUserAllowedGroupAccess(ctx, user.ID, *input.AllowedGroupAccess); err != nil {
+				return nil, err
+			}
+		}
+	} else if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 	}
+	s.loadUserAllowedGroupAccess(ctx, user)
 
 	// 同步用户专属分组倍率
 	if input.GroupRates != nil && s.userGroupRateRepo != nil {
@@ -815,7 +915,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// allowed_groups 参与 API Key 专属分组授权判断；不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -2421,6 +2521,21 @@ func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID 
 		return nil, nil
 	}
 	return s.userGroupRateRepo.GetByGroupID(ctx, groupID)
+}
+
+func (s *adminServiceImpl) GetGroupAllowedUsers(ctx context.Context, groupID int64, page, pageSize int) ([]UserGroupAccessMeta, int64, error) {
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !group.IsExclusive || group.IsSubscriptionType() {
+		return []UserGroupAccessMeta{}, 0, nil
+	}
+	repo, ok := s.userRepo.(UserGroupAccessAdminRepository)
+	if !ok {
+		return nil, 0, fmt.Errorf("user group access repository is not configured")
+	}
+	return repo.ListActiveUserGroupAccessMetaByGroupID(ctx, groupID, page, pageSize)
 }
 
 func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupID int64) error {
