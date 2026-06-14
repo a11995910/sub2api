@@ -9,6 +9,7 @@
 - 默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只替换 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
 - 每次上线必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
 - 不允许只执行 `go build -tags embed` 就覆盖线上，除非已经确认前端资源是同一次源码构建生成的最新产物。
+- 内嵌前端由后端直接提供时，`/assets/*` 会返回长期缓存头，HTML/JS/CSS/JSON 会按浏览器 `Accept-Encoding` 返回 gzip 压缩；外层 Nginx 或 Caddy 仍可继续做 HTTPS、HTTP/2 和代理层优化。
 - 构建产物必须包含 Git commit 和提交时间；VPS `/opt/sub2api-src/backend/bin/server --version` 的 commit 必须与待上线 commit 一致。
 - 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
@@ -199,6 +200,8 @@ docker compose ps
 curl -I https://fast.youkeduo.site/health
 curl -I https://fast.youkeduo.site/purchase
 curl -I https://fast.youkeduo.site/models
+curl -I -H 'Accept-Encoding: gzip' https://fast.youkeduo.site/dashboard
+curl -I https://fast.youkeduo.site/assets/实际构建出的任一-js-文件名.js
 docker compose logs --tail=200 sub2api
 ```
 
@@ -207,6 +210,8 @@ docker compose logs --tail=200 sub2api
 - 容器状态为 `healthy`
 - `/health`、`/purchase`、`/models` 返回成功状态码
 - 前端页面刷新不出现 404
+- `/dashboard` 在 gzip 请求下返回 `Content-Encoding: gzip`
+- `/assets/*` 返回 `Cache-Control: public, max-age=31536000, immutable`
 - 管理端 `/admin/accounts` 能正常打开，账号列表接口 `/api/v1/admin/accounts` 不出现 5xx
 - 日志中没有启动失败、前端资源缺失、数据库迁移失败或账号列表序列化异常
 

@@ -5,6 +5,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -541,6 +542,62 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
 	})
+
+	t.Run("sets_immutable_cache_for_hashed_assets", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		assetPath := findEmbeddedAsset(t, server, "assets/", ".js")
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/"+assetPath, nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "public, max-age=31536000, immutable", w.Header().Get("Cache-Control"))
+	})
+
+	t.Run("sets_short_cache_for_logo", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "public, max-age=3600", w.Header().Get("Cache-Control"))
+	})
+}
+
+func findEmbeddedAsset(t *testing.T, server *FrontendServer, prefix, suffix string) string {
+	t.Helper()
+	var found string
+	err := fs.WalkDir(server.distFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || found != "" || d.IsDir() {
+			return err
+		}
+		if strings.HasPrefix(path, prefix) && strings.HasSuffix(path, suffix) {
+			found = path
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, found)
+	return found
 }
 
 func TestNewFrontendServer(t *testing.T) {

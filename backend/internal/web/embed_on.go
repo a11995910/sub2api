@@ -109,6 +109,7 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		}
 
 		// Serve static files normally
+		setEmbeddedStaticCacheHeaders(c, cleanPath)
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
@@ -134,6 +135,7 @@ func (s *FrontendServer) tryServeOverride(c *gin.Context, cleanPath string) bool
 	if err != nil || info.IsDir() {
 		return false
 	}
+	setEmbeddedStaticCacheHeaders(c, cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
@@ -272,6 +274,7 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			if tryServeOverrideFile(c, overrideDir, cleanPath) {
 				return
 			}
+			setEmbeddedStaticCacheHeaders(c, cleanPath)
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
@@ -291,9 +294,25 @@ func tryServeOverrideFile(c *gin.Context, overrideDir, cleanPath string) bool {
 	if err != nil || info.IsDir() {
 		return false
 	}
+	setEmbeddedStaticCacheHeaders(c, cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
+}
+
+func setEmbeddedStaticCacheHeaders(c *gin.Context, cleanPath string) {
+	if c == nil {
+		return
+	}
+	path := strings.TrimPrefix(cleanPath, "/")
+	switch {
+	case strings.HasPrefix(path, "assets/"):
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	case path == "logo.png" || path == "favicon.ico" || strings.HasPrefix(path, "presets/"):
+		c.Header("Cache-Control", "public, max-age=3600")
+	default:
+		c.Header("Cache-Control", "public, max-age=3600")
+	}
 }
 
 func shouldBypassEmbeddedFrontend(path string) bool {
