@@ -153,7 +153,7 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 图片测试支持固定尺寸和自适应尺寸。固定尺寸会向图片网关传递 `size`；自适应尺寸不会传递 `size`，适用于用户在提示词中自行描述尺寸、画幅或比例的场景。自适应尺寸的价格预览按后端当前默认 `2K` 分档展示，真实请求仍经过网关的图片计费记录链路。
 
-图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传本地参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。远程参考图可通过 JSON `images[].image_url` 提交到网关；当上游账号为 OpenAI APIKey 类型时，网关会校验远程地址为公网图片后转成 multipart 文件上传给上游。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
+图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传本地参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。远程参考图可通过 JSON `images[].image_url` 提交到网关；当上游账号为 OpenAI APIKey 类型时，网关会校验远程地址为公网 HTTP/HTTPS 图片地址，并由服务器直接下载图片内容后转成 multipart 文件上传给上游。远程地址不可访问、返回非 2xx、返回 HTML/鉴权页等非图片内容或超过大小限制时，网关返回 `400 invalid_request_error`，不会把本地输入校验失败显示为上游 `502`。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
 
 ## 货币单位
 

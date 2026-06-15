@@ -236,6 +236,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					)
 					return
 				}
+				var imageInputErr *service.OpenAIImagesInputError
+				if errors.As(err, &imageInputErr) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+					h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", imageInputErr.Error(), streamStarted)
+					reqLog.Warn("openai.images.input_error",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					return
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)

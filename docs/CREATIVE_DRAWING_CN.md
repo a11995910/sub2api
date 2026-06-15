@@ -55,7 +55,7 @@
 - 参考图进入网关后会按上游账号类型归一化：
   - 浏览器本地上传图、页面预设图优先以 `data:image/...` 形式提交。
   - 远程参考图使用 JSON `images[].image_url` 提交到网关。
-  - 当上游账号为 OpenAI APIKey 类型时，网关会先校验远程图片地址必须为公网 HTTP/HTTPS 地址，再下载图片并转成 multipart 文件上传给上游。
+  - 当上游账号为 OpenAI APIKey 类型时，网关会先校验远程图片地址必须为公网 HTTP/HTTPS 地址，并且地址必须能由服务器直接下载到图片内容；校验或下载失败时返回 `400 invalid_request_error`，不会误归类为上游 `502`，校验通过后再转成 multipart 文件上传给上游。
   - 当上游账号为 OpenAI OAuth 类型时，网关同样会把远程参考图下载并转成 `data:image/...` 后再送入 Responses 图片工具，避免热门模板预设图因远程 URL 访问差异导致编辑作画失败。
 - OAuth 图片链路会兼容 Responses 返回的 `result`、`b64_json`、`download_url`、`url`、`image_url` 等图片资产字段，避免上游已经生成图片但本地误判为失败。
 - OAuth 图片链路若只拿到上游 `download_url` 或 `url`，网关会使用同一上游账号、请求头和代理先下载图片，再转换为 `b64_json` 返回给前端，避免浏览器因缺少上游会话或签名过期显示坏图。

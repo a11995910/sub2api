@@ -793,6 +793,29 @@ func (s *OpenAIGatewayService) buildOpenAIImagesAPIKeyForwardBody(
 	return rewriteOpenAIImagesModel(body, parsed.ContentType, model)
 }
 
+type OpenAIImagesInputError struct {
+	Field string
+	Err   error
+}
+
+func (e *OpenAIImagesInputError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	field := strings.TrimSpace(e.Field)
+	if field == "" {
+		return e.Err.Error()
+	}
+	return field + ": " + e.Err.Error()
+}
+
+func (e *OpenAIImagesInputError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 func buildOpenAIImagesMultipartEditBody(
 	ctx context.Context,
 	parsed *OpenAIImagesRequest,
@@ -843,7 +866,10 @@ func buildOpenAIImagesMultipartEditBody(
 		upload, err := openAIImagesUploadFromURL(ctx, imageURL, fmt.Sprintf("reference-%d", index+1))
 		if err != nil {
 			_ = writer.Close()
-			return nil, "", err
+			return nil, "", &OpenAIImagesInputError{
+				Field: fmt.Sprintf("images[%d].image_url", index),
+				Err:   err,
+			}
 		}
 		if err := writeOpenAIImagesMultipartUpload(writer, "image", upload); err != nil {
 			_ = writer.Close()
@@ -854,7 +880,10 @@ func buildOpenAIImagesMultipartEditBody(
 		upload, err := openAIImagesUploadFromURL(ctx, maskURL, "mask")
 		if err != nil {
 			_ = writer.Close()
-			return nil, "", err
+			return nil, "", &OpenAIImagesInputError{
+				Field: "mask.image_url",
+				Err:   err,
+			}
 		}
 		if err := writeOpenAIImagesMultipartUpload(writer, "mask", upload); err != nil {
 			_ = writer.Close()

@@ -1464,6 +1464,31 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditConvertsDataURLToMultip
 	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
+func TestBuildOpenAIImagesMultipartEditBody_RemoteImageURLNonImageReturnsInputError(t *testing.T) {
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>not an image</html>"))
+	}))
+	defer imageServer.Close()
+
+	parsed := &OpenAIImagesRequest{
+		Endpoint:       openAIImagesEditsEndpoint,
+		Model:          "gpt-image-2",
+		Prompt:         "replace background",
+		N:              1,
+		ResponseFormat: "b64_json",
+		InputImageURLs: []string{imageServer.URL + "/ref.png"},
+	}
+
+	_, _, err := buildOpenAIImagesMultipartEditBody(context.Background(), parsed, "gpt-image-2")
+	require.Error(t, err)
+
+	var inputErr *OpenAIImagesInputError
+	require.ErrorAs(t, err, &inputErr)
+	require.Equal(t, "images[0].image_url", inputErr.Field)
+	require.Contains(t, inputErr.Error(), "image_url did not return an image")
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"url"}`)
