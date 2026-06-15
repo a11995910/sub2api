@@ -1333,6 +1333,159 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamMultilineSSEDataBillsImag
 	require.Equal(t, 8, result.Usage.ImageOutputTokens)
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingSuperResolutionFor4KCompletedEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	superCalls := 0
+	superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		superCalls++
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("upscaled-stream-png"))
+	}))
+	defer superServer.Close()
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"3840x2160","stream":true,"response_format":"url"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                          7,
+			AllowImageGeneration:        true,
+			ImageSuperResolutionEnabled: true,
+		},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ImageSuperResolutionURL: superServer.URL,
+		}},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_stream_super_apikey"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					"event: image_generation.partial_image\n" +
+						"data: {\"type\":\"image_generation.partial_image\",\"b64_json\":\"cGFydGlhbA==\",\"partial_image_index\":0,\"output_format\":\"webp\"}\n\n" +
+						"event: image_generation.completed\n" +
+						"data: {\"type\":\"image_generation.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":18,\"output_tokens_details\":{\"image_tokens\":8}},\"b64_json\":\"b3JpZ2luYWw=\",\"output_format\":\"webp\",\"size\":\"3840x2160\"}\n\n" +
+						"data: [DONE]\n\n",
+				)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       8,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 18, result.Usage.OutputTokens)
+	require.Equal(t, 8, result.Usage.ImageOutputTokens)
+	require.Equal(t, 1, superCalls)
+
+	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
+	partial, ok := findOpenAIImageTestSSEEvent(events, "image_generation.partial_image")
+	require.True(t, ok)
+	require.Equal(t, "cGFydGlhbA==", gjson.Get(partial.Data, "b64_json").String())
+
+	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
+	require.True(t, ok)
+	want := base64.StdEncoding.EncodeToString([]byte("upscaled-stream-png"))
+	require.Equal(t, want, gjson.Get(completed.Data, "b64_json").String())
+	require.Equal(t, "data:image/png;base64,"+want, gjson.Get(completed.Data, "url").String())
+	require.Equal(t, "png", gjson.Get(completed.Data, "output_format").String())
+	require.Equal(t, "image/png", gjson.Get(completed.Data, "mime_type").String())
+	require.Equal(t, "3840x2160", gjson.Get(completed.Data, "size").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONFallbackSuperResolutionFor4K(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	superCalls := 0
+	superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		superCalls++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("fallback-upscaled-png"))
+	}))
+	defer superServer.Close()
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"3840x2160","stream":true,"response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                          7,
+			AllowImageGeneration:        true,
+			ImageSuperResolutionEnabled: true,
+		},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ImageSuperResolutionURL: superServer.URL,
+		}},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_stream_json_fallback_super"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000009,"usage":{"input_tokens":10,"output_tokens":18,"output_tokens_details":{"image_tokens":8}},"data":[{"b64_json":"b3JpZ2luYWw="}]}`)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       8,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 18, result.Usage.OutputTokens)
+	require.Equal(t, 8, result.Usage.ImageOutputTokens)
+	require.Equal(t, 1, superCalls)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, base64.StdEncoding.EncodeToString([]byte("fallback-upscaled-png")), gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "png", gjson.Get(rec.Body.String(), "output_format").String())
+}
+
 func TestExtractOpenAIImagesBillableCountFromJSONBytes_CompletedEvent(t *testing.T) {
 	body := []byte(`{"type":"image_generation.completed","b64_json":"ZmluYWw=","usage":{"input_tokens":10,"output_tokens":18}}`)
 
@@ -1464,7 +1617,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditConvertsDataURLToMultip
 	require.Equal(t, "ZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
-func TestBuildOpenAIImagesMultipartEditBody_RemoteImageURLNonImageReturnsInputError(t *testing.T) {
+func TestBuildOpenAIImagesMultipartEditBody_RemoteImageURLPrivateAddressReturnsInputError(t *testing.T) {
 	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte("<html>not an image</html>"))
@@ -1486,7 +1639,7 @@ func TestBuildOpenAIImagesMultipartEditBody_RemoteImageURLNonImageReturnsInputEr
 	var inputErr *OpenAIImagesInputError
 	require.ErrorAs(t, err, &inputErr)
 	require.Equal(t, "images[0].image_url", inputErr.Field)
-	require.Contains(t, inputErr.Error(), "image_url did not return an image")
+	require.Contains(t, inputErr.Error(), "image_url must point to a public address")
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *testing.T) {
