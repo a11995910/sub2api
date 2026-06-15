@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -307,6 +308,10 @@ func (s *stubAdminService) DeleteGroup(ctx context.Context, id int64, replacemen
 
 func (s *stubAdminService) SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error {
 	return nil
+}
+
+func (s *stubAdminService) GetGroupAuthorizedUsers(ctx context.Context, groupID int64, page, pageSize int, search string) ([]service.GroupAuthorizedUser, *pagination.PaginationResult, error) {
+	return []service.GroupAuthorizedUser{}, &pagination.PaginationResult{Total: 0, Page: page, PageSize: pageSize, Pages: 0}, nil
 }
 
 func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]service.APIKey, int64, error) {

@@ -31,6 +31,20 @@
 
 该默认分组只处理“删除分组时的兜底迁移”，不会自动改变新建 Key 的分组选择，也不会影响订阅默认分组配置。
 
+## 管理端专属分组授权用户
+
+管理端“分组管理”页中，标准计费且开启 `is_exclusive=true` 的专属分组会显示用户查看入口。管理员可以查看当前仍享受该分组的用户列表，并按邮箱、用户名、用户备注或授权备注搜索。
+
+列表接口为 `GET /api/v1/admin/groups/:id/users`，仅支持标准专属分组。公开分组和订阅分组没有 `user_allowed_groups` 授权语义，接口会拒绝查询。
+
+列表数据来自 `user_allowed_groups` 与 `users` 表关联，只展示当前有效授权：
+
+- `user_allowed_groups.group_id` 等于当前分组。
+- 用户未被软删除，即 `users.deleted_at IS NULL`。
+- 授权未过期，即 `user_allowed_groups.expires_at IS NULL OR user_allowed_groups.expires_at > NOW()`。
+
+列表会展示用户邮箱、用户名、状态、角色、余额、并发、用户级 RPM、授权来源 `source`、关联订单 `source_order_id`、授权到期时间 `expires_at`、授权创建时间和更新时间。`expires_at` 为空表示永久授权；邀请奖励等限时授权会显示具体到期时间。授权到期后的迁移和删除仍由限时授权过期处理逻辑负责，管理端列表只反映当前有效授权状态。
+
 ## 价格展示口径
 
 支持模型悬浮价格显示的是用户视角的最终价格，而不是原始模型单价：

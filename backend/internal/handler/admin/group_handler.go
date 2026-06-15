@@ -520,6 +520,33 @@ func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
 	response.Paginated(c, outKeys, total, page, pageSize)
 }
 
+// GetGroupAuthorizedUsers 返回当前仍享受标准专属分组授权的用户列表。
+// GET /api/v1/admin/groups/:id/users
+func (h *GroupHandler) GetGroupAuthorizedUsers(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	search := strings.TrimSpace(c.Query("search"))
+	if runes := []rune(search); len(runes) > 100 {
+		search = string(runes[:100])
+	}
+
+	users, result, err := h.adminService.GetGroupAuthorizedUsers(c.Request.Context(), groupID, page, pageSize, search)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result == nil {
+		response.Paginated(c, users, 0, page, pageSize)
+		return
+	}
+	response.Paginated(c, users, result.Total, result.Page, result.PageSize)
+}
+
 // GetGroupRateMultipliers handles getting rate multipliers for users in a group
 // GET /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {

@@ -204,6 +204,49 @@ export async function getGroupApiKeys(
   return data
 }
 
+export interface GroupAuthorizedUserEntry {
+  user_id: number
+  email: string
+  username: string
+  notes: string
+  status: string
+  role: string
+  balance: number
+  concurrency: number
+  rpm_limit: number
+  source: string
+  source_order_id?: number | null
+  expires_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 获取当前仍享受标准专属分组授权的用户。
+ */
+export async function getGroupAuthorizedUsers(
+  id: number,
+  page: number = 1,
+  pageSize: number = 20,
+  search?: string,
+  options?: {
+    signal?: AbortSignal
+  }
+): Promise<PaginatedResponse<GroupAuthorizedUserEntry>> {
+  const { data } = await apiClient.get<PaginatedResponse<GroupAuthorizedUserEntry>>(
+    `/admin/groups/${id}/users`,
+    {
+      params: {
+        page,
+        page_size: pageSize,
+        search: search?.trim() || undefined
+      },
+      signal: options?.signal
+    }
+  )
+  return data
+}
+
 /**
  * Rate multiplier entry for a user in a group
  */
@@ -380,6 +423,7 @@ export const groupsAPI = {
   getStats,
   getGroupApiKeys,
   getGroupAllowedUsers,
+  getGroupAuthorizedUsers,
   getGroupRateMultipliers,
   clearGroupRateMultipliers,
   batchSetGroupRateMultipliers,

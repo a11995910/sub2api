@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 const (
@@ -69,6 +71,24 @@ type UserAllowedGroupAccessInput struct {
 	Notes        string
 }
 
+// GroupAuthorizedUser 描述某个标准专属分组当前仍有效的用户授权。
+type GroupAuthorizedUser struct {
+	UserID        int64      `json:"user_id"`
+	Email         string     `json:"email"`
+	Username      string     `json:"username"`
+	Notes         string     `json:"notes"`
+	Status        string     `json:"status"`
+	Role          string     `json:"role"`
+	Balance       float64    `json:"balance"`
+	Concurrency   int        `json:"concurrency"`
+	RPMLimit      int        `json:"rpm_limit"`
+	Source        string     `json:"source"`
+	SourceOrderID *int64     `json:"source_order_id,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
 // TemporaryAllowedGroupRepository 是 user_allowed_groups 限时授权的可选仓储能力。
 type TemporaryAllowedGroupRepository interface {
 	GrantTemporaryAllowedGroup(ctx context.Context, input TemporaryAllowedGroupGrantInput) (*TemporaryAllowedGroupGrantResult, error)
@@ -85,4 +105,9 @@ type UserGroupAccessAdminRepository interface {
 	ListActiveUserGroupAccessMetaByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]UserGroupAccessMeta, error)
 	ListActiveUserGroupAccessMetaByGroupID(ctx context.Context, groupID int64, page, pageSize int) ([]UserGroupAccessMeta, int64, error)
 	SyncUserAllowedGroupAccess(ctx context.Context, userID int64, entries []UserAllowedGroupAccessInput) error
+}
+
+// GroupAuthorizedUserRepository 是管理端按专属分组反查有效授权用户的只读能力。
+type GroupAuthorizedUserRepository interface {
+	ListAuthorizedUsersByGroup(ctx context.Context, groupID int64, params pagination.PaginationParams, search string) ([]GroupAuthorizedUser, *pagination.PaginationResult, error)
 }

@@ -2393,6 +2393,32 @@ export default {
       unsavedChanges: 'Unsaved changes',
       revertChanges: 'Revert',
       userInfo: 'User Info',
+      authorizedUsers: {
+        title: 'Exclusive Group Users',
+        titleWithGroup: 'Exclusive Group Users: {name}',
+        subtitle: 'Only users with currently valid user_allowed_groups grants are shown.',
+        short: 'Users',
+        action: 'Users',
+        view: 'View users who can access this exclusive group',
+        searchPlaceholder: 'Search email, username, or notes...',
+        failedToLoad: 'Failed to load exclusive group users',
+        empty: 'No active authorized users',
+        permanent: 'Permanent',
+        unlimited: 'Unlimited',
+        createdAt: 'Created',
+        columns: {
+          user: 'User',
+          status: 'Status',
+          source: 'Source',
+          expiresAt: 'Expires At',
+          limits: 'User Limits',
+          updatedAt: 'Grant Time'
+        },
+        sources: {
+          manual: 'Manual',
+          affiliate_payment_reward: 'Affiliate Reward'
+        }
+      },
       platforms: {
         all: 'All Platforms',
         anthropic: 'Anthropic',

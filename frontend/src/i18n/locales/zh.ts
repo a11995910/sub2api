@@ -2494,6 +2494,32 @@ export default {
       unsavedChanges: '有未保存的修改',
       revertChanges: '撤销修改',
       userInfo: '用户信息',
+      authorizedUsers: {
+        title: '专属分组用户',
+        titleWithGroup: '专属分组用户：{name}',
+        subtitle: '仅展示当前仍有效的 user_allowed_groups 授权用户。',
+        short: '用户',
+        action: '用户',
+        view: '查看享受该专属分组的用户',
+        searchPlaceholder: '搜索邮箱、用户名或备注...',
+        failedToLoad: '加载专属分组用户失败',
+        empty: '暂无当前有效授权用户',
+        permanent: '永久',
+        unlimited: '不限制',
+        createdAt: '创建',
+        columns: {
+          user: '用户',
+          status: '状态',
+          source: '来源',
+          expiresAt: '到期时间',
+          limits: '用户限制',
+          updatedAt: '授权时间'
+        },
+        sources: {
+          manual: '手动',
+          affiliate_payment_reward: '邀请奖励'
+        }
+      },
       subscription: {
         title: '订阅设置',
         type: '计费类型',

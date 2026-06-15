@@ -185,12 +185,24 @@
             >
           </template>
 
-          <template #cell-is_exclusive="{ value }">
-            <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
-              {{
-                value ? t("admin.groups.exclusive") : t("admin.groups.public")
-              }}
-            </span>
+          <template #cell-is_exclusive="{ row, value }">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
+                {{
+                  value ? t("admin.groups.exclusive") : t("admin.groups.public")
+                }}
+              </span>
+              <button
+                v-if="canViewAuthorizedUsers(row)"
+                type="button"
+                class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                :title="t('admin.groups.authorizedUsers.view')"
+                @click="handleAuthorizedUsers(row)"
+              >
+                <Icon name="users" size="xs" />
+                {{ t("admin.groups.authorizedUsers.short") }}
+              </button>
+            </div>
           </template>
 
           <template #cell-account_count="{ row }">
@@ -297,12 +309,14 @@
                 <span class="text-xs">{{ t("common.edit") }}</span>
               </button>
               <button
-                v-if="row.is_exclusive && row.subscription_type === 'standard'"
-                @click="handleAllowedUsers(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-dark-700 dark:hover:text-indigo-400"
+                v-if="canViewAuthorizedUsers(row)"
+                @click="handleAuthorizedUsers(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
                 <Icon name="users" size="sm" />
-                <span class="text-xs">用户</span>
+                <span class="text-xs">{{
+                  t("admin.groups.authorizedUsers.action")
+                }}</span>
               </button>
               <button
                 @click="handleRateMultipliers(row)"
@@ -3080,6 +3094,169 @@
       </template>
     </BaseDialog>
 
+    <!-- Group Authorized Users Modal -->
+    <BaseDialog
+      :show="showAuthorizedUsersModal"
+      :title="authorizedUsersDialogTitle"
+      width="extra-wide"
+      @close="closeAuthorizedUsersModal"
+    >
+      <div class="space-y-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.authorizedUsers.subtitle") }}
+          </div>
+          <div class="relative w-full sm:w-72">
+            <Icon
+              name="search"
+              size="sm"
+              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            />
+            <input
+              v-model="authorizedUsersSearch"
+              type="text"
+              class="input pl-9 text-sm"
+              :placeholder="t('admin.groups.authorizedUsers.searchPlaceholder')"
+              @input="handleAuthorizedUsersSearch"
+            />
+          </div>
+        </div>
+
+        <div
+          class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700"
+        >
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.columns.user") }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.columns.status") }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.columns.source") }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.columns.expiresAt") }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.columns.limits") }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.columns.updatedAt") }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-800">
+                <tr v-if="authorizedUsersLoading">
+                  <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("common.loading") }}
+                  </td>
+                </tr>
+                <tr v-else-if="authorizedUsers.length === 0">
+                  <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.groups.authorizedUsers.empty") }}
+                  </td>
+                </tr>
+                <template v-else>
+                  <tr
+                    v-for="user in authorizedUsers"
+                    :key="user.user_id"
+                    class="hover:bg-gray-50 dark:hover:bg-dark-700/60"
+                  >
+                    <td class="px-4 py-3 align-top">
+                      <div class="font-medium text-gray-900 dark:text-white">
+                        {{ user.email }}
+                      </div>
+                      <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        <span v-if="user.username">{{ user.username }}</span>
+                        <span v-if="user.username && user.notes" class="mx-1">·</span>
+                        <span v-if="user.notes">{{ user.notes }}</span>
+                        <span v-if="!user.username && !user.notes">#{{ user.user_id }}</span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                      <span
+                        :class="[
+                          'badge',
+                          user.status === 'active' ? 'badge-success' : 'badge-danger',
+                        ]"
+                      >
+                        {{ t("admin.accounts.status." + user.status) }}
+                      </span>
+                      <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ user.role }}
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 align-top">
+                      <span
+                        :class="[
+                          'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+                          user.source === 'affiliate_payment_reward'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300',
+                        ]"
+                      >
+                        {{ formatAuthorizedUserSource(user.source) }}
+                      </span>
+                      <div
+                        v-if="user.source_order_id"
+                        class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+                      >
+                        #{{ user.source_order_id }}
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-300">
+                      <span v-if="user.expires_at">{{ formatDateTime(user.expires_at) }}</span>
+                      <span v-else class="text-emerald-600 dark:text-emerald-400">
+                        {{ t("admin.groups.authorizedUsers.permanent") }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 align-top text-xs text-gray-600 dark:text-gray-300">
+                      <div>
+                        {{ t("admin.users.columns.balance") }}:
+                        <span class="font-medium">{{ formatCost(user.balance) }}</span>
+                      </div>
+                      <div>
+                        {{ t("admin.users.columns.concurrency") }}:
+                        <span class="font-medium">{{ user.concurrency }}</span>
+                      </div>
+                      <div>
+                        RPM:
+                        <span class="font-medium">{{
+                          user.rpm_limit > 0
+                            ? user.rpm_limit
+                            : t("admin.groups.authorizedUsers.unlimited")
+                        }}</span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ formatDateTime(user.updated_at) }}</div>
+                      <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.groups.authorizedUsers.createdAt") }}:
+                        {{ formatDateTime(user.created_at) }}
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            v-if="authorizedUsersPagination.total > 0"
+            :page="authorizedUsersPagination.page"
+            :total="authorizedUsersPagination.total"
+            :page-size="authorizedUsersPagination.page_size"
+            :show-jump="false"
+            @update:page="handleAuthorizedUsersPageChange"
+            @update:pageSize="handleAuthorizedUsersPageSizeChange"
+          />
+        </div>
+      </div>
+    </BaseDialog>
+
     <!-- Group Rate Multipliers Modal -->
     <GroupRateMultipliersModal
       :show="showRateMultipliersModal"
@@ -3096,11 +3273,6 @@
       @success="loadGroups"
     />
 
-    <GroupAllowedUsersModal
-      :show="showAllowedUsersModal"
-      :group="allowedUsersGroup"
-      @close="closeAllowedUsersModal"
-    />
   </AppLayout>
 </template>
 
@@ -3111,6 +3283,7 @@ import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
 import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
+import type { GroupAuthorizedUserEntry } from "@/api/admin/groups";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -3124,13 +3297,12 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
-import GroupAllowedUsersModal from "@/components/admin/group/GroupAllowedUsersModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
-import { formatSpiritStones } from "@/utils/format";
+import { formatDateTime, formatSpiritStones } from "@/utils/format";
 import {
   createDefaultMessagesDispatchFormState,
   messagesDispatchConfigToFormState,
@@ -3382,8 +3554,19 @@ const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
-const showAllowedUsersModal = ref(false);
-const allowedUsersGroup = ref<AdminGroup | null>(null);
+const showAuthorizedUsersModal = ref(false);
+const authorizedUsersGroup = ref<AdminGroup | null>(null);
+const authorizedUsers = ref<GroupAuthorizedUserEntry[]>([]);
+const authorizedUsersLoading = ref(false);
+const authorizedUsersSearch = ref("");
+const authorizedUsersPagination = reactive({
+  page: 1,
+  page_size: 20,
+  total: 0,
+  pages: 0,
+});
+let authorizedUsersAbortController: AbortController | null = null;
+let authorizedUsersSearchTimeout: ReturnType<typeof setTimeout> | null = null;
 const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
@@ -3398,6 +3581,16 @@ const createModelsListSelectedCount = computed(
 const editModelsListSelectedCount = computed(
   () => editModelsListState.items.filter((item) => item.selected).length,
 );
+const authorizedUsersDialogTitle = computed(() => {
+  const groupName = authorizedUsersGroup.value?.name || "";
+  return groupName
+    ? t("admin.groups.authorizedUsers.titleWithGroup", { name: groupName })
+    : t("admin.groups.authorizedUsers.title");
+});
+
+const canViewAuthorizedUsers = (group: AdminGroup): boolean => {
+  return group.is_exclusive && group.subscription_type !== "subscription";
+};
 
 const createForm = reactive({
   name: "",
@@ -4294,14 +4487,109 @@ const handleRPMOverrides = (group: AdminGroup) => {
   showRPMOverridesModal.value = true;
 };
 
-const handleAllowedUsers = (group: AdminGroup) => {
-  allowedUsersGroup.value = group;
-  showAllowedUsersModal.value = true;
+const loadAuthorizedUsers = async () => {
+  if (!authorizedUsersGroup.value) return;
+
+  if (authorizedUsersAbortController) {
+    authorizedUsersAbortController.abort();
+  }
+  const currentController = new AbortController();
+  authorizedUsersAbortController = currentController;
+  const { signal } = currentController;
+  authorizedUsersLoading.value = true;
+
+  try {
+    const response = await adminAPI.groups.getGroupAuthorizedUsers(
+      authorizedUsersGroup.value.id,
+      authorizedUsersPagination.page,
+      authorizedUsersPagination.page_size,
+      authorizedUsersSearch.value,
+      { signal },
+    );
+    if (signal.aborted) return;
+    authorizedUsers.value = response.items;
+    authorizedUsersPagination.total = response.total;
+    authorizedUsersPagination.pages = response.pages;
+    authorizedUsersPagination.page = response.page;
+    authorizedUsersPagination.page_size = response.page_size;
+  } catch (error: any) {
+    if (
+      signal.aborted ||
+      error?.name === "AbortError" ||
+      error?.code === "ERR_CANCELED"
+    ) {
+      return;
+    }
+    appStore.showError(
+      error.response?.data?.detail ||
+        error.message ||
+        t("admin.groups.authorizedUsers.failedToLoad"),
+    );
+    console.error("Error loading group authorized users:", error);
+  } finally {
+    if (authorizedUsersAbortController === currentController && !signal.aborted) {
+      authorizedUsersLoading.value = false;
+    }
+  }
 };
 
-const closeAllowedUsersModal = () => {
-  showAllowedUsersModal.value = false;
-  allowedUsersGroup.value = null;
+const handleAuthorizedUsers = (group: AdminGroup) => {
+  if (!canViewAuthorizedUsers(group)) return;
+  authorizedUsersGroup.value = group;
+  authorizedUsers.value = [];
+  authorizedUsersSearch.value = "";
+  authorizedUsersPagination.page = 1;
+  authorizedUsersPagination.page_size = 20;
+  authorizedUsersPagination.total = 0;
+  authorizedUsersPagination.pages = 0;
+  showAuthorizedUsersModal.value = true;
+  loadAuthorizedUsers();
+};
+
+const closeAuthorizedUsersModal = () => {
+  if (authorizedUsersAbortController) {
+    authorizedUsersAbortController.abort();
+    authorizedUsersAbortController = null;
+  }
+  if (authorizedUsersSearchTimeout) {
+    clearTimeout(authorizedUsersSearchTimeout);
+    authorizedUsersSearchTimeout = null;
+  }
+  showAuthorizedUsersModal.value = false;
+  authorizedUsersGroup.value = null;
+  authorizedUsers.value = [];
+  authorizedUsersSearch.value = "";
+  authorizedUsersPagination.page = 1;
+  authorizedUsersPagination.total = 0;
+  authorizedUsersPagination.pages = 0;
+  authorizedUsersLoading.value = false;
+};
+
+const handleAuthorizedUsersSearch = () => {
+  if (authorizedUsersSearchTimeout) {
+    clearTimeout(authorizedUsersSearchTimeout);
+  }
+  authorizedUsersSearchTimeout = setTimeout(() => {
+    authorizedUsersPagination.page = 1;
+    loadAuthorizedUsers();
+  }, 300);
+};
+
+const handleAuthorizedUsersPageChange = (page: number) => {
+  authorizedUsersPagination.page = page;
+  loadAuthorizedUsers();
+};
+
+const handleAuthorizedUsersPageSizeChange = (pageSize: number) => {
+  authorizedUsersPagination.page_size = pageSize;
+  authorizedUsersPagination.page = 1;
+  loadAuthorizedUsers();
+};
+
+const formatAuthorizedUserSource = (source: string): string => {
+  const key = `admin.groups.authorizedUsers.sources.${source}`;
+  const label = t(key);
+  return label === key ? source || "-" : label;
 };
 
 const loadDeleteReplacementGroups = async (groupID: number) => {
@@ -4496,5 +4784,11 @@ onUnmounted(() => {
   document.removeEventListener("click", handleClickOutside);
   accountSearchRunner.clearAll();
   clearAllAccountSearchState();
+  if (authorizedUsersAbortController) {
+    authorizedUsersAbortController.abort();
+  }
+  if (authorizedUsersSearchTimeout) {
+    clearTimeout(authorizedUsersSearchTimeout);
+  }
 });
 </script>

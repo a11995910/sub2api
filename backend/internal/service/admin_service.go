@@ -61,6 +61,7 @@ type AdminService interface {
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64, replacementGroupID *int64) error
 	SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error
+	GetGroupAuthorizedUsers(ctx context.Context, groupID int64, page, pageSize int, search string) ([]GroupAuthorizedUser, *pagination.PaginationResult, error)
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
@@ -1817,6 +1818,24 @@ func (s *adminServiceImpl) GetAllGroupsIncludingInactive(ctx context.Context) ([
 
 func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, error) {
 	return s.groupRepo.GetByID(ctx, id)
+}
+
+func (s *adminServiceImpl) GetGroupAuthorizedUsers(ctx context.Context, groupID int64, page, pageSize int, search string) ([]GroupAuthorizedUser, *pagination.PaginationResult, error) {
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !group.IsExclusive || group.SubscriptionType == SubscriptionTypeSubscription {
+		return nil, nil, infraerrors.BadRequest("GROUP_AUTHORIZED_USERS_UNSUPPORTED", "authorized users can only be listed for standard exclusive groups")
+	}
+
+	repo, ok := s.userRepo.(GroupAuthorizedUserRepository)
+	if !ok || repo == nil {
+		return nil, nil, infraerrors.New(http.StatusNotImplemented, "GROUP_AUTHORIZED_USERS_UNAVAILABLE", "authorized user listing is unavailable")
+	}
+
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	return repo.ListAuthorizedUsersByGroup(ctx, groupID, params, search)
 }
 
 func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error) {

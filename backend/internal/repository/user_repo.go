@@ -1066,6 +1066,118 @@ func (r *userRepository) ListActiveUserGroupAccessMetaByGroupID(ctx context.Cont
 	return out, int64(total), nil
 }
 
+func (r *userRepository) ListAuthorizedUsersByGroup(ctx context.Context, groupID int64, params pagination.PaginationParams, search string) ([]service.GroupAuthorizedUser, *pagination.PaginationResult, error) {
+	if groupID <= 0 {
+		return []service.GroupAuthorizedUser{}, paginationResultFromTotal(0, params), nil
+	}
+
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	clauses := []string{
+		"uag.group_id = $1",
+		"u.deleted_at IS NULL",
+		"(uag.expires_at IS NULL OR uag.expires_at > NOW())",
+	}
+	args := []any{groupID}
+	search = strings.TrimSpace(search)
+	if search != "" {
+		args = append(args, "%"+search+"%")
+		placeholder := fmt.Sprintf("$%d", len(args))
+		clauses = append(clauses, fmt.Sprintf("(u.email ILIKE %s OR u.username ILIKE %s OR u.notes ILIKE %s OR uag.notes ILIKE %s)", placeholder, placeholder, placeholder, placeholder))
+	}
+	whereSQL := strings.Join(clauses, " AND ")
+
+	var total int64
+	countQuery := fmt.Sprintf(`
+SELECT COUNT(*)
+FROM user_allowed_groups uag
+JOIN users u ON u.id = uag.user_id
+WHERE %s
+`, whereSQL)
+	if err := scanSingleRow(ctx, exec, countQuery, args, &total); err != nil {
+		return nil, nil, err
+	}
+	if total == 0 {
+		return []service.GroupAuthorizedUser{}, paginationResultFromTotal(0, params), nil
+	}
+
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, params.Limit(), params.Offset())
+	limitPlaceholder := fmt.Sprintf("$%d", len(queryArgs)-1)
+	offsetPlaceholder := fmt.Sprintf("$%d", len(queryArgs))
+	query := fmt.Sprintf(`
+SELECT
+    u.id,
+    u.email,
+    u.username,
+    u.notes,
+    u.status,
+    u.role,
+    u.balance,
+    u.concurrency,
+    u.rpm_limit,
+    uag.source,
+    uag.source_order_id,
+    uag.expires_at,
+    uag.created_at,
+    uag.updated_at
+FROM user_allowed_groups uag
+JOIN users u ON u.id = uag.user_id
+WHERE %s
+ORDER BY uag.updated_at DESC, u.id ASC
+LIMIT %s OFFSET %s
+`, whereSQL, limitPlaceholder, offsetPlaceholder)
+
+	rows, err := exec.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.GroupAuthorizedUser, 0, params.Limit())
+	for rows.Next() {
+		var (
+			item          service.GroupAuthorizedUser
+			sourceOrderID sql.NullInt64
+			expiresAt     sql.NullTime
+		)
+		if err := rows.Scan(
+			&item.UserID,
+			&item.Email,
+			&item.Username,
+			&item.Notes,
+			&item.Status,
+			&item.Role,
+			&item.Balance,
+			&item.Concurrency,
+			&item.RPMLimit,
+			&item.Source,
+			&sourceOrderID,
+			&expiresAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, nil, err
+		}
+		if sourceOrderID.Valid {
+			value := sourceOrderID.Int64
+			item.SourceOrderID = &value
+		}
+		if expiresAt.Valid {
+			value := expiresAt.Time
+			item.ExpiresAt = &value
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return out, paginationResultFromTotal(total, params), nil
+}
+
 func (r *userRepository) ExpireTemporaryAllowedGroups(ctx context.Context, input service.ExpireTemporaryAllowedGroupsInput) ([]service.ExpiredTemporaryAllowedGroupResult, error) {
 	if input.ReplacementGroupID <= 0 {
 		return nil, fmt.Errorf("replacement group id is required")

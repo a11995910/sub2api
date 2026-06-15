@@ -278,6 +278,7 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.PUT("/sort-order", h.Admin.Group.UpdateSortOrder)
 		groups.PUT("/api-key-default", h.Admin.Group.SetAPIKeyDefaultGroup)
 		groups.GET("/:id/models-list-candidates", h.Admin.Group.GetModelsListCandidates)
+		groups.GET("/:id/users", h.Admin.Group.GetGroupAuthorizedUsers)
 		groups.GET("/:id", h.Admin.Group.GetByID)
 		groups.POST("", h.Admin.Group.Create)
 		groups.PUT("/:id", h.Admin.Group.Update)
