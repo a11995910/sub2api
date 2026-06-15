@@ -568,6 +568,98 @@ func (s *RedeemService) tryAccrueAffiliateRebateForRedeem(ctx context.Context, u
 	}
 	if rebate > 0 {
 		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate rebate accrued %.8f for inviter of user %d", rebate, userID)
+		s.tryGrantAffiliateGroupAccessRewardForRedeem(ctx, userID, redeemCodeID)
+	}
+}
+
+func (s *RedeemService) tryGrantAffiliateGroupAccessRewardForRedeem(ctx context.Context, inviteeUserID int64, redeemCodeID int64) {
+	if s == nil || s.affiliateService == nil {
+		return
+	}
+	cfg := s.affiliateService.GetSubscriptionRewardConfig(ctx)
+	if cfg.GroupID <= 0 || cfg.ValidityDays <= 0 {
+		return
+	}
+	inviterID, err := s.affiliateService.ResolveInviterID(ctx, inviteeUserID)
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] resolve affiliate inviter failed for user %d: %v", inviteeUserID, err)
+		return
+	}
+	if inviterID <= 0 {
+		return
+	}
+
+	var rewardGroup *Group
+	if s.affiliateService.rewardGroupReader != nil {
+		group, err := s.affiliateService.rewardGroupReader.GetByID(ctx, cfg.GroupID)
+		if err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] get affiliate reward group %d failed: %v", cfg.GroupID, err)
+			return
+		}
+		if group == nil || !group.IsActive() || (!group.IsSubscriptionType() && !group.IsExclusive) {
+			return
+		}
+		rewardGroup = group
+	}
+
+	if rewardGroup != nil && rewardGroup.IsSubscriptionType() {
+		if s.subscriptionService == nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] affiliate subscription reward skipped for inviter %d: subscription service unavailable", inviterID)
+			return
+		}
+		_, _, err := s.subscriptionService.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+			UserID:       inviterID,
+			GroupID:      cfg.GroupID,
+			ValidityDays: cfg.ValidityDays,
+			AssignedBy:   0,
+			Notes:        fmt.Sprintf("邀请用户 %d 使用兑换码 %d 产生返利，奖励 %d 天订阅分组使用权", inviteeUserID, redeemCodeID, cfg.ValidityDays),
+		})
+		if err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] affiliate subscription reward failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
+			return
+		}
+		s.invalidateAffiliateGroupAccessRewardCaches(ctx, inviterID, cfg.GroupID)
+		return
+	}
+
+	grantRepo, ok := s.userRepo.(TemporaryAllowedGroupRepository)
+	if !ok {
+		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate group access reward skipped for inviter %d: temporary allowed group repository unavailable", inviterID)
+		return
+	}
+	grant, err := grantRepo.GrantTemporaryAllowedGroup(ctx, TemporaryAllowedGroupGrantInput{
+		UserID:       inviterID,
+		GroupID:      cfg.GroupID,
+		ValidityDays: cfg.ValidityDays,
+		Source:       UserAllowedGroupSourceAffiliatePaymentReward,
+		Notes:        fmt.Sprintf("邀请用户 %d 使用兑换码 %d 产生返利，奖励 %d 天专属分组使用权", inviteeUserID, redeemCodeID, cfg.ValidityDays),
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate group access reward failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
+		return
+	}
+	if grant != nil && grant.Permanent {
+		return
+	}
+	s.invalidateAffiliateGroupAccessRewardCaches(ctx, inviterID, cfg.GroupID)
+}
+
+func (s *RedeemService) invalidateAffiliateGroupAccessRewardCaches(ctx context.Context, userID, groupID int64) {
+	if s == nil || userID <= 0 || groupID <= 0 {
+		return
+	}
+	if s.subscriptionService != nil {
+		s.subscriptionService.InvalidateSubCache(userID, groupID)
+		if s.subscriptionService.billingCacheService != nil {
+			go func() {
+				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = s.subscriptionService.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			}()
+		}
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
 }
 

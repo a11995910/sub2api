@@ -1284,8 +1284,8 @@ export default {
     rewardCard: {
       badge: '重要邀请奖励',
       title: '获得 {days} 天「{group}」使用权',
-      standardDescription: '好友完成支付后立即发放，天数可累加；请求按该分组 {rate} 倍率正常扣余额，到期后自动回到默认分组。',
-      subscriptionDescription: '好友完成支付后立即发放，天数可累加；请求按订阅额度消耗。',
+      standardDescription: '好友充值产生返利后立即发放，天数可累加；请求按该分组 {rate} 倍率正常扣余额，到期后自动回到默认分组。',
+      subscriptionDescription: '好友充值产生返利后立即发放，天数可累加；请求按订阅额度消耗。',
       countdown: '当前剩余 {time}',
       expired: '已到期'
     },
@@ -1322,8 +1322,8 @@ export default {
       line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
       line3: '返利额度可随时转入账户余额。',
       line4: '新产生的返利需要经过冻结期后才能提现。',
-      paymentRewardStandard: '被邀请用户完成支付后，你还会获得 {days} 天「{group}」使用权；请求按该分组 {rate} 倍率正常扣余额，天数可累加，到期后自动回到默认分组。',
-      paymentRewardSubscription: '被邀请用户完成支付后，你还会获得 {days} 天「{group}」订阅使用权；请求按订阅额度消耗，天数可累加。',
+      paymentRewardStandard: '被邀请用户充值产生返利后，你还会获得 {days} 天「{group}」使用权；请求按该分组 {rate} 倍率正常扣余额，天数可累加，到期后自动回到默认分组。',
+      paymentRewardSubscription: '被邀请用户充值产生返利后，你还会获得 {days} 天「{group}」订阅使用权；请求按订阅额度消耗，天数可累加。',
       rewardGroupFallback: '分组 #{id}'
     }
   },
@@ -5936,10 +5936,10 @@ export default {
           durationDaysDesc: '被邀请用户注册后多少天内的充值产生返利。0 = 永久有效。',
           perInviteeCap: '单人返利上限',
           perInviteeCapDesc: '每个被邀请用户最多产生的返利总额。0 = 无上限。',
-          subscriptionRewardGroup: '支付奖励分组',
-          subscriptionRewardGroupDesc: '被邀请用户支付成功后，为邀请人发放该分组使用权。标准专属分组按分组倍率正常扣余额；订阅分组按订阅额度消耗。不选择则不发放。',
-          subscriptionRewardDays: '支付奖励天数',
-          subscriptionRewardDaysDesc: '每次成功邀请并支付后累加的天数。0 = 不发放，过期后自动按默认分组调度。',
+          subscriptionRewardGroup: '充值奖励分组',
+          subscriptionRewardGroupDesc: '被邀请用户通过内置支付订单或正数余额兑换码产生返利后，为邀请人发放该分组使用权。标准专属分组按分组倍率正常扣余额；订阅分组按订阅额度消耗。不选择则不发放。',
+          subscriptionRewardDays: '充值奖励天数',
+          subscriptionRewardDaysDesc: '每次成功邀请并产生返利后累加的天数。0 = 不发放，过期后自动按默认分组调度。',
           subscriptionRewardDisabled: '不发放分组使用权',
           customUsers: {
             title: '专属用户配置',

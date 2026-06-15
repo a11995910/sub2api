@@ -171,6 +171,7 @@ export interface UserAffiliateDetail {
   aff_history_quota: number
   /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
   effective_rebate_rate_percent: number
+  /** 历史字段名保留为 payment_reward；实际表示邀请充值返利后的分组奖励。 */
   payment_reward?: AffiliatePaymentReward | null
   invitees: AffiliateInvitee[]
 }

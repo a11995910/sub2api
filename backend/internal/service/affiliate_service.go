@@ -483,6 +483,9 @@ func (s *AffiliateService) resolveCurrentRewardExpiresAt(ctx context.Context, us
 		if err != nil || sub == nil {
 			return nil, ""
 		}
+		if !isAffiliateRewardSubscription(sub) {
+			return nil, ""
+		}
 		expiresAt := sub.ExpiresAt
 		return &expiresAt, "subscription"
 	}
@@ -494,10 +497,32 @@ func (s *AffiliateService) resolveCurrentRewardExpiresAt(ctx context.Context, us
 		return nil, ""
 	}
 	item, ok := meta[rewardGroup.ID]
-	if !ok || item.Permanent || item.ExpiresAt == nil {
+	if !ok || !isAffiliateRewardGroupAccess(item) {
 		return nil, ""
 	}
 	return item.ExpiresAt, item.Source
+}
+
+func isAffiliateRewardGroupAccess(item UserGroupAccessMeta) bool {
+	return !item.Permanent &&
+		item.ExpiresAt != nil &&
+		strings.TrimSpace(item.Source) == UserAllowedGroupSourceAffiliatePaymentReward
+}
+
+func isAffiliateRewardSubscription(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if sub.AssignedBy != nil && *sub.AssignedBy > 0 {
+		return false
+	}
+	notes := strings.TrimSpace(sub.Notes)
+	if notes == "" {
+		return false
+	}
+	return strings.Contains(notes, "邀请用户 ") &&
+		strings.Contains(notes, "奖励") &&
+		(strings.Contains(notes, "完成支付订单") || strings.Contains(notes, "使用兑换码"))
 }
 
 func (s *AffiliateService) ResolveInviterID(ctx context.Context, inviteeUserID int64) (int64, error) {

@@ -216,6 +216,18 @@ func (s affiliateGroupAccessReaderStub) ListActiveUserGroupAccessMeta(context.Co
 	return s.items, nil
 }
 
+type affiliateUserSubRepoStub struct {
+	userSubRepoNoop
+	sub *UserSubscription
+}
+
+func (s affiliateUserSubRepoStub) GetActiveByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
+	if s.sub == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	return s.sub, nil
+}
+
 func TestGetAffiliateDetailIncludesPaymentReward(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -324,6 +336,43 @@ func TestGetAffiliateDetailIncludesCurrentRewardExpiresAt(t *testing.T) {
 	require.Equal(t, UserAllowedGroupSourceAffiliatePaymentReward, detail.PaymentReward.AccessSource)
 }
 
+func TestGetAffiliateDetailOmitsManualTemporaryRewardAccessCountdown(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	expiresAt := time.Now().Add(5 * 24 * time.Hour)
+	group := &Group{
+		ID:               9,
+		Name:             "邀请奖励分组",
+		IsExclusive:      true,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+		RateMultiplier:   0.7,
+	}
+	settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:                 "true",
+		SettingKeyAffiliateSubscriptionRewardGroup: strconv.FormatInt(group.ID, 10),
+		SettingKeyAffiliateSubscriptionRewardDays:  "5",
+	}}, &config.Config{})
+	repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+		10: {UserID: 10, AffCode: "AFF-CODE", CreatedAt: time.Now()},
+	}}
+	svc := NewAffiliateService(repo, settingSvc, nil, nil)
+	svc.SetRewardGroupReader(affiliateRewardGroupReaderStub{group: group})
+	svc.SetGroupAccessReader(affiliateGroupAccessReaderStub{items: map[int64]UserGroupAccessMeta{
+		group.ID: {
+			GroupID:   group.ID,
+			Source:    UserAllowedGroupSourceManual,
+			ExpiresAt: &expiresAt,
+		},
+	}})
+
+	detail, err := svc.GetAffiliateDetail(ctx, 10)
+	require.NoError(t, err)
+	require.NotNil(t, detail.PaymentReward)
+	require.Nil(t, detail.PaymentReward.CurrentExpiresAt)
+	require.Empty(t, detail.PaymentReward.AccessSource)
+}
+
 func TestGetAffiliateDetailOmitsCountdownForPermanentRewardAccess(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -358,6 +407,84 @@ func TestGetAffiliateDetailOmitsCountdownForPermanentRewardAccess(t *testing.T) 
 	require.NotNil(t, detail.PaymentReward)
 	require.Nil(t, detail.PaymentReward.CurrentExpiresAt)
 	require.Empty(t, detail.PaymentReward.AccessSource)
+}
+
+func TestGetAffiliateDetailSubscriptionRewardCountdownRequiresAffiliateRewardNotes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	expiresAt := time.Now().Add(5 * 24 * time.Hour)
+	group := &Group{
+		ID:               12,
+		Name:             "邀请订阅奖励",
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeSubscription,
+		RateMultiplier:   1,
+	}
+
+	cases := []struct {
+		name      string
+		notes     string
+		assigned  *int64
+		wantCount bool
+	}{
+		{
+			name:      "兑换码邀请奖励订阅显示倒计时",
+			notes:     "邀请用户 351 使用兑换码 243 产生返利，奖励 5 天订阅分组使用权",
+			wantCount: true,
+		},
+		{
+			name:      "支付订单邀请奖励订阅显示倒计时",
+			notes:     "邀请用户 351 完成支付订单 1001，奖励 5 天订阅分组使用权",
+			wantCount: true,
+		},
+		{
+			name:      "管理员手动订阅不算邀请奖励",
+			notes:     "管理员手动分配",
+			assigned:  ptrInt64(1),
+			wantCount: false,
+		},
+		{
+			name:      "系统普通兑换码订阅不算邀请奖励",
+			notes:     "通过兑换码 ABC 兑换",
+			wantCount: false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			settingSvc := NewSettingService(&settingRepoStub{values: map[string]string{
+				SettingKeyAffiliateEnabled:                 "true",
+				SettingKeyAffiliateSubscriptionRewardGroup: strconv.FormatInt(group.ID, 10),
+				SettingKeyAffiliateSubscriptionRewardDays:  "5",
+			}}, &config.Config{})
+			repo := &affiliateRepoSourceStub{summaries: map[int64]*AffiliateSummary{
+				10: {UserID: 10, AffCode: "AFF-CODE", CreatedAt: time.Now()},
+			}}
+			svc := NewAffiliateService(repo, settingSvc, nil, nil)
+			svc.SetUserSubscriptionRepository(affiliateUserSubRepoStub{sub: &UserSubscription{
+				UserID:     10,
+				GroupID:    group.ID,
+				ExpiresAt:  expiresAt,
+				Status:     SubscriptionStatusActive,
+				AssignedBy: tc.assigned,
+				Notes:      tc.notes,
+			}})
+			svc.SetRewardGroupReader(affiliateRewardGroupReaderStub{group: group})
+
+			detail, err := svc.GetAffiliateDetail(ctx, 10)
+			require.NoError(t, err)
+			require.NotNil(t, detail.PaymentReward)
+			if tc.wantCount {
+				require.NotNil(t, detail.PaymentReward.CurrentExpiresAt)
+				require.Equal(t, "subscription", detail.PaymentReward.AccessSource)
+				return
+			}
+			require.Nil(t, detail.PaymentReward.CurrentExpiresAt)
+			require.Empty(t, detail.PaymentReward.AccessSource)
+		})
+	}
 }
 
 // TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by

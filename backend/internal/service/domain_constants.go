@@ -33,8 +33,8 @@ const (
 	AffiliateRebateDurationDaysDefault      = 0        // 0 = 永久有效
 	AffiliateRebateDurationDaysMax          = 3650     // ~10 年
 	AffiliateRebatePerInviteeCapDefault     = 0.0      // 0 = 无上限
-	AffiliateSubscriptionRewardGroupDefault = int64(0) // 0 = 不发放邀请支付分组奖励
-	AffiliateSubscriptionRewardDaysDefault  = 0        // 0 = 不发放邀请支付分组奖励
+	AffiliateSubscriptionRewardGroupDefault = int64(0) // 0 = 不发放邀请充值分组奖励
+	AffiliateSubscriptionRewardDaysDefault  = 0        // 0 = 不发放邀请充值分组奖励
 	AffiliateSubscriptionRewardDaysMax      = 36500    // 最大 100 年，与订阅有效期上限一致
 	CheckinContentDefault                   = "每日签到"
 	CheckinExtraMilestoneFirstDefault       = 4
@@ -140,8 +140,8 @@ const (
 	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"          // 返利冻结期（小时，0=不冻结）
 	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"         // 返利有效期（天，0=永久）
 	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"       // 单人返利上限（0=无上限）
-	SettingKeyAffiliateSubscriptionRewardGroup = "affiliate_subscription_reward_group_id" // 邀请支付成功后奖励给邀请人的分组 ID（0=关闭）
-	SettingKeyAffiliateSubscriptionRewardDays  = "affiliate_subscription_reward_days"     // 邀请支付成功后奖励天数（0=关闭）
+	SettingKeyAffiliateSubscriptionRewardGroup = "affiliate_subscription_reward_group_id" // 邀请充值产生返利后奖励给邀请人的分组 ID（0=关闭）
+	SettingKeyAffiliateSubscriptionRewardDays  = "affiliate_subscription_reward_days"     // 邀请充值产生返利后的奖励天数（0=关闭）
 	SettingKeyCheckinEnabled                   = "checkin_enabled"                        // 每日签到功能总开关
 	SettingKeyCheckinContent                   = "checkin_content"                        // 签到展示文案
 	SettingKeyCheckinDailyReward               = "checkin_daily_reward"                   // 每日固定签到奖励

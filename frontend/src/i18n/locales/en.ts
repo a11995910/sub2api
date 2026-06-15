@@ -1280,8 +1280,8 @@ export default {
     rewardCard: {
       badge: 'Important invite reward',
       title: 'Get {days} days of "{group}" access',
-      standardDescription: 'Issued after your friend completes a payment. Days stack; requests use your balance at the group rate multiplier {rate}, then return to the default group after expiry.',
-      subscriptionDescription: 'Issued after your friend completes a payment. Days stack; requests consume subscription quota.',
+      standardDescription: 'Issued after your friend recharges and generates rebate. Days stack; requests use your balance at the group rate multiplier {rate}, then return to the default group after expiry.',
+      subscriptionDescription: 'Issued after your friend recharges and generates rebate. Days stack; requests consume subscription quota.',
       countdown: 'Current remaining {time}',
       expired: 'Expired'
     },
@@ -1318,8 +1318,8 @@ export default {
       line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
       line4: 'Newly earned rebates may have a waiting period before they can be transferred.',
-      paymentRewardStandard: 'When an invitee completes a payment, you also get {days} days of access to "{group}". Requests use your balance at the group rate multiplier {rate}; days stack and expire back to the default group.',
-      paymentRewardSubscription: 'When an invitee completes a payment, you also get {days} days of "{group}" subscription access. Requests consume subscription quota, and days stack.',
+      paymentRewardStandard: 'When an invitee recharges and generates rebate, you also get {days} days of access to "{group}". Requests use your balance at the group rate multiplier {rate}; days stack and expire back to the default group.',
+      paymentRewardSubscription: 'When an invitee recharges and generates rebate, you also get {days} days of "{group}" subscription access. Requests consume subscription quota, and days stack.',
       rewardGroupFallback: 'Group #{id}'
     }
   },
@@ -5777,10 +5777,10 @@ export default {
           durationDaysDesc: 'Rebate relationship expires after this many days since invitee registration. 0 = permanent.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
-          subscriptionRewardGroup: 'Payment Reward Group',
-          subscriptionRewardGroupDesc: 'When an invitee pays successfully, grant the inviter access to this group. Exclusive standard groups keep charging balance by multiplier; subscription groups consume subscription quota. Leave disabled to skip the reward.',
-          subscriptionRewardDays: 'Payment Reward Days',
-          subscriptionRewardDaysDesc: 'Days added for each successful invited payment. 0 = no reward; after expiry, access naturally falls back to the default group.',
+          subscriptionRewardGroup: 'Recharge Reward Group',
+          subscriptionRewardGroupDesc: 'When an invitee generates rebate through a built-in payment order or a positive balance redeem code, grant the inviter access to this group. Exclusive standard groups keep charging balance by multiplier; subscription groups consume subscription quota. Leave disabled to skip the reward.',
+          subscriptionRewardDays: 'Recharge Reward Days',
+          subscriptionRewardDaysDesc: 'Days added each time an invited recharge generates rebate. 0 = no reward; after expiry, access naturally falls back to the default group.',
           subscriptionRewardDisabled: 'No group access reward',
           customUsers: {
             title: 'Per-User Overrides',

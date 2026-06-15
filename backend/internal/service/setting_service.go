@@ -2627,7 +2627,7 @@ func (s *SettingService) GetAffiliateRebatePerInviteeCap(ctx context.Context) fl
 	return cap
 }
 
-// GetAffiliateSubscriptionRewardConfig 返回邀请人支付奖励配置。
+// GetAffiliateSubscriptionRewardConfig 返回邀请人充值奖励配置。
 // groupID 或 days 任一为 0 时表示未启用该奖励。
 func (s *SettingService) GetAffiliateSubscriptionRewardConfig(ctx context.Context) (int64, int) {
 	if s == nil || s.settingRepo == nil {

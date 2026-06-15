@@ -21,8 +21,8 @@ const messages: Record<string, string> = {
   'affiliate.rewardCard.badge': '重要邀请奖励',
   'affiliate.rewardCard.title': '获得 {days} 天「{group}」使用权',
   'affiliate.rewardCard.standardDescription':
-    '好友完成支付后立即发放，天数可累加；请求按该分组 {rate} 倍率正常扣余额，到期后自动回到默认分组。',
-  'affiliate.rewardCard.subscriptionDescription': '好友完成支付后立即发放，天数可累加；请求按订阅额度消耗。',
+    '好友充值产生返利后立即发放，天数可累加；请求按该分组 {rate} 倍率正常扣余额，到期后自动回到默认分组。',
+  'affiliate.rewardCard.subscriptionDescription': '好友充值产生返利后立即发放，天数可累加；请求按订阅额度消耗。',
   'affiliate.rewardCard.countdown': '当前剩余 {time}',
   'affiliate.rewardCard.expired': '已到期',
   'affiliate.stats.rebateRate': '我的返利比例',
@@ -49,9 +49,9 @@ const messages: Record<string, string> = {
   'affiliate.tips.line3': '返利额度可随时转入账户余额。',
   'affiliate.tips.line4': '新产生的返利需要经过冻结期后才能提现。',
   'affiliate.tips.paymentRewardStandard':
-    '被邀请用户完成支付后，你还会获得 {days} 天「{group}」使用权；请求按该分组 {rate} 倍率正常扣余额，天数可累加，到期后自动回到默认分组。',
+    '被邀请用户充值产生返利后，你还会获得 {days} 天「{group}」使用权；请求按该分组 {rate} 倍率正常扣余额，天数可累加，到期后自动回到默认分组。',
   'affiliate.tips.paymentRewardSubscription':
-    '被邀请用户完成支付后，你还会获得 {days} 天「{group}」订阅使用权；请求按订阅额度消耗，天数可累加。',
+    '被邀请用户充值产生返利后，你还会获得 {days} 天「{group}」订阅使用权；请求按订阅额度消耗，天数可累加。',
   'affiliate.tips.rewardGroupFallback': '分组 #{id}',
 }
 
@@ -142,7 +142,7 @@ describe('AffiliateView', () => {
     copyToClipboard.mockReset()
   })
 
-  it('展示标准专属分组支付奖励说明', async () => {
+  it('展示标准专属分组充值奖励说明', async () => {
     getAffiliateDetail.mockResolvedValue(detailFixture({
       group_id: 9,
       group_name: 'VIP 专线',
@@ -158,12 +158,12 @@ describe('AffiliateView', () => {
     expect(text).toContain('重要邀请奖励')
     expect(text).toContain('获得 5 天「VIP 专线」使用权')
     expect(text).toContain('当前剩余')
-    expect(text).toContain('被邀请用户完成支付后，你还会获得 5 天「VIP 专线」使用权')
+    expect(text).toContain('被邀请用户充值产生返利后，你还会获得 5 天「VIP 专线」使用权')
     expect(text).toContain('请求按该分组 0.7 倍率正常扣余额')
     expect(text).toContain('到期后自动回到默认分组')
   })
 
-  it('展示订阅分组支付奖励说明', async () => {
+  it('展示订阅分组充值奖励说明', async () => {
     getAffiliateDetail.mockResolvedValue(detailFixture({
       group_id: 12,
       group_name: 'Claude 订阅',
@@ -175,7 +175,7 @@ describe('AffiliateView', () => {
     const wrapper = await mountAffiliateView()
     const text = wrapper.text()
 
-    expect(text).toContain('被邀请用户完成支付后，你还会获得 7 天「Claude 订阅」订阅使用权')
+    expect(text).toContain('被邀请用户充值产生返利后，你还会获得 7 天「Claude 订阅」订阅使用权')
     expect(text).toContain('请求按订阅额度消耗，天数可累加')
   })
 })
