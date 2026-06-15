@@ -1,8 +1,8 @@
 /**
- * 创意绘图尺寸工具。
+ * 图片尺寸工具。
  *
  * 部分尺寸规则改写自 ZyphrZero/chatgpt2api（MIT License，Copyright (c) 2026 kunkun），
- * 用于在本项目中保持创作台相同的比例、分辨率和自定义宽高体验。
+ * 用于在图片测试和图片工作流中保持一致的比例、分辨率和自定义宽高体验。
  */
 
 export const CUSTOM_IMAGE_ASPECT_RATIO = 'custom'

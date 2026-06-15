@@ -388,26 +388,6 @@ const ChannelIcon = {
     )
 }
 
-const ImageMagicIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 19.5h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z'
-        }),
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M9.813 7.904L9 10.75l-.813-2.846a2.25 2.25 0 00-1.54-1.54L3.8 5.55l2.846-.813a2.25 2.25 0 001.54-1.54L9 0.35l.813 2.846a2.25 2.25 0 001.54 1.54l2.846.813-2.846.813a2.25 2.25 0 00-1.54 1.54z'
-        })
-      ]
-    )
-}
-
 const CreditCardIcon = {
   render: () =>
     h(
@@ -716,11 +696,11 @@ function customMenuToNavItem(item: { id: string; label: string; icon_svg: string
 // 模型广场聚合展示模型、分组与倍率后价格，用户侧不再暴露渠道名和渠道状态。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
-  const placeDrawingWorkflowAfterCreativeDrawing = !authStore.isSimpleMode
-  const drawingWorkflowMenuItems = placeDrawingWorkflowAfterCreativeDrawing
+  const placeDrawingWorkflowBeforeModelTest = !authStore.isSimpleMode
+  const drawingWorkflowMenuItems = placeDrawingWorkflowBeforeModelTest
     ? customMenuItemsForUser.value.filter(isDrawingWorkflowCustomMenu)
     : []
-  const tailCustomMenuItems = placeDrawingWorkflowAfterCreativeDrawing
+  const tailCustomMenuItems = placeDrawingWorkflowBeforeModelTest
     ? customMenuItemsForUser.value.filter(item => !isDrawingWorkflowCustomMenu(item))
     : customMenuItemsForUser.value
   if (withDashboard) {
@@ -730,7 +710,6 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/models', label: t('nav.modelMarket'), icon: ChannelIcon, hideInSimpleMode: true },
-    { path: '/creative-drawing', label: t('nav.creativeDrawing'), icon: ImageMagicIcon, hideInSimpleMode: true },
     ...drawingWorkflowMenuItems.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },

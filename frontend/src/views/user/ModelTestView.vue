@@ -296,7 +296,7 @@ import {
   ADAPTIVE_IMAGE_SIZE_VALUE,
   IMAGE_SIZE_PRESET_OPTIONS,
   getImageBillingTier,
-} from '@/features/creativeDrawing/imageOptions'
+} from '@/utils/imageOptions'
 import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,

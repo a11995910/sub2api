@@ -32,13 +32,14 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar 自定义菜单顺序', () => {
-  it('将绘画工作流自定义菜单放在创意绘图之后', () => {
-    const creativeDrawingIndex = componentSource.indexOf("path: '/creative-drawing'")
+  it('将绘画工作流自定义菜单放在模型广场之后、模型测试台之前', () => {
+    const modelMarketIndex = componentSource.indexOf("path: '/models'")
     const drawingWorkflowIndex = componentSource.indexOf('...drawingWorkflowMenuItems.map(customMenuToNavItem)')
     const modelTestIndex = componentSource.indexOf("path: '/model-test'")
 
-    expect(creativeDrawingIndex).toBeGreaterThanOrEqual(0)
-    expect(drawingWorkflowIndex).toBeGreaterThan(creativeDrawingIndex)
+    expect(modelMarketIndex).toBeGreaterThanOrEqual(0)
+    expect(drawingWorkflowIndex).toBeGreaterThan(modelMarketIndex)
     expect(modelTestIndex).toBeGreaterThan(drawingWorkflowIndex)
+    expect(componentSource).not.toContain("path: '/creative-drawing'")
   })
 })

@@ -392,7 +392,6 @@ export default {
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelMarket: 'Model Market',
-    creativeDrawing: 'Creative Drawing',
     modelTest: 'Model Test',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
@@ -1188,11 +1187,6 @@ export default {
       perRequest: 'Per Request',
       actions: 'Actions'
     }
-  },
-
-  creativeDrawing: {
-    title: 'Creative Drawing',
-    description: 'Generate images, edit with references, and apply prompt-market recipes with your own API key'
   },
 
   // Model Test

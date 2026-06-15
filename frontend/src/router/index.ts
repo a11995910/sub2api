@@ -287,18 +287,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/creative-drawing',
-    name: 'CreativeDrawing',
-    component: () => import('@/views/user/CreativeDrawingView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Creative Drawing',
-      titleKey: 'creativeDrawing.title',
-      descriptionKey: 'creativeDrawing.description'
-    }
-  },
-  {
     path: '/model-test',
     name: 'ModelTest',
     component: () => import('@/views/user/ModelTestView.vue'),
