@@ -75,6 +75,36 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-cache-hit-unit@test.com")
+
+	group, err := client.Group.Create().
+		SetName("g-auth-cache-hit-quarter-unit").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		SetSubscriptionType(service.SubscriptionTypeStandard).
+		SetRateMultiplier(1).
+		SetCacheHitQuarterToInputEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	key := &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-getbykey-auth-cache-hit-quarter-unit",
+		Name:    "Cache Hit Quarter Key Unit",
+		GroupID: &group.ID,
+		Status:  service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.NotNil(t, got.Group)
+	require.True(t, got.Group.CacheHitQuarterToInput)
+}
+
 func TestAPIKeyRepository_GetByKeyForAuth_FiltersExpiredAllowedGroups_SQLite(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()
