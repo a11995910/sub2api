@@ -540,6 +540,7 @@ const (
 	affiliateGroupAccessRewardAppliedAction = "AFFILIATE_GROUP_ACCESS_REWARD_APPLIED"
 	affiliateGroupAccessRewardSkippedAction = "AFFILIATE_GROUP_ACCESS_REWARD_SKIPPED"
 	affiliateGroupAccessRewardFailedAction  = "AFFILIATE_GROUP_ACCESS_REWARD_FAILED"
+	affiliateGroupAccessRewardClaimAction   = "AFFILIATE_GROUP_ACCESS_REWARD_CLAIMED"
 
 	legacyAffiliateSubscriptionRewardAppliedAction = "AFFILIATE_SUBSCRIPTION_REWARD_APPLIED"
 	legacyAffiliateSubscriptionRewardSkippedAction = "AFFILIATE_SUBSCRIPTION_REWARD_SKIPPED"
@@ -622,12 +623,29 @@ func (s *PaymentService) applyAffiliateGroupAccessRewardForOrder(ctx context.Con
 		"validity_days":   cfg.ValidityDays,
 		"order_type":      o.OrderType,
 	}
+
 	if rewardGroup != nil && rewardGroup.IsSubscriptionType() {
 		if s.subscriptionSvc == nil {
 			return s.skipClaimedAffiliateGroupAccessReward(ctx, txCtx, tx, o.ID, map[string]any{
 				"group_id": cfg.GroupID,
 				"reason":   "subscription service unavailable",
 			})
+		}
+		rewardClaimed, err := tryClaimAffiliateGroupAccessRewardForInvitee(txCtx, tx.Client(), inviterID, o.UserID, cfg.GroupID, map[string]any{
+			"source_type":     "payment_order",
+			"source_order_id": o.ID,
+			"validity_days":   cfg.ValidityDays,
+			"order_type":      o.OrderType,
+		})
+		if err != nil {
+			s.writeAuditLog(ctx, o.ID, affiliateGroupAccessRewardFailedAction, "system", map[string]any{
+				"error": err.Error(),
+			})
+			return fmt.Errorf("claim affiliate invitee group access reward: %w", err)
+		}
+		if !rewardClaimed {
+			detail["reason"] = "affiliate invitee already claimed group access reward"
+			return s.skipClaimedAffiliateGroupAccessReward(ctx, txCtx, tx, o.ID, detail)
 		}
 		_, extended, err := s.subscriptionSvc.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
 			UserID:       inviterID,
@@ -651,6 +669,22 @@ func (s *PaymentService) applyAffiliateGroupAccessRewardForOrder(ctx context.Con
 				"error": "temporary allowed group repository unavailable",
 			})
 			return fmt.Errorf("temporary allowed group repository unavailable")
+		}
+		rewardClaimed, err := tryClaimAffiliateGroupAccessRewardForInvitee(txCtx, tx.Client(), inviterID, o.UserID, cfg.GroupID, map[string]any{
+			"source_type":     "payment_order",
+			"source_order_id": o.ID,
+			"validity_days":   cfg.ValidityDays,
+			"order_type":      o.OrderType,
+		})
+		if err != nil {
+			s.writeAuditLog(ctx, o.ID, affiliateGroupAccessRewardFailedAction, "system", map[string]any{
+				"error": err.Error(),
+			})
+			return fmt.Errorf("claim affiliate invitee group access reward: %w", err)
+		}
+		if !rewardClaimed {
+			detail["reason"] = "affiliate invitee already claimed group access reward"
+			return s.skipClaimedAffiliateGroupAccessReward(ctx, txCtx, tx, o.ID, detail)
 		}
 		sourceOrderID := o.ID
 		grant, err := grantRepo.GrantTemporaryAllowedGroup(txCtx, TemporaryAllowedGroupGrantInput{
@@ -728,6 +762,49 @@ WHERE NOT EXISTS (
 )
 ON CONFLICT (order_id, action) DO NOTHING
 RETURNING id`, oid, string(detail))
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	var claimID int64
+	if err := rows.Scan(&claimID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func affiliateGroupAccessRewardClaimKey(inviterID, inviteeUserID int64) string {
+	return fmt.Sprintf("agr:%d:%d", inviterID, inviteeUserID)
+}
+
+func tryClaimAffiliateGroupAccessRewardForInvitee(ctx context.Context, client *dbent.Client, inviterID, inviteeUserID, groupID int64, detail map[string]any) (bool, error) {
+	if client == nil {
+		return false, errors.New("nil payment client")
+	}
+	if inviterID <= 0 || inviteeUserID <= 0 || groupID <= 0 {
+		return false, errors.New("invalid affiliate group access reward claim input")
+	}
+	claimKey := affiliateGroupAccessRewardClaimKey(inviterID, inviteeUserID)
+	claimDetail := map[string]any{
+		"inviter_user_id": inviterID,
+		"invitee_user_id": inviteeUserID,
+		"group_id":        groupID,
+	}
+	for k, v := range detail {
+		claimDetail[k] = v
+	}
+	detailJSON, _ := json.Marshal(claimDetail)
+	rows, err := client.QueryContext(ctx, `
+INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+VALUES ($1, $2, $3, 'system', CURRENT_TIMESTAMP)
+ON CONFLICT (order_id, action) DO NOTHING
+RETURNING id`, claimKey, affiliateGroupAccessRewardClaimAction, string(detailJSON))
 	if err != nil {
 		return false, err
 	}

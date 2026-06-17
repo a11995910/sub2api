@@ -143,6 +143,23 @@ func TestMigration134AddsAffiliateLedgerAuditFieldsWithoutJSONCast(t *testing.T)
 	require.NotContains(t, sql, "detail::jsonb")
 }
 
+func TestMigration153BackfillsAffiliateGroupRewardClaimWithoutJSONCast(t *testing.T) {
+	content, err := FS.ReadFile("153_affiliate_group_reward_once_per_invitee.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "AFFILIATE_GROUP_ACCESS_REWARD_CLAIMED")
+	require.Contains(t, sql, "'agr:' || parsed.inviter_user_id || ':' || parsed.invitee_user_id")
+	require.Contains(t, sql, "AFFILIATE_GROUP_ACCESS_REWARD_APPLIED")
+	require.Contains(t, sql, "AFFILIATE_SUBSCRIPTION_REWARD_APPLIED")
+	require.Contains(t, sql, "ON CONFLICT (order_id, action) DO NOTHING")
+	require.Contains(t, sql, "substring(")
+	require.Contains(t, sql, `"inviter_user_id"`)
+	require.Contains(t, sql, `"invitee_user_id"`)
+	require.Contains(t, sql, `"group_id"`)
+	require.NotContains(t, sql, "detail::jsonb")
+}
+
 func TestMigration135AllowsGitHubAndGoogleAuthProviders(t *testing.T) {
 	content, err := FS.ReadFile("135_allow_email_oauth_provider_types.sql")
 	require.NoError(t, err)

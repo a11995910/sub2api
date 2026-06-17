@@ -573,7 +573,7 @@ func (s *RedeemService) tryAccrueAffiliateRebateForRedeem(ctx context.Context, u
 }
 
 func (s *RedeemService) tryGrantAffiliateGroupAccessRewardForRedeem(ctx context.Context, inviteeUserID int64, redeemCodeID int64) {
-	if s == nil || s.affiliateService == nil {
+	if s == nil || s.affiliateService == nil || s.entClient == nil {
 		return
 	}
 	cfg := s.affiliateService.GetSubscriptionRewardConfig(ctx)
@@ -602,12 +602,29 @@ func (s *RedeemService) tryGrantAffiliateGroupAccessRewardForRedeem(ctx context.
 		rewardGroup = group
 	}
 
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] begin affiliate group access reward tx failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+
 	if rewardGroup != nil && rewardGroup.IsSubscriptionType() {
 		if s.subscriptionService == nil {
 			logger.LegacyPrintf("service.redeem", "[Redeem] affiliate subscription reward skipped for inviter %d: subscription service unavailable", inviterID)
 			return
 		}
-		_, _, err := s.subscriptionService.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		claimed, err := s.tryClaimAffiliateGroupAccessRewardForRedeem(txCtx, tx.Client(), inviterID, inviteeUserID, cfg.GroupID, redeemCodeID, cfg.ValidityDays)
+		if err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] claim affiliate group access reward failed for inviter %d invitee %d group %d: %v", inviterID, inviteeUserID, cfg.GroupID, err)
+			return
+		}
+		if !claimed {
+			logger.LegacyPrintf("service.redeem", "[Redeem] affiliate group access reward skipped for inviter %d invitee %d group %d: already claimed", inviterID, inviteeUserID, cfg.GroupID)
+			return
+		}
+		_, _, err = s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
 			UserID:       inviterID,
 			GroupID:      cfg.GroupID,
 			ValidityDays: cfg.ValidityDays,
@@ -616,6 +633,10 @@ func (s *RedeemService) tryGrantAffiliateGroupAccessRewardForRedeem(ctx context.
 		})
 		if err != nil {
 			logger.LegacyPrintf("service.redeem", "[Redeem] affiliate subscription reward failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] commit affiliate subscription reward failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
 			return
 		}
 		s.invalidateAffiliateGroupAccessRewardCaches(ctx, inviterID, cfg.GroupID)
@@ -627,7 +648,16 @@ func (s *RedeemService) tryGrantAffiliateGroupAccessRewardForRedeem(ctx context.
 		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate group access reward skipped for inviter %d: temporary allowed group repository unavailable", inviterID)
 		return
 	}
-	grant, err := grantRepo.GrantTemporaryAllowedGroup(ctx, TemporaryAllowedGroupGrantInput{
+	claimed, err := s.tryClaimAffiliateGroupAccessRewardForRedeem(txCtx, tx.Client(), inviterID, inviteeUserID, cfg.GroupID, redeemCodeID, cfg.ValidityDays)
+	if err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] claim affiliate group access reward failed for inviter %d invitee %d group %d: %v", inviterID, inviteeUserID, cfg.GroupID, err)
+		return
+	}
+	if !claimed {
+		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate group access reward skipped for inviter %d invitee %d group %d: already claimed", inviterID, inviteeUserID, cfg.GroupID)
+		return
+	}
+	grant, err := grantRepo.GrantTemporaryAllowedGroup(txCtx, TemporaryAllowedGroupGrantInput{
 		UserID:       inviterID,
 		GroupID:      cfg.GroupID,
 		ValidityDays: cfg.ValidityDays,
@@ -638,10 +668,22 @@ func (s *RedeemService) tryGrantAffiliateGroupAccessRewardForRedeem(ctx context.
 		logger.LegacyPrintf("service.redeem", "[Redeem] affiliate group access reward failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
 		return
 	}
+	if err := tx.Commit(); err != nil {
+		logger.LegacyPrintf("service.redeem", "[Redeem] commit affiliate group access reward failed for inviter %d group %d: %v", inviterID, cfg.GroupID, err)
+		return
+	}
 	if grant != nil && grant.Permanent {
 		return
 	}
 	s.invalidateAffiliateGroupAccessRewardCaches(ctx, inviterID, cfg.GroupID)
+}
+
+func (s *RedeemService) tryClaimAffiliateGroupAccessRewardForRedeem(ctx context.Context, client *dbent.Client, inviterID, inviteeUserID, groupID, redeemCodeID int64, validityDays int) (bool, error) {
+	return tryClaimAffiliateGroupAccessRewardForInvitee(ctx, client, inviterID, inviteeUserID, groupID, map[string]any{
+		"source_type":           "redeem_code",
+		"source_redeem_code_id": redeemCodeID,
+		"validity_days":         validityDays,
+	})
 }
 
 func (s *RedeemService) invalidateAffiliateGroupAccessRewardCaches(ctx context.Context, userID, groupID int64) {
