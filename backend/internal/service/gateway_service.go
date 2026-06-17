@@ -5718,6 +5718,10 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 }
 
 func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
+	parseClaudeSSEUsagePassthrough(data, usage)
+}
+
+func parseClaudeSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	if usage == nil || data == "" || data == "[DONE]" {
 		return
 	}
@@ -5820,6 +5824,64 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 		}
 	}
 	return usage
+}
+
+func parseAnthropicNonStreamingSSEBody(body []byte) ([]byte, *ClaudeUsage, bool) {
+	usage := &ClaudeUsage{}
+	if len(body) == 0 {
+		return nil, usage, false
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
+	var lastMessage []byte
+	sawSSE := false
+	for scanner.Scan() {
+		data, ok := extractAnthropicSSEDataLine(scanner.Text())
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(data)
+		if trimmed == "" || trimmed == "[DONE]" {
+			continue
+		}
+		sawSSE = true
+		parsed := gjson.Parse(trimmed)
+		if !parsed.Exists() {
+			continue
+		}
+		switch parsed.Get("type").String() {
+		case "message_start", "message_delta":
+			parseClaudeSSEUsagePassthrough(trimmed, usage)
+		case "message":
+			messageUsage := parseClaudeUsageFromResponseBody([]byte(trimmed))
+			if messageUsage != nil {
+				*usage = *messageUsage
+			}
+			lastMessage = []byte(trimmed)
+		default:
+			parseClaudeSSEUsagePassthrough(trimmed, usage)
+		}
+	}
+	if !sawSSE {
+		return nil, usage, false
+	}
+	if len(lastMessage) == 0 {
+		return nil, usage, true
+	}
+	return lastMessage, usage, true
+}
+
+func unwrapParenthesizedJSONBody(body []byte) ([]byte, bool) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) < 2 || trimmed[0] != '(' || trimmed[len(trimmed)-1] != ')' {
+		return body, false
+	}
+	inner := bytes.TrimSpace(trimmed[1 : len(trimmed)-1])
+	if !gjson.ValidBytes(inner) {
+		return body, false
+	}
+	return inner, true
 }
 
 func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
@@ -8227,11 +8289,25 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	}
 
 	// 解析usage
-	var response struct {
-		Usage ClaudeUsage `json:"usage"`
+	if unwrapped, ok := unwrapParenthesizedJSONBody(body); ok {
+		body = unwrapped
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	response := struct {
+		Usage ClaudeUsage `json:"usage"`
+	}{Usage: *parseClaudeUsageFromResponseBody(body)}
+	convertedSSE := false
+	if !gjson.ValidBytes(body) {
+		if jsonBody, parsedUsage, ok := parseAnthropicNonStreamingSSEBody(body); ok {
+			if parsedUsage != nil {
+				response.Usage = *parsedUsage
+			}
+			if len(jsonBody) > 0 {
+				body = jsonBody
+				convertedSSE = true
+			}
+		} else {
+			return nil, fmt.Errorf("parse response: invalid json response")
+		}
 	}
 
 	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
@@ -8279,6 +8355,10 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
 			contentType = upstreamType
 		}
+	}
+	if convertedSSE {
+		contentType = "application/json"
+		c.Header("Content-Type", contentType)
 	}
 
 	body = reverseToolNamesIfPresent(c, body)

@@ -1131,6 +1131,64 @@ func TestParseClaudeUsageFromResponseBody(t *testing.T) {
 	})
 }
 
+func TestGatewayService_HandleNonStreamingResponse_ParenthesizedJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`({"id":"msg_parenthesized","type":"message","usage":{"input_tokens":106,"output_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":1200,"ephemeral_1h_input_tokens":0},"cached_tokens":69000}})`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+
+	usage, err := (&GatewayService{cfg: &config.Config{}}).handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, "claude-opus-4-8", "claude-opus-4-8")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 106, usage.InputTokens)
+	require.Equal(t, 7, usage.OutputTokens)
+	require.Equal(t, 1200, usage.CacheCreationInputTokens)
+	require.Equal(t, 69000, usage.CacheReadInputTokens)
+	require.True(t, gjson.Valid(rec.Body.String()))
+	require.Equal(t, "msg_parenthesized", gjson.Get(rec.Body.String(), "id").String())
+}
+
+func TestGatewayService_HandleNonStreamingResponse_SSEBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"usage":{"input_tokens":2,"cached_tokens":71000,"cache_creation":{"ephemeral_5m_input_tokens":104,"ephemeral_1h_input_tokens":0}}}}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","usage":{"output_tokens":7}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message","id":"msg_sse","usage":{"input_tokens":2,"output_tokens":7,"cached_tokens":71000,"cache_creation":{"ephemeral_5m_input_tokens":104,"ephemeral_1h_input_tokens":0}}}`,
+		``,
+	}, "\n"))
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+
+	usage, err := (&GatewayService{cfg: &config.Config{}}).handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, "claude-opus-4-8", "claude-opus-4-8")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 2, usage.InputTokens)
+	require.Equal(t, 7, usage.OutputTokens)
+	require.Equal(t, 104, usage.CacheCreationInputTokens)
+	require.Equal(t, 71000, usage.CacheReadInputTokens)
+	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+	require.Equal(t, "msg_sse", gjson.Get(rec.Body.String(), "id").String())
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingErrTooLong(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
