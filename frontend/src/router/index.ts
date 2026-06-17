@@ -325,15 +325,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/purchase',
     name: 'PurchaseSubscription',
-    component: () => import('@/views/user/RechargeRedeemView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Spirit Stones Recharge',
-      titleKey: 'nav.buySubscription',
-      descriptionKey: 'recharge.description',
-      requiresPayment: false
-    }
+    redirect: '/redeem'
   },
   {
     path: '/payment',

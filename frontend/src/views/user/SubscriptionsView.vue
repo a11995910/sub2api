@@ -95,7 +95,7 @@
                   <Icon v-else name="gem" size="sm" class="mr-2" />
                   {{ purchaseButtonText(plan) }}
                 </button>
-                <router-link v-if="!canAfford(plan)" to="/purchase" class="btn btn-secondary w-full justify-center">
+                <router-link v-if="!canAfford(plan) && paymentEnabled" to="/payment" class="btn btn-secondary w-full justify-center">
                   {{ t('userSubscriptions.rechargeSpiritStones') }}
                 </router-link>
               </div>
@@ -394,6 +394,7 @@ const plansSectionRef = ref<HTMLElement | null>(null)
 const showPurchaseConfirm = ref(false)
 const pendingPurchasePlan = ref<SubscriptionPlan | null>(null)
 const currentBalance = computed(() => authStore.user?.balance || 0)
+const paymentEnabled = computed(() => appStore.cachedPublicSettings?.payment_enabled !== false)
 const formatQuota = (value: number) => formatSpiritStones(value)
 const purchaseConfirmMessage = computed(() => {
   const plan = pendingPurchasePlan.value

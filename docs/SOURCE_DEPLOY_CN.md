@@ -198,6 +198,7 @@ cd /opt/sub2api-deploy
 docker compose ps
 /opt/sub2api-deploy/custom/sub2api-pool-overview --version
 curl -I https://fast.youkeduo.site/health
+curl -I https://fast.youkeduo.site/redeem
 curl -I https://fast.youkeduo.site/purchase
 curl -I https://fast.youkeduo.site/models
 curl -I -H 'Accept-Encoding: gzip' https://fast.youkeduo.site/dashboard
@@ -208,7 +209,8 @@ docker compose logs --tail=200 sub2api
 期望结果：
 
 - 容器状态为 `healthy`
-- `/health`、`/purchase`、`/models` 返回成功状态码
+- `/health`、`/redeem`、`/models` 返回成功状态码
+- `/purchase` 返回重定向或前端兼容页面，浏览器访问后进入 `/redeem`
 - 前端页面刷新不出现 404
 - `/dashboard` 在 gzip 请求下返回 `Content-Encoding: gzip`
 - `/assets/*` 返回 `Cache-Control: public, max-age=31536000, immutable`

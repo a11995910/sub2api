@@ -1254,18 +1254,6 @@ export default {
     perImage: 'image'
   },
 
-  // Recharge
-  recharge: {
-    title: 'Spirit Stones Recharge',
-    description: 'Buy a redeem code in the shop, then redeem it for Spirit Stones',
-    currentBalance: 'Current Spirit Stones',
-    openInNewWindow: 'Open in New Window',
-    redeemTitle: 'Already bought a code?',
-    redeemDescription: 'After purchase, copy the redeem code to the redeem page. Codes will add Spirit Stones based on the admin configuration.',
-    goRedeem: 'Redeem Code',
-    iframeHint: 'If the shop appears blank here, the browser or target site may be blocking iframe embedding. Open it in a new window, then return to redeem your code.'
-  },
-
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',
@@ -6950,18 +6938,6 @@ export default {
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
     retry: 'Retry'
-  },
-
-  // Spirit Stones Recharge Page
-  purchase: {
-    title: 'Spirit Stones Recharge',
-    description: 'Recharge Spirit Stones via the embedded page',
-    openInNewTab: 'Open in new tab',
-    notEnabledTitle: 'Feature not enabled',
-    notEnabledDesc: 'The administrator has not enabled the Spirit Stones recharge entry. Please contact admin.',
-    notConfiguredTitle: 'Spirit Stones Recharge URL not configured',
-    notConfiguredDesc:
-      'The administrator enabled the entry but has not configured a Spirit Stones recharge URL. Please contact admin.'
   },
 
   // Custom Page (iframe embed)

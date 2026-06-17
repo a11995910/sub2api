@@ -1258,18 +1258,6 @@ export default {
     perImage: '张'
   },
 
-  // Recharge
-  recharge: {
-    title: '灵石充值',
-    description: '在小铺购买兑换码后，前往兑换页充值灵石',
-    currentBalance: '当前灵石余额',
-    openInNewWindow: '新窗口打开',
-    redeemTitle: '已买到兑换码？',
-    redeemDescription: '小铺购买完成后，复制兑换码到兑换页。兑换码会按后台配置增加灵石余额。',
-    goRedeem: '去兑换',
-    iframeHint: '如果小铺在当前页显示为空白，通常是浏览器或目标站点限制 iframe。请使用“新窗口打开”完成购买，再回到兑换页使用兑换码。'
-  },
-
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',
@@ -7103,17 +7091,6 @@ export default {
     restartNow: '立即重启',
     restarting: '正在重启...',
     retry: '重试'
-  },
-
-  // Spirit Stones Recharge Page
-  purchase: {
-    title: '灵石充值',
-    description: '通过内嵌页面完成灵石充值',
-    openInNewTab: '新窗口打开',
-    notEnabledTitle: '该功能未开启',
-    notEnabledDesc: '管理员暂未开启灵石充值入口，请联系管理员。',
-    notConfiguredTitle: '灵石充值链接未配置',
-    notConfiguredDesc: '管理员已开启入口，但尚未配置灵石充值链接，请联系管理员。'
   },
 
   // Custom Page (iframe embed)
