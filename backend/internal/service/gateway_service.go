@@ -8915,6 +8915,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		applyCacheTTLOverride(&result.Usage, overrideTarget)
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
+	if shifted := applyClaudeUsageCacheHitQuarterToInput(&result.Usage, groupCacheHitQuarterToInputEnabled(apiKey)); shifted > 0 {
+		logger.LegacyPrintf("service.gateway", "cache_hit_quarter_to_input: %d cache_read_input_tokens -> input_tokens (group=%d account=%d)",
+			shifted, valueOrZero(apiKey.GroupID), account.ID)
+	}
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := 1.0

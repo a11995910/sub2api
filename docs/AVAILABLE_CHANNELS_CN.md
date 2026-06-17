@@ -12,6 +12,7 @@
 - `allow_image_generation`：该分组是否允许图片生成。
 - `image_super_resolution_enabled`：该分组的图片生成结果是否会在返回前自动执行 4K 超分。
 - `image_rate_independent`：图片生成是否使用独立倍率。
+- `cache_hit_quarter_to_input_enabled`：缓存命中重新计费开关。开启后，本次请求有缓存读取 token 时，会把缓存读取 token 的四分之一按整数向下取整划入输入 token，再用调整后的 token 分类写入用量记录并扣除余额、订阅额度、API Key 配额和账号配额；历史用量不回填。
 - `image_rate_multiplier`：图片独立倍率，仅 `image_rate_independent=true` 时生效。
 - `image_price_1k`、`image_price_2k`、`image_price_4k`：图片生成 1K、2K、4K 单张基础价；为空时后端真实计费会回退默认图片价格。
 
@@ -52,6 +53,7 @@
 - 文本、缓存、按次模型：`原始价格 * 当前有效分组倍率`。
 - 用户存在专属分组倍率时，优先使用 `/api/v1/groups/rates` 返回的专属倍率。
 - 图片计费模型：若 `image_rate_independent=true`，使用 `image_rate_multiplier`；否则使用当前有效分组倍率。
+- 启用 `cache_hit_quarter_to_input_enabled` 的分组，缓存读取 token 会先按四分之一划入输入 token 后再计算费用和写入用量日志；统计、账单、余额消耗都读取调整后的用量日志，保持同一展示口径。
 
 如果同一平台下用户可访问多个分组，价格卡会按分组分别展示最终价格，避免用户误以为所有分组价格相同。
 

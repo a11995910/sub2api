@@ -103,6 +103,7 @@ function groupFixture(overrides: Partial<Record<string, unknown>>) {
     allow_image_generation: false,
     image_super_resolution_enabled: false,
     image_rate_independent: false,
+    cache_hit_quarter_to_input_enabled: false,
     image_rate_multiplier: 1,
     image_price_1k: null,
     image_price_2k: null,

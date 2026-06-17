@@ -139,6 +139,7 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		"allow_image_generation",
 		"image_super_resolution_enabled",
 		"image_rate_independent",
+		"cache_hit_quarter_to_input_enabled",
 		"image_rate_multiplier",
 		"image_price_1k",
 		"image_price_2k",

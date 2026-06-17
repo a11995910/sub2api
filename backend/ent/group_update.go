@@ -317,6 +317,20 @@ func (_u *GroupUpdate) SetNillableImageRateIndependent(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (_u *GroupUpdate) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetCacheHitQuarterToInputEnabled(v)
+	return _u
+}
+
+// SetNillableCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCacheHitQuarterToInputEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetCacheHitQuarterToInputEnabled(*v)
+	}
+	return _u
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_u *GroupUpdate) SetImageRateMultiplier(v float64) *GroupUpdate {
 	_u.mutation.ResetImageRateMultiplier()
@@ -1048,6 +1062,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.CacheHitQuarterToInputEnabled(); ok {
+		_spec.SetField(group.FieldCacheHitQuarterToInputEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
 	}
@@ -1743,6 +1760,20 @@ func (_u *GroupUpdateOne) SetImageRateIndependent(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableImageRateIndependent(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetImageRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (_u *GroupUpdateOne) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetCacheHitQuarterToInputEnabled(v)
+	return _u
+}
+
+// SetNillableCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCacheHitQuarterToInputEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCacheHitQuarterToInputEnabled(*v)
 	}
 	return _u
 }
@@ -2507,6 +2538,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CacheHitQuarterToInputEnabled(); ok {
+		_spec.SetField(group.FieldCacheHitQuarterToInputEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)

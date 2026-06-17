@@ -95,6 +95,7 @@ type CreateGroupRequest struct {
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     bool     `json:"image_super_resolution_enabled"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
+	CacheHitQuarterToInput          bool     `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
@@ -137,6 +138,7 @@ type UpdateGroupRequest struct {
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     *bool    `json:"image_super_resolution_enabled"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
+	CacheHitQuarterToInput          *bool    `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
@@ -297,6 +299,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
 		ImageRateIndependent:            req.ImageRateIndependent,
+		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
@@ -354,6 +357,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
 		ImageRateIndependent:            req.ImageRateIndependent,
+		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,

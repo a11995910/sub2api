@@ -531,6 +531,23 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <label
+          class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50"
+        >
+          <input
+            v-model="createForm.cache_hit_quarter_to_input_enabled"
+            type="checkbox"
+            class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600"
+          />
+          <span>
+            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.form.cacheHitQuarterToInput") }}
+            </span>
+            <span class="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.form.cacheHitQuarterToInputHint") }}
+            </span>
+          </span>
+        </label>
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -1830,6 +1847,23 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <label
+          class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50"
+        >
+          <input
+            v-model="editForm.cache_hit_quarter_to_input_enabled"
+            type="checkbox"
+            class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600"
+          />
+          <span>
+            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.form.cacheHitQuarterToInput") }}
+            </span>
+            <span class="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.form.cacheHitQuarterToInputHint") }}
+            </span>
+          </span>
+        </label>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -3606,6 +3640,7 @@ const createForm = reactive({
   allow_image_generation: false,
   image_super_resolution_enabled: false,
   image_rate_independent: false,
+  cache_hit_quarter_to_input_enabled: false,
   image_rate_multiplier: 1,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
@@ -3938,6 +3973,7 @@ const editForm = reactive({
   allow_image_generation: false,
   image_super_resolution_enabled: false,
   image_rate_independent: false,
+  cache_hit_quarter_to_input_enabled: false,
   image_rate_multiplier: 1,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
@@ -4205,6 +4241,7 @@ const closeCreateModal = () => {
   createForm.allow_image_generation = false;
   createForm.image_super_resolution_enabled = false;
   createForm.image_rate_independent = false;
+  createForm.cache_hit_quarter_to_input_enabled = false;
   createForm.image_rate_multiplier = 1;
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
@@ -4333,6 +4370,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_super_resolution_enabled =
     group.image_super_resolution_enabled ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
+  editForm.cache_hit_quarter_to_input_enabled =
+    group.cache_hit_quarter_to_input_enabled ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;

@@ -69,6 +69,7 @@ type APIKeyAuthGroupSnapshot struct {
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     bool     `json:"image_super_resolution_enabled"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
+	CacheHitQuarterToInput          bool     `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier             float64  `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64 `json:"image_price_2k,omitempty"`

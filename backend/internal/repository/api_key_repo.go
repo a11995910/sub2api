@@ -829,6 +829,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     g.ImageSuperResolutionEnabled,
 		ImageRateIndependent:            g.ImageRateIndependent,
+		CacheHitQuarterToInput:          g.CacheHitQuarterToInputEnabled,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,

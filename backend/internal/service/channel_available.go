@@ -22,6 +22,7 @@ type AvailableGroupRef struct {
 	AllowImageGeneration        bool
 	ImageSuperResolutionEnabled bool
 	ImageRateIndependent        bool
+	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         float64
 	ImagePrice1K                *float64
 	ImagePrice2K                *float64
@@ -75,6 +76,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			AllowImageGeneration:        g.AllowImageGeneration,
 			ImageSuperResolutionEnabled: g.ImageSuperResolutionEnabled,
 			ImageRateIndependent:        g.ImageRateIndependent,
+			CacheHitQuarterToInput:      g.CacheHitQuarterToInput,
 			ImageRateMultiplier:         g.ImageRateMultiplier,
 			ImagePrice1K:                g.ImagePrice1K,
 			ImagePrice2K:                g.ImagePrice2K,

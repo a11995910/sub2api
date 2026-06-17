@@ -5768,6 +5768,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
+	if shifted := applyCacheHitQuarterToInput(&tokens, groupCacheHitQuarterToInputEnabled(apiKey)); shifted > 0 {
+		logger.LegacyPrintf("service.openai_gateway", "cache_hit_quarter_to_input: %d cache_read_input_tokens -> input_tokens (group=%d account=%d)",
+			shifted, valueOrZero(apiKey.GroupID), account.ID)
+	}
 
 	// Get rate multiplier
 	multiplier := 1.0
@@ -5859,10 +5863,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ReasoningEffort:     result.ReasoningEffort,
 		InboundEndpoint:     optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:    optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:         actualInputTokens,
+		InputTokens:         tokens.InputTokens,
 		OutputTokens:        result.Usage.OutputTokens,
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:     result.Usage.CacheReadInputTokens,
+		CacheReadTokens:     tokens.CacheReadTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 		ImageCount:          result.ImageCount,
 		ImageSize:           optionalTrimmedStringPtr(result.ImageSize),

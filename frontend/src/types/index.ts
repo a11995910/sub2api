@@ -549,6 +549,7 @@ export interface Group {
   allow_image_generation: boolean
   image_super_resolution_enabled: boolean
   image_rate_independent: boolean
+  cache_hit_quarter_to_input_enabled: boolean
   image_rate_multiplier: number
   image_price_1k: number | null
   image_price_2k: number | null
@@ -670,6 +671,7 @@ export interface CreateGroupRequest {
   allow_image_generation?: boolean
   image_super_resolution_enabled?: boolean
   image_rate_independent?: boolean
+  cache_hit_quarter_to_input_enabled?: boolean
   image_rate_multiplier?: number
   image_price_1k?: number | null
   image_price_2k?: number | null
@@ -706,6 +708,7 @@ export interface UpdateGroupRequest {
   allow_image_generation?: boolean
   image_super_resolution_enabled?: boolean
   image_rate_independent?: boolean
+  cache_hit_quarter_to_input_enabled?: boolean
   image_rate_multiplier?: number
   image_price_1k?: number | null
   image_price_2k?: number | null

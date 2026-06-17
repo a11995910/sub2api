@@ -214,6 +214,7 @@ type CreateGroupInput struct {
 	AllowImageGeneration        bool
 	ImageSuperResolutionEnabled bool
 	ImageRateIndependent        bool
+	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         *float64
 	ImagePrice1K                *float64
 	ImagePrice2K                *float64
@@ -256,6 +257,7 @@ type UpdateGroupInput struct {
 	AllowImageGeneration        *bool
 	ImageSuperResolutionEnabled *bool
 	ImageRateIndependent        *bool
+	CacheHitQuarterToInput      *bool
 	ImageRateMultiplier         *float64
 	ImagePrice1K                *float64
 	ImagePrice2K                *float64
@@ -2013,6 +2015,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     input.ImageSuperResolutionEnabled,
 		ImageRateIndependent:            input.ImageRateIndependent,
+		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		ImageRateMultiplier:             imageRateMultiplier,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
@@ -2190,7 +2193,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
 	group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
 	group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
-	// 图片生成计费配置：负数表示清除（使用默认价格）
+	// 分组计费配置：图片价格负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
 	}
@@ -2199,6 +2202,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
+	}
+	if input.CacheHitQuarterToInput != nil {
+		group.CacheHitQuarterToInput = *input.CacheHitQuarterToInput
 	}
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {

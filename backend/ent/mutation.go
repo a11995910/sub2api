@@ -15939,6 +15939,7 @@ type GroupMutation struct {
 	allow_image_generation                  *bool
 	image_super_resolution_enabled          *bool
 	image_rate_independent                  *bool
+	cache_hit_quarter_to_input_enabled      *bool
 	image_rate_multiplier                   *float64
 	addimage_rate_multiplier                *float64
 	image_price_1k                          *float64
@@ -16867,6 +16868,42 @@ func (m *GroupMutation) OldImageRateIndependent(ctx context.Context) (v bool, er
 // ResetImageRateIndependent resets all changes to the "image_rate_independent" field.
 func (m *GroupMutation) ResetImageRateIndependent() {
 	m.image_rate_independent = nil
+}
+
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (m *GroupMutation) SetCacheHitQuarterToInputEnabled(b bool) {
+	m.cache_hit_quarter_to_input_enabled = &b
+}
+
+// CacheHitQuarterToInputEnabled returns the value of the "cache_hit_quarter_to_input_enabled" field in the mutation.
+func (m *GroupMutation) CacheHitQuarterToInputEnabled() (r bool, exists bool) {
+	v := m.cache_hit_quarter_to_input_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitQuarterToInputEnabled returns the old "cache_hit_quarter_to_input_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCacheHitQuarterToInputEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitQuarterToInputEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitQuarterToInputEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitQuarterToInputEnabled: %w", err)
+	}
+	return oldValue.CacheHitQuarterToInputEnabled, nil
+}
+
+// ResetCacheHitQuarterToInputEnabled resets all changes to the "cache_hit_quarter_to_input_enabled" field.
+func (m *GroupMutation) ResetCacheHitQuarterToInputEnabled() {
+	m.cache_hit_quarter_to_input_enabled = nil
 }
 
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
@@ -18169,7 +18206,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 36)
+	fields := make([]string, 0, 37)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -18220,6 +18257,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.image_rate_independent != nil {
 		fields = append(fields, group.FieldImageRateIndependent)
+	}
+	if m.cache_hit_quarter_to_input_enabled != nil {
+		fields = append(fields, group.FieldCacheHitQuarterToInputEnabled)
 	}
 	if m.image_rate_multiplier != nil {
 		fields = append(fields, group.FieldImageRateMultiplier)
@@ -18320,6 +18360,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageSuperResolutionEnabled()
 	case group.FieldImageRateIndependent:
 		return m.ImageRateIndependent()
+	case group.FieldCacheHitQuarterToInputEnabled:
+		return m.CacheHitQuarterToInputEnabled()
 	case group.FieldImageRateMultiplier:
 		return m.ImageRateMultiplier()
 	case group.FieldImagePrice1k:
@@ -18401,6 +18443,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldImageSuperResolutionEnabled(ctx)
 	case group.FieldImageRateIndependent:
 		return m.OldImageRateIndependent(ctx)
+	case group.FieldCacheHitQuarterToInputEnabled:
+		return m.OldCacheHitQuarterToInputEnabled(ctx)
 	case group.FieldImageRateMultiplier:
 		return m.OldImageRateMultiplier(ctx)
 	case group.FieldImagePrice1k:
@@ -18566,6 +18610,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImageRateIndependent(v)
+		return nil
+	case group.FieldCacheHitQuarterToInputEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitQuarterToInputEnabled(v)
 		return nil
 	case group.FieldImageRateMultiplier:
 		v, ok := value.(float64)
@@ -19027,6 +19078,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImageRateIndependent:
 		m.ResetImageRateIndependent()
+		return nil
+	case group.FieldCacheHitQuarterToInputEnabled:
+		m.ResetCacheHitQuarterToInputEnabled()
 		return nil
 	case group.FieldImageRateMultiplier:
 		m.ResetImageRateMultiplier()

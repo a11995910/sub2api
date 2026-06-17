@@ -83,6 +83,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
+		field.Bool("cache_hit_quarter_to_input_enabled").
+			Default(false).
+			Comment("启用后将每次请求缓存读取 token 的四分之一划入输入 token 重新计费"),
 		field.Float("image_rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).

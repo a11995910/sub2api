@@ -30,6 +30,7 @@ type Group struct {
 	AllowImageGeneration        bool
 	ImageSuperResolutionEnabled bool
 	ImageRateIndependent        bool
+	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         float64
 	ImagePrice1K                *float64
 	ImagePrice2K                *float64

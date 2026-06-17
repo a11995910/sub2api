@@ -2332,7 +2332,9 @@ export default {
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        cacheHitQuarterToInput: 'Move one quarter of cache hits to input',
+        cacheHitQuarterToInputHint: 'When enabled, each request moves one quarter of cache-read tokens into input tokens, then records usage and balance deduction using the adjusted numbers.'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',

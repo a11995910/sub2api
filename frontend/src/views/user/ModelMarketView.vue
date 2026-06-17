@@ -293,6 +293,7 @@ const toAvailableGroup = (group: Group): UserAvailableGroup => ({
   allow_image_generation: group.allow_image_generation,
   image_super_resolution_enabled: group.image_super_resolution_enabled,
   image_rate_independent: group.image_rate_independent,
+  cache_hit_quarter_to_input_enabled: group.cache_hit_quarter_to_input_enabled ?? false,
   image_rate_multiplier: group.image_rate_multiplier,
   image_price_1k: group.image_price_1k,
   image_price_2k: group.image_price_2k,

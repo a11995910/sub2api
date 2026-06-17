@@ -213,6 +213,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     g.ImageSuperResolutionEnabled,
 		ImageRateIndependent:            g.ImageRateIndependent,
+		CacheHitQuarterToInput:          g.CacheHitQuarterToInput,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,

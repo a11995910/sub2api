@@ -259,6 +259,20 @@ func (_c *GroupCreate) SetNillableImageRateIndependent(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (_c *GroupCreate) SetCacheHitQuarterToInputEnabled(v bool) *GroupCreate {
+	_c.mutation.SetCacheHitQuarterToInputEnabled(v)
+	return _c
+}
+
+// SetNillableCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheHitQuarterToInputEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetCacheHitQuarterToInputEnabled(*v)
+	}
+	return _c
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_c *GroupCreate) SetImageRateMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetImageRateMultiplier(v)
@@ -686,6 +700,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageRateIndependent
 		_c.mutation.SetImageRateIndependent(v)
 	}
+	if _, ok := _c.mutation.CacheHitQuarterToInputEnabled(); !ok {
+		v := group.DefaultCacheHitQuarterToInputEnabled
+		_c.mutation.SetCacheHitQuarterToInputEnabled(v)
+	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
@@ -798,6 +816,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
+	}
+	if _, ok := _c.mutation.CacheHitQuarterToInputEnabled(); !ok {
+		return &ValidationError{Name: "cache_hit_quarter_to_input_enabled", err: errors.New(`ent: missing required field "Group.cache_hit_quarter_to_input_enabled"`)}
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
@@ -937,6 +958,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 		_node.ImageRateIndependent = value
+	}
+	if value, ok := _c.mutation.CacheHitQuarterToInputEnabled(); ok {
+		_spec.SetField(group.FieldCacheHitQuarterToInputEnabled, field.TypeBool, value)
+		_node.CacheHitQuarterToInputEnabled = value
 	}
 	if value, ok := _c.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
@@ -1419,6 +1444,18 @@ func (u *GroupUpsert) SetImageRateIndependent(v bool) *GroupUpsert {
 // UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateImageRateIndependent() *GroupUpsert {
 	u.SetExcluded(group.FieldImageRateIndependent)
+	return u
+}
+
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (u *GroupUpsert) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldCacheHitQuarterToInputEnabled, v)
+	return u
+}
+
+// UpdateCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheHitQuarterToInputEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheHitQuarterToInputEnabled)
 	return u
 }
 
@@ -2070,6 +2107,20 @@ func (u *GroupUpsertOne) SetImageRateIndependent(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateImageRateIndependent() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageRateIndependent()
+	})
+}
+
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (u *GroupUpsertOne) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitQuarterToInputEnabled(v)
+	})
+}
+
+// UpdateCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheHitQuarterToInputEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitQuarterToInputEnabled()
 	})
 }
 
@@ -2939,6 +2990,20 @@ func (u *GroupUpsertBulk) SetImageRateIndependent(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateImageRateIndependent() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageRateIndependent()
+	})
+}
+
+// SetCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field.
+func (u *GroupUpsertBulk) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitQuarterToInputEnabled(v)
+	})
+}
+
+// UpdateCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheHitQuarterToInputEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitQuarterToInputEnabled()
 	})
 }
 

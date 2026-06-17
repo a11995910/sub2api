@@ -2396,6 +2396,8 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
+        cacheHitQuarterToInput: '缓存命中四分之一划入输入',
+        cacheHitQuarterToInputHint: '开启后，每次请求若有缓存读取 Token，会将其中四分之一从缓存读取划入输入 Token，并按调整后的口径记录用量与扣余额。',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',

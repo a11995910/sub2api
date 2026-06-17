@@ -140,6 +140,11 @@ func ImageRateIndependent(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
 }
 
+// CacheHitQuarterToInputEnabled applies equality check predicate on the "cache_hit_quarter_to_input_enabled" field. It's identical to CacheHitQuarterToInputEnabledEQ.
+func CacheHitQuarterToInputEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitQuarterToInputEnabled, v))
+}
+
 // ImageRateMultiplier applies equality check predicate on the "image_rate_multiplier" field. It's identical to ImageRateMultiplierEQ.
 func ImageRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateMultiplier, v))
@@ -948,6 +953,16 @@ func ImageRateIndependentEQ(v bool) predicate.Group {
 // ImageRateIndependentNEQ applies the NEQ predicate on the "image_rate_independent" field.
 func ImageRateIndependentNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldImageRateIndependent, v))
+}
+
+// CacheHitQuarterToInputEnabledEQ applies the EQ predicate on the "cache_hit_quarter_to_input_enabled" field.
+func CacheHitQuarterToInputEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitQuarterToInputEnabled, v))
+}
+
+// CacheHitQuarterToInputEnabledNEQ applies the NEQ predicate on the "cache_hit_quarter_to_input_enabled" field.
+func CacheHitQuarterToInputEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCacheHitQuarterToInputEnabled, v))
 }
 
 // ImageRateMultiplierEQ applies the EQ predicate on the "image_rate_multiplier" field.

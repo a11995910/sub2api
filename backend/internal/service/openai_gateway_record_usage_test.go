@@ -959,6 +959,56 @@ func TestOpenAIGatewayServiceRecordUsage_ServiceTierFlexHalvesCost(t *testing.T)
 	require.InDelta(t, baseCost.TotalCost*0.5, usageRepo.lastLog.TotalCost, 1e-10)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedTokensForLogAndBilling(t *testing.T) {
+	groupID := int64(901)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_cache_quarter_to_input",
+			Usage: OpenAIUsage{
+				InputTokens:          180,
+				OutputTokens:         20,
+				CacheReadInputTokens: 80,
+			},
+			Model:    "gpt-5.4",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1017,
+			GroupID: &groupID,
+			Group: &Group{
+				ID:                     groupID,
+				RateMultiplier:         1,
+				CacheHitQuarterToInput: true,
+			},
+		},
+		User:    &User{ID: 2017},
+		Account: &Account{ID: 3017},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 120, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 60, usageRepo.lastLog.CacheReadTokens)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, 120, billingRepo.lastCmd.InputTokens)
+	require.Equal(t, 60, billingRepo.lastCmd.CacheReadTokens)
+
+	expectedCost, calcErr := svc.billingService.CalculateCost("gpt-5.4", UsageTokens{
+		InputTokens:     120,
+		OutputTokens:    20,
+		CacheReadTokens: 60,
+	}, 1)
+	require.NoError(t, calcErr)
+	require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
+	require.InDelta(t, expectedCost.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-10)
+}
+
 func TestNormalizeOpenAIServiceTier(t *testing.T) {
 	t.Run("fast maps to priority", func(t *testing.T) {
 		got := normalizeOpenAIServiceTier(" fast ")

@@ -62,6 +62,7 @@ type userAvailableGroup struct {
 	AllowImageGeneration        bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled"`
 	ImageRateIndependent        bool     `json:"image_rate_independent"`
+	CacheHitQuarterToInput      bool     `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier         float64  `json:"image_rate_multiplier"`
 	ImagePrice1K                *float64 `json:"image_price_1k"`
 	ImagePrice2K                *float64 `json:"image_price_2k"`
@@ -236,6 +237,7 @@ func filterUserVisibleGroups(
 			AllowImageGeneration:        g.AllowImageGeneration,
 			ImageSuperResolutionEnabled: g.ImageSuperResolutionEnabled,
 			ImageRateIndependent:        g.ImageRateIndependent,
+			CacheHitQuarterToInput:      g.CacheHitQuarterToInput,
 			ImageRateMultiplier:         g.ImageRateMultiplier,
 			ImagePrice1K:                g.ImagePrice1K,
 			ImagePrice2K:                g.ImagePrice2K,

@@ -201,3 +201,33 @@ func (u *UsageLog) SyncRequestTypeAndLegacyFields() {
 	u.RequestType = requestType
 	u.Stream, u.OpenAIWSMode = ApplyLegacyRequestFields(requestType, u.Stream, u.OpenAIWSMode)
 }
+
+func applyCacheHitQuarterToInput(tokens *UsageTokens, enabled bool) int {
+	if tokens == nil || !enabled || tokens.CacheReadTokens <= 0 {
+		return 0
+	}
+	shift := tokens.CacheReadTokens / 4
+	if shift <= 0 {
+		return 0
+	}
+	tokens.CacheReadTokens -= shift
+	tokens.InputTokens += shift
+	return shift
+}
+
+func applyClaudeUsageCacheHitQuarterToInput(usage *ClaudeUsage, enabled bool) int {
+	if usage == nil || !enabled || usage.CacheReadInputTokens <= 0 {
+		return 0
+	}
+	shift := usage.CacheReadInputTokens / 4
+	if shift <= 0 {
+		return 0
+	}
+	usage.CacheReadInputTokens -= shift
+	usage.InputTokens += shift
+	return shift
+}
+
+func groupCacheHitQuarterToInputEnabled(apiKey *APIKey) bool {
+	return apiKey != nil && apiKey.Group != nil && apiKey.Group.CacheHitQuarterToInput
+}

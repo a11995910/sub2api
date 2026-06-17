@@ -193,6 +193,46 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedTokensForLogAndBilling(t *testing.T) {
+	groupID := int64(901)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_cache_quarter_to_input",
+			Usage: ClaudeUsage{
+				InputTokens:          100,
+				OutputTokens:         20,
+				CacheReadInputTokens: 80,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      501,
+			GroupID: &groupID,
+			Group: &Group{
+				ID:                     groupID,
+				RateMultiplier:         1,
+				CacheHitQuarterToInput: true,
+			},
+		},
+		User:    &User{ID: 601},
+		Account: &Account{ID: 701},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 120, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 60, usageRepo.lastLog.CacheReadTokens)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, 120, billingRepo.lastCmd.InputTokens)
+	require.Equal(t, 60, billingRepo.lastCmd.CacheReadTokens)
+	require.Greater(t, usageRepo.lastLog.InputCost, usageRepo.lastLog.CacheReadCost)
+}
+
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice2K := 0.19
 	groupID := int64(901)

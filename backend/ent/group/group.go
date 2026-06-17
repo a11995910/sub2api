@@ -50,6 +50,8 @@ const (
 	FieldImageSuperResolutionEnabled = "image_super_resolution_enabled"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
+	// FieldCacheHitQuarterToInputEnabled holds the string denoting the cache_hit_quarter_to_input_enabled field in the database.
+	FieldCacheHitQuarterToInputEnabled = "cache_hit_quarter_to_input_enabled"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
 	FieldImageRateMultiplier = "image_rate_multiplier"
 	// FieldImagePrice1k holds the string denoting the image_price_1k field in the database.
@@ -180,6 +182,7 @@ var Columns = []string{
 	FieldAllowImageGeneration,
 	FieldImageSuperResolutionEnabled,
 	FieldImageRateIndependent,
+	FieldCacheHitQuarterToInputEnabled,
 	FieldImageRateMultiplier,
 	FieldImagePrice1k,
 	FieldImagePrice2k,
@@ -260,6 +263,8 @@ var (
 	DefaultImageSuperResolutionEnabled bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
+	// DefaultCacheHitQuarterToInputEnabled holds the default value on creation for the "cache_hit_quarter_to_input_enabled" field.
+	DefaultCacheHitQuarterToInputEnabled bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
@@ -381,6 +386,11 @@ func ByImageSuperResolutionEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByImageRateIndependent orders the results by the image_rate_independent field.
 func ByImageRateIndependent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageRateIndependent, opts...).ToFunc()
+}
+
+// ByCacheHitQuarterToInputEnabled orders the results by the cache_hit_quarter_to_input_enabled field.
+func ByCacheHitQuarterToInputEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitQuarterToInputEnabled, opts...).ToFunc()
 }
 
 // ByImageRateMultiplier orders the results by the image_rate_multiplier field.
