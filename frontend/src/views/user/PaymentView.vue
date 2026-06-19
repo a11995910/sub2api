@@ -44,7 +44,7 @@
             <div class="card p-6">
               <AmountInput
                 v-model="amount"
-                :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
+                :amounts="RECHARGE_QUICK_AMOUNTS"
                 :min="globalMinAmount"
                 :max="globalMaxAmount"
               />
@@ -80,7 +80,7 @@
                 </p>
               </div>
             </div>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
+            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canClickRechargeSubmit || submitting" @click="handleSubmitRecharge">
               <span v-if="submitting" class="flex items-center justify-center gap-2">
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
@@ -289,6 +289,9 @@ const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
+
+const MAX_SELF_SERVICE_RECHARGE_AMOUNT = 500
+const RECHARGE_QUICK_AMOUNTS = [10, 20, 50, 100, 200, MAX_SELF_SERVICE_RECHARGE_AMOUNT]
 
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
@@ -570,6 +573,7 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
+  if (isSelfServiceRechargeTooLarge.value) return ''
   // No method can handle this amount
   if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
     return t('payment.amountNoMethod')
@@ -582,6 +586,16 @@ const amountError = computed(() => {
   }
   return ''
 })
+
+const isSelfServiceRechargeTooLarge = computed(() =>
+  validAmount.value > MAX_SELF_SERVICE_RECHARGE_AMOUNT
+)
+
+const canClickRechargeSubmit = computed(() =>
+  validAmount.value > 0
+    && selectedLimit.value?.available !== false
+    && (isSelfServiceRechargeTooLarge.value || amountFitsMethod(validAmount.value, selectedMethod.value))
+)
 
 const canSubmit = computed(() =>
   validAmount.value > 0
@@ -676,7 +690,12 @@ function closeRenewalModal() {
 }
 
 async function handleSubmitRecharge() {
-  if (!canSubmit.value || submitting.value) return
+  if (submitting.value) return
+  if (isSelfServiceRechargeTooLarge.value) {
+    appStore.showWarning(t('payment.largeAmountDirectRecharge'))
+    return
+  }
+  if (!canSubmit.value) return
   await createOrder(validAmount.value, 'balance')
 }
 

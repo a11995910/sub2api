@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 
@@ -179,6 +179,57 @@ function oauthOrderFixture() {
     },
   }
 }
+
+describe('PaymentView balance recharge amount limits', () => {
+  beforeEach(() => {
+    routeState.path = '/payment'
+    routeState.query = {}
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+  })
+
+  it('does not create a self-service balance order above 500 and shows split payment hint', async () => {
+    const wrapper = mount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+          Icon: true,
+          PaymentStatusPanel: true,
+          SubscriptionPlanCard: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('500')
+    expect(wrapper.text()).not.toContain('1000')
+    expect(wrapper.text()).not.toContain('2000')
+    expect(wrapper.text()).not.toContain('5000')
+
+    const input = wrapper.get('input')
+    await input.setValue('501')
+    const submit = wrapper.findAll('button').find((button) => button.text().includes('payment.createOrder'))
+
+    expect(submit).toBeTruthy()
+    await submit!.trigger('click')
+
+    expect(showWarning).toHaveBeenCalledWith('payment.largeAmountDirectRecharge')
+    expect(createOrder).not.toHaveBeenCalled()
+  })
+})
 
 describe('PaymentView WeChat JSAPI flow', () => {
   beforeEach(() => {

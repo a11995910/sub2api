@@ -7492,6 +7492,7 @@ export default {
     confirmCancel: '确定要取消此订单吗？',
     amountTooLow: '最低金额为 {min}',
     amountTooHigh: '最高金额为 {max}',
+    largeAmountDirectRecharge: '单次支付最高 500 元，可多次 500 元支付',
     amountNoMethod: '该金额没有可用的支付方式',
     rechargeRatePreview: '当前倍率：1 CNY = {usd} 灵石',
     refundReason: '退款原因',
