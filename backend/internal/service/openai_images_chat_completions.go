@@ -39,9 +39,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesViaChatCompletions(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
-	if parsed.IsEdits() {
-		return nil, &OpenAIImagesInputError{Err: fmt.Errorf("images edits are not supported by chat_completions upstream mode")}
-	}
 	if parsed.Stream {
 		return nil, &OpenAIImagesInputError{Err: fmt.Errorf("stream is not supported by chat_completions upstream mode")}
 	}
@@ -215,20 +212,77 @@ func buildOpenAIImagesChatCompletionsBody(parsed *OpenAIImagesRequest, upstreamM
 	}
 	var b strings.Builder
 	b.WriteString(content)
+	if parsed.IsEdits() {
+		b.WriteString("\n\nUse the attached reference image(s) as visual input for this image edit request.")
+		if parsed.HasMask {
+			b.WriteString(" If a mask image is attached, treat it as the editable region mask.")
+		}
+	}
 	b.WriteString("\n\nReturn exactly one generated image as either an image URL, a data:image/*;base64 URL, or JSON with url/image_url/b64_json. Do not include unrelated text.")
 	if strings.TrimSpace(parsed.Size) != "" {
 		b.WriteString("\nRequested image size: ")
 		b.WriteString(strings.TrimSpace(parsed.Size))
 	}
+	messageContent, err := buildOpenAIImagesChatCompletionsMessageContent(parsed, b.String())
+	if err != nil {
+		return nil, err
+	}
 	payload := map[string]any{
 		"model": upstreamModel,
-		"messages": []map[string]string{{
+		"messages": []map[string]any{{
 			"role":    "user",
-			"content": b.String(),
+			"content": messageContent,
 		}},
 		"stream": false,
 	}
 	return json.Marshal(payload)
+}
+
+func buildOpenAIImagesChatCompletionsMessageContent(parsed *OpenAIImagesRequest, text string) (any, error) {
+	if parsed == nil || !parsed.IsEdits() {
+		return text, nil
+	}
+	imageURLs := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads)+1)
+	for _, imageURL := range parsed.InputImageURLs {
+		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
+			imageURLs = append(imageURLs, trimmed)
+		}
+	}
+	for _, upload := range parsed.Uploads {
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, err
+		}
+		imageURLs = append(imageURLs, dataURL)
+	}
+	if maskURL := strings.TrimSpace(parsed.MaskImageURL); maskURL != "" {
+		imageURLs = append(imageURLs, maskURL)
+	}
+	if parsed.MaskUpload != nil {
+		dataURL, err := openAIImageUploadToDataURL(*parsed.MaskUpload)
+		if err != nil {
+			return nil, err
+		}
+		imageURLs = append(imageURLs, dataURL)
+	}
+	if len(imageURLs) == 0 {
+		return nil, &OpenAIImagesInputError{Err: fmt.Errorf("image input is required")}
+	}
+
+	parts := make([]map[string]any, 0, len(imageURLs)+1)
+	parts = append(parts, map[string]any{
+		"type": "text",
+		"text": text,
+	})
+	for _, imageURL := range imageURLs {
+		parts = append(parts, map[string]any{
+			"type": "image_url",
+			"image_url": map[string]string{
+				"url": imageURL,
+			},
+		})
+	}
+	return parts, nil
 }
 
 func extractOpenAIImagesFromChatCompletionsBody(body []byte, parsed *OpenAIImagesRequest) ([]openAIResponsesImageResult, error) {

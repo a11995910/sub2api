@@ -1268,9 +1268,14 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletionsDow
 	require.Equal(t, "cG5nLWJ5dGVz", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
-func TestOpenAIGatewayServiceForwardImages_ChatCompletionsModeRejectsEdits(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditViaChatCompletionsIncludesImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"nano-banana-2","prompt":"edit","images":[{"image_url":"https://example.com/source.png"}]}`)
+	body := []byte(`{
+		"model":"nano-banana-2",
+		"prompt":"edit this banana",
+		"images":[{"image_url":"data:image/png;base64,c291cmNlLWltYWdl"}],
+		"response_format":"url"
+	}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1278,17 +1283,122 @@ func TestOpenAIGatewayServiceForwardImages_ChatCompletionsModeRejectsEdits(t *te
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = req
 
-	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_cc_edit"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{
+				"choices":[{"message":{"role":"assistant","content":"https://cdn.example.com/edited-banana.png"}}],
+				"usage":{"prompt_tokens":18,"completion_tokens":4}
+			}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
-	account := &Account{ID: 8, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{
+		ID:       8,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://banana-upstream.example/v1",
+		},
+	}
 	channel := &Channel{FeaturesConfig: map[string]any{
 		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
 	}}
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "", channel)
-	require.Nil(t, result)
-	require.ErrorContains(t, err, "images edits are not supported")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "nano-banana-2", result.Model)
+	require.Equal(t, "nano-banana-2", result.UpstreamModel)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "messages.0.role").String())
+	require.Equal(t, "text", gjson.GetBytes(upstream.lastBody, "messages.0.content.0.type").String())
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String(), "edit this banana")
+	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,c291cmNlLWltYWdl", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
+	require.Equal(t, "https://cdn.example.com/edited-banana.png", gjson.Get(rec.Body.String(), "data.0.url").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyMultipartEditViaChatCompletionsIncludesUpload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "nano-banana-2"))
+	require.NoError(t, writer.WriteField("prompt", "make it brighter"))
+	require.NoError(t, writer.WriteField("response_format", "url"))
+	imageHeader := make(textproto.MIMEHeader)
+	imageHeader.Set("Content-Disposition", `form-data; name="image"; filename="source.png"`)
+	imageHeader.Set("Content-Type", "image/png")
+	imagePart, err := writer.CreatePart(imageHeader)
+	require.NoError(t, err)
+	_, err = imagePart.Write([]byte("source-image"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_cc_edit_multipart"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{
+				"choices":[{"message":{"role":"assistant","content":"https://cdn.example.com/bright-banana.png"}}],
+				"usage":{"prompt_tokens":20,"completion_tokens":5}
+			}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body.Bytes())
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       10,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://banana-upstream.example/v1",
+		},
+	}
+	channel := &Channel{FeaturesConfig: map[string]any{
+		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+	}}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body.Bytes(), parsed, "", channel)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "nano-banana-2", result.Model)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,c291cmNlLWltYWdl", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
+	require.Equal(t, "https://cdn.example.com/bright-banana.png", gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGeneration502RetryableOnSameAccount(t *testing.T) {
