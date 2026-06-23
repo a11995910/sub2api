@@ -60,3 +60,51 @@ func TestChannel_IsWebSearchEmulationEnabled_PlatformValueNotBool(t *testing.T) 
 	}
 	require.False(t, c.IsWebSearchEmulationEnabled("anthropic"))
 }
+
+func TestChannel_ShouldForwardOpenAIImagesViaChatCompletions(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  map[string]any
+		want bool
+	}{
+		{
+			name: "mode chat completions",
+			cfg: map[string]any{
+				featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+			},
+			want: true,
+		},
+		{
+			name: "boolean shorthand",
+			cfg: map[string]any{
+				featureKeyOpenAIImagesUpstream: true,
+			},
+			want: true,
+		},
+		{
+			name: "native mode",
+			cfg: map[string]any{
+				featureKeyOpenAIImagesUpstream: map[string]any{"mode": "native"},
+			},
+			want: false,
+		},
+		{
+			name: "wrong structure",
+			cfg: map[string]any{
+				featureKeyOpenAIImagesUpstream: "chat_completions",
+			},
+			want: false,
+		},
+		{
+			name: "empty",
+			cfg:  nil,
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Channel{FeaturesConfig: tt.cfg}
+			require.Equal(t, tt.want, c.ShouldForwardOpenAIImagesViaChatCompletions())
+		})
+	}
+}

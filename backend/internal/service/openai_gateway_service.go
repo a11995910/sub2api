@@ -471,6 +471,14 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
+// GetChannelForGroup 读取分组绑定渠道，供 handler 根据渠道功能配置决定入口行为。
+func (s *OpenAIGatewayService) GetChannelForGroup(ctx context.Context, groupID *int64) (*Channel, error) {
+	if s == nil || s.channelService == nil || groupID == nil {
+		return nil, nil
+	}
+	return s.channelService.GetChannelForGroup(ctx, *groupID)
+}
+
 func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.Context, account *Account, apiKey *APIKey) bool {
 	if override := account.CodexImageGenerationBridgeOverride(); override != nil {
 		return *override

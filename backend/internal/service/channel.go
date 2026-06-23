@@ -29,6 +29,9 @@ const (
 	BillingModelSourceRequested     = "requested"
 	BillingModelSourceUpstream      = "upstream"
 	BillingModelSourceChannelMapped = "channel_mapped"
+
+	featureKeyOpenAIImagesUpstream          = "openai_images_upstream"
+	openAIImagesUpstreamModeChatCompletions = "chat_completions"
 )
 
 // Channel 渠道实体
@@ -257,6 +260,27 @@ func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
 	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
 	return ok && enabled
+}
+
+// ShouldForwardOpenAIImagesViaChatCompletions 返回该渠道的图片入口是否转发到
+// 上游 /v1/chat/completions。用于兼容只把图片生成暴露在 CC 端点的上游。
+func (c *Channel) ShouldForwardOpenAIImagesViaChatCompletions() bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	raw, ok := c.FeaturesConfig[featureKeyOpenAIImagesUpstream]
+	if !ok {
+		return false
+	}
+	if enabled, ok := raw.(bool); ok {
+		return enabled
+	}
+	cfg, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	mode, ok := cfg["mode"].(string)
+	return ok && strings.EqualFold(strings.TrimSpace(mode), openAIImagesUpstreamModeChatCompletions)
 }
 
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.

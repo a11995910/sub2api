@@ -219,7 +219,7 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	}
 
 	applyOpenAIImagesDefaults(req)
-	if err := validateOpenAIImagesModel(req.Model); err != nil {
+	if err := validateOpenAIImagesRequestModel(req.Model); err != nil {
 		return nil, err
 	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
@@ -473,6 +473,18 @@ func validateOpenAIImagesModel(model string) error {
 	return fmt.Errorf("images endpoint requires an image model, got %q", model)
 }
 
+// ValidateOpenAIImagesNativeModel 校验默认 OpenAI Images 上游要求的原生图片模型。
+func ValidateOpenAIImagesNativeModel(model string) error {
+	return validateOpenAIImagesModel(model)
+}
+
+func validateOpenAIImagesRequestModel(model string) error {
+	if strings.TrimSpace(model) == "" {
+		return fmt.Errorf("images endpoint requires a model")
+	}
+	return nil
+}
+
 func normalizeOpenAIImagesEndpointPath(path string) string {
 	trimmed := strings.TrimSpace(path)
 	switch {
@@ -546,9 +558,17 @@ func (s *OpenAIGatewayService) ForwardImages(
 	body []byte,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
+	channels ...*Channel,
 ) (*OpenAIForwardResult, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
+	}
+	var channel *Channel
+	if len(channels) > 0 {
+		channel = channels[0]
+	}
+	if channel.ShouldForwardOpenAIImagesViaChatCompletions() {
+		return s.forwardOpenAIImagesViaChatCompletions(ctx, c, account, parsed, channelMappedModel)
 	}
 	switch account.Type {
 	case AccountTypeAPIKey:

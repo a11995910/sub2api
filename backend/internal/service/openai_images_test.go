@@ -331,7 +331,9 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *te
 
 	svc := &OpenAIGatewayService{}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
-	require.Nil(t, parsed)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	err = ValidateOpenAIImagesNativeModel(parsed.Model)
 	require.ErrorContains(t, err, `images endpoint requires an image model, got "gpt-5.4"`)
 }
 
@@ -1134,6 +1136,159 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"nano-banana-2","prompt":"draw a banana","response_format":"url"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_cc"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{
+				"id":"chatcmpl_1",
+				"choices":[{"message":{"role":"assistant","content":"![image](https://cdn.example.com/banana.png)"}}],
+				"usage":{"prompt_tokens":12,"completion_tokens":3}
+			}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       7,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://banana-upstream.example/v1",
+			"model_mapping": map[string]any{
+				"nano-banana-2": "banana-upstream-model",
+			},
+		},
+	}
+	channel := &Channel{FeaturesConfig: map[string]any{
+		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+	}}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "", channel)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "nano-banana-2", result.Model)
+	require.Equal(t, "banana-upstream-model", result.UpstreamModel)
+	require.Equal(t, 12, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer test-api-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "banana-upstream-model", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "messages.0.role").String())
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content").String(), "draw a banana")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "https://cdn.example.com/banana.png", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Equal(t, "nano-banana-2", gjson.Get(rec.Body.String(), "model").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletionsDownloadsURLForB64(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"nano-banana-2","prompt":"draw a banana","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_cc_b64"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{
+					"choices":[{"message":{"role":"assistant","content":"https://cdn.example.com/banana.png"}}],
+					"usage":{"prompt_tokens":9,"completion_tokens":2}
+				}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"image/png"}},
+				Body:       io.NopCloser(strings.NewReader("png-bytes")),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://banana-upstream.example/v1",
+		},
+	}
+	channel := &Channel{FeaturesConfig: map[string]any{
+		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+	}}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "", channel)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.requests[0].URL.String())
+	require.Equal(t, "https://cdn.example.com/banana.png", upstream.requests[1].URL.String())
+	require.Equal(t, "cG5nLWJ5dGVz", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_ChatCompletionsModeRejectsEdits(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"nano-banana-2","prompt":"edit","images":[{"image_url":"https://example.com/source.png"}]}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{ID: 8, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	channel := &Channel{FeaturesConfig: map[string]any{
+		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+	}}
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "", channel)
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "images edits are not supported")
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGeneration502RetryableOnSameAccount(t *testing.T) {
