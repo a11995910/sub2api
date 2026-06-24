@@ -32,14 +32,22 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar 自定义菜单顺序', () => {
-  it('将绘画工作流自定义菜单放在模型广场之后、模型测试台之前', () => {
+  it('将用户侧自定义菜单整体放在模型广场之后、模型测试台之前', () => {
     const modelMarketIndex = componentSource.indexOf("path: '/models'")
-    const drawingWorkflowIndex = componentSource.indexOf('...drawingWorkflowMenuItems.map(customMenuToNavItem)')
+    const customMenuIndex = componentSource.indexOf('...customMenuItemsForUser.value.map(customMenuToNavItem)')
     const modelTestIndex = componentSource.indexOf("path: '/model-test'")
 
     expect(modelMarketIndex).toBeGreaterThanOrEqual(0)
-    expect(drawingWorkflowIndex).toBeGreaterThan(modelMarketIndex)
-    expect(modelTestIndex).toBeGreaterThan(drawingWorkflowIndex)
+    expect(customMenuIndex).toBeGreaterThan(modelMarketIndex)
+    expect(modelTestIndex).toBeGreaterThan(customMenuIndex)
     expect(componentSource).not.toContain("path: '/creative-drawing'")
+  })
+
+  it('将管理员自定义菜单放在系统设置之前', () => {
+    const adminCustomMenuIndex = componentSource.indexOf('for (const cm of customMenuItemsForAdmin.value)')
+    const adminSettingsIndex = componentSource.indexOf("visible.push({ path: '/admin/settings'")
+
+    expect(adminCustomMenuIndex).toBeGreaterThanOrEqual(0)
+    expect(adminSettingsIndex).toBeGreaterThan(adminCustomMenuIndex)
   })
 })

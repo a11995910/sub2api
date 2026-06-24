@@ -128,6 +128,10 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 模型广场只展示模型、平台、分组、价格和测试入口，不展示渠道名称、渠道状态或上游账号状态，避免把调度细节暴露给普通用户。
 
+## 用户侧自定义菜单
+
+管理员可在系统设置中维护自定义菜单项。用户可见菜单按 `custom_menu_items.sort_order` 升序排列，并在侧边栏中显示于“模型广场”之后、“模型测试台”之前；管理员可见菜单同样按 `sort_order` 升序排列，并显示于管理端“系统设置”之前。菜单点击后进入 `/custom/{id}`，页面按配置的外部 URL 或 `md:{slug}` Markdown 页面加载内容。
+
 ## 模型测试台
 
 模型测试台文件：`frontend/src/views/user/ModelTestView.vue`
