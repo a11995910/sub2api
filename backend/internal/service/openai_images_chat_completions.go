@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -235,7 +236,63 @@ func buildOpenAIImagesChatCompletionsBody(parsed *OpenAIImagesRequest, upstreamM
 		}},
 		"stream": false,
 	}
+	if imageConfig := openAIImagesChatCompletionsImageConfig(parsed); len(imageConfig) > 0 {
+		payload["generationConfig"] = map[string]any{
+			"imageConfig": imageConfig,
+		}
+	}
 	return json.Marshal(payload)
+}
+
+func openAIImagesChatCompletionsImageConfig(parsed *OpenAIImagesRequest) map[string]any {
+	if parsed == nil {
+		return nil
+	}
+	imageSize := strings.TrimSpace(parsed.SizeTier)
+	if imageSize == "" {
+		imageSize = normalizeOpenAIImageSizeTier(parsed.Size)
+	}
+	imageConfig := map[string]any{}
+	if imageSize != "" {
+		imageConfig["imageSize"] = imageSize
+	}
+	if aspectRatio := openAIImagesAspectRatioFromSize(parsed.Size); aspectRatio != "" {
+		imageConfig["aspectRatio"] = aspectRatio
+	}
+	if len(imageConfig) == 0 {
+		return nil
+	}
+	return imageConfig
+}
+
+func openAIImagesAspectRatioFromSize(size string) string {
+	width, height, ok := parseImageBillingDimensions(size)
+	if !ok {
+		return ""
+	}
+	divisor := gcdInt(width, height)
+	if divisor <= 0 {
+		return ""
+	}
+	w := width / divisor
+	h := height / divisor
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	return strconv.Itoa(w) + ":" + strconv.Itoa(h)
+}
+
+func gcdInt(a, b int) int {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 func buildOpenAIImagesChatCompletionsMessageContent(parsed *OpenAIImagesRequest, text string) (any, error) {
@@ -291,6 +348,10 @@ func extractOpenAIImagesFromChatCompletionsBody(body []byte, parsed *OpenAIImage
 		content = strings.TrimSpace(gjson.GetBytes(body, "message.content").String())
 	}
 	if content == "" {
+		result := openAIImageResultFromChatMessageImages(body, parsed)
+		if strings.TrimSpace(result.Result) != "" || strings.TrimSpace(result.URL) != "" {
+			return []openAIResponsesImageResult{result}, nil
+		}
 		return nil, fmt.Errorf("upstream chat_completions response did not include image content")
 	}
 	result := openAIImageResultFromChatContent(content, parsed)
@@ -298,6 +359,27 @@ func extractOpenAIImagesFromChatCompletionsBody(body []byte, parsed *OpenAIImage
 		return nil, fmt.Errorf("upstream chat_completions response did not include an image URL or base64 image")
 	}
 	return []openAIResponsesImageResult{result}, nil
+}
+
+func openAIImageResultFromChatMessageImages(body []byte, parsed *OpenAIImagesRequest) openAIResponsesImageResult {
+	for _, path := range []string{
+		"choices.0.message.images.0.image_url.url",
+		"choices.0.message.images.0.image_url",
+		"choices.0.message.images.0.url",
+		"message.images.0.image_url.url",
+		"message.images.0.image_url",
+		"message.images.0.url",
+	} {
+		imageURL := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if imageURL == "" {
+			continue
+		}
+		if b64, mimeType := openAIImageBase64FromDataURL(imageURL); b64 != "" {
+			return openAIResponsesImageResult{Result: b64, MimeType: mimeType, OutputFormat: outputFormatFromMimeType(mimeType), RevisedPrompt: revisedPromptForChatImages(parsed)}
+		}
+		return openAIResponsesImageResult{URL: imageURL, RevisedPrompt: revisedPromptForChatImages(parsed)}
+	}
+	return openAIResponsesImageResult{}
 }
 
 func openAIImageResultFromChatContent(content string, parsed *OpenAIImagesRequest) openAIResponsesImageResult {

@@ -1268,6 +1268,115 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletionsDow
 	require.Equal(t, "cG5nLWJ5dGVz", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletionsReadsMessageImages(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"nano-banana","prompt":"draw a banana","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_cc_message_images"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{
+				"choices":[{"message":{"role":"assistant","content":null,"images":[{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,aW1hZ2UtYnl0ZXM="}}]}}],
+				"usage":{"prompt_tokens":9,"completion_tokens":2}
+			}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "test-api-key",
+			"base_url":      "https://banana-upstream.example/v1",
+			"model_mapping": map[string]any{"nano-banana": "gemini-3.1-flash-image"},
+		},
+	}
+	channel := &Channel{FeaturesConfig: map[string]any{
+		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+	}}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "", channel)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "nano-banana", result.Model)
+	require.Equal(t, "gemini-3.1-flash-image", result.UpstreamModel)
+	require.Equal(t, base64.StdEncoding.EncodeToString([]byte("image-bytes")), gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletionsForwardsImageConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"nano-banana","prompt":"draw a banana","size":"3840x2160","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_img_cc_image_config"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{
+				"choices":[{"message":{"role":"assistant","content":null,"images":[{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,aW1hZ2UtYnl0ZXM="}}]}}],
+				"usage":{"prompt_tokens":9,"completion_tokens":2}
+			}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":       "test-api-key",
+			"base_url":      "https://banana-upstream.example/v1",
+			"model_mapping": map[string]any{"nano-banana": "gemini-3.1-flash-image"},
+		},
+	}
+	channel := &Channel{FeaturesConfig: map[string]any{
+		featureKeyOpenAIImagesUpstream: map[string]any{"mode": "chat_completions"},
+	}}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "", channel)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "4K", result.ImageSize)
+	require.Equal(t, "3840x2160", result.ImageInputSize)
+	require.Equal(t, "4K", gjson.GetBytes(upstream.lastBody, "generationConfig.imageConfig.imageSize").String())
+	require.Equal(t, "16:9", gjson.GetBytes(upstream.lastBody, "generationConfig.imageConfig.aspectRatio").String())
+	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content").String(), "Requested image size: 3840x2160")
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditViaChatCompletionsIncludesImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{
