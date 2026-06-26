@@ -19,19 +19,19 @@
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatOrderAmount(baseAmount) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatPaymentAmount(baseAmount, order.currency) }}</p>
         </div>
         <div v-if="order.fee_rate > 0">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatOrderAmount(feeAmount) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatPaymentAmount(feeAmount, order.currency) }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatOrderAmount(order.pay_amount) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatPaymentAmount(order.pay_amount, order.currency) }}</p>
         </div>
         <div v-if="order.amount !== order.pay_amount">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatOrderAmount(order.amount) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatSpiritStones(order.amount) }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p>
@@ -77,7 +77,7 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') }}:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ formatOrderAmount(order.refund_amount) }}</span>
+            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ formatSpiritStones(order.refund_amount) }}</span>
           </div>
           <div v-if="order.refund_reason" class="col-span-2">
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') }}:</span>
@@ -120,6 +120,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { formatPaymentAmount } from '@/components/payment/currency'
+import { formatSpiritStones } from '@/utils/format'
 
 const { t } = useI18n()
 
@@ -159,7 +160,4 @@ function formatDateTime(dateStr: string): string {
   return formatOrderDateTime(dateStr)
 }
 
-function formatOrderAmount(value: number): string {
-  return formatPaymentAmount(value, props.order?.currency)
-}
 </script>
