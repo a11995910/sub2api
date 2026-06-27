@@ -201,13 +201,13 @@
                   <span class="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
                     新手必看
                   </span>
-                  <span class="text-xs text-gray-500 dark:text-dark-400">从下载到导入，一页走完</span>
+                  <span class="text-xs text-gray-500 dark:text-dark-400">Codex / Claude Code / 生图，一页走完</span>
                 </div>
                 <h2 class="mt-2 text-xl font-bold text-gray-950 dark:text-white">
-                  小白使用攻略：新建密钥、下载 Codex、导入 CC-Switch
+                  小白使用攻略：新建密钥、导入 CCS、配置生图
                 </h2>
                 <p class="mt-1 text-sm leading-6 text-gray-600 dark:text-dark-300">
-                  适合第一次配置的用户，按步骤完成工具下载、密钥创建、导入 CCS 和 Codex 测试。
+                  适合第一次配置的用户，按步骤完成 Codex、Claude Code 和生图工具的下载、密钥创建与测试。
                 </p>
               </div>
             </div>
