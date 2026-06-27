@@ -97,14 +97,20 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
-		// For index.html or SPA routes, serve with injected settings
-		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+		// 首页需要注入公开配置；其他路径先检查本地覆盖文件，避免下载文件被 SPA fallback 吃掉。
+		if cleanPath == "index.html" {
 			s.serveIndexHTML(c)
 			return
 		}
 
 		// Try local override first
 		if s.tryServeOverride(c, cleanPath) {
+			return
+		}
+
+		// For SPA routes, serve with injected settings
+		if !s.fileExists(cleanPath) {
+			s.serveIndexHTML(c)
 			return
 		}
 
@@ -268,12 +274,18 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
+		if cleanPath == "index.html" {
+			serveIndexHTML(c, distFS)
+			return
+		}
+
+		// 本地覆盖文件应优先于 SPA fallback，支持运行态挂载下载包等大文件。
+		if tryServeOverrideFile(c, overrideDir, cleanPath) {
+			return
+		}
+
 		if file, err := distFS.Open(cleanPath); err == nil {
 			_ = file.Close()
-			// Try local override first
-			if tryServeOverrideFile(c, overrideDir, cleanPath) {
-				return
-			}
 			setEmbeddedStaticCacheHeaders(c, cleanPath)
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()

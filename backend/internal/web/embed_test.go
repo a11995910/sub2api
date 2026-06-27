@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -543,6 +545,33 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
 	})
 
+	t.Run("serves_override_files_before_spa_fallback", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		overrideDir := t.TempDir()
+		overridePath := filepath.Join(overrideDir, "downloads", "image-studio", "app.dmg")
+		require.NoError(t, os.MkdirAll(filepath.Dir(overridePath), 0o755))
+		require.NoError(t, os.WriteFile(overridePath, []byte("local installer bytes"), 0o644))
+		server.overrideDir = overrideDir
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/downloads/image-studio/app.dmg", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "local installer bytes", w.Body.String())
+		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "public, max-age=3600", w.Header().Get("Cache-Control"))
+	})
+
 	t.Run("sets_immutable_cache_for_hashed_assets", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -686,6 +715,34 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
 		}
+	})
+
+	t.Run("serves_override_files_before_spa_fallback", func(t *testing.T) {
+		originalWD, err := os.Getwd()
+		require.NoError(t, err)
+		tempWD := t.TempDir()
+		require.NoError(t, os.Chdir(tempWD))
+		t.Cleanup(func() {
+			require.NoError(t, os.Chdir(originalWD))
+		})
+
+		overridePath := filepath.Join(tempWD, "data", "public", "downloads", "image-studio", "app.exe")
+		require.NoError(t, os.MkdirAll(filepath.Dir(overridePath), 0o755))
+		require.NoError(t, os.WriteFile(overridePath, []byte("portable installer bytes"), 0o644))
+
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/downloads/image-studio/app.exe", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "portable installer bytes", w.Body.String())
+		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "public, max-age=3600", w.Header().Get("Cache-Control"))
 	})
 
 	t.Run("skips_api_routes", func(t *testing.T) {
