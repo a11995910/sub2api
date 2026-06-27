@@ -22,7 +22,20 @@
       </div>
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
-      <div class="flex items-center gap-3">
+      <div class="flex min-w-0 items-center gap-3">
+        <!-- Quick Link -->
+        <a
+          v-if="quickLinkVisible"
+          :href="quickLinkUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hidden max-w-[22rem] items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-100 hover:text-primary-800 dark:border-primary-900/60 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/30 lg:flex"
+        >
+          <Icon name="chat" size="sm" class="shrink-0" />
+          <span class="min-w-0 truncate">{{ quickLinkText }}</span>
+          <Icon name="externalLink" size="sm" class="shrink-0" />
+        </a>
+
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
@@ -113,6 +126,18 @@
               </div>
 
               <div class="py-1">
+                <a
+                  v-if="quickLinkVisible"
+                  :href="quickLinkUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  @click="closeDropdown"
+                  class="dropdown-item lg:hidden"
+                >
+                  <Icon name="chat" size="sm" />
+                  {{ quickLinkText }}
+                </a>
+
                 <router-link to="/profile" @click="closeDropdown" class="dropdown-item">
                   <Icon name="user" size="sm" />
                   {{ t('nav.profile') }}
@@ -235,6 +260,13 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const quickLinkText = computed(() => appStore.cachedPublicSettings?.quick_link_text?.trim() || '')
+const quickLinkUrl = computed(() => appStore.cachedPublicSettings?.quick_link_url?.trim() || '')
+const quickLinkVisible = computed(() => (
+  appStore.cachedPublicSettings?.quick_link_enabled === true
+  && quickLinkText.value !== ''
+  && quickLinkUrl.value !== ''
+))
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {

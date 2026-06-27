@@ -5215,6 +5215,65 @@
                 </p>
               </div>
 
+              <!-- Quick Link -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.site.quickLinkTitle") }}
+                    </h3>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.quickLinkDescription") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.quick_link_enabled" />
+                </div>
+
+                <div
+                  v-if="form.quick_link_enabled"
+                  class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2"
+                >
+                  <div>
+                    <label
+                      for="quick-link-text"
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.quickLinkText") }}
+                    </label>
+                    <input
+                      id="quick-link-text"
+                      v-model="form.quick_link_text"
+                      name="quick_link_text"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.site.quickLinkTextPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.quickLinkTextHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      for="quick-link-url"
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.site.quickLinkUrl") }}
+                    </label>
+                    <input
+                      id="quick-link-url"
+                      v-model="form.quick_link_url"
+                      name="quick_link_url"
+                      type="url"
+                      class="input font-mono text-sm max-sm:text-base"
+                      :placeholder="t('admin.settings.site.quickLinkUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.site.quickLinkUrlHint") }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <!-- Site Logo Upload -->
               <div>
                 <label
@@ -8061,6 +8120,9 @@ const form = reactive<SettingsForm>({
   api_base_url: "",
   contact_info: "",
   doc_url: "",
+  quick_link_enabled: false,
+  quick_link_text: "",
+  quick_link_url: "",
   home_content: "",
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -9314,6 +9376,20 @@ async function saveSettings() {
     // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
     if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = "";
     if (!isValidHttpUrl(form.doc_url)) form.doc_url = "";
+    form.quick_link_text = form.quick_link_text.trim();
+    form.quick_link_url = form.quick_link_url.trim();
+    if (form.quick_link_enabled) {
+      if (!form.quick_link_text) {
+        appStore.showError(t("admin.settings.site.quickLinkTextRequired"));
+        return;
+      }
+      if (!isValidHttpUrl(form.quick_link_url)) {
+        appStore.showError(t("admin.settings.site.quickLinkUrlInvalid"));
+        return;
+      }
+    } else if (form.quick_link_url && !isValidHttpUrl(form.quick_link_url)) {
+      form.quick_link_url = "";
+    }
     syncWeChatConnectMode();
     const wechatStoredMode = deriveWeChatConnectStoredMode(
       form.wechat_connect_open_enabled,
@@ -9369,6 +9445,9 @@ async function saveSettings() {
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
       doc_url: form.doc_url,
+      quick_link_enabled: form.quick_link_enabled,
+      quick_link_text: form.quick_link_text,
+      quick_link_url: form.quick_link_url,
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,

@@ -78,6 +78,23 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 	require.Equal(t, []int{20, 50, 100}, settings.TablePageSizeOptions)
 }
 
+func TestSettingService_GetPublicSettings_ExposesQuickLink(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyQuickLinkEnabled: "true",
+			SettingKeyQuickLinkText:    "  联系客服：点击进入 aibang.click，务必保存网址  ",
+			SettingKeyQuickLinkURL:     "  https://aibang.click  ",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.QuickLinkEnabled)
+	require.Equal(t, "联系客服：点击进入 aibang.click，务必保存网址", settings.QuickLinkText)
+	require.Equal(t, "https://aibang.click", settings.QuickLinkURL)
+}
+
 func TestSettingService_GetPublicSettings_ExposesCheckinSettings(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

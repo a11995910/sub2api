@@ -133,6 +133,9 @@ type SystemSettings struct {
 	APIBaseURL                  string
 	ContactInfo                 string
 	DocURL                      string
+	QuickLinkEnabled            bool
+	QuickLinkText               string
+	QuickLinkURL                string
 	HomeContent                 string
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
@@ -273,6 +276,9 @@ type PublicSettings struct {
 	APIBaseURL                       string
 	ContactInfo                      string
 	DocURL                           string
+	QuickLinkEnabled                 bool
+	QuickLinkText                    string
+	QuickLinkURL                     string
 	HomeContent                      string
 	HideCcsImportButton              bool
 

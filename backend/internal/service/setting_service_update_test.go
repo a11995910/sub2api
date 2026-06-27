@@ -373,6 +373,40 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
+func TestSettingService_UpdateSettings_QuickLink(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		QuickLinkEnabled: true,
+		QuickLinkText:    "  联系客服：点击进入 aibang.click，务必保存网址  ",
+		QuickLinkURL:     "  https://aibang.click  ",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyQuickLinkEnabled])
+	require.Equal(t, "联系客服：点击进入 aibang.click，务必保存网址", repo.updates[SettingKeyQuickLinkText])
+	require.Equal(t, "https://aibang.click", repo.updates[SettingKeyQuickLinkURL])
+}
+
+func TestSettingService_UpdateSettings_QuickLinkRejectsInvalidEnabledConfig(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		QuickLinkEnabled: true,
+		QuickLinkText:    "",
+		QuickLinkURL:     "https://aibang.click",
+	})
+	require.Error(t, err)
+
+	err = svc.UpdateSettings(context.Background(), &SystemSettings{
+		QuickLinkEnabled: true,
+		QuickLinkText:    "联系客服",
+		QuickLinkURL:     "javascript:alert(1)",
+	})
+	require.Error(t, err)
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

@@ -217,6 +217,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		APIBaseURL:                             settings.APIBaseURL,
 		ContactInfo:                            settings.ContactInfo,
 		DocURL:                                 settings.DocURL,
+		QuickLinkEnabled:                       settings.QuickLinkEnabled,
+		QuickLinkText:                          settings.QuickLinkText,
+		QuickLinkURL:                           settings.QuickLinkURL,
 		HomeContent:                            settings.HomeContent,
 		HideCcsImportButton:                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            settings.PurchaseSubscriptionEnabled,
@@ -516,6 +519,9 @@ type UpdateSettingsRequest struct {
 	APIBaseURL                  string                `json:"api_base_url"`
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
+	QuickLinkEnabled            bool                  `json:"quick_link_enabled"`
+	QuickLinkText               string                `json:"quick_link_text"`
+	QuickLinkURL                string                `json:"quick_link_url"`
 	HomeContent                 string                `json:"home_content"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
@@ -1667,6 +1673,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIBaseURL:                             req.APIBaseURL,
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
+		QuickLinkEnabled:                       req.QuickLinkEnabled,
+		QuickLinkText:                          req.QuickLinkText,
+		QuickLinkURL:                           req.QuickLinkURL,
 		HomeContent:                            req.HomeContent,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
@@ -2158,6 +2167,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIBaseURL:                             updatedSettings.APIBaseURL,
 		ContactInfo:                            updatedSettings.ContactInfo,
 		DocURL:                                 updatedSettings.DocURL,
+		QuickLinkEnabled:                       updatedSettings.QuickLinkEnabled,
+		QuickLinkText:                          updatedSettings.QuickLinkText,
+		QuickLinkURL:                           updatedSettings.QuickLinkURL,
 		HomeContent:                            updatedSettings.HomeContent,
 		HideCcsImportButton:                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            updatedSettings.PurchaseSubscriptionEnabled,

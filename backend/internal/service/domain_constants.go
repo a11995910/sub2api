@@ -265,6 +265,9 @@ const (
 	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
+	SettingKeyQuickLinkEnabled            = "quick_link_enabled"            // 顶部快捷入口开关
+	SettingKeyQuickLinkText               = "quick_link_text"               // 顶部快捷入口文案
+	SettingKeyQuickLinkURL                = "quick_link_url"                // 顶部快捷入口链接
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口

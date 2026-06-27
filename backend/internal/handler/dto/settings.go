@@ -133,6 +133,9 @@ type SystemSettings struct {
 	APIBaseURL                  string           `json:"api_base_url"`
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
+	QuickLinkEnabled            bool             `json:"quick_link_enabled"`
+	QuickLinkText               string           `json:"quick_link_text"`
+	QuickLinkURL                string           `json:"quick_link_url"`
 	HomeContent                 string           `json:"home_content"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
@@ -306,6 +309,9 @@ type PublicSettings struct {
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
+	QuickLinkEnabled                 bool                     `json:"quick_link_enabled"`
+	QuickLinkText                    string                   `json:"quick_link_text"`
+	QuickLinkURL                     string                   `json:"quick_link_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`

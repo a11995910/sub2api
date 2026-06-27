@@ -798,6 +798,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
+		SettingKeyQuickLinkEnabled,
+		SettingKeyQuickLinkText,
+		SettingKeyQuickLinkURL,
 		SettingKeyHomeContent,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
@@ -931,6 +934,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
+		QuickLinkEnabled:                 settings[SettingKeyQuickLinkEnabled] == "true",
+		QuickLinkText:                    strings.TrimSpace(settings[SettingKeyQuickLinkText]),
+		QuickLinkURL:                     strings.TrimSpace(settings[SettingKeyQuickLinkURL]),
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
@@ -1528,6 +1534,9 @@ type PublicSettingsInjectionPayload struct {
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
+	QuickLinkEnabled                 bool                     `json:"quick_link_enabled"`
+	QuickLinkText                    string                   `json:"quick_link_text"`
+	QuickLinkURL                     string                   `json:"quick_link_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
@@ -1599,6 +1608,9 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		APIBaseURL:                       settings.APIBaseURL,
 		ContactInfo:                      settings.ContactInfo,
 		DocURL:                           settings.DocURL,
+		QuickLinkEnabled:                 settings.QuickLinkEnabled,
+		QuickLinkText:                    settings.QuickLinkText,
+		QuickLinkURL:                     settings.QuickLinkURL,
 		HomeContent:                      settings.HomeContent,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
@@ -2206,6 +2218,19 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
+	settings.QuickLinkText = strings.TrimSpace(settings.QuickLinkText)
+	settings.QuickLinkURL = strings.TrimSpace(settings.QuickLinkURL)
+	if settings.QuickLinkEnabled {
+		if settings.QuickLinkText == "" {
+			return nil, infraerrors.BadRequest("INVALID_QUICK_LINK_TEXT", "quick link text is required when enabled")
+		}
+		if err := config.ValidateAbsoluteHTTPURL(settings.QuickLinkURL); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_QUICK_LINK_URL", "quick link URL must be an absolute http(s) URL")
+		}
+	}
+	updates[SettingKeyQuickLinkEnabled] = strconv.FormatBool(settings.QuickLinkEnabled)
+	updates[SettingKeyQuickLinkText] = settings.QuickLinkText
+	updates[SettingKeyQuickLinkURL] = settings.QuickLinkURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
@@ -3230,6 +3255,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "false",
 		SettingKeySiteName:                                  "Sub2API",
 		SettingKeySiteLogo:                                  "",
+		SettingKeyQuickLinkEnabled:                          "false",
+		SettingKeyQuickLinkText:                             "",
+		SettingKeyQuickLinkURL:                              "",
 		SettingKeyPurchaseSubscriptionEnabled:               "false",
 		SettingKeyPurchaseSubscriptionURL:                   "",
 		SettingKeyTableDefaultPageSize:                      "20",
@@ -3448,6 +3476,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
+		QuickLinkEnabled:                 settings[SettingKeyQuickLinkEnabled] == "true",
+		QuickLinkText:                    strings.TrimSpace(settings[SettingKeyQuickLinkText]),
+		QuickLinkURL:                     strings.TrimSpace(settings[SettingKeyQuickLinkURL]),
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
