@@ -815,7 +815,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesAPIKeyForwardBody(
 	if parsed == nil {
 		return nil, "", fmt.Errorf("parsed images request is required")
 	}
-	if parsed.IsEdits() && !parsed.Multipart && len(parsed.InputImageURLs) > 0 {
+	if parsed.IsEdits() && !parsed.Multipart && (len(parsed.InputImageURLs) > 0 || len(parsed.Uploads) > 0) {
 		return buildOpenAIImagesMultipartEditBody(ctx, parsed, model)
 	}
 	return rewriteOpenAIImagesModel(body, parsed.ContentType, model)
@@ -902,6 +902,12 @@ func buildOpenAIImagesMultipartEditBody(
 		if err := writeOpenAIImagesMultipartUpload(writer, "image", upload); err != nil {
 			_ = writer.Close()
 			return nil, "", err
+		}
+	}
+	for index, upload := range parsed.Uploads {
+		if err := writeOpenAIImagesMultipartUpload(writer, "image", upload); err != nil {
+			_ = writer.Close()
+			return nil, "", fmt.Errorf("write upload image %d: %w", index, err)
 		}
 	}
 	if maskURL := strings.TrimSpace(parsed.MaskImageURL); maskURL != "" {
@@ -1269,7 +1275,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
-	body = s.applyOpenAIImagesSuperResolutionToJSON(opts.ctx, c, body, opts)
+	if s.shouldApplyImage4KEnhancement(c, opts.parsed) {
+		body = s.applyOpenAIImages4KEnhancementToJSON(opts.ctx, c, body, opts)
+	} else if !s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, openAIImagesRequestSizeTier(opts.parsed)) {
+		body = s.applyOpenAIImagesSuperResolutionToJSON(opts.ctx, c, body, opts)
+	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -1510,6 +1520,9 @@ func (s *OpenAIGatewayService) rewriteOpenAIImagesStreamingJSONBody(
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return body, nil
 	}
+	if s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, openAIImagesRequestSizeTier(opts.parsed)) {
+		return body, nil
+	}
 	if reason := s.imageSuperResolutionSkipReason(c, openAIImagesRequestSizeTier(opts.parsed)); reason != "" {
 		logImageSuperResolutionDecision(c, "skip", reason, openAIImagesRequestSizeTier(opts.parsed))
 		return body, nil
@@ -1534,6 +1547,9 @@ func (s *OpenAIGatewayService) rewriteOpenAIImagesStreamingCompletedPayload(
 		return payload, nil
 	}
 	requestSizeTier := openAIImagesRequestSizeTier(opts.parsed)
+	if s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, requestSizeTier) {
+		return payload, nil
+	}
 	if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
 		logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
 		return payload, nil

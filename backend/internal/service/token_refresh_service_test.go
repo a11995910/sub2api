@@ -593,8 +593,8 @@ func TestTokenRefreshService_RefreshWithRetry_RefreshTokenReusedSetsError(t *tes
 	require.Error(t, err)
 	require.Equal(t, 1, repo.setErrorCalls)
 	require.Equal(t, 0, repo.setTempUnschedCalls)
-	require.Contains(t, repo.lastErrorMsg, "refresh_token_reused")
-	require.Contains(t, repo.lastErrorMsg, "失效")
+	require.Contains(t, repo.lastErrorMessage, "refresh_token_reused")
+	require.Contains(t, repo.lastErrorMessage, "失效")
 }
 
 // ========== Path A (refreshAPI) 测试用例 ==========

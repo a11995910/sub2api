@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 13 // v13: include cache-hit quarter-to-input group billing flag
+const apiKeyAuthSnapshotVersion = 14 // v14: include image 4K enhancement group fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -260,6 +260,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
 			ImageSuperResolutionEnabled:     apiKey.Group.ImageSuperResolutionEnabled,
+			Image4KEnhancementEnabled:       apiKey.Group.Image4KEnhancementEnabled,
+			Image4KEnhancementGroupID:       apiKey.Group.Image4KEnhancementGroupID,
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
 			CacheHitQuarterToInput:          apiKey.Group.CacheHitQuarterToInput,
 			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
@@ -335,6 +337,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MonthlyLimitUSD:                 snapshot.Group.MonthlyLimitUSD,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
 			ImageSuperResolutionEnabled:     snapshot.Group.ImageSuperResolutionEnabled,
+			Image4KEnhancementEnabled:       snapshot.Group.Image4KEnhancementEnabled,
+			Image4KEnhancementGroupID:       snapshot.Group.Image4KEnhancementGroupID,
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,
 			CacheHitQuarterToInput:          snapshot.Group.CacheHitQuarterToInput,
 			ImageRateMultiplier:             snapshot.Group.ImageRateMultiplier,

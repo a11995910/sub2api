@@ -135,6 +135,16 @@ func ImageSuperResolutionEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageSuperResolutionEnabled, v))
 }
 
+// Image4kEnhancementEnabled applies equality check predicate on the "image_4k_enhancement_enabled" field. It's identical to Image4kEnhancementEnabledEQ.
+func Image4kEnhancementEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImage4kEnhancementEnabled, v))
+}
+
+// Image4kEnhancementGroupID applies equality check predicate on the "image_4k_enhancement_group_id" field. It's identical to Image4kEnhancementGroupIDEQ.
+func Image4kEnhancementGroupID(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImage4kEnhancementGroupID, v))
+}
+
 // ImageRateIndependent applies equality check predicate on the "image_rate_independent" field. It's identical to ImageRateIndependentEQ.
 func ImageRateIndependent(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateIndependent, v))
@@ -943,6 +953,66 @@ func ImageSuperResolutionEnabledEQ(v bool) predicate.Group {
 // ImageSuperResolutionEnabledNEQ applies the NEQ predicate on the "image_super_resolution_enabled" field.
 func ImageSuperResolutionEnabledNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldImageSuperResolutionEnabled, v))
+}
+
+// Image4kEnhancementEnabledEQ applies the EQ predicate on the "image_4k_enhancement_enabled" field.
+func Image4kEnhancementEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImage4kEnhancementEnabled, v))
+}
+
+// Image4kEnhancementEnabledNEQ applies the NEQ predicate on the "image_4k_enhancement_enabled" field.
+func Image4kEnhancementEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImage4kEnhancementEnabled, v))
+}
+
+// Image4kEnhancementGroupIDEQ applies the EQ predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImage4kEnhancementGroupID, v))
+}
+
+// Image4kEnhancementGroupIDNEQ applies the NEQ predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImage4kEnhancementGroupID, v))
+}
+
+// Image4kEnhancementGroupIDIn applies the In predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImage4kEnhancementGroupID, vs...))
+}
+
+// Image4kEnhancementGroupIDNotIn applies the NotIn predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImage4kEnhancementGroupID, vs...))
+}
+
+// Image4kEnhancementGroupIDGT applies the GT predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImage4kEnhancementGroupID, v))
+}
+
+// Image4kEnhancementGroupIDGTE applies the GTE predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImage4kEnhancementGroupID, v))
+}
+
+// Image4kEnhancementGroupIDLT applies the LT predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImage4kEnhancementGroupID, v))
+}
+
+// Image4kEnhancementGroupIDLTE applies the LTE predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImage4kEnhancementGroupID, v))
+}
+
+// Image4kEnhancementGroupIDIsNil applies the IsNil predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldImage4kEnhancementGroupID))
+}
+
+// Image4kEnhancementGroupIDNotNil applies the NotNil predicate on the "image_4k_enhancement_group_id" field.
+func Image4kEnhancementGroupIDNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldImage4kEnhancementGroupID))
 }
 
 // ImageRateIndependentEQ applies the EQ predicate on the "image_rate_independent" field.

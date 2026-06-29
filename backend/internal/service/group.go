@@ -29,6 +29,8 @@ type Group struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
 	AllowImageGeneration        bool
 	ImageSuperResolutionEnabled bool
+	Image4KEnhancementEnabled   bool
+	Image4KEnhancementGroupID   *int64
 	ImageRateIndependent        bool
 	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         float64

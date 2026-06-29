@@ -51,6 +51,10 @@ type Group struct {
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
 	// 是否对图片生成结果自动执行 4K 超分
 	ImageSuperResolutionEnabled bool `json:"image_super_resolution_enabled,omitempty"`
+	// 是否在 4K 生图命中后调用指定图片分组做二段提升
+	Image4kEnhancementEnabled bool `json:"image_4k_enhancement_enabled,omitempty"`
+	// 4K 生图二段提升使用的目标图片分组 ID
+	Image4kEnhancementGroupID *int64 `json:"image_4k_enhancement_group_id,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
 	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
 	// 启用后将每次请求缓存读取 token 的四分之一划入输入 token 重新计费
@@ -201,11 +205,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage4kEnhancementEnabled, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
@@ -332,6 +336,19 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field image_super_resolution_enabled", values[i])
 			} else if value.Valid {
 				_m.ImageSuperResolutionEnabled = value.Bool
+			}
+		case group.FieldImage4kEnhancementEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_4k_enhancement_enabled", values[i])
+			} else if value.Valid {
+				_m.Image4kEnhancementEnabled = value.Bool
+			}
+		case group.FieldImage4kEnhancementGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_4k_enhancement_group_id", values[i])
+			} else if value.Valid {
+				_m.Image4kEnhancementGroupID = new(int64)
+				*_m.Image4kEnhancementGroupID = value.Int64
 			}
 		case group.FieldImageRateIndependent:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -605,6 +622,14 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("image_super_resolution_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageSuperResolutionEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("image_4k_enhancement_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Image4kEnhancementEnabled))
+	builder.WriteString(", ")
+	if v := _m.Image4kEnhancementGroupID; v != nil {
+		builder.WriteString("image_4k_enhancement_group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_independent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateIndependent))

@@ -33,6 +33,23 @@ OpenAI 图片入口默认按原生 Images API 转发：`/v1/images/generations` 
 
 该模式只支持 OpenAI APIKey 账号和非流式图片入口，不支持图片流式返回。未启用该配置时，图片入口仍要求 `gpt-image-*` 这类原生 OpenAI 图片模型，避免普通文本模型被误识别为图片模型。
 
+## 图片 4K 提升分组
+
+OpenAI 图片分组支持在管理端开启 `4K 提升`，并选择另一个允许生图的 OpenAI 图片分组作为提升目标。典型用法是：当前分组先使用 image2 生成基础图片；当请求命中 4K 档位时，再把第一段图片交给 `nano-Banana2 香蕉生图` 这类图片分组做二段提升，最终把提升后的图片按原 OpenAI Images API 响应返回给下游。
+
+触发条件如下：
+
+1. 当前 API Key 绑定的分组为 OpenAI 平台，且 `allow_image_generation=true`。
+2. 当前分组开启 `image_4k_enhancement_enabled=true`，并配置有效的 `image_4k_enhancement_group_id`。
+3. 请求为非流式图片生成或图片编辑，且 `size` 解析后的计费档位为 `4K`。
+4. 目标分组必须是另一个启用状态、允许图片生成的 OpenAI 分组；管理端保存时会拦截缺少目标分组、目标分组指向自己、目标分组不存在或目标分组不允许生图的配置。
+
+二段提升会走内部 `/v1/images/edits` 请求，把第一段结果作为参考图传给目标分组。请求中的原始 `size` 会原样传递到二段提升：提示词会明确包含原始尺寸，例如 `3840x2160`；当目标分组渠道启用 `features_config.openai_images_upstream.mode=chat_completions` 时，该尺寸也会继续进入转换后的 Chat Completions 提示词，并用于 `generationConfig.imageConfig.aspectRatio`。因此二段提升不会只传“4K”这种模糊指令，避免最终画幅与用户请求的 `size` 不一致。
+
+二段提升提示词要求保留原图内容、主体身份、构图、视角、颜色、光照、画幅比例和可见文字，只提升分辨率、锐度、细节和压缩瑕疵。目标分组调用失败、不可用或返回无图片时，系统最多尝试 3 次；仍失败则记录日志并返回第一段原图，不向用户暴露二段提升错误。
+
+启用 `4K 提升` 的分组会优先使用目标图片分组做二段提升；未启用该功能时，才按旧配置 `image_super_resolution_enabled` 和网关外部超分服务继续执行原有 4K 超分逻辑。流式图片响应当前不触发图片分组二段提升；当分组已开启 `4K 提升` 时，流式 4K 请求会保留上游原始结果返回，不再回落到旧外部超分。
+
 ## Embeddings 请求流程
 
 `POST /v1/embeddings` 要求请求体为合法 JSON，且必须包含非空字符串 `model`。请求通过后端 `OpenAIGatewayHandler.Embeddings` 处理：
@@ -97,7 +114,7 @@ OpenAI 账号可根据 Codex 用量窗口自动从调度候选中临时排除。
 - OpenAI Embeddings 处理器：`backend/internal/handler/openai_embeddings.go`
 - OpenAI Embeddings 转发服务：`backend/internal/service/openai_embeddings.go`
 - OpenAI Images 处理器：`backend/internal/handler/openai_images.go`
-- OpenAI Images 原生与 Chat Completions 兼容转发：`backend/internal/service/openai_images.go`、`backend/internal/service/openai_images_chat_completions.go`
+- OpenAI Images 原生、4K 提升与 Chat Completions 兼容转发：`backend/internal/service/openai_images.go`、`backend/internal/service/image_4k_enhancement.go`、`backend/internal/service/openai_images_chat_completions.go`
 - OpenAI 调度与配额自动暂停：`backend/internal/service/openai_gateway_service.go`、`backend/internal/service/openai_account_scheduler.go`
 - 账号创建与编辑界面：`frontend/src/components/account/CreateAccountModal.vue`、`frontend/src/components/account/EditAccountModal.vue`
 - 运维高级设置界面：`frontend/src/views/admin/ops/components/OpsSettingsDialog.vue`

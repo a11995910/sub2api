@@ -1296,6 +1296,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	responseFormat string,
 	fallbackModel string,
 	requestSizeTier string,
+	parsed *OpenAIImagesRequest,
 	ctx context.Context,
 	upstreamHeaders http.Header,
 	proxyURL string,
@@ -1362,7 +1363,21 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
-	results = s.applyOpenAIResponsesSuperResolution(ctx, c, results, requestSizeTier)
+	enhancementParsed := parsed
+	if enhancementParsed == nil {
+		enhancementParsed = &OpenAIImagesRequest{
+			Model:          fallbackModel,
+			Size:           firstMeta.Size,
+			SizeTier:       requestSizeTier,
+			ResponseFormat: responseFormat,
+			N:              1,
+		}
+	}
+	if s.shouldApplyImage4KEnhancement(c, enhancementParsed) {
+		results = s.applyOpenAIResponses4KEnhancement(ctx, c, results, enhancementParsed)
+	} else {
+		results = s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, results, requestSizeTier, enhancementParsed)
+	}
 	if len(results) > 0 {
 		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
 	}
@@ -1520,7 +1535,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
-			finalResults = s.applyOpenAIResponsesSuperResolution(ctx, c, finalResults, requestSizeTier)
+			finalResults = s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, finalResults, requestSizeTier, &OpenAIImagesRequest{
+				Model:          fallbackModel,
+				Size:           streamMeta.Size,
+				SizeTier:       requestSizeTier,
+				ResponseFormat: responseFormat,
+				Stream:         true,
+				N:              1,
+			})
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -1578,7 +1600,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
 				return err
 			}
-			materializedResults = s.applyOpenAIResponsesSuperResolution(ctx, c, materializedResults, requestSizeTier)
+			materializedResults = s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, materializedResults, requestSizeTier, &OpenAIImagesRequest{
+				Model:          fallbackModel,
+				Size:           streamMeta.Size,
+				SizeTier:       requestSizeTier,
+				ResponseFormat: responseFormat,
+				Stream:         true,
+				N:              1,
+			})
 			for _, img := range materializedResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				key := openAIResponsesImageResultKey("", img)
@@ -1901,6 +1930,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			parsed.ResponseFormat,
 			requestModel,
 			parsed.SizeTier,
+			parsed,
 			upstreamCtx,
 			upstreamReq.Header,
 			proxyURL,

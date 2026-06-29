@@ -41,11 +41,12 @@ func (p paymentFulfillmentTestProvider) Refund(ctx context.Context, req payment.
 }
 
 type paymentFulfillmentAffiliateAccrueCall struct {
-	inviterID     int64
-	inviteeUserID int64
-	amount        float64
-	freezeHours   int
-	sourceOrderID *int64
+	inviterID          int64
+	inviteeUserID      int64
+	amount             float64
+	freezeHours        int
+	sourceOrderID      *int64
+	sourceRedeemCodeID *int64
 }
 
 type paymentFulfillmentAffiliateRepoStub struct {
@@ -75,18 +76,24 @@ func (r *paymentFulfillmentAffiliateRepoStub) BindInviter(context.Context, int64
 	panic("unexpected BindInviter call")
 }
 
-func (r *paymentFulfillmentAffiliateRepoStub) AccrueQuota(_ context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+func (r *paymentFulfillmentAffiliateRepoStub) AccrueQuota(_ context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID, sourceRedeemCodeID *int64) (bool, error) {
 	var sourceCopy *int64
 	if sourceOrderID != nil {
 		v := *sourceOrderID
 		sourceCopy = &v
 	}
+	var redeemCopy *int64
+	if sourceRedeemCodeID != nil {
+		v := *sourceRedeemCodeID
+		redeemCopy = &v
+	}
 	r.accrueCalls = append(r.accrueCalls, paymentFulfillmentAffiliateAccrueCall{
-		inviterID:     inviterID,
-		inviteeUserID: inviteeUserID,
-		amount:        amount,
-		freezeHours:   freezeHours,
-		sourceOrderID: sourceCopy,
+		inviterID:          inviterID,
+		inviteeUserID:      inviteeUserID,
+		amount:             amount,
+		freezeHours:        freezeHours,
+		sourceOrderID:      sourceCopy,
+		sourceRedeemCodeID: redeemCopy,
 	})
 	return true, nil
 }

@@ -179,6 +179,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesViaChatCompletions(
 			return nil, err
 		}
 	}
+	imageResults = s.applyOpenAIResponses4KEnhancement(upstreamCtx, c, imageResults, parsed)
 	responseBody, err := buildOpenAIImagesAPIResponse(imageResults, time.Now().Unix(), nil, openAIResponsesImageResult{
 		Model: requestModel,
 		Size:  parsed.Size,

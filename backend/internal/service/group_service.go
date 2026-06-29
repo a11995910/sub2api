@@ -51,6 +51,8 @@ type CreateGroupRequest struct {
 	IsExclusive                 bool     `json:"is_exclusive"`
 	AllowImageGeneration        bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled"`
+	Image4KEnhancementEnabled   bool     `json:"image_4k_enhancement_enabled"`
+	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
 	ImageRateIndependent        bool     `json:"image_rate_independent"`
 	ImageRateMultiplier         *float64 `json:"image_rate_multiplier"`
 }
@@ -64,6 +66,8 @@ type UpdateGroupRequest struct {
 	Status                      *string  `json:"status"`
 	AllowImageGeneration        *bool    `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled *bool    `json:"image_super_resolution_enabled"`
+	Image4KEnhancementEnabled   *bool    `json:"image_4k_enhancement_enabled"`
+	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
 	ImageRateIndependent        *bool    `json:"image_rate_independent"`
 	ImageRateMultiplier         *float64 `json:"image_rate_multiplier"`
 }
@@ -111,6 +115,8 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		SubscriptionType:            SubscriptionTypeStandard,
 		AllowImageGeneration:        req.AllowImageGeneration,
 		ImageSuperResolutionEnabled: req.ImageSuperResolutionEnabled,
+		Image4KEnhancementEnabled:   req.Image4KEnhancementEnabled,
+		Image4KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
 		ImageRateIndependent:        req.ImageRateIndependent,
 		ImageRateMultiplier:         imageRateMultiplier,
 	}
@@ -189,6 +195,12 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 	}
 	if req.ImageSuperResolutionEnabled != nil {
 		group.ImageSuperResolutionEnabled = *req.ImageSuperResolutionEnabled
+	}
+	if req.Image4KEnhancementEnabled != nil {
+		group.Image4KEnhancementEnabled = *req.Image4KEnhancementEnabled
+	}
+	if req.Image4KEnhancementGroupID != nil {
+		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID)
 	}
 	if req.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *req.ImageRateIndependent

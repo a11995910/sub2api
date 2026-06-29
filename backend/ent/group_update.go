@@ -303,6 +303,47 @@ func (_u *GroupUpdate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpd
 	return _u
 }
 
+// SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
+func (_u *GroupUpdate) SetImage4kEnhancementEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetImage4kEnhancementEnabled(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage4kEnhancementEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImage4kEnhancementEnabled(*v)
+	}
+	return _u
+}
+
+// SetImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field.
+func (_u *GroupUpdate) SetImage4kEnhancementGroupID(v int64) *GroupUpdate {
+	_u.mutation.ResetImage4kEnhancementGroupID()
+	_u.mutation.SetImage4kEnhancementGroupID(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage4kEnhancementGroupID(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetImage4kEnhancementGroupID(*v)
+	}
+	return _u
+}
+
+// AddImage4kEnhancementGroupID adds value to the "image_4k_enhancement_group_id" field.
+func (_u *GroupUpdate) AddImage4kEnhancementGroupID(v int64) *GroupUpdate {
+	_u.mutation.AddImage4kEnhancementGroupID(v)
+	return _u
+}
+
+// ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
+func (_u *GroupUpdate) ClearImage4kEnhancementGroupID() *GroupUpdate {
+	_u.mutation.ClearImage4kEnhancementGroupID()
+	return _u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_u *GroupUpdate) SetImageRateIndependent(v bool) *GroupUpdate {
 	_u.mutation.SetImageRateIndependent(v)
@@ -1059,6 +1100,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedImage4kEnhancementGroupID(); ok {
+		_spec.AddField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.Image4kEnhancementGroupIDCleared() {
+		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 	}
@@ -1747,6 +1800,47 @@ func (_u *GroupUpdateOne) SetNillableImageSuperResolutionEnabled(v *bool) *Group
 	if v != nil {
 		_u.SetImageSuperResolutionEnabled(*v)
 	}
+	return _u
+}
+
+// SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
+func (_u *GroupUpdateOne) SetImage4kEnhancementEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetImage4kEnhancementEnabled(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage4kEnhancementEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage4kEnhancementEnabled(*v)
+	}
+	return _u
+}
+
+// SetImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) SetImage4kEnhancementGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.ResetImage4kEnhancementGroupID()
+	_u.mutation.SetImage4kEnhancementGroupID(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage4kEnhancementGroupID(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage4kEnhancementGroupID(*v)
+	}
+	return _u
+}
+
+// AddImage4kEnhancementGroupID adds value to the "image_4k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) AddImage4kEnhancementGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.AddImage4kEnhancementGroupID(v)
+	return _u
+}
+
+// ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) ClearImage4kEnhancementGroupID() *GroupUpdateOne {
+	_u.mutation.ClearImage4kEnhancementGroupID()
 	return _u
 }
 
@@ -2535,6 +2629,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedImage4kEnhancementGroupID(); ok {
+		_spec.AddField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.Image4kEnhancementGroupIDCleared() {
+		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)

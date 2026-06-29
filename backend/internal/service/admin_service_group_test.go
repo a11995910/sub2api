@@ -17,10 +17,11 @@ func ptrString[T ~string](v T) *string {
 
 // groupRepoStubForAdmin 用于测试 AdminService 的 GroupRepository Stub
 type groupRepoStubForAdmin struct {
-	created *Group // 记录 Create 调用的参数
-	updated *Group // 记录 Update 调用的参数
-	getByID *Group // GetByID 返回值
-	getErr  error  // GetByID 返回的错误
+	created    *Group // 记录 Create 调用的参数
+	updated    *Group // 记录 Update 调用的参数
+	getByID    *Group // GetByID 返回值
+	groupsByID map[int64]*Group
+	getErr     error // GetByID 返回的错误
 
 	listWithFiltersCalls       int
 	listWithFiltersParams      pagination.PaginationParams
@@ -43,16 +44,28 @@ func (s *groupRepoStubForAdmin) Update(_ context.Context, g *Group) error {
 	return nil
 }
 
-func (s *groupRepoStubForAdmin) GetByID(_ context.Context, _ int64) (*Group, error) {
+func (s *groupRepoStubForAdmin) GetByID(_ context.Context, id int64) (*Group, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if s.groupsByID != nil {
+		if group, ok := s.groupsByID[id]; ok {
+			return group, nil
+		}
+		return nil, ErrGroupNotFound
 	}
 	return s.getByID, nil
 }
 
-func (s *groupRepoStubForAdmin) GetByIDLite(_ context.Context, _ int64) (*Group, error) {
+func (s *groupRepoStubForAdmin) GetByIDLite(_ context.Context, id int64) (*Group, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if s.groupsByID != nil {
+		if group, ok := s.groupsByID[id]; ok {
+			return group, nil
+		}
+		return nil, ErrGroupNotFound
 	}
 	return s.getByID, nil
 }
@@ -348,6 +361,105 @@ func TestAdminService_UpdateGroup_RejectsNegativeImageRateMultiplier(t *testing.
 	})
 	require.Error(t, err)
 	require.Nil(t, repo.updated)
+}
+
+func TestAdminService_CreateGroup_Rejects4KEnhancementWithoutTargetGroup(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "image2",
+		Platform:                  PlatformOpenAI,
+		RateMultiplier:            1,
+		AllowImageGeneration:      true,
+		Image4KEnhancementEnabled: true,
+		Image4KEnhancementGroupID: nil,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "image_4k_enhancement_group_id is required")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_Rejects4KEnhancementTargetGroupNotFound(t *testing.T) {
+	targetGroupID := int64(46)
+	repo := &groupRepoStubForAdmin{groupsByID: map[int64]*Group{}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "image2",
+		Platform:                  PlatformOpenAI,
+		RateMultiplier:            1,
+		AllowImageGeneration:      true,
+		Image4KEnhancementEnabled: true,
+		Image4KEnhancementGroupID: &targetGroupID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "image_4k_enhancement_group_id")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_UpdateGroup_Rejects4KEnhancementTargetSelf(t *testing.T) {
+	selfID := int64(7)
+	repo := &groupRepoStubForAdmin{
+		groupsByID: map[int64]*Group{
+			selfID: {
+				ID:                   selfID,
+				Name:                 "image2",
+				Platform:             PlatformOpenAI,
+				Status:               StatusActive,
+				AllowImageGeneration: true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+	enabled := true
+
+	_, err := svc.UpdateGroup(context.Background(), selfID, &UpdateGroupInput{
+		Image4KEnhancementEnabled: &enabled,
+		Image4KEnhancementGroupID: &selfID,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot use self")
+	require.Nil(t, repo.updated)
+}
+
+func TestAdminService_UpdateGroup_Allows4KEnhancementTargetImageGroup(t *testing.T) {
+	sourceID := int64(7)
+	targetID := int64(46)
+	repo := &groupRepoStubForAdmin{
+		groupsByID: map[int64]*Group{
+			sourceID: {
+				ID:                   sourceID,
+				Name:                 "image2",
+				Platform:             PlatformOpenAI,
+				Status:               StatusActive,
+				AllowImageGeneration: true,
+			},
+			targetID: {
+				ID:                   targetID,
+				Name:                 "nano-Banana2 香蕉生图",
+				Platform:             PlatformOpenAI,
+				Status:               StatusActive,
+				AllowImageGeneration: true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+	enabled := true
+
+	group, err := svc.UpdateGroup(context.Background(), sourceID, &UpdateGroupInput{
+		Image4KEnhancementEnabled: &enabled,
+		Image4KEnhancementGroupID: &targetID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.Image4KEnhancementEnabled)
+	require.Equal(t, targetID, *repo.updated.Image4KEnhancementGroupID)
 }
 
 func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {

@@ -16025,6 +16025,9 @@ type GroupMutation struct {
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
 	image_super_resolution_enabled          *bool
+	image_4k_enhancement_enabled            *bool
+	image_4k_enhancement_group_id           *int64
+	addimage_4k_enhancement_group_id        *int64
 	image_rate_independent                  *bool
 	cache_hit_quarter_to_input_enabled      *bool
 	image_rate_multiplier                   *float64
@@ -16919,6 +16922,112 @@ func (m *GroupMutation) OldImageSuperResolutionEnabled(ctx context.Context) (v b
 // ResetImageSuperResolutionEnabled resets all changes to the "image_super_resolution_enabled" field.
 func (m *GroupMutation) ResetImageSuperResolutionEnabled() {
 	m.image_super_resolution_enabled = nil
+}
+
+// SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
+func (m *GroupMutation) SetImage4kEnhancementEnabled(b bool) {
+	m.image_4k_enhancement_enabled = &b
+}
+
+// Image4kEnhancementEnabled returns the value of the "image_4k_enhancement_enabled" field in the mutation.
+func (m *GroupMutation) Image4kEnhancementEnabled() (r bool, exists bool) {
+	v := m.image_4k_enhancement_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImage4kEnhancementEnabled returns the old "image_4k_enhancement_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImage4kEnhancementEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImage4kEnhancementEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImage4kEnhancementEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImage4kEnhancementEnabled: %w", err)
+	}
+	return oldValue.Image4kEnhancementEnabled, nil
+}
+
+// ResetImage4kEnhancementEnabled resets all changes to the "image_4k_enhancement_enabled" field.
+func (m *GroupMutation) ResetImage4kEnhancementEnabled() {
+	m.image_4k_enhancement_enabled = nil
+}
+
+// SetImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field.
+func (m *GroupMutation) SetImage4kEnhancementGroupID(i int64) {
+	m.image_4k_enhancement_group_id = &i
+	m.addimage_4k_enhancement_group_id = nil
+}
+
+// Image4kEnhancementGroupID returns the value of the "image_4k_enhancement_group_id" field in the mutation.
+func (m *GroupMutation) Image4kEnhancementGroupID() (r int64, exists bool) {
+	v := m.image_4k_enhancement_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImage4kEnhancementGroupID returns the old "image_4k_enhancement_group_id" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImage4kEnhancementGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImage4kEnhancementGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImage4kEnhancementGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImage4kEnhancementGroupID: %w", err)
+	}
+	return oldValue.Image4kEnhancementGroupID, nil
+}
+
+// AddImage4kEnhancementGroupID adds i to the "image_4k_enhancement_group_id" field.
+func (m *GroupMutation) AddImage4kEnhancementGroupID(i int64) {
+	if m.addimage_4k_enhancement_group_id != nil {
+		*m.addimage_4k_enhancement_group_id += i
+	} else {
+		m.addimage_4k_enhancement_group_id = &i
+	}
+}
+
+// AddedImage4kEnhancementGroupID returns the value that was added to the "image_4k_enhancement_group_id" field in this mutation.
+func (m *GroupMutation) AddedImage4kEnhancementGroupID() (r int64, exists bool) {
+	v := m.addimage_4k_enhancement_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
+func (m *GroupMutation) ClearImage4kEnhancementGroupID() {
+	m.image_4k_enhancement_group_id = nil
+	m.addimage_4k_enhancement_group_id = nil
+	m.clearedFields[group.FieldImage4kEnhancementGroupID] = struct{}{}
+}
+
+// Image4kEnhancementGroupIDCleared returns if the "image_4k_enhancement_group_id" field was cleared in this mutation.
+func (m *GroupMutation) Image4kEnhancementGroupIDCleared() bool {
+	_, ok := m.clearedFields[group.FieldImage4kEnhancementGroupID]
+	return ok
+}
+
+// ResetImage4kEnhancementGroupID resets all changes to the "image_4k_enhancement_group_id" field.
+func (m *GroupMutation) ResetImage4kEnhancementGroupID() {
+	m.image_4k_enhancement_group_id = nil
+	m.addimage_4k_enhancement_group_id = nil
+	delete(m.clearedFields, group.FieldImage4kEnhancementGroupID)
 }
 
 // SetImageRateIndependent sets the "image_rate_independent" field.
@@ -18293,7 +18402,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 39)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -18341,6 +18450,12 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.image_super_resolution_enabled != nil {
 		fields = append(fields, group.FieldImageSuperResolutionEnabled)
+	}
+	if m.image_4k_enhancement_enabled != nil {
+		fields = append(fields, group.FieldImage4kEnhancementEnabled)
+	}
+	if m.image_4k_enhancement_group_id != nil {
+		fields = append(fields, group.FieldImage4kEnhancementGroupID)
 	}
 	if m.image_rate_independent != nil {
 		fields = append(fields, group.FieldImageRateIndependent)
@@ -18445,6 +18560,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowImageGeneration()
 	case group.FieldImageSuperResolutionEnabled:
 		return m.ImageSuperResolutionEnabled()
+	case group.FieldImage4kEnhancementEnabled:
+		return m.Image4kEnhancementEnabled()
+	case group.FieldImage4kEnhancementGroupID:
+		return m.Image4kEnhancementGroupID()
 	case group.FieldImageRateIndependent:
 		return m.ImageRateIndependent()
 	case group.FieldCacheHitQuarterToInputEnabled:
@@ -18528,6 +18647,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowImageGeneration(ctx)
 	case group.FieldImageSuperResolutionEnabled:
 		return m.OldImageSuperResolutionEnabled(ctx)
+	case group.FieldImage4kEnhancementEnabled:
+		return m.OldImage4kEnhancementEnabled(ctx)
+	case group.FieldImage4kEnhancementGroupID:
+		return m.OldImage4kEnhancementGroupID(ctx)
 	case group.FieldImageRateIndependent:
 		return m.OldImageRateIndependent(ctx)
 	case group.FieldCacheHitQuarterToInputEnabled:
@@ -18690,6 +18813,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImageSuperResolutionEnabled(v)
+		return nil
+	case group.FieldImage4kEnhancementEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImage4kEnhancementEnabled(v)
+		return nil
+	case group.FieldImage4kEnhancementGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImage4kEnhancementGroupID(v)
 		return nil
 	case group.FieldImageRateIndependent:
 		v, ok := value.(bool)
@@ -18861,6 +18998,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.adddefault_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
 	}
+	if m.addimage_4k_enhancement_group_id != nil {
+		fields = append(fields, group.FieldImage4kEnhancementGroupID)
+	}
 	if m.addimage_rate_multiplier != nil {
 		fields = append(fields, group.FieldImageRateMultiplier)
 	}
@@ -18903,6 +19043,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedMonthlyLimitUsd()
 	case group.FieldDefaultValidityDays:
 		return m.AddedDefaultValidityDays()
+	case group.FieldImage4kEnhancementGroupID:
+		return m.AddedImage4kEnhancementGroupID()
 	case group.FieldImageRateMultiplier:
 		return m.AddedImageRateMultiplier()
 	case group.FieldImagePrice1k:
@@ -18962,6 +19104,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddDefaultValidityDays(v)
+		return nil
+	case group.FieldImage4kEnhancementGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddImage4kEnhancementGroupID(v)
 		return nil
 	case group.FieldImageRateMultiplier:
 		v, ok := value.(float64)
@@ -19042,6 +19191,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldMonthlyLimitUsd) {
 		fields = append(fields, group.FieldMonthlyLimitUsd)
 	}
+	if m.FieldCleared(group.FieldImage4kEnhancementGroupID) {
+		fields = append(fields, group.FieldImage4kEnhancementGroupID)
+	}
 	if m.FieldCleared(group.FieldImagePrice1k) {
 		fields = append(fields, group.FieldImagePrice1k)
 	}
@@ -19088,6 +19240,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldMonthlyLimitUsd:
 		m.ClearMonthlyLimitUsd()
+		return nil
+	case group.FieldImage4kEnhancementGroupID:
+		m.ClearImage4kEnhancementGroupID()
 		return nil
 	case group.FieldImagePrice1k:
 		m.ClearImagePrice1k()
@@ -19162,6 +19317,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImageSuperResolutionEnabled:
 		m.ResetImageSuperResolutionEnabled()
+		return nil
+	case group.FieldImage4kEnhancementEnabled:
+		m.ResetImage4kEnhancementEnabled()
+		return nil
+	case group.FieldImage4kEnhancementGroupID:
+		m.ResetImage4kEnhancementGroupID()
 		return nil
 	case group.FieldImageRateIndependent:
 		m.ResetImageRateIndependent()

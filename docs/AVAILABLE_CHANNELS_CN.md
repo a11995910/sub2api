@@ -11,12 +11,19 @@
 - `rate_multiplier`：分组默认文本倍率。
 - `allow_image_generation`：该分组是否允许图片生成。
 - `image_super_resolution_enabled`：该分组的图片生成结果是否会在返回前自动执行 4K 超分。
+- `image_4k_enhancement_enabled`：该分组命中 4K 生图时，是否优先调用另一个图片分组做二段提升。
+- `image_4k_enhancement_group_id`：二段 4K 提升使用的目标图片分组 ID；仅管理端配置和内部调度使用，用户侧无需手动传参。
 - `image_rate_independent`：图片生成是否使用独立倍率。
 - `cache_hit_quarter_to_input_enabled`：缓存命中重新计费开关。开启后，本次请求有缓存读取 token 时，会把缓存读取 token 的四分之一按整数向下取整划入输入 token，再用调整后的 token 分类写入用量记录并扣除余额、订阅额度、API Key 配额和账号配额；历史用量不回填。
 - `image_rate_multiplier`：图片独立倍率，仅 `image_rate_independent=true` 时生效。
 - `image_price_1k`、`image_price_2k`、`image_price_4k`：图片生成 1K、2K、4K 单张基础价；为空时后端真实计费会回退默认图片价格。
 
-前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。开启自动 4K 超分的图片分组会由网关在图片结果返回前调用超分服务：同步图片响应会在完整 JSON 返回前改写最终图片，流式图片响应会继续透传上游进度事件和局部图片，待最终完成事件出现后对最终图片执行超分并返回超分后的完成事件。超分失败时保留原图返回并记录日志。
+前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。
+
+图片分组存在两种 4K 后处理方式：
+
+- `image_4k_enhancement_enabled=true` 时，非流式 4K 图片请求会先生成基础图片，再调用 `image_4k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `3840x2160`，目标分组失败最多尝试 3 次；仍失败时保留基础图片返回。
+- 未启用图片分组 4K 提升时，若 `image_super_resolution_enabled=true`，网关继续使用旧外部超分服务。同步图片响应会在完整 JSON 返回前改写最终图片；流式图片响应会继续透传上游进度事件和局部图片，待最终完成事件出现后对最终图片执行超分并返回超分后的完成事件。超分失败时保留原图返回并记录日志。
 
 ## API Key 默认分组
 

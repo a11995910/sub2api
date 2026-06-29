@@ -214,6 +214,8 @@ type CreateGroupInput struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration        bool
 	ImageSuperResolutionEnabled bool
+	Image4KEnhancementEnabled   bool
+	Image4KEnhancementGroupID   *int64
 	ImageRateIndependent        bool
 	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         *float64
@@ -257,6 +259,8 @@ type UpdateGroupInput struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration        *bool
 	ImageSuperResolutionEnabled *bool
+	Image4KEnhancementEnabled   *bool
+	Image4KEnhancementGroupID   *int64
 	ImageRateIndependent        *bool
 	CacheHitQuarterToInput      *bool
 	ImageRateMultiplier         *float64
@@ -1965,6 +1969,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
+	image4KEnhancementGroupID := normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
+	if err := s.validateImage4KEnhancementConfig(ctx, 0, platform, input.AllowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID); err != nil {
+		return nil, err
+	}
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
@@ -2017,6 +2025,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     input.ImageSuperResolutionEnabled,
+		Image4KEnhancementEnabled:       input.Image4KEnhancementEnabled,
+		Image4KEnhancementGroupID:       image4KEnhancementGroupID,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		ImageRateMultiplier:             imageRateMultiplier,
@@ -2088,6 +2098,45 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 	}
 	return price
+}
+
+func normalizePositiveInt64Ptr(value *int64) *int64 {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	return value
+}
+
+func (s *adminServiceImpl) validateImage4KEnhancementConfig(ctx context.Context, currentGroupID int64, platform string, allowImageGeneration, enabled bool, targetGroupID *int64) error {
+	if !enabled {
+		return nil
+	}
+	if platform != PlatformOpenAI {
+		return fmt.Errorf("image_4k_enhancement_enabled is only supported for openai groups")
+	}
+	if !allowImageGeneration {
+		return fmt.Errorf("image_4k_enhancement_enabled requires allow_image_generation")
+	}
+	if targetGroupID == nil || *targetGroupID <= 0 {
+		return fmt.Errorf("image_4k_enhancement_group_id is required when image 4K enhancement is enabled")
+	}
+	if currentGroupID > 0 && *targetGroupID == currentGroupID {
+		return fmt.Errorf("image_4k_enhancement_group_id cannot use self")
+	}
+	target, err := s.groupRepo.GetByIDLite(ctx, *targetGroupID)
+	if err != nil {
+		return fmt.Errorf("image_4k_enhancement_group_id %d not found: %w", *targetGroupID, err)
+	}
+	if target.Platform != PlatformOpenAI {
+		return fmt.Errorf("image_4k_enhancement_group_id %d must be an openai group", *targetGroupID)
+	}
+	if target.Status != StatusActive {
+		return fmt.Errorf("image_4k_enhancement_group_id %d must be active", *targetGroupID)
+	}
+	if !target.AllowImageGeneration {
+		return fmt.Errorf("image_4k_enhancement_group_id %d must allow image generation", *targetGroupID)
+	}
+	return nil
 }
 
 // validateFallbackGroup 校验降级分组的有效性
@@ -2203,6 +2252,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ImageSuperResolutionEnabled != nil {
 		group.ImageSuperResolutionEnabled = *input.ImageSuperResolutionEnabled
 	}
+	if input.Image4KEnhancementEnabled != nil {
+		group.Image4KEnhancementEnabled = *input.Image4KEnhancementEnabled
+	}
+	if input.Image4KEnhancementGroupID != nil {
+		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
+	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
 	}
@@ -2295,6 +2350,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if err := s.validateImage4KEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID); err != nil {
+		return nil, err
+	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

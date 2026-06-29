@@ -13,8 +13,10 @@ import (
 	"net/textproto"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
@@ -751,6 +753,525 @@ func TestOpenAIGatewayServiceForwardImages_APIKeySuperResolutionSkipsNon4K(t *te
 	require.Equal(t, 0, superCalls)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementUsesTargetImageGroupAndOriginalSize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	targetGroupID := int64(46)
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                        7,
+			AllowImageGeneration:      true,
+			Image4KEnhancementEnabled: true,
+			Image4KEnhancementGroupID: &targetGroupID,
+		},
+	})
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2","size":"3840x2160"}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_4k_enhance"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{
+					"choices":[{"message":{"role":"assistant","content":"data:image/png;base64,dXBzY2FsZWQ="}}],
+					"usage":{"prompt_tokens":9,"completion_tokens":2}
+				}`)),
+			},
+		},
+	}
+	svc := newOpenAIImages4KEnhancementTestService(upstream, targetGroupID, []Account{openAIImages4KEnhancementTargetAccount(targetGroupID)})
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "dXBzY2FsZWQ=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "3840x2160", gjson.Get(rec.Body.String(), "size").String())
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.requests[1].URL.String())
+	require.Equal(t, "banana-upstream-model", gjson.GetBytes(upstream.bodies[1], "model").String())
+	require.Equal(t, "4K", gjson.GetBytes(upstream.bodies[1], "generationConfig.imageConfig.imageSize").String())
+	require.Equal(t, "16:9", gjson.GetBytes(upstream.bodies[1], "generationConfig.imageConfig.aspectRatio").String())
+
+	content := gjson.GetBytes(upstream.bodies[1], "messages.0.content")
+	require.True(t, content.IsArray())
+	promptText := content.Get("0.text").String()
+	require.Contains(t, promptText, "3840x2160")
+	require.Contains(t, strings.ToLower(promptText), "do not change")
+	require.Contains(t, strings.ToLower(promptText), "composition")
+	require.Contains(t, strings.ToLower(promptText), "text")
+	require.Equal(t, "data:image/png;base64,b3JpZ2luYWw=", content.Get("1.image_url.url").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementFallsBackAfterThreeTargetFailures(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	targetGroupID := int64(46)
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                        7,
+			AllowImageGeneration:      true,
+			Image4KEnhancementEnabled: true,
+			Image4KEnhancementGroupID: &targetGroupID,
+		},
+	})
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2","size":"3840x2160"}`)),
+			},
+			{
+				StatusCode: http.StatusBadGateway,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"banana temporarily unavailable"}}`)),
+			},
+			{
+				StatusCode: http.StatusBadGateway,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"banana temporarily unavailable"}}`)),
+			},
+			{
+				StatusCode: http.StatusBadGateway,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"banana temporarily unavailable"}}`)),
+			},
+		},
+	}
+	svc := newOpenAIImages4KEnhancementTestService(upstream, targetGroupID, []Account{openAIImages4KEnhancementTargetAccount(targetGroupID)})
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Len(t, upstream.requests, 4)
+	require.Equal(t, "https://api.openai.com/v1/images/generations", upstream.requests[0].URL.String())
+	for i := 1; i <= 3; i++ {
+		require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.requests[i].URL.String())
+		require.Contains(t, gjson.GetBytes(upstream.bodies[i], "messages.0.content.0.text").String(), "3840x2160")
+	}
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementBlocksLegacySuperResolutionWhenTargetMissing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	superCalls := 0
+	superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		superCalls++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("legacy-upscaled-png"))
+	}))
+	defer superServer.Close()
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                          7,
+			AllowImageGeneration:        true,
+			Image4KEnhancementEnabled:   true,
+			ImageSuperResolutionEnabled: true,
+		},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ImageSuperResolutionURL: superServer.URL,
+		}},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2","size":"3840x2160"}`)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, 0, superCalls)
+}
+
+func newOpenAIImages4KEnhancementTestService(upstream *httpUpstreamRecorder, targetGroupID int64, targetAccounts []Account) *OpenAIGatewayService {
+	channelRepo := &openAIImages4KEnhancementChannelRepo{
+		listAllFn: func(ctx context.Context) ([]Channel, error) {
+			return []Channel{{
+				ID:       100,
+				Name:     "nano-Banana2 香蕉生图",
+				Status:   StatusActive,
+				GroupIDs: []int64{targetGroupID},
+				FeaturesConfig: map[string]any{
+					featureKeyOpenAIImagesUpstream: map[string]any{"mode": openAIImagesUpstreamModeChatCompletions},
+				},
+				ModelMapping: map[string]map[string]string{
+					PlatformOpenAI: {
+						"gpt-image-2": "banana-upstream-model",
+					},
+				},
+			}}, nil
+		},
+		getGroupPlatformsFn: func(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
+			return map[int64]string{targetGroupID: PlatformOpenAI}, nil
+		},
+	}
+	return &OpenAIGatewayService{
+		cfg:            &config.Config{},
+		httpUpstream:   upstream,
+		accountRepo:    &openAIImages4KEnhancementAccountRepo{accountsByGroup: map[int64][]Account{targetGroupID: targetAccounts}},
+		channelService: NewChannelService(channelRepo, nil, nil, nil),
+	}
+}
+
+type openAIImages4KEnhancementChannelRepo struct {
+	listAllFn           func(ctx context.Context) ([]Channel, error)
+	getGroupPlatformsFn func(ctx context.Context, groupIDs []int64) (map[int64]string, error)
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) Create(ctx context.Context, channel *Channel) error {
+	panic("unexpected Create call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) GetByID(ctx context.Context, id int64) (*Channel, error) {
+	panic("unexpected GetByID call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) Update(ctx context.Context, channel *Channel) error {
+	panic("unexpected Update call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) Delete(ctx context.Context, id int64) error {
+	panic("unexpected Delete call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) ListAll(ctx context.Context) ([]Channel, error) {
+	if r.listAllFn != nil {
+		return r.listAllFn(ctx)
+	}
+	return nil, nil
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) ExistsByName(ctx context.Context, name string) (bool, error) {
+	panic("unexpected ExistsByName call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) ExistsByNameExcluding(ctx context.Context, name string, excludeID int64) (bool, error) {
+	panic("unexpected ExistsByNameExcluding call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) GetGroupIDs(ctx context.Context, channelID int64) ([]int64, error) {
+	panic("unexpected GetGroupIDs call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) SetGroupIDs(ctx context.Context, channelID int64, groupIDs []int64) error {
+	panic("unexpected SetGroupIDs call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) GetChannelIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	panic("unexpected GetChannelIDByGroupID call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) GetGroupsInOtherChannels(ctx context.Context, channelID int64, groupIDs []int64) ([]int64, error) {
+	panic("unexpected GetGroupsInOtherChannels call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
+	if r.getGroupPlatformsFn != nil {
+		return r.getGroupPlatformsFn(ctx, groupIDs)
+	}
+	return nil, nil
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) ListModelPricing(ctx context.Context, channelID int64) ([]ChannelModelPricing, error) {
+	return nil, nil
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) CreateModelPricing(ctx context.Context, pricing *ChannelModelPricing) error {
+	panic("unexpected CreateModelPricing call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) UpdateModelPricing(ctx context.Context, pricing *ChannelModelPricing) error {
+	panic("unexpected UpdateModelPricing call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) DeleteModelPricing(ctx context.Context, id int64) error {
+	panic("unexpected DeleteModelPricing call")
+}
+
+func (r *openAIImages4KEnhancementChannelRepo) ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error {
+	panic("unexpected ReplaceModelPricing call")
+}
+
+func openAIImages4KEnhancementTargetAccount(groupID int64) Account {
+	return Account{
+		ID:          46,
+		Name:        "nano-Banana2 香蕉生图",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		GroupIDs:    []int64{groupID},
+		Credentials: map[string]any{
+			"api_key":  "sk-banana",
+			"base_url": "https://banana-upstream.example/v1",
+		},
+	}
+}
+
+type openAIImages4KEnhancementAccountRepo struct {
+	accountsByGroup map[int64][]Account
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) Create(ctx context.Context, account *Account) error {
+	panic("unexpected Create call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
+	panic("unexpected GetByID call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) GetByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
+	panic("unexpected GetByIDs call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ExistsByID(ctx context.Context, id int64) (bool, error) {
+	panic("unexpected ExistsByID call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
+	panic("unexpected GetByCRSAccountID call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) FindByExtraField(ctx context.Context, key string, value any) ([]Account, error) {
+	panic("unexpected FindByExtraField call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	panic("unexpected ListCRSAccountIDs call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) Update(ctx context.Context, account *Account) error {
+	panic("unexpected Update call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) Delete(ctx context.Context, id int64) error {
+	panic("unexpected Delete call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
+	panic("unexpected ListByGroup call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListActive(ctx context.Context) ([]Account, error) {
+	panic("unexpected ListActive call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error) {
+	panic("unexpected ListOAuthRefreshCandidates call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	panic("unexpected ListByPlatform call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) UpdateLastUsed(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error {
+	panic("unexpected SetError call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ClearError(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
+	panic("unexpected SetSchedulable call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	panic("unexpected BindGroups call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulable(ctx context.Context) ([]Account, error) {
+	panic("unexpected ListSchedulable call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
+	panic("unexpected ListSchedulableByGroupID call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	panic("unexpected ListSchedulableByPlatform call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	accounts := r.accountsByGroup[groupID]
+	out := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if normalizeOpenAICompatiblePlatform(account.Platform) == normalizeOpenAICompatiblePlatform(platform) {
+			out = append(out, account)
+		}
+	}
+	return out, nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
+	panic("unexpected ListSchedulableByPlatforms call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error) {
+	panic("unexpected ListSchedulableByGroupIDAndPlatforms call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	panic("unexpected ListSchedulableUngroupedByPlatform call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
+	panic("unexpected ListSchedulableUngroupedByPlatforms call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
+	panic("unexpected SetRateLimited call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
+	panic("unexpected SetModelRateLimit call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
+	panic("unexpected SetOverloaded call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
+	panic("unexpected SetTempUnschedulable call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ClearTempUnschedulable(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ClearRateLimit(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
+	panic("unexpected UpdateSessionWindow call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	panic("unexpected UpdateSessionWindowEnd call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
+	panic("unexpected BulkUpdate call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ResetQuotaUsed(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) RevertProxyFallback(ctx context.Context, accountID int64) error {
+	panic("unexpected RevertProxyFallback call")
+}
+
+func (r *openAIImages4KEnhancementAccountRepo) ClearModelRateLimits(ctx context.Context, id int64) error {
+	return nil
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *testing.T) {
@@ -1952,6 +2473,148 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingSuperResolutionFor4KCo
 	require.Equal(t, "3840x2160", gjson.Get(completed.Data, "size").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreaming4KEnhancementDoesNotFallbackToLegacySuperResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	superCalls := 0
+	superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		superCalls++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("legacy-upscaled-stream-png"))
+	}))
+	defer superServer.Close()
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"3840x2160","stream":true,"response_format":"url"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	targetGroupID := int64(46)
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                          7,
+			AllowImageGeneration:        true,
+			Image4KEnhancementEnabled:   true,
+			Image4KEnhancementGroupID:   &targetGroupID,
+			ImageSuperResolutionEnabled: true,
+		},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ImageSuperResolutionURL: superServer.URL,
+		}},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_stream_4k_enhancement_no_legacy"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					"event: image_generation.completed\n" +
+						"data: {\"type\":\"image_generation.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":18,\"output_tokens_details\":{\"image_tokens\":8}},\"b64_json\":\"b3JpZ2luYWw=\",\"output_format\":\"webp\",\"size\":\"3840x2160\"}\n\n" +
+						"data: [DONE]\n\n",
+				)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       8,
+		Name:     "image2",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 0, superCalls)
+
+	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
+	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
+	require.True(t, ok)
+	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(completed.Data, "b64_json").String())
+	require.Equal(t, "webp", gjson.Get(completed.Data, "output_format").String())
+	require.Equal(t, "3840x2160", gjson.Get(completed.Data, "size").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONFallback4KEnhancementDoesNotFallbackToLegacySuperResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	superCalls := 0
+	superServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		superCalls++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("legacy-json-fallback-upscaled-png"))
+	}))
+	defer superServer.Close()
+
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"3840x2160","stream":true,"response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	targetGroupID := int64(46)
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                          7,
+			AllowImageGeneration:        true,
+			Image4KEnhancementEnabled:   true,
+			Image4KEnhancementGroupID:   &targetGroupID,
+			ImageSuperResolutionEnabled: true,
+		},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			ImageSuperResolutionURL: superServer.URL,
+		}},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_stream_json_fallback_4k_enhancement_no_legacy"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000009,"usage":{"input_tokens":10,"output_tokens":18,"output_tokens_details":{"image_tokens":8}},"data":[{"b64_json":"b3JpZ2luYWw="}],"size":"3840x2160"}`)),
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       8,
+		Name:     "image2",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 0, superCalls)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.False(t, gjson.Get(rec.Body.String(), "output_format").Exists())
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONFallbackSuperResolutionFor4K(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	superCalls := 0
@@ -2666,6 +3329,7 @@ func TestOpenAIGatewayServiceHandleOpenAIImagesOAuthNonStreamingResponse_Materia
 		"b64_json",
 		"gpt-image-2",
 		ImageBillingSize2K,
+		nil,
 		context.Background(),
 		http.Header{"User-Agent": []string{"test-agent"}},
 		"",

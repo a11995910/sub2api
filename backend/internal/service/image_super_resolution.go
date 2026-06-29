@@ -174,6 +174,9 @@ func (s *OpenAIGatewayService) applyOpenAIImagesSuperResolutionToJSON(
 	if opts.parsed != nil {
 		requestSizeTier = opts.parsed.SizeTier
 	}
+	if s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, requestSizeTier) {
+		return body
+	}
 	if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
 		logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
 		return body
@@ -264,6 +267,19 @@ func (s *OpenAIGatewayService) applyOpenAIResponsesSuperResolution(
 	results []openAIResponsesImageResult,
 	requestSizeTier string,
 ) []openAIResponsesImageResult {
+	return s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, results, requestSizeTier, nil)
+}
+
+func (s *OpenAIGatewayService) applyOpenAIResponsesSuperResolutionWithParsed(
+	ctx context.Context,
+	c *gin.Context,
+	results []openAIResponsesImageResult,
+	requestSizeTier string,
+	parsed *OpenAIImagesRequest,
+) []openAIResponsesImageResult {
+	if s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, parsed, requestSizeTier) {
+		return results
+	}
 	if len(results) == 0 {
 		logImageSuperResolutionDecision(c, "skip", "empty_responses_results", requestSizeTier)
 		return results
