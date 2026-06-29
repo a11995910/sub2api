@@ -22,7 +22,7 @@
 
 图片分组存在两种 4K 后处理方式：
 
-- `image_4k_enhancement_enabled=true` 时，非流式 4K 图片请求会先生成基础图片，再调用 `image_4k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `3840x2160`，目标分组失败最多尝试 3 次；仍失败时保留基础图片返回。
+- `image_4k_enhancement_enabled=true` 时，非流式 4K 图片请求会先生成基础图片，再调用 `image_4k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `3840x2160`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素，避免元数据与实际尺寸不一致；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。
 - 未启用图片分组 4K 提升时，若 `image_super_resolution_enabled=true`，网关继续使用旧外部超分服务。同步图片响应会在完整 JSON 返回前改写最终图片；流式图片响应会继续透传上游进度事件和局部图片，待最终完成事件出现后对最终图片执行超分并返回超分后的完成事件。超分失败时保留原图返回并记录日志。
 
 ## API Key 默认分组

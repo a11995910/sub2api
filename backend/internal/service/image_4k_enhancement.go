@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -14,11 +17,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	xdraw "golang.org/x/image/draw"
 )
 
 const (
 	image4KEnhancementLogComponent = "service.image_4k_enhancement"
 	image4KEnhancementMaxAttempts  = 3
+	image4KEnhancementMaxResizePx  = int64(32 * 1024 * 1024)
 )
 
 func (s *OpenAIGatewayService) image4KEnhancementSkipReason(c *gin.Context, parsed *OpenAIImagesRequest) string {
@@ -384,6 +389,11 @@ func (s *OpenAIGatewayService) callOpenAIImages4KEnhancementAttempt(
 	}
 	enhanced.Model = openAIImagesRequestModel(sourceParsed)
 	enhanced.Size = openAIImagesRequestSize(sourceParsed)
+	if resized, err := resizeOpenAIImage4KEnhancementResultToRequestedSize(enhanced, sourceParsed); err != nil {
+		logger.LegacyPrintf(image4KEnhancementLogComponent, "image 4k enhancement pixel resize skipped: err=%v", err)
+	} else {
+		enhanced = resized
+	}
 	if strings.TrimSpace(enhanced.OutputFormat) == "" {
 		enhanced.OutputFormat = "png"
 	}
@@ -470,6 +480,72 @@ func firstOpenAIImageResultFromAPIResponse(body []byte) (openAIResponsesImageRes
 		return openAIResponsesImageResult{}, fmt.Errorf("target group returned no image")
 	}
 	return result, nil
+}
+
+func resizeOpenAIImage4KEnhancementResultToRequestedSize(result openAIResponsesImageResult, sourceParsed *OpenAIImagesRequest) (openAIResponsesImageResult, error) {
+	width, height, ok := parseImageBillingDimensions(openAIImagesRequestSize(sourceParsed))
+	if !ok {
+		return result, nil
+	}
+	b64 := normalizeOpenAIImageBase64(result.Result)
+	if b64 == "" {
+		return result, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return result, err
+	}
+	resized, format, changed, err := resizeOpenAIImageBytesToDimensions(data, width, height)
+	if err != nil || !changed {
+		return result, err
+	}
+	result.Result = base64.StdEncoding.EncodeToString(resized)
+	result.URL = ""
+	result.MimeType = "image/" + format
+	if format == "jpeg" {
+		result.MimeType = "image/jpeg"
+	}
+	result.OutputFormat = format
+	return result, nil
+}
+
+func resizeOpenAIImageBytesToDimensions(data []byte, width, height int) ([]byte, string, bool, error) {
+	if width <= 0 || height <= 0 {
+		return data, "", false, nil
+	}
+	pixels := int64(width) * int64(height)
+	if pixels > image4KEnhancementMaxResizePx {
+		return data, "", false, fmt.Errorf("requested resize dimensions %dx%d exceed safety limit", width, height)
+	}
+	src, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data, "", false, err
+	}
+	if strings.EqualFold(format, "jpg") {
+		format = "jpeg"
+	}
+	bounds := src.Bounds()
+	if bounds.Dx() == width && bounds.Dy() == height {
+		return data, format, false, nil
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
+	xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, xdraw.Over, nil)
+
+	var out bytes.Buffer
+	switch strings.ToLower(format) {
+	case "jpeg":
+		if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 95}); err != nil {
+			return data, format, false, err
+		}
+		return out.Bytes(), "jpeg", true, nil
+	case "png":
+		if err := png.Encode(&out, dst); err != nil {
+			return data, format, false, err
+		}
+		return out.Bytes(), "png", true, nil
+	default:
+		return data, format, false, fmt.Errorf("unsupported enhanced image format %q", format)
+	}
 }
 
 func openAIImagesRequestModel(parsed *OpenAIImagesRequest) string {

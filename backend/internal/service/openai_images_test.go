@@ -6,6 +6,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -894,6 +898,101 @@ func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementUsesTargetAccountI
 	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "messages.0.content.0.text").String(), "3840x2160")
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementResizesEnhancedImageToRequestedSize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name       string
+		mimeType   string
+		imageBytes []byte
+		wantFormat string
+	}{
+		{
+			name:       "PNG",
+			mimeType:   "image/png",
+			imageBytes: encodeOpenAIImagesTestPNG(t, 320, 180),
+			wantFormat: "png",
+		},
+		{
+			name:       "JPEG",
+			mimeType:   "image/jpeg",
+			imageBytes: encodeOpenAIImagesTestJPEG(t, 320, 180),
+			wantFormat: "jpeg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
+			req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = req
+			targetGroupID := int64(46)
+			c.Set("api_key", &APIKey{
+				ID: 42,
+				Group: &Group{
+					ID:                        7,
+					AllowImageGeneration:      true,
+					Image4KEnhancementEnabled: true,
+					Image4KEnhancementGroupID: &targetGroupID,
+				},
+			})
+
+			targetB64 := base64.StdEncoding.EncodeToString(tt.imageBytes)
+			upstream := &httpUpstreamRecorder{
+				responses: []*http.Response{
+					{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"}},
+						Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2","size":"3840x2160"}`)),
+					},
+					{
+						StatusCode: http.StatusOK,
+						Header: http.Header{
+							"Content-Type": []string{"application/json"},
+							"X-Request-Id": []string{"req_img_4k_enhance"},
+						},
+						Body: io.NopCloser(strings.NewReader(`{
+							"choices":[{"message":{"role":"assistant","content":"data:` + tt.mimeType + `;base64,` + targetB64 + `"}}],
+							"usage":{"prompt_tokens":9,"completion_tokens":2}
+						}`)),
+					},
+				},
+			}
+			svc := newOpenAIImages4KEnhancementTestService(upstream, targetGroupID, []Account{openAIImages4KEnhancementTargetAccount(targetGroupID)})
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+
+			account := &Account{
+				ID:          1,
+				Name:        "image2",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-image2"},
+			}
+
+			result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "3840x2160", gjson.Get(rec.Body.String(), "size").String())
+			require.Equal(t, tt.wantFormat, gjson.Get(rec.Body.String(), "output_format").String())
+
+			outputB64 := gjson.Get(rec.Body.String(), "data.0.b64_json").String()
+			outputBytes, err := base64.StdEncoding.DecodeString(outputB64)
+			require.NoError(t, err)
+			cfg, format, err := image.DecodeConfig(bytes.NewReader(outputBytes))
+			require.NoError(t, err)
+			require.Equal(t, tt.wantFormat, format)
+			require.Equal(t, 3840, cfg.Width)
+			require.Equal(t, 2160, cfg.Height)
+			require.NotEqual(t, targetB64, outputB64)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementFallsBackAfterThreeTargetFailures(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
@@ -1151,6 +1250,42 @@ func openAIImages4KEnhancementTargetAccount(groupID int64) Account {
 			"base_url": "https://banana-upstream.example/v1",
 		},
 	}
+}
+
+func encodeOpenAIImagesTestPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, color.RGBA{
+				R: uint8((x * 255) / maxInt(width, 1)),
+				G: uint8((y * 255) / maxInt(height, 1)),
+				B: 120,
+				A: 255,
+			})
+		}
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
+func encodeOpenAIImagesTestJPEG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, color.RGBA{
+				R: 180,
+				G: uint8((x * 255) / maxInt(width, 1)),
+				B: uint8((y * 255) / maxInt(height, 1)),
+				A: 255,
+			})
+		}
+	}
+	var buf bytes.Buffer
+	require.NoError(t, jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}))
+	return buf.Bytes()
 }
 
 type openAIImages4KEnhancementAccountRepo struct {
