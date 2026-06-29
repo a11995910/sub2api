@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -254,13 +255,20 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 	}
 	requestModel := openAIImagesRequestModel(sourceParsed)
 	mapping := s.ResolveChannelMapping(ctx, targetGroupID, requestModel)
+	targetRequestModel := strings.TrimSpace(requestModel)
+	if strings.TrimSpace(mapping.MappedModel) != "" && strings.TrimSpace(mapping.MappedModel) != strings.TrimSpace(requestModel) {
+		targetRequestModel = strings.TrimSpace(mapping.MappedModel)
+	} else if fallbackModel := s.resolveImage4KEnhancementTargetRequestModel(ctx, targetGroupID, requestModel); fallbackModel != "" {
+		targetRequestModel = fallbackModel
+		mapping.MappedModel = fallbackModel
+	}
 	var lastErr error
 	for attempt := 1; attempt <= image4KEnhancementMaxAttempts; attempt++ {
 		selection, _, err := s.SelectAccountWithSchedulerForImages(
 			WithOpenAIImageGenerationIntent(ctx),
 			&targetGroupID,
 			"",
-			requestModel,
+			targetRequestModel,
 			nil,
 			OpenAIImagesCapabilityNative,
 		)
@@ -294,6 +302,46 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 		lastErr = fmt.Errorf("image 4k enhancement failed")
 	}
 	return openAIResponsesImageResult{}, lastErr
+}
+
+func (s *OpenAIGatewayService) resolveImage4KEnhancementTargetRequestModel(ctx context.Context, targetGroupID int64, sourceModel string) string {
+	if s == nil || s.accountRepo == nil || targetGroupID <= 0 {
+		return ""
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, targetGroupID, PlatformOpenAI)
+	if err != nil {
+		logger.LegacyPrintf(image4KEnhancementLogComponent, "list target accounts for model resolution failed: group_id=%d err=%v", targetGroupID, err)
+		return ""
+	}
+	sourceModel = strings.TrimSpace(sourceModel)
+	candidates := make([]string, 0, len(accounts))
+	seen := map[string]struct{}{}
+	for _, account := range accounts {
+		if !account.IsSchedulable() || normalizeOpenAICompatiblePlatform(account.Platform) != PlatformOpenAI {
+			continue
+		}
+		for model := range account.GetModelMapping() {
+			model = strings.TrimSpace(model)
+			if model == "" || strings.Contains(model, "*") || model == sourceModel {
+				continue
+			}
+			if _, exists := seen[model]; exists {
+				continue
+			}
+			seen[model] = struct{}{}
+			candidates = append(candidates, model)
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	sort.Strings(candidates)
+	for _, model := range candidates {
+		if strings.Contains(strings.ToLower(model), "banana") {
+			return model
+		}
+	}
+	return candidates[0]
 }
 
 func (s *OpenAIGatewayService) callOpenAIImages4KEnhancementAttempt(
