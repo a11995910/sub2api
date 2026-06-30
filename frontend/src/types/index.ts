@@ -551,6 +551,8 @@ export interface Group {
   // 图片生成计费配置
   allow_image_generation: boolean
   image_super_resolution_enabled: boolean
+  image_2k_enhancement_enabled: boolean
+  image_2k_enhancement_group_id: number | null
   image_4k_enhancement_enabled: boolean
   image_4k_enhancement_group_id: number | null
   image_rate_independent: boolean
@@ -675,6 +677,8 @@ export interface CreateGroupRequest {
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
   image_super_resolution_enabled?: boolean
+  image_2k_enhancement_enabled?: boolean
+  image_2k_enhancement_group_id?: number | null
   image_4k_enhancement_enabled?: boolean
   image_4k_enhancement_group_id?: number | null
   image_rate_independent?: boolean
@@ -714,6 +718,8 @@ export interface UpdateGroupRequest {
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
   image_super_resolution_enabled?: boolean
+  image_2k_enhancement_enabled?: boolean
+  image_2k_enhancement_group_id?: number | null
   image_4k_enhancement_enabled?: boolean
   image_4k_enhancement_group_id?: number | null
   image_rate_independent?: boolean

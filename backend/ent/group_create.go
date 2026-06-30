@@ -245,6 +245,34 @@ func (_c *GroupCreate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupCre
 	return _c
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (_c *GroupCreate) SetImage2kEnhancementEnabled(v bool) *GroupCreate {
+	_c.mutation.SetImage2kEnhancementEnabled(v)
+	return _c
+}
+
+// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImage2kEnhancementEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImage2kEnhancementEnabled(*v)
+	}
+	return _c
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (_c *GroupCreate) SetImage2kEnhancementGroupID(v int64) *GroupCreate {
+	_c.mutation.SetImage2kEnhancementGroupID(v)
+	return _c
+}
+
+// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImage2kEnhancementGroupID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetImage2kEnhancementGroupID(*v)
+	}
+	return _c
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (_c *GroupCreate) SetImage4kEnhancementEnabled(v bool) *GroupCreate {
 	_c.mutation.SetImage4kEnhancementEnabled(v)
@@ -724,6 +752,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageSuperResolutionEnabled
 		_c.mutation.SetImageSuperResolutionEnabled(v)
 	}
+	if _, ok := _c.mutation.Image2kEnhancementEnabled(); !ok {
+		v := group.DefaultImage2kEnhancementEnabled
+		_c.mutation.SetImage2kEnhancementEnabled(v)
+	}
 	if _, ok := _c.mutation.Image4kEnhancementEnabled(); !ok {
 		v := group.DefaultImage4kEnhancementEnabled
 		_c.mutation.SetImage4kEnhancementEnabled(v)
@@ -845,6 +877,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
 		return &ValidationError{Name: "image_super_resolution_enabled", err: errors.New(`ent: missing required field "Group.image_super_resolution_enabled"`)}
+	}
+	if _, ok := _c.mutation.Image2kEnhancementEnabled(); !ok {
+		return &ValidationError{Name: "image_2k_enhancement_enabled", err: errors.New(`ent: missing required field "Group.image_2k_enhancement_enabled"`)}
 	}
 	if _, ok := _c.mutation.Image4kEnhancementEnabled(); !ok {
 		return &ValidationError{Name: "image_4k_enhancement_enabled", err: errors.New(`ent: missing required field "Group.image_4k_enhancement_enabled"`)}
@@ -989,6 +1024,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 		_node.ImageSuperResolutionEnabled = value
+	}
+	if value, ok := _c.mutation.Image2kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
+		_node.Image2kEnhancementEnabled = value
+	}
+	if value, ok := _c.mutation.Image2kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+		_node.Image2kEnhancementGroupID = &value
 	}
 	if value, ok := _c.mutation.Image4kEnhancementEnabled(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
@@ -1475,6 +1518,42 @@ func (u *GroupUpsert) SetImageSuperResolutionEnabled(v bool) *GroupUpsert {
 // UpdateImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateImageSuperResolutionEnabled() *GroupUpsert {
 	u.SetExcluded(group.FieldImageSuperResolutionEnabled)
+	return u
+}
+
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (u *GroupUpsert) SetImage2kEnhancementEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldImage2kEnhancementEnabled, v)
+	return u
+}
+
+// UpdateImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImage2kEnhancementEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldImage2kEnhancementEnabled)
+	return u
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsert) SetImage2kEnhancementGroupID(v int64) *GroupUpsert {
+	u.Set(group.FieldImage2kEnhancementGroupID, v)
+	return u
+}
+
+// UpdateImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImage2kEnhancementGroupID() *GroupUpsert {
+	u.SetExcluded(group.FieldImage2kEnhancementGroupID)
+	return u
+}
+
+// AddImage2kEnhancementGroupID adds v to the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsert) AddImage2kEnhancementGroupID(v int64) *GroupUpsert {
+	u.Add(group.FieldImage2kEnhancementGroupID, v)
+	return u
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsert) ClearImage2kEnhancementGroupID() *GroupUpsert {
+	u.SetNull(group.FieldImage2kEnhancementGroupID)
 	return u
 }
 
@@ -2172,6 +2251,48 @@ func (u *GroupUpsertOne) SetImageSuperResolutionEnabled(v bool) *GroupUpsertOne 
 func (u *GroupUpsertOne) UpdateImageSuperResolutionEnabled() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageSuperResolutionEnabled()
+	})
+}
+
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (u *GroupUpsertOne) SetImage2kEnhancementEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementEnabled(v)
+	})
+}
+
+// UpdateImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImage2kEnhancementEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementEnabled()
+	})
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertOne) SetImage2kEnhancementGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementGroupID(v)
+	})
+}
+
+// AddImage2kEnhancementGroupID adds v to the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertOne) AddImage2kEnhancementGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImage2kEnhancementGroupID(v)
+	})
+}
+
+// UpdateImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImage2kEnhancementGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementGroupID()
+	})
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertOne) ClearImage2kEnhancementGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImage2kEnhancementGroupID()
 	})
 }
 
@@ -3097,6 +3218,48 @@ func (u *GroupUpsertBulk) SetImageSuperResolutionEnabled(v bool) *GroupUpsertBul
 func (u *GroupUpsertBulk) UpdateImageSuperResolutionEnabled() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageSuperResolutionEnabled()
+	})
+}
+
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (u *GroupUpsertBulk) SetImage2kEnhancementEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementEnabled(v)
+	})
+}
+
+// UpdateImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImage2kEnhancementEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementEnabled()
+	})
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertBulk) SetImage2kEnhancementGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementGroupID(v)
+	})
+}
+
+// AddImage2kEnhancementGroupID adds v to the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertBulk) AddImage2kEnhancementGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImage2kEnhancementGroupID(v)
+	})
+}
+
+// UpdateImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImage2kEnhancementGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementGroupID()
+	})
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertBulk) ClearImage2kEnhancementGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImage2kEnhancementGroupID()
 	})
 }
 

@@ -831,6 +831,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     g.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:       g.Image2kEnhancementEnabled,
+		Image2KEnhancementGroupID:       g.Image2kEnhancementGroupID,
 		Image4KEnhancementEnabled:       g.Image4kEnhancementEnabled,
 		Image4KEnhancementGroupID:       g.Image4kEnhancementGroupID,
 		ImageRateIndependent:            g.ImageRateIndependent,

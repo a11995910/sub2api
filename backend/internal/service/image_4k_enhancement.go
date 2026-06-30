@@ -40,23 +40,34 @@ func (s *OpenAIGatewayService) image4KEnhancementSkipReason(c *gin.Context, pars
 	if !apiKey.Group.AllowImageGeneration {
 		return "group_image_generation_disabled"
 	}
-	if !apiKey.Group.Image4KEnhancementEnabled {
-		return "group_4k_enhancement_disabled"
-	}
-	if apiKey.Group.Image4KEnhancementGroupID == nil || *apiKey.Group.Image4KEnhancementGroupID <= 0 {
-		return "target_group_missing"
-	}
-	if *apiKey.Group.Image4KEnhancementGroupID == apiKey.Group.ID {
-		return "target_group_self"
-	}
 	if parsed == nil {
 		return "request_missing"
 	}
 	if parsed.Stream {
 		return "stream_not_supported"
 	}
-	if NormalizeImageBillingTierOrDefault(parsed.SizeTier) != ImageBillingSize4K {
-		return "request_not_4k"
+	tier := imageEnhancementRequestTier(parsed, "")
+	switch tier {
+	case ImageBillingSize2K:
+		if !imageEnhancementRequestHasExplicitTier(parsed) {
+			return "request_2k_not_explicit"
+		}
+		if !apiKey.Group.Image2KEnhancementEnabled {
+			return "group_2k_enhancement_disabled"
+		}
+	case ImageBillingSize4K:
+		if !apiKey.Group.Image4KEnhancementEnabled {
+			return "group_4k_enhancement_disabled"
+		}
+	default:
+		return "request_not_2k_or_4k"
+	}
+	targetGroupID := imageEnhancementTargetGroupID(apiKey.Group, tier)
+	if targetGroupID == nil || *targetGroupID <= 0 {
+		return "target_group_missing"
+	}
+	if *targetGroupID == apiKey.Group.ID {
+		return "target_group_self"
 	}
 	return ""
 }
@@ -73,11 +84,20 @@ func (s *OpenAIGatewayService) shouldBlockLegacyImageSuperResolutionFor4KEnhance
 	if apiKey == nil || apiKey.Group == nil {
 		return false
 	}
-	if !apiKey.Group.AllowImageGeneration || !apiKey.Group.Image4KEnhancementEnabled {
+	if !apiKey.Group.AllowImageGeneration {
 		return false
 	}
-	sizeTier := firstNonEmptyString(openAIImagesRequestSizeTier(parsed), requestSizeTier)
-	if NormalizeImageBillingTierOrDefault(sizeTier) != ImageBillingSize4K {
+	tier := imageEnhancementRequestTier(parsed, requestSizeTier)
+	switch tier {
+	case ImageBillingSize2K:
+		if !imageEnhancementRequestHasExplicitTier(parsed) || !apiKey.Group.Image2KEnhancementEnabled {
+			return false
+		}
+	case ImageBillingSize4K:
+		if !apiKey.Group.Image4KEnhancementEnabled {
+			return false
+		}
+	default:
 		return false
 	}
 	if reason := s.image4KEnhancementSkipReason(c, parsed); reason != "" {
@@ -92,37 +112,81 @@ func logImage4KEnhancementDecision(c *gin.Context, phase, reason string, parsed 
 	groupID := int64(0)
 	targetGroupID := int64(0)
 	enabled := false
+	requestSizeTier := ""
+	requestSize := ""
+	if parsed != nil {
+		requestSizeTier = imageEnhancementRequestTier(parsed, "")
+		requestSize = parsed.Size
+	}
 	if apiKey != nil {
 		apiKeyID = apiKey.ID
 		if apiKey.Group != nil {
 			groupID = apiKey.Group.ID
-			enabled = apiKey.Group.Image4KEnhancementEnabled
-			if apiKey.Group.Image4KEnhancementGroupID != nil {
-				targetGroupID = *apiKey.Group.Image4KEnhancementGroupID
+			enabled = imageEnhancementEnabled(apiKey.Group, requestSizeTier)
+			if target := imageEnhancementTargetGroupID(apiKey.Group, requestSizeTier); target != nil {
+				targetGroupID = *target
 			}
 		}
 	}
 	if strings.TrimSpace(reason) == "" {
 		reason = "apply"
 	}
-	requestSizeTier := ""
-	requestSize := ""
-	if parsed != nil {
-		requestSizeTier = parsed.SizeTier
-		requestSize = parsed.Size
-	}
 	logger.LegacyPrintf(
 		image4KEnhancementLogComponent,
-		"image 4k enhancement %s: reason=%s api_key_id=%d group_id=%d target_group_id=%d enabled=%t request_size_tier=%s request_size=%s",
+		"image tier enhancement %s: reason=%s api_key_id=%d group_id=%d target_group_id=%d enabled=%t request_size_tier=%s request_size=%s",
 		phase,
 		reason,
 		apiKeyID,
 		groupID,
 		targetGroupID,
 		enabled,
-		NormalizeImageBillingTierOrDefault(requestSizeTier),
+		imageEnhancementRequestTier(parsed, requestSizeTier),
 		strings.TrimSpace(requestSize),
 	)
+}
+
+func imageEnhancementRequestTier(parsed *OpenAIImagesRequest, fallback string) string {
+	sizeTier := firstNonEmptyString(openAIImagesRequestSizeTier(parsed), fallback)
+	return NormalizeImageBillingTierOrDefault(sizeTier)
+}
+
+func imageEnhancementRequestHasExplicitTier(parsed *OpenAIImagesRequest) bool {
+	if parsed == nil {
+		return false
+	}
+	if parsed.ExplicitSize {
+		return true
+	}
+	_, ok := ClassifyImageBillingTier(parsed.Size)
+	return ok
+}
+
+func imageEnhancementEnabled(group *Group, tier string) bool {
+	if group == nil {
+		return false
+	}
+	switch NormalizeImageBillingTierOrDefault(tier) {
+	case ImageBillingSize2K:
+		return group.Image2KEnhancementEnabled
+	case ImageBillingSize4K:
+		return group.Image4KEnhancementEnabled
+	default:
+		return false
+	}
+}
+
+func imageEnhancementTargetGroupID(group *Group, tier string) *int64 {
+	if group == nil {
+		return nil
+	}
+	switch NormalizeImageBillingTierOrDefault(tier) {
+	case ImageBillingSize2K:
+		return group.Image2KEnhancementGroupID
+	case ImageBillingSize4K:
+		return group.Image4KEnhancementGroupID
+	default:
+		return nil
+	}
 }
 
 func (s *OpenAIGatewayService) applyOpenAIImages4KEnhancementToJSON(
@@ -244,10 +308,15 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 	index int,
 ) (openAIResponsesImageResult, error) {
 	apiKey := getAPIKeyFromContext(c)
-	if apiKey == nil || apiKey.Group == nil || apiKey.Group.Image4KEnhancementGroupID == nil {
+	if apiKey == nil || apiKey.Group == nil {
 		return openAIResponsesImageResult{}, fmt.Errorf("target group is not configured")
 	}
-	targetGroupID := *apiKey.Group.Image4KEnhancementGroupID
+	tier := imageEnhancementRequestTier(sourceParsed, "")
+	targetGroupIDPtr := imageEnhancementTargetGroupID(apiKey.Group, tier)
+	if targetGroupIDPtr == nil {
+		return openAIResponsesImageResult{}, fmt.Errorf("target group is not configured")
+	}
+	targetGroupID := *targetGroupIDPtr
 	if targetGroupID <= 0 {
 		return openAIResponsesImageResult{}, fmt.Errorf("target group is not configured")
 	}

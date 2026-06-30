@@ -48,6 +48,10 @@ const (
 	FieldAllowImageGeneration = "allow_image_generation"
 	// FieldImageSuperResolutionEnabled holds the string denoting the image_super_resolution_enabled field in the database.
 	FieldImageSuperResolutionEnabled = "image_super_resolution_enabled"
+	// FieldImage2kEnhancementEnabled holds the string denoting the image_2k_enhancement_enabled field in the database.
+	FieldImage2kEnhancementEnabled = "image_2k_enhancement_enabled"
+	// FieldImage2kEnhancementGroupID holds the string denoting the image_2k_enhancement_group_id field in the database.
+	FieldImage2kEnhancementGroupID = "image_2k_enhancement_group_id"
 	// FieldImage4kEnhancementEnabled holds the string denoting the image_4k_enhancement_enabled field in the database.
 	FieldImage4kEnhancementEnabled = "image_4k_enhancement_enabled"
 	// FieldImage4kEnhancementGroupID holds the string denoting the image_4k_enhancement_group_id field in the database.
@@ -185,6 +189,8 @@ var Columns = []string{
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldImageSuperResolutionEnabled,
+	FieldImage2kEnhancementEnabled,
+	FieldImage2kEnhancementGroupID,
 	FieldImage4kEnhancementEnabled,
 	FieldImage4kEnhancementGroupID,
 	FieldImageRateIndependent,
@@ -267,6 +273,8 @@ var (
 	DefaultAllowImageGeneration bool
 	// DefaultImageSuperResolutionEnabled holds the default value on creation for the "image_super_resolution_enabled" field.
 	DefaultImageSuperResolutionEnabled bool
+	// DefaultImage2kEnhancementEnabled holds the default value on creation for the "image_2k_enhancement_enabled" field.
+	DefaultImage2kEnhancementEnabled bool
 	// DefaultImage4kEnhancementEnabled holds the default value on creation for the "image_4k_enhancement_enabled" field.
 	DefaultImage4kEnhancementEnabled bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
@@ -389,6 +397,16 @@ func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 // ByImageSuperResolutionEnabled orders the results by the image_super_resolution_enabled field.
 func ByImageSuperResolutionEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageSuperResolutionEnabled, opts...).ToFunc()
+}
+
+// ByImage2kEnhancementEnabled orders the results by the image_2k_enhancement_enabled field.
+func ByImage2kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage2kEnhancementEnabled, opts...).ToFunc()
+}
+
+// ByImage2kEnhancementGroupID orders the results by the image_2k_enhancement_group_id field.
+func ByImage2kEnhancementGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage2kEnhancementGroupID, opts...).ToFunc()
 }
 
 // ByImage4kEnhancementEnabled orders the results by the image_4k_enhancement_enabled field.

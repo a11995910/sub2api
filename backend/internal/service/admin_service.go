@@ -211,9 +211,11 @@ type CreateGroupInput struct {
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
-	// 图片生成计费配置（仅 antigravity 平台使用）
+	// 图片生成计费配置
 	AllowImageGeneration        bool
 	ImageSuperResolutionEnabled bool
+	Image2KEnhancementEnabled   bool
+	Image2KEnhancementGroupID   *int64
 	Image4KEnhancementEnabled   bool
 	Image4KEnhancementGroupID   *int64
 	ImageRateIndependent        bool
@@ -256,9 +258,11 @@ type UpdateGroupInput struct {
 	DailyLimitUSD    *float64 // 日限额 (USD)
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
-	// 图片生成计费配置（仅 antigravity 平台使用）
+	// 图片生成计费配置
 	AllowImageGeneration        *bool
 	ImageSuperResolutionEnabled *bool
+	Image2KEnhancementEnabled   *bool
+	Image2KEnhancementGroupID   *int64
 	Image4KEnhancementEnabled   *bool
 	Image4KEnhancementGroupID   *int64
 	ImageRateIndependent        *bool
@@ -1969,8 +1973,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
-	image4KEnhancementGroupID := normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
-	if err := s.validateImage4KEnhancementConfig(ctx, 0, platform, input.AllowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID); err != nil {
+	image2KEnhancementGroupID := normalizeImageTierEnhancementGroupID(input.Image2KEnhancementEnabled, input.Image2KEnhancementGroupID)
+	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, input.AllowImageGeneration, input.Image2KEnhancementEnabled, image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
+		return nil, err
+	}
+	image4KEnhancementGroupID := normalizeImageTierEnhancementGroupID(input.Image4KEnhancementEnabled, input.Image4KEnhancementGroupID)
+	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, input.AllowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
 		return nil, err
 	}
 
@@ -2025,6 +2033,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     input.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:       input.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:       image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       input.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       image4KEnhancementGroupID,
 		ImageRateIndependent:            input.ImageRateIndependent,
@@ -2107,34 +2117,46 @@ func normalizePositiveInt64Ptr(value *int64) *int64 {
 	return value
 }
 
-func (s *adminServiceImpl) validateImage4KEnhancementConfig(ctx context.Context, currentGroupID int64, platform string, allowImageGeneration, enabled bool, targetGroupID *int64) error {
+func normalizeImageTierEnhancementGroupID(enabled bool, value *int64) *int64 {
 	if !enabled {
 		return nil
 	}
+	return normalizePositiveInt64Ptr(value)
+}
+
+func (s *adminServiceImpl) validateImageTierEnhancementConfig(ctx context.Context, currentGroupID int64, platform string, allowImageGeneration, enabled bool, targetGroupID *int64, tier string) error {
+	if !enabled {
+		return nil
+	}
+	tier = strings.ToUpper(strings.TrimSpace(tier))
+	if tier != ImageBillingSize2K && tier != ImageBillingSize4K {
+		return fmt.Errorf("unsupported image enhancement tier %q", tier)
+	}
+	fieldPrefix := strings.ToLower(tier)
 	if platform != PlatformOpenAI {
-		return fmt.Errorf("image_4k_enhancement_enabled is only supported for openai groups")
+		return fmt.Errorf("image_%s_enhancement_enabled is only supported for openai groups", fieldPrefix)
 	}
 	if !allowImageGeneration {
-		return fmt.Errorf("image_4k_enhancement_enabled requires allow_image_generation")
+		return fmt.Errorf("image_%s_enhancement_enabled requires allow_image_generation", fieldPrefix)
 	}
 	if targetGroupID == nil || *targetGroupID <= 0 {
-		return fmt.Errorf("image_4k_enhancement_group_id is required when image 4K enhancement is enabled")
+		return fmt.Errorf("image_%s_enhancement_group_id is required when image %s enhancement is enabled", fieldPrefix, tier)
 	}
 	if currentGroupID > 0 && *targetGroupID == currentGroupID {
-		return fmt.Errorf("image_4k_enhancement_group_id cannot use self")
+		return fmt.Errorf("image_%s_enhancement_group_id cannot use self", fieldPrefix)
 	}
 	target, err := s.groupRepo.GetByIDLite(ctx, *targetGroupID)
 	if err != nil {
-		return fmt.Errorf("image_4k_enhancement_group_id %d not found: %w", *targetGroupID, err)
+		return fmt.Errorf("image_%s_enhancement_group_id %d not found: %w", fieldPrefix, *targetGroupID, err)
 	}
 	if target.Platform != PlatformOpenAI {
-		return fmt.Errorf("image_4k_enhancement_group_id %d must be an openai group", *targetGroupID)
+		return fmt.Errorf("image_%s_enhancement_group_id %d must be an openai group", fieldPrefix, *targetGroupID)
 	}
 	if target.Status != StatusActive {
-		return fmt.Errorf("image_4k_enhancement_group_id %d must be active", *targetGroupID)
+		return fmt.Errorf("image_%s_enhancement_group_id %d must be active", fieldPrefix, *targetGroupID)
 	}
 	if !target.AllowImageGeneration {
-		return fmt.Errorf("image_4k_enhancement_group_id %d must allow image generation", *targetGroupID)
+		return fmt.Errorf("image_%s_enhancement_group_id %d must allow image generation", fieldPrefix, *targetGroupID)
 	}
 	return nil
 }
@@ -2252,6 +2274,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ImageSuperResolutionEnabled != nil {
 		group.ImageSuperResolutionEnabled = *input.ImageSuperResolutionEnabled
 	}
+	if input.Image2KEnhancementEnabled != nil {
+		group.Image2KEnhancementEnabled = *input.Image2KEnhancementEnabled
+	}
+	if input.Image2KEnhancementGroupID != nil {
+		group.Image2KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image2KEnhancementGroupID)
+	}
 	if input.Image4KEnhancementEnabled != nil {
 		group.Image4KEnhancementEnabled = *input.Image4KEnhancementEnabled
 	}
@@ -2350,7 +2378,16 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
-	if err := s.validateImage4KEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID); err != nil {
+	if !group.Image2KEnhancementEnabled {
+		group.Image2KEnhancementGroupID = nil
+	}
+	if !group.Image4KEnhancementEnabled {
+		group.Image4KEnhancementGroupID = nil
+	}
+	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image2KEnhancementEnabled, group.Image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
+		return nil, err
+	}
+	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
 		return nil, err
 	}
 

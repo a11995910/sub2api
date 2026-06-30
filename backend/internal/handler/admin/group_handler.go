@@ -94,6 +94,8 @@ type CreateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     bool     `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled       bool     `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID       *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled       bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID       *int64   `json:"image_4k_enhancement_group_id"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
@@ -139,6 +141,8 @@ type UpdateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     *bool    `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled       *bool    `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID       *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled       *bool    `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID       *int64   `json:"image_4k_enhancement_group_id"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
@@ -302,6 +306,8 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:       req.Image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       req.Image4KEnhancementGroupID,
 		ImageRateIndependent:            req.ImageRateIndependent,
@@ -362,6 +368,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:       req.Image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       req.Image4KEnhancementGroupID,
 		ImageRateIndependent:            req.ImageRateIndependent,

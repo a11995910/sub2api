@@ -381,6 +381,24 @@ func TestAdminService_CreateGroup_Rejects4KEnhancementWithoutTargetGroup(t *test
 	require.Nil(t, repo.created)
 }
 
+func TestAdminService_CreateGroup_Rejects2KEnhancementWithoutTargetGroup(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "image2",
+		Platform:                  PlatformOpenAI,
+		RateMultiplier:            1,
+		AllowImageGeneration:      true,
+		Image2KEnhancementEnabled: true,
+		Image2KEnhancementGroupID: nil,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "image_2k_enhancement_group_id is required")
+	require.Nil(t, repo.created)
+}
+
 func TestAdminService_CreateGroup_Rejects4KEnhancementTargetGroupNotFound(t *testing.T) {
 	targetGroupID := int64(46)
 	repo := &groupRepoStubForAdmin{groupsByID: map[int64]*Group{}}
@@ -460,6 +478,78 @@ func TestAdminService_UpdateGroup_Allows4KEnhancementTargetImageGroup(t *testing
 	require.NotNil(t, repo.updated)
 	require.True(t, repo.updated.Image4KEnhancementEnabled)
 	require.Equal(t, targetID, *repo.updated.Image4KEnhancementGroupID)
+}
+
+func TestAdminService_UpdateGroup_Allows2KEnhancementTargetImageGroup(t *testing.T) {
+	sourceID := int64(7)
+	targetID := int64(46)
+	repo := &groupRepoStubForAdmin{
+		groupsByID: map[int64]*Group{
+			sourceID: {
+				ID:                   sourceID,
+				Name:                 "image2",
+				Platform:             PlatformOpenAI,
+				Status:               StatusActive,
+				AllowImageGeneration: true,
+			},
+			targetID: {
+				ID:                   targetID,
+				Name:                 "nano-Banana2 香蕉生图",
+				Platform:             PlatformOpenAI,
+				Status:               StatusActive,
+				AllowImageGeneration: true,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+	enabled := true
+
+	group, err := svc.UpdateGroup(context.Background(), sourceID, &UpdateGroupInput{
+		Image2KEnhancementEnabled: &enabled,
+		Image2KEnhancementGroupID: &targetID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.Image2KEnhancementEnabled)
+	require.Equal(t, targetID, *repo.updated.Image2KEnhancementGroupID)
+}
+
+func TestAdminService_UpdateGroup_ClearsImageEnhancementTargetsWhenDisabled(t *testing.T) {
+	sourceID := int64(7)
+	target2KID := int64(46)
+	target4KID := int64(47)
+	repo := &groupRepoStubForAdmin{
+		groupsByID: map[int64]*Group{
+			sourceID: {
+				ID:                        sourceID,
+				Name:                      "image2",
+				Platform:                  PlatformOpenAI,
+				Status:                    StatusActive,
+				AllowImageGeneration:      true,
+				Image2KEnhancementEnabled: true,
+				Image2KEnhancementGroupID: &target2KID,
+				Image4KEnhancementEnabled: true,
+				Image4KEnhancementGroupID: &target4KID,
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+	disabled := false
+
+	group, err := svc.UpdateGroup(context.Background(), sourceID, &UpdateGroupInput{
+		Image2KEnhancementEnabled: &disabled,
+		Image4KEnhancementEnabled: &disabled,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.False(t, repo.updated.Image2KEnhancementEnabled)
+	require.Nil(t, repo.updated.Image2KEnhancementGroupID)
+	require.False(t, repo.updated.Image4KEnhancementEnabled)
+	require.Nil(t, repo.updated.Image4KEnhancementGroupID)
 }
 
 func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {

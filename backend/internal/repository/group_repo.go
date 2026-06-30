@@ -51,6 +51,8 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
+		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
+		SetNillableImage2kEnhancementGroupID(groupIn.Image2KEnhancementGroupID).
 		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
 		SetNillableImage4kEnhancementGroupID(groupIn.Image4KEnhancementGroupID).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
@@ -133,6 +135,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
+		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
 		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
@@ -187,6 +190,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetImage4kEnhancementGroupID(*groupIn.Image4KEnhancementGroupID)
 	} else {
 		builder = builder.ClearImage4kEnhancementGroupID()
+	}
+	if groupIn.Image2KEnhancementGroupID != nil {
+		builder = builder.SetImage2kEnhancementGroupID(*groupIn.Image2KEnhancementGroupID)
+	} else {
+		builder = builder.ClearImage2kEnhancementGroupID()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置

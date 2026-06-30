@@ -51,6 +51,10 @@ type Group struct {
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
 	// 是否对图片生成结果自动执行 4K 超分
 	ImageSuperResolutionEnabled bool `json:"image_super_resolution_enabled,omitempty"`
+	// 是否在 2K 生图命中后调用指定图片分组做二段提升
+	Image2kEnhancementEnabled bool `json:"image_2k_enhancement_enabled,omitempty"`
+	// 2K 生图二段提升使用的目标图片分组 ID
+	Image2kEnhancementGroupID *int64 `json:"image_2k_enhancement_group_id,omitempty"`
 	// 是否在 4K 生图命中后调用指定图片分组做二段提升
 	Image4kEnhancementEnabled bool `json:"image_4k_enhancement_enabled,omitempty"`
 	// 4K 生图二段提升使用的目标图片分组 ID
@@ -205,11 +209,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage4kEnhancementEnabled, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
+		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage2kEnhancementEnabled, group.FieldImage4kEnhancementEnabled, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
@@ -336,6 +340,19 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field image_super_resolution_enabled", values[i])
 			} else if value.Valid {
 				_m.ImageSuperResolutionEnabled = value.Bool
+			}
+		case group.FieldImage2kEnhancementEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_2k_enhancement_enabled", values[i])
+			} else if value.Valid {
+				_m.Image2kEnhancementEnabled = value.Bool
+			}
+		case group.FieldImage2kEnhancementGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_2k_enhancement_group_id", values[i])
+			} else if value.Valid {
+				_m.Image2kEnhancementGroupID = new(int64)
+				*_m.Image2kEnhancementGroupID = value.Int64
 			}
 		case group.FieldImage4kEnhancementEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -622,6 +639,14 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("image_super_resolution_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageSuperResolutionEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("image_2k_enhancement_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Image2kEnhancementEnabled))
+	builder.WriteString(", ")
+	if v := _m.Image2kEnhancementGroupID; v != nil {
+		builder.WriteString("image_2k_enhancement_group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("image_4k_enhancement_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Image4kEnhancementEnabled))

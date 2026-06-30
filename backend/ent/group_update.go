@@ -303,6 +303,47 @@ func (_u *GroupUpdate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpd
 	return _u
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (_u *GroupUpdate) SetImage2kEnhancementEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetImage2kEnhancementEnabled(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage2kEnhancementEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImage2kEnhancementEnabled(*v)
+	}
+	return _u
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdate) SetImage2kEnhancementGroupID(v int64) *GroupUpdate {
+	_u.mutation.ResetImage2kEnhancementGroupID()
+	_u.mutation.SetImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage2kEnhancementGroupID(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetImage2kEnhancementGroupID(*v)
+	}
+	return _u
+}
+
+// AddImage2kEnhancementGroupID adds value to the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdate) AddImage2kEnhancementGroupID(v int64) *GroupUpdate {
+	_u.mutation.AddImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdate) ClearImage2kEnhancementGroupID() *GroupUpdate {
+	_u.mutation.ClearImage2kEnhancementGroupID()
+	return _u
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (_u *GroupUpdate) SetImage4kEnhancementEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetImage4kEnhancementEnabled(v)
@@ -1100,6 +1141,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.Image2kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image2kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedImage2kEnhancementGroupID(); ok {
+		_spec.AddField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.Image2kEnhancementGroupIDCleared() {
+		_spec.ClearField(group.FieldImage2kEnhancementGroupID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
 	}
@@ -1800,6 +1853,47 @@ func (_u *GroupUpdateOne) SetNillableImageSuperResolutionEnabled(v *bool) *Group
 	if v != nil {
 		_u.SetImageSuperResolutionEnabled(*v)
 	}
+	return _u
+}
+
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (_u *GroupUpdateOne) SetImage2kEnhancementEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetImage2kEnhancementEnabled(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage2kEnhancementEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage2kEnhancementEnabled(*v)
+	}
+	return _u
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) SetImage2kEnhancementGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.ResetImage2kEnhancementGroupID()
+	_u.mutation.SetImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage2kEnhancementGroupID(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage2kEnhancementGroupID(*v)
+	}
+	return _u
+}
+
+// AddImage2kEnhancementGroupID adds value to the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) AddImage2kEnhancementGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.AddImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) ClearImage2kEnhancementGroupID() *GroupUpdateOne {
+	_u.mutation.ClearImage2kEnhancementGroupID()
 	return _u
 }
 
@@ -2629,6 +2723,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image2kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image2kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedImage2kEnhancementGroupID(); ok {
+		_spec.AddField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.Image2kEnhancementGroupIDCleared() {
+		_spec.ClearField(group.FieldImage2kEnhancementGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)

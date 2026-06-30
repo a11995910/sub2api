@@ -80,6 +80,13 @@ func (Group) Fields() []ent.Field {
 		field.Bool("image_super_resolution_enabled").
 			Default(false).
 			Comment("是否对图片生成结果自动执行 4K 超分"),
+		field.Bool("image_2k_enhancement_enabled").
+			Default(false).
+			Comment("是否在 2K 生图命中后调用指定图片分组做二段提升"),
+		field.Int64("image_2k_enhancement_group_id").
+			Optional().
+			Nillable().
+			Comment("2K 生图二段提升使用的目标图片分组 ID"),
 		field.Bool("image_4k_enhancement_enabled").
 			Default(false).
 			Comment("是否在 4K 生图命中后调用指定图片分组做二段提升"),

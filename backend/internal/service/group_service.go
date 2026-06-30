@@ -51,6 +51,8 @@ type CreateGroupRequest struct {
 	IsExclusive                 bool     `json:"is_exclusive"`
 	AllowImageGeneration        bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled   bool     `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled   bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
 	ImageRateIndependent        bool     `json:"image_rate_independent"`
@@ -66,6 +68,8 @@ type UpdateGroupRequest struct {
 	Status                      *string  `json:"status"`
 	AllowImageGeneration        *bool    `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled *bool    `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled   *bool    `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled   *bool    `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
 	ImageRateIndependent        *bool    `json:"image_rate_independent"`
@@ -115,6 +119,8 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		SubscriptionType:            SubscriptionTypeStandard,
 		AllowImageGeneration:        req.AllowImageGeneration,
 		ImageSuperResolutionEnabled: req.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:   req.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image2KEnhancementGroupID),
 		Image4KEnhancementEnabled:   req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
 		ImageRateIndependent:        req.ImageRateIndependent,
@@ -195,6 +201,12 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 	}
 	if req.ImageSuperResolutionEnabled != nil {
 		group.ImageSuperResolutionEnabled = *req.ImageSuperResolutionEnabled
+	}
+	if req.Image2KEnhancementEnabled != nil {
+		group.Image2KEnhancementEnabled = *req.Image2KEnhancementEnabled
+	}
+	if req.Image2KEnhancementGroupID != nil {
+		group.Image2KEnhancementGroupID = normalizePositiveInt64Ptr(req.Image2KEnhancementGroupID)
 	}
 	if req.Image4KEnhancementEnabled != nil {
 		group.Image4KEnhancementEnabled = *req.Image4KEnhancementEnabled

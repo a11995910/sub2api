@@ -68,6 +68,8 @@ type APIKeyAuthGroupSnapshot struct {
 	MonthlyLimitUSD                 *float64 `json:"monthly_limit_usd,omitempty"`
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     bool     `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled       bool     `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID       *int64   `json:"image_2k_enhancement_group_id,omitempty"`
 	Image4KEnhancementEnabled       bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID       *int64   `json:"image_4k_enhancement_group_id,omitempty"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
