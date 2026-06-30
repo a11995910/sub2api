@@ -385,6 +385,26 @@ func (_u *GroupUpdate) ClearImage4kEnhancementGroupID() *GroupUpdate {
 	return _u
 }
 
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (_u *GroupUpdate) SetImage4kEnhancementModel(v string) *GroupUpdate {
+	_u.mutation.SetImage4kEnhancementModel(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage4kEnhancementModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetImage4kEnhancementModel(*v)
+	}
+	return _u
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (_u *GroupUpdate) ClearImage4kEnhancementModel() *GroupUpdate {
+	_u.mutation.ClearImage4kEnhancementModel()
+	return _u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_u *GroupUpdate) SetImageRateIndependent(v bool) *GroupUpdate {
 	_u.mutation.SetImageRateIndependent(v)
@@ -1046,6 +1066,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		if err := group.Image4kEnhancementModelValidator(v); err != nil {
+			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -1164,6 +1189,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.Image4kEnhancementGroupIDCleared() {
 		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
+	}
+	if _u.mutation.Image4kEnhancementModelCleared() {
+		_spec.ClearField(group.FieldImage4kEnhancementModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -1938,6 +1969,26 @@ func (_u *GroupUpdateOne) ClearImage4kEnhancementGroupID() *GroupUpdateOne {
 	return _u
 }
 
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (_u *GroupUpdateOne) SetImage4kEnhancementModel(v string) *GroupUpdateOne {
+	_u.mutation.SetImage4kEnhancementModel(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage4kEnhancementModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage4kEnhancementModel(*v)
+	}
+	return _u
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (_u *GroupUpdateOne) ClearImage4kEnhancementModel() *GroupUpdateOne {
+	_u.mutation.ClearImage4kEnhancementModel()
+	return _u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_u *GroupUpdateOne) SetImageRateIndependent(v bool) *GroupUpdateOne {
 	_u.mutation.SetImageRateIndependent(v)
@@ -2612,6 +2663,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		if err := group.Image4kEnhancementModelValidator(v); err != nil {
+			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -2747,6 +2803,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.Image4kEnhancementGroupIDCleared() {
 		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
+	}
+	if _u.mutation.Image4kEnhancementModelCleared() {
+		_spec.ClearField(group.FieldImage4kEnhancementModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)

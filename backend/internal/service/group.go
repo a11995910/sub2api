@@ -33,6 +33,7 @@ type Group struct {
 	Image2KEnhancementGroupID   *int64
 	Image4KEnhancementEnabled   bool
 	Image4KEnhancementGroupID   *int64
+	Image4KEnhancementModel     *string
 	ImageRateIndependent        bool
 	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         float64

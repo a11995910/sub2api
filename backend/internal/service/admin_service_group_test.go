@@ -401,7 +401,36 @@ func TestAdminService_CreateGroup_Rejects2KEnhancementWithoutTargetGroup(t *test
 
 func TestAdminService_CreateGroup_Rejects4KEnhancementTargetGroupNotFound(t *testing.T) {
 	targetGroupID := int64(46)
+	targetModel := "nano-banana-2"
 	repo := &groupRepoStubForAdmin{groupsByID: map[int64]*Group{}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                      "image2",
+		Platform:                  PlatformOpenAI,
+		RateMultiplier:            1,
+		AllowImageGeneration:      true,
+		Image4KEnhancementEnabled: true,
+		Image4KEnhancementGroupID: &targetGroupID,
+		Image4KEnhancementModel:   &targetModel,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "image_4k_enhancement_group_id")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_CreateGroup_Rejects4KEnhancementWithoutTargetModel(t *testing.T) {
+	targetGroupID := int64(46)
+	repo := &groupRepoStubForAdmin{groupsByID: map[int64]*Group{
+		targetGroupID: {
+			ID:                   targetGroupID,
+			Name:                 "banana",
+			Platform:             PlatformOpenAI,
+			Status:               StatusActive,
+			AllowImageGeneration: true,
+		},
+	}}
 	svc := &adminServiceImpl{groupRepo: repo}
 
 	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
@@ -414,7 +443,7 @@ func TestAdminService_CreateGroup_Rejects4KEnhancementTargetGroupNotFound(t *tes
 	})
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "image_4k_enhancement_group_id")
+	require.Contains(t, err.Error(), "image_4k_enhancement_model is required")
 	require.Nil(t, repo.created)
 }
 
@@ -467,10 +496,12 @@ func TestAdminService_UpdateGroup_Allows4KEnhancementTargetImageGroup(t *testing
 	}
 	svc := &adminServiceImpl{groupRepo: repo}
 	enabled := true
+	targetModel := " nano-banana-2 "
 
 	group, err := svc.UpdateGroup(context.Background(), sourceID, &UpdateGroupInput{
 		Image4KEnhancementEnabled: &enabled,
 		Image4KEnhancementGroupID: &targetID,
+		Image4KEnhancementModel:   &targetModel,
 	})
 
 	require.NoError(t, err)
@@ -478,6 +509,8 @@ func TestAdminService_UpdateGroup_Allows4KEnhancementTargetImageGroup(t *testing
 	require.NotNil(t, repo.updated)
 	require.True(t, repo.updated.Image4KEnhancementEnabled)
 	require.Equal(t, targetID, *repo.updated.Image4KEnhancementGroupID)
+	require.NotNil(t, repo.updated.Image4KEnhancementModel)
+	require.Equal(t, "nano-banana-2", *repo.updated.Image4KEnhancementModel)
 }
 
 func TestAdminService_UpdateGroup_Allows2KEnhancementTargetImageGroup(t *testing.T) {
@@ -532,6 +565,7 @@ func TestAdminService_UpdateGroup_ClearsImageEnhancementTargetsWhenDisabled(t *t
 				Image2KEnhancementGroupID: &target2KID,
 				Image4KEnhancementEnabled: true,
 				Image4KEnhancementGroupID: &target4KID,
+				Image4KEnhancementModel:   ptrString("nano-banana-2"),
 			},
 		},
 	}
@@ -550,6 +584,7 @@ func TestAdminService_UpdateGroup_ClearsImageEnhancementTargetsWhenDisabled(t *t
 	require.Nil(t, repo.updated.Image2KEnhancementGroupID)
 	require.False(t, repo.updated.Image4KEnhancementEnabled)
 	require.Nil(t, repo.updated.Image4KEnhancementGroupID)
+	require.Nil(t, repo.updated.Image4KEnhancementModel)
 }
 
 func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {

@@ -692,6 +692,7 @@ var (
 		{Name: "image_2k_enhancement_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "image_4k_enhancement_enabled", Type: field.TypeBool, Default: false},
 		{Name: "image_4k_enhancement_group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "image_4k_enhancement_model", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "image_rate_independent", Type: field.TypeBool, Default: false},
 		{Name: "cache_hit_quarter_to_input_enabled", Type: field.TypeBool, Default: false},
 		{Name: "image_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
@@ -748,7 +749,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[34]},
+				Columns: []*schema.Column{GroupsColumns[35]},
 			},
 		},
 	}

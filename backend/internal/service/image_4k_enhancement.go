@@ -114,6 +114,7 @@ func logImage4KEnhancementDecision(c *gin.Context, phase, reason string, parsed 
 	enabled := false
 	requestSizeTier := ""
 	requestSize := ""
+	targetModel := ""
 	if parsed != nil {
 		requestSizeTier = imageEnhancementRequestTier(parsed, "")
 		requestSize = parsed.Size
@@ -126,6 +127,7 @@ func logImage4KEnhancementDecision(c *gin.Context, phase, reason string, parsed 
 			if target := imageEnhancementTargetGroupID(apiKey.Group, requestSizeTier); target != nil {
 				targetGroupID = *target
 			}
+			targetModel = imageEnhancementTargetModel(apiKey.Group, requestSizeTier)
 		}
 	}
 	if strings.TrimSpace(reason) == "" {
@@ -133,12 +135,13 @@ func logImage4KEnhancementDecision(c *gin.Context, phase, reason string, parsed 
 	}
 	logger.LegacyPrintf(
 		image4KEnhancementLogComponent,
-		"image tier enhancement %s: reason=%s api_key_id=%d group_id=%d target_group_id=%d enabled=%t request_size_tier=%s request_size=%s",
+		"image tier enhancement %s: reason=%s api_key_id=%d group_id=%d target_group_id=%d target_model=%s enabled=%t request_size_tier=%s request_size=%s",
 		phase,
 		reason,
 		apiKeyID,
 		groupID,
 		targetGroupID,
+		targetModel,
 		enabled,
 		imageEnhancementRequestTier(parsed, requestSizeTier),
 		strings.TrimSpace(requestSize),
@@ -187,6 +190,19 @@ func imageEnhancementTargetGroupID(group *Group, tier string) *int64 {
 	default:
 		return nil
 	}
+}
+
+func imageEnhancementTargetModel(group *Group, tier string) string {
+	if group == nil {
+		return ""
+	}
+	switch NormalizeImageBillingTierOrDefault(tier) {
+	case ImageBillingSize4K:
+		if group.Image4KEnhancementModel != nil {
+			return strings.TrimSpace(*group.Image4KEnhancementModel)
+		}
+	}
+	return ""
 }
 
 func (s *OpenAIGatewayService) applyOpenAIImages4KEnhancementToJSON(
@@ -330,7 +346,10 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 	requestModel := openAIImagesRequestModel(sourceParsed)
 	mapping := s.ResolveChannelMapping(ctx, targetGroupID, requestModel)
 	targetRequestModel := strings.TrimSpace(requestModel)
-	if strings.TrimSpace(mapping.MappedModel) != "" && strings.TrimSpace(mapping.MappedModel) != strings.TrimSpace(requestModel) {
+	if configuredModel := imageEnhancementTargetModel(apiKey.Group, tier); configuredModel != "" {
+		targetRequestModel = configuredModel
+		mapping.MappedModel = configuredModel
+	} else if strings.TrimSpace(mapping.MappedModel) != "" && strings.TrimSpace(mapping.MappedModel) != strings.TrimSpace(requestModel) {
 		targetRequestModel = strings.TrimSpace(mapping.MappedModel)
 	} else if fallbackModel := s.resolveImage4KEnhancementTargetRequestModel(ctx, targetGroupID, requestModel); fallbackModel != "" {
 		targetRequestModel = fallbackModel
@@ -355,7 +374,7 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 			lastErr = fmt.Errorf("target group has no available account")
 			break
 		}
-		result, err := s.callOpenAIImages4KEnhancementAttempt(ctx, c, selection.Account, targetChannel, mapping.MappedModel, imageBytes, mimeType, sourceParsed, index)
+		result, err := s.callOpenAIImages4KEnhancementAttempt(ctx, c, selection.Account, targetChannel, targetRequestModel, imageBytes, mimeType, sourceParsed, index)
 		if selection.ReleaseFunc != nil {
 			selection.ReleaseFunc()
 		}

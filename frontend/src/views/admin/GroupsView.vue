@@ -911,6 +911,25 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.imagePricing.image4KEnhancementGroupHint") }}
             </p>
+            <div class="mt-3">
+              <label class="input-label">
+                {{ t("admin.groups.imagePricing.image4KEnhancementModel") }}
+              </label>
+              <Select
+                v-model="createForm.image_4k_enhancement_model"
+                :options="createImage4KEnhancementModelOptions"
+                :placeholder="t('admin.groups.imagePricing.selectImage4KEnhancementModel')"
+                :searchable="true"
+                :clearable="true"
+                :disabled="
+                  !createForm.image_4k_enhancement_group_id ||
+                  createImage4KEnhancementModelsLoading
+                "
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.image4KEnhancementModelHint") }}
+              </p>
+            </div>
           </div>
           <div
             v-if="createForm.image_rate_independent"
@@ -2305,6 +2324,25 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t("admin.groups.imagePricing.image4KEnhancementGroupHint") }}
             </p>
+            <div class="mt-3">
+              <label class="input-label">
+                {{ t("admin.groups.imagePricing.image4KEnhancementModel") }}
+              </label>
+              <Select
+                v-model="editForm.image_4k_enhancement_model"
+                :options="editImage4KEnhancementModelOptions"
+                :placeholder="t('admin.groups.imagePricing.selectImage4KEnhancementModel')"
+                :searchable="true"
+                :clearable="true"
+                :disabled="
+                  !editForm.image_4k_enhancement_group_id ||
+                  editImage4KEnhancementModelsLoading
+                "
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.imagePricing.image4KEnhancementModelHint") }}
+              </p>
+            </div>
           </div>
           <div
             v-if="editForm.image_rate_independent"
@@ -3676,6 +3714,27 @@ const image4KEnhancementGroupOptionsForEdit = computed(() =>
   buildImage4KEnhancementGroupOptions(editingGroup.value?.id),
 );
 
+const buildImage4KEnhancementModelOptions = (models: string[]) => {
+  const options: { value: string | null; label: string }[] = [
+    { value: null, label: t("admin.groups.imagePricing.noImage4KEnhancementModel") },
+  ];
+  models.forEach((model) => {
+    const trimmed = model.trim();
+    if (trimmed) {
+      options.push({ value: trimmed, label: trimmed });
+    }
+  });
+  return options;
+};
+
+const createImage4KEnhancementModelOptions = computed(() =>
+  buildImage4KEnhancementModelOptions(createImage4KEnhancementModels.value),
+);
+
+const editImage4KEnhancementModelOptions = computed(() =>
+  buildImage4KEnhancementModelOptions(editImage4KEnhancementModels.value),
+);
+
 // 无效请求兜底分组选项（创建时）- 仅包含 anthropic 平台、非订阅且未配置兜底的分组
 const invalidRequestFallbackOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -3817,6 +3876,15 @@ const editModelsListState = reactive(createInitialModelsListState());
 const createModelsListLoading = ref(false);
 const editModelsListLoading = ref(false);
 const modelsListCandidatesTracker = createModelsListCandidatesTracker();
+const createImage4KEnhancementModels = ref<string[]>([]);
+const editImage4KEnhancementModels = ref<string[]>([]);
+const createImage4KEnhancementModelsLoading = ref(false);
+const editImage4KEnhancementModelsLoading = ref(false);
+const image4KEnhancementModelsRequestID = {
+  create: 0,
+  edit: 0,
+};
+let editImage4KEnhancementModelInitializing = false;
 const createModelsListSelectedCount = computed(
   () => createModelsListState.items.filter((item) => item.selected).length,
 );
@@ -3851,6 +3919,7 @@ const createForm = reactive({
   image_2k_enhancement_group_id: null as number | null,
   image_4k_enhancement_enabled: false,
   image_4k_enhancement_group_id: null as number | null,
+  image_4k_enhancement_model: null as string | null,
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
   image_rate_multiplier: 1,
@@ -4188,6 +4257,7 @@ const editForm = reactive({
   image_2k_enhancement_group_id: null as number | null,
   image_4k_enhancement_enabled: false,
   image_4k_enhancement_group_id: null as number | null,
+  image_4k_enhancement_model: null as string | null,
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
   image_rate_multiplier: 1,
@@ -4418,6 +4488,41 @@ const loadImageEnhancementGroups = async () => {
   }
 };
 
+const loadImage4KEnhancementModels = async (
+  mode: "create" | "edit",
+  groupID: number | null,
+) => {
+  const requestID = ++image4KEnhancementModelsRequestID[mode];
+  const modelsRef =
+    mode === "create" ? createImage4KEnhancementModels : editImage4KEnhancementModels;
+  const loadingRef =
+    mode === "create"
+      ? createImage4KEnhancementModelsLoading
+      : editImage4KEnhancementModelsLoading;
+  modelsRef.value = [];
+  if (!groupID || groupID <= 0) {
+    loadingRef.value = false;
+    return;
+  }
+  loadingRef.value = true;
+  try {
+    const models = await adminAPI.groups.getModelsListCandidates(groupID, "openai");
+    if (requestID !== image4KEnhancementModelsRequestID[mode]) {
+      return;
+    }
+    modelsRef.value = models;
+  } catch (error) {
+    if (requestID === image4KEnhancementModelsRequestID[mode]) {
+      console.error("Error loading 4K enhancement target models:", error);
+      appStore.showError(t("admin.groups.imagePricing.image4KEnhancementModelLoadFailed"));
+    }
+  } finally {
+    if (requestID === image4KEnhancementModelsRequestID[mode]) {
+      loadingRef.value = false;
+    }
+  }
+};
+
 let searchTimeout: ReturnType<typeof setTimeout>;
 const handleSearch = () => {
   clearTimeout(searchTimeout);
@@ -4472,6 +4577,8 @@ const closeCreateModal = () => {
   createForm.image_2k_enhancement_group_id = null;
   createForm.image_4k_enhancement_enabled = false;
   createForm.image_4k_enhancement_group_id = null;
+  createForm.image_4k_enhancement_model = null;
+  createImage4KEnhancementModels.value = [];
   createForm.image_rate_independent = false;
   createForm.cache_hit_quarter_to_input_enabled = false;
   createForm.image_rate_multiplier = 1;
@@ -4542,6 +4649,14 @@ const handleCreateGroup = async () => {
     appStore.showError(t("admin.groups.imagePricing.image4KEnhancementGroupRequired"));
     return;
   }
+  if (
+    createForm.platform === "openai" &&
+    createForm.image_4k_enhancement_enabled &&
+    !createForm.image_4k_enhancement_model
+  ) {
+    appStore.showError(t("admin.groups.imagePricing.image4KEnhancementModelRequired"));
+    return;
+  }
   submitting.value = true;
   try {
     // 构建请求数据，包含模型路由配置
@@ -4594,6 +4709,7 @@ const handleCreateGroup = async () => {
       !requestData.image_4k_enhancement_enabled
     ) {
       requestData.image_4k_enhancement_group_id = null;
+      requestData.image_4k_enhancement_model = null;
     }
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
@@ -4635,8 +4751,12 @@ const handleEdit = async (group: AdminGroup) => {
     group.image_2k_enhancement_group_id ?? null;
   editForm.image_4k_enhancement_enabled =
     group.image_4k_enhancement_enabled ?? false;
+  editImage4KEnhancementModelInitializing = true;
   editForm.image_4k_enhancement_group_id =
     group.image_4k_enhancement_group_id ?? null;
+  editForm.image_4k_enhancement_model =
+    group.image_4k_enhancement_model ?? null;
+  editImage4KEnhancementModelInitializing = false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.cache_hit_quarter_to_input_enabled =
     group.cache_hit_quarter_to_input_enabled ?? false;
@@ -4676,11 +4796,13 @@ const handleEdit = async (group: AdminGroup) => {
     group.model_routing,
   );
   loadImageEnhancementGroups();
+  loadImage4KEnhancementModels("edit", editForm.image_4k_enhancement_group_id);
   loadModelsListCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
 };
 
 const closeEditModal = () => {
+  editImage4KEnhancementModelInitializing = false;
   editModelRoutingRules.value.forEach((rule) => {
     accountSearchRunner.clearKey(getEditRuleSearchKey(rule));
   });
@@ -4693,6 +4815,8 @@ const closeEditModal = () => {
   editForm.image_2k_enhancement_group_id = null;
   editForm.image_4k_enhancement_enabled = false;
   editForm.image_4k_enhancement_group_id = null;
+  editForm.image_4k_enhancement_model = null;
+  editImage4KEnhancementModels.value = [];
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 };
@@ -4717,6 +4841,14 @@ const handleUpdateGroup = async () => {
     !editForm.image_4k_enhancement_group_id
   ) {
     appStore.showError(t("admin.groups.imagePricing.image4KEnhancementGroupRequired"));
+    return;
+  }
+  if (
+    editForm.platform === "openai" &&
+    editForm.image_4k_enhancement_enabled &&
+    !editForm.image_4k_enhancement_model
+  ) {
+    appStore.showError(t("admin.groups.imagePricing.image4KEnhancementModelRequired"));
     return;
   }
 
@@ -4778,6 +4910,7 @@ const handleUpdateGroup = async () => {
       !payload.image_4k_enhancement_enabled
     ) {
       payload.image_4k_enhancement_group_id = null;
+      payload.image_4k_enhancement_model = null;
     }
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
@@ -5020,6 +5153,8 @@ watch(
       createForm.image_2k_enhancement_group_id = null;
       createForm.image_4k_enhancement_enabled = false;
       createForm.image_4k_enhancement_group_id = null;
+      createForm.image_4k_enhancement_model = null;
+      createImage4KEnhancementModels.value = [];
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       createForm.require_oauth_only = false;
@@ -5042,6 +5177,8 @@ watch(
       editForm.image_2k_enhancement_group_id = null;
       editForm.image_4k_enhancement_enabled = false;
       editForm.image_4k_enhancement_group_id = null;
+      editForm.image_4k_enhancement_model = null;
+      editImage4KEnhancementModels.value = [];
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       editForm.require_oauth_only = false;
@@ -5062,6 +5199,8 @@ watch(
       createForm.image_2k_enhancement_group_id = null;
       createForm.image_4k_enhancement_enabled = false;
       createForm.image_4k_enhancement_group_id = null;
+      createForm.image_4k_enhancement_model = null;
+      createImage4KEnhancementModels.value = [];
     }
   },
 );
@@ -5074,6 +5213,8 @@ watch(
       editForm.image_2k_enhancement_group_id = null;
       editForm.image_4k_enhancement_enabled = false;
       editForm.image_4k_enhancement_group_id = null;
+      editForm.image_4k_enhancement_model = null;
+      editImage4KEnhancementModels.value = [];
     }
   },
 );
@@ -5101,6 +5242,8 @@ watch(
   (enabled) => {
     if (!enabled) {
       createForm.image_4k_enhancement_group_id = null;
+      createForm.image_4k_enhancement_model = null;
+      createImage4KEnhancementModels.value = [];
     }
   },
 );
@@ -5110,7 +5253,27 @@ watch(
   (enabled) => {
     if (!enabled) {
       editForm.image_4k_enhancement_group_id = null;
+      editForm.image_4k_enhancement_model = null;
+      editImage4KEnhancementModels.value = [];
     }
+  },
+);
+
+watch(
+  () => createForm.image_4k_enhancement_group_id,
+  (groupID) => {
+    createForm.image_4k_enhancement_model = null;
+    loadImage4KEnhancementModels("create", groupID);
+  },
+);
+
+watch(
+  () => editForm.image_4k_enhancement_group_id,
+  (groupID) => {
+    if (!editImage4KEnhancementModelInitializing) {
+      editForm.image_4k_enhancement_model = null;
+    }
+    loadImage4KEnhancementModels("edit", groupID);
   },
 );
 

@@ -218,6 +218,7 @@ type CreateGroupInput struct {
 	Image2KEnhancementGroupID   *int64
 	Image4KEnhancementEnabled   bool
 	Image4KEnhancementGroupID   *int64
+	Image4KEnhancementModel     *string
 	ImageRateIndependent        bool
 	CacheHitQuarterToInput      bool
 	ImageRateMultiplier         *float64
@@ -265,6 +266,7 @@ type UpdateGroupInput struct {
 	Image2KEnhancementGroupID   *int64
 	Image4KEnhancementEnabled   *bool
 	Image4KEnhancementGroupID   *int64
+	Image4KEnhancementModel     *string
 	ImageRateIndependent        *bool
 	CacheHitQuarterToInput      *bool
 	ImageRateMultiplier         *float64
@@ -1981,6 +1983,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, input.AllowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
 		return nil, err
 	}
+	image4KEnhancementModel := normalizeImageTierEnhancementModel(input.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
+	if input.Image4KEnhancementEnabled && image4KEnhancementModel == nil {
+		return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
+	}
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
@@ -2037,6 +2043,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Image2KEnhancementGroupID:       image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       input.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       image4KEnhancementGroupID,
+		Image4KEnhancementModel:         image4KEnhancementModel,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		ImageRateMultiplier:             imageRateMultiplier,
@@ -2122,6 +2129,17 @@ func normalizeImageTierEnhancementGroupID(enabled bool, value *int64) *int64 {
 		return nil
 	}
 	return normalizePositiveInt64Ptr(value)
+}
+
+func normalizeImageTierEnhancementModel(enabled bool, value *string) *string {
+	if !enabled || value == nil {
+		return nil
+	}
+	model := strings.TrimSpace(*value)
+	if model == "" {
+		return nil
+	}
+	return &model
 }
 
 func (s *adminServiceImpl) validateImageTierEnhancementConfig(ctx context.Context, currentGroupID int64, platform string, allowImageGeneration, enabled bool, targetGroupID *int64, tier string) error {
@@ -2286,6 +2304,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Image4KEnhancementGroupID != nil {
 		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
 	}
+	if input.Image4KEnhancementModel != nil {
+		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(group.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
+	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
 	}
@@ -2383,12 +2404,16 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if !group.Image4KEnhancementEnabled {
 		group.Image4KEnhancementGroupID = nil
+		group.Image4KEnhancementModel = nil
 	}
 	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image2KEnhancementEnabled, group.Image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
 		return nil, err
 	}
 	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
 		return nil, err
+	}
+	if group.Image4KEnhancementEnabled && normalizeImageTierEnhancementModel(true, group.Image4KEnhancementModel) == nil {
+		return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
 	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

@@ -835,6 +835,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Image2KEnhancementGroupID:       g.Image2kEnhancementGroupID,
 		Image4KEnhancementEnabled:       g.Image4kEnhancementEnabled,
 		Image4KEnhancementGroupID:       g.Image4kEnhancementGroupID,
+		Image4KEnhancementModel:         g.Image4kEnhancementModel,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		CacheHitQuarterToInput:          g.CacheHitQuarterToInputEnabled,
 		ImageRateMultiplier:             g.ImageRateMultiplier,

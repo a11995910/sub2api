@@ -1806,12 +1806,35 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelImageBillingUsesImageCountAndInd
 func newOpenAIImageChannelPricingResolverForTest(t *testing.T, groupID int64, model string, price float64) *ModelPricingResolver {
 	t.Helper()
 	cache := newEmptyChannelCache()
-	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: model}] = &ChannelModelPricing{
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: "", model: model}] = &ChannelModelPricing{
 		BillingMode:     BillingModeImage,
 		PerRequestPrice: &price,
 	}
 	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
 	cache.groupPlatform[groupID] = ""
+	cache.loadedAt = time.Now()
+	cs := &ChannelService{}
+	cs.cache.Store(cache)
+	return NewModelPricingResolver(cs, NewBillingService(&config.Config{}, nil))
+}
+
+func newOpenAIMixedChannelPricingResolverForTest(t *testing.T, groupID int64) *ModelPricingResolver {
+	t.Helper()
+	inputPrice := 0.000001
+	outputPrice := 0.000002
+	imagePrice := 2.0
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: PlatformOpenAI, model: "gpt-image-2"}] = &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  &inputPrice,
+		OutputPrice: &outputPrice,
+	}
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: PlatformOpenAI, model: "nano-banana-2"}] = &ChannelModelPricing{
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: &imagePrice,
+	}
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
+	cache.groupPlatform[groupID] = PlatformOpenAI
 	cache.loadedAt = time.Now()
 	cs := &ChannelService{}
 	cs.cache.Store(cache)
@@ -1842,12 +1865,60 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 	require.InDelta(t, 0.5, cost.ActualCost, 1e-12)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_ImageOutputPrefersImagePricingCandidate(t *testing.T) {
+	groupID := int64(129)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	svc.resolver = newOpenAIMixedChannelPricingResolverForTest(t, groupID)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_image_candidate_pricing",
+			Model:         "gpt-image-2",
+			BillingModel:  "gpt-image-2",
+			UpstreamModel: "nano-banana-2",
+			Usage: OpenAIUsage{
+				InputTokens:  1000,
+				OutputTokens: 2000,
+			},
+			ImageCount: 1,
+			ImageSize:  ImageBillingSize4K,
+			Duration:   time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10129,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+			},
+		},
+		User:    &User{ID: 20129},
+		Account: &Account{ID: 30129},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "gpt-image-2",
+			ChannelMappedModel: "gpt-image-2",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
+	require.InDelta(t, 2.0, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 2.0, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(t *testing.T) {
 	groupID := int64(127)
 	defaultPrice := 0.10
 	price4K := 0.40
 	cache := newEmptyChannelCache()
-	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: "gemini-image"}] = &ChannelModelPricing{
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: "", model: "gemini-image"}] = &ChannelModelPricing{
 		BillingMode:     BillingModeImage,
 		PerRequestPrice: &defaultPrice,
 		Intervals: []PricingInterval{{
@@ -1910,7 +1981,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMis
 	defaultPrice := 0.10
 	price2K := 0.22
 	cache := newEmptyChannelCache()
-	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: "gemini-image"}] = &ChannelModelPricing{
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: "", model: "gemini-image"}] = &ChannelModelPricing{
 		BillingMode:     BillingModeImage,
 		PerRequestPrice: &defaultPrice,
 		Intervals: []PricingInterval{{

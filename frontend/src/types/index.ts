@@ -555,6 +555,7 @@ export interface Group {
   image_2k_enhancement_group_id: number | null
   image_4k_enhancement_enabled: boolean
   image_4k_enhancement_group_id: number | null
+  image_4k_enhancement_model: string | null
   image_rate_independent: boolean
   cache_hit_quarter_to_input_enabled: boolean
   image_rate_multiplier: number
@@ -681,6 +682,7 @@ export interface CreateGroupRequest {
   image_2k_enhancement_group_id?: number | null
   image_4k_enhancement_enabled?: boolean
   image_4k_enhancement_group_id?: number | null
+  image_4k_enhancement_model?: string | null
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
   image_rate_multiplier?: number
@@ -722,6 +724,7 @@ export interface UpdateGroupRequest {
   image_2k_enhancement_group_id?: number | null
   image_4k_enhancement_enabled?: boolean
   image_4k_enhancement_group_id?: number | null
+  image_4k_enhancement_model?: string | null
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
   image_rate_multiplier?: number

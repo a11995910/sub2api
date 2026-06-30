@@ -216,6 +216,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		Image2KEnhancementGroupID:       g.Image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       g.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       g.Image4KEnhancementGroupID,
+		Image4KEnhancementModel:         g.Image4KEnhancementModel,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		CacheHitQuarterToInput:          g.CacheHitQuarterToInput,
 		ImageRateMultiplier:             g.ImageRateMultiplier,

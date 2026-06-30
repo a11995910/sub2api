@@ -72,6 +72,7 @@ type APIKeyAuthGroupSnapshot struct {
 	Image2KEnhancementGroupID       *int64   `json:"image_2k_enhancement_group_id,omitempty"`
 	Image4KEnhancementEnabled       bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID       *int64   `json:"image_4k_enhancement_group_id,omitempty"`
+	Image4KEnhancementModel         *string  `json:"image_4k_enhancement_model,omitempty"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool     `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier             float64  `json:"image_rate_multiplier"`

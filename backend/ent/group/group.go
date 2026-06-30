@@ -56,6 +56,8 @@ const (
 	FieldImage4kEnhancementEnabled = "image_4k_enhancement_enabled"
 	// FieldImage4kEnhancementGroupID holds the string denoting the image_4k_enhancement_group_id field in the database.
 	FieldImage4kEnhancementGroupID = "image_4k_enhancement_group_id"
+	// FieldImage4kEnhancementModel holds the string denoting the image_4k_enhancement_model field in the database.
+	FieldImage4kEnhancementModel = "image_4k_enhancement_model"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldCacheHitQuarterToInputEnabled holds the string denoting the cache_hit_quarter_to_input_enabled field in the database.
@@ -193,6 +195,7 @@ var Columns = []string{
 	FieldImage2kEnhancementGroupID,
 	FieldImage4kEnhancementEnabled,
 	FieldImage4kEnhancementGroupID,
+	FieldImage4kEnhancementModel,
 	FieldImageRateIndependent,
 	FieldCacheHitQuarterToInputEnabled,
 	FieldImageRateMultiplier,
@@ -277,6 +280,8 @@ var (
 	DefaultImage2kEnhancementEnabled bool
 	// DefaultImage4kEnhancementEnabled holds the default value on creation for the "image_4k_enhancement_enabled" field.
 	DefaultImage4kEnhancementEnabled bool
+	// Image4kEnhancementModelValidator is a validator for the "image_4k_enhancement_model" field. It is called by the builders before save.
+	Image4kEnhancementModelValidator func(string) error
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
 	// DefaultCacheHitQuarterToInputEnabled holds the default value on creation for the "cache_hit_quarter_to_input_enabled" field.
@@ -417,6 +422,11 @@ func ByImage4kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByImage4kEnhancementGroupID orders the results by the image_4k_enhancement_group_id field.
 func ByImage4kEnhancementGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImage4kEnhancementGroupID, opts...).ToFunc()
+}
+
+// ByImage4kEnhancementModel orders the results by the image_4k_enhancement_model field.
+func ByImage4kEnhancementModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage4kEnhancementModel, opts...).ToFunc()
 }
 
 // ByImageRateIndependent orders the results by the image_rate_independent field.

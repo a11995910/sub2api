@@ -94,6 +94,11 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("4K 生图二段提升使用的目标图片分组 ID"),
+		field.String("image_4k_enhancement_model").
+			MaxLen(100).
+			Optional().
+			Nillable().
+			Comment("4K 生图二段提升使用的目标图片模型；为空时沿用目标分组自动模型解析"),
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),

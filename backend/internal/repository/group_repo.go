@@ -55,6 +55,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImage2kEnhancementGroupID(groupIn.Image2KEnhancementGroupID).
 		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
 		SetNillableImage4kEnhancementGroupID(groupIn.Image4KEnhancementGroupID).
+		SetNillableImage4kEnhancementModel(groupIn.Image4KEnhancementModel).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
@@ -190,6 +191,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetImage4kEnhancementGroupID(*groupIn.Image4KEnhancementGroupID)
 	} else {
 		builder = builder.ClearImage4kEnhancementGroupID()
+	}
+	if groupIn.Image4KEnhancementModel != nil {
+		builder = builder.SetImage4kEnhancementModel(*groupIn.Image4KEnhancementModel)
+	} else {
+		builder = builder.ClearImage4kEnhancementModel()
 	}
 	if groupIn.Image2KEnhancementGroupID != nil {
 		builder = builder.SetImage2kEnhancementGroupID(*groupIn.Image2KEnhancementGroupID)

@@ -59,6 +59,8 @@ type Group struct {
 	Image4kEnhancementEnabled bool `json:"image_4k_enhancement_enabled,omitempty"`
 	// 4K 生图二段提升使用的目标图片分组 ID
 	Image4kEnhancementGroupID *int64 `json:"image_4k_enhancement_group_id,omitempty"`
+	// 4K 生图二段提升使用的目标图片模型；为空时沿用目标分组自动模型解析
+	Image4kEnhancementModel *string `json:"image_4k_enhancement_model,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
 	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
 	// 启用后将每次请求缓存读取 token 的四分之一划入输入 token 重新计费
@@ -215,7 +217,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImage4kEnhancementModel, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -366,6 +368,13 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Image4kEnhancementGroupID = new(int64)
 				*_m.Image4kEnhancementGroupID = value.Int64
+			}
+		case group.FieldImage4kEnhancementModel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_4k_enhancement_model", values[i])
+			} else if value.Valid {
+				_m.Image4kEnhancementModel = new(string)
+				*_m.Image4kEnhancementModel = value.String
 			}
 		case group.FieldImageRateIndependent:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -654,6 +663,11 @@ func (_m *Group) String() string {
 	if v := _m.Image4kEnhancementGroupID; v != nil {
 		builder.WriteString("image_4k_enhancement_group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.Image4kEnhancementModel; v != nil {
+		builder.WriteString("image_4k_enhancement_model=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_independent=")

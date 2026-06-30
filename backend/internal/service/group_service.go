@@ -55,6 +55,7 @@ type CreateGroupRequest struct {
 	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled   bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel     *string  `json:"image_4k_enhancement_model"`
 	ImageRateIndependent        bool     `json:"image_rate_independent"`
 	ImageRateMultiplier         *float64 `json:"image_rate_multiplier"`
 }
@@ -72,6 +73,7 @@ type UpdateGroupRequest struct {
 	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled   *bool    `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel     *string  `json:"image_4k_enhancement_model"`
 	ImageRateIndependent        *bool    `json:"image_rate_independent"`
 	ImageRateMultiplier         *float64 `json:"image_rate_multiplier"`
 }
@@ -123,6 +125,7 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		Image2KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image2KEnhancementGroupID),
 		Image4KEnhancementEnabled:   req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
+		Image4KEnhancementModel:     normalizeImageTierEnhancementModel(req.Image4KEnhancementEnabled, req.Image4KEnhancementModel),
 		ImageRateIndependent:        req.ImageRateIndependent,
 		ImageRateMultiplier:         imageRateMultiplier,
 	}
@@ -214,6 +217,9 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 	if req.Image4KEnhancementGroupID != nil {
 		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID)
 	}
+	if req.Image4KEnhancementModel != nil {
+		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(group.Image4KEnhancementEnabled, req.Image4KEnhancementModel)
+	}
 	if req.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *req.ImageRateIndependent
 	}
@@ -222,6 +228,9 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 			return nil, fmt.Errorf("image_rate_multiplier must be >= 0")
 		}
 		group.ImageRateMultiplier = *req.ImageRateMultiplier
+	}
+	if !group.Image4KEnhancementEnabled {
+		group.Image4KEnhancementModel = nil
 	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

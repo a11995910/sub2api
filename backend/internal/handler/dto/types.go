@@ -120,6 +120,7 @@ type Group struct {
 	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled   bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel     *string  `json:"image_4k_enhancement_model"`
 	ImageRateIndependent        bool     `json:"image_rate_independent"`
 	CacheHitQuarterToInput      bool     `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier         float64  `json:"image_rate_multiplier"`

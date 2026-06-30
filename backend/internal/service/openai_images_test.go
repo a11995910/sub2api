@@ -1014,6 +1014,73 @@ func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementUsesTargetAccountI
 	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "messages.0.content.0.text").String(), "3840x2160")
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementUsesConfiguredTargetModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	targetGroupID := int64(46)
+	targetModel := "nano-banana-2"
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                        7,
+			AllowImageGeneration:      true,
+			Image4KEnhancementEnabled: true,
+			Image4KEnhancementGroupID: &targetGroupID,
+			Image4KEnhancementModel:   &targetModel,
+		},
+	})
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2","size":"3840x2160"}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_4k_enhance"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{
+					"choices":[{"message":{"role":"assistant","content":"data:image/png;base64,dXBzY2FsZWQ="}}],
+					"usage":{"prompt_tokens":9,"completion_tokens":2}
+				}`)),
+			},
+		},
+	}
+	targetAccount := openAIImages4KEnhancementTargetAccount(targetGroupID)
+	targetAccount.Credentials["model_mapping"] = map[string]any{
+		"nano-banana-2": "gemini-3.1-flash-image",
+	}
+	svc := newOpenAIImages4KEnhancementTestServiceWithChannelMapping(upstream, targetGroupID, []Account{targetAccount}, nil)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "dXBzY2FsZWQ=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.requests[1].URL.String())
+	require.Equal(t, "gemini-3.1-flash-image", gjson.GetBytes(upstream.bodies[1], "model").String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementResizesEnhancedImageToRequestedSize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
