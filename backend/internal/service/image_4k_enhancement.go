@@ -157,9 +157,9 @@ func imageEnhancementRequestHasExplicitTier(parsed *OpenAIImagesRequest) bool {
 	if parsed == nil {
 		return false
 	}
-	if parsed.ExplicitSize {
-		return true
-	}
+	// 仅当尺寸能明确归类到具体计费档位（1K/2K/4K）时才算显式指定。
+	// 注意：size="auto" 会让 parsed.ExplicitSize 为 true，但它无法归类、
+	// 会回退到 2K 默认值，不应据此触发计费的 2K 二段提升。
 	_, ok := ClassifyImageBillingTier(parsed.Size)
 	return ok
 }

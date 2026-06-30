@@ -948,6 +948,56 @@ func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementSkipsImplicitDefau
 	require.Equal(t, "https://api.openai.com/v1/images/generations", upstream.requests[0].URL.String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementSkipsAutoSize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a product photo","size":"auto","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	targetGroupID := int64(46)
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                        7,
+			AllowImageGeneration:      true,
+			Image2KEnhancementEnabled: true,
+			Image2KEnhancementGroupID: &targetGroupID,
+		},
+	})
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2"}`)),
+		},
+	}
+	svc := newOpenAIImages4KEnhancementTestService(upstream, targetGroupID, []Account{openAIImages4KEnhancementTargetAccount(targetGroupID)})
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	// size="auto" 会让 ExplicitSize 为 true，但不应被当作显式 2K 触发计费的二段提升。
+	require.True(t, parsed.ExplicitSize)
+	require.Equal(t, ImageBillingSize2K, parsed.SizeTier)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://api.openai.com/v1/images/generations", upstream.requests[0].URL.String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementUsesTargetAccountImageModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a city skyline","size":"3840x2160","response_format":"b64_json"}`)
