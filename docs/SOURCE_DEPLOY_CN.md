@@ -98,7 +98,7 @@ expected_commit='填写本地 dev 的 git rev-parse HEAD 输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 /usr/local/bin/prebuild-cleanup || true
-pnpm --dir frontend install --frozen-lockfile
+cd frontend && pnpm install --frozen-lockfile && cd ..
 GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
 file backend/bin/server
 sha256sum backend/bin/server
@@ -191,7 +191,7 @@ expected_commit='填写本地 git rev-parse HEAD 的输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 /usr/local/bin/prebuild-cleanup
-pnpm --dir frontend install --frozen-lockfile
+cd frontend && pnpm install --frozen-lockfile && cd ..
 GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
 file backend/bin/server
 sha256sum backend/bin/server
