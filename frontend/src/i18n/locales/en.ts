@@ -2464,6 +2464,7 @@ export default {
         image4KEnhancementModel: '4K enhancement target model',
         selectImage4KEnhancementModel: 'Select target model',
         noImage4KEnhancementModel: 'Do not use a target model',
+        useCustomImage4KEnhancementModel: 'Use custom model',
         image4KEnhancementModelHint: 'The second-stage enhancement uses this model in the target group. The original size is passed through unchanged; after 3 target failures, the base image is returned.',
         image4KEnhancementModelRequired: 'Select a target model when 4K enhancement is enabled',
         image4KEnhancementModelLoadFailed: 'Failed to load 4K enhancement target models',

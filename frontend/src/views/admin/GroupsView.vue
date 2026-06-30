@@ -920,6 +920,8 @@
                 :options="createImage4KEnhancementModelOptions"
                 :placeholder="t('admin.groups.imagePricing.selectImage4KEnhancementModel')"
                 :searchable="true"
+                :creatable="true"
+                :creatable-prefix="t('admin.groups.imagePricing.useCustomImage4KEnhancementModel')"
                 :clearable="true"
                 :disabled="
                   !createForm.image_4k_enhancement_group_id ||
@@ -2333,6 +2335,8 @@
                 :options="editImage4KEnhancementModelOptions"
                 :placeholder="t('admin.groups.imagePricing.selectImage4KEnhancementModel')"
                 :searchable="true"
+                :creatable="true"
+                :creatable-prefix="t('admin.groups.imagePricing.useCustomImage4KEnhancementModel')"
                 :clearable="true"
                 :disabled="
                   !editForm.image_4k_enhancement_group_id ||
@@ -3501,7 +3505,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
@@ -4756,7 +4760,9 @@ const handleEdit = async (group: AdminGroup) => {
     group.image_4k_enhancement_group_id ?? null;
   editForm.image_4k_enhancement_model =
     group.image_4k_enhancement_model ?? null;
-  editImage4KEnhancementModelInitializing = false;
+  nextTick(() => {
+    editImage4KEnhancementModelInitializing = false;
+  });
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.cache_hit_quarter_to_input_enabled =
     group.cache_hit_quarter_to_input_enabled ?? false;

@@ -2546,6 +2546,7 @@ export default {
         image4KEnhancementModel: '4K 提升目标模型',
         selectImage4KEnhancementModel: '选择目标模型',
         noImage4KEnhancementModel: '不使用目标模型',
+        useCustomImage4KEnhancementModel: '使用自定义模型',
         image4KEnhancementModelHint: '二段提升会用该模型请求目标分组；请求中的 size 会原样传入，目标失败 3 次后返回原图。',
         image4KEnhancementModelRequired: '开启 4K 提升时必须选择目标模型',
         image4KEnhancementModelLoadFailed: '加载 4K 提升目标模型失败',

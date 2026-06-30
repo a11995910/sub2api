@@ -1880,23 +1880,43 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
+	accountCandidates := make([]string, 0)
 	for _, acc := range accounts {
-		if acc.Platform != platform {
+		if !accountPlatformMatchesModelCandidatePlatform(acc.Platform, platform) {
 			continue
 		}
-		for model := range acc.GetModelMapping() {
-			model = strings.TrimSpace(model)
-			if model == "" {
-				continue
+		for model, mapped := range acc.GetModelMapping() {
+			for _, candidate := range []string{model, mapped} {
+				candidate = strings.TrimSpace(candidate)
+				if candidate == "" || strings.Contains(candidate, "*") {
+					continue
+				}
+				if _, ok := seen[candidate]; ok {
+					continue
+				}
+				seen[candidate] = struct{}{}
+				accountCandidates = append(accountCandidates, candidate)
 			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-			candidates = append(candidates, model)
 		}
 	}
+	sort.Strings(accountCandidates)
+	candidates = append(candidates, accountCandidates...)
 	return candidates, nil
+}
+
+func accountPlatformMatchesModelCandidatePlatform(accountPlatform, requestedPlatform string) bool {
+	accountPlatform = strings.TrimSpace(accountPlatform)
+	requestedPlatform = strings.TrimSpace(requestedPlatform)
+	if requestedPlatform == "" {
+		return true
+	}
+	if accountPlatform == requestedPlatform {
+		return true
+	}
+	if requestedPlatform == PlatformOpenAI {
+		return normalizeOpenAICompatiblePlatform(accountPlatform) == PlatformOpenAI
+	}
+	return false
 }
 
 func defaultModelsListCandidateIDs(platform string) []string {

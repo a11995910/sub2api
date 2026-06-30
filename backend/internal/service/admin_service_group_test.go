@@ -154,6 +154,34 @@ func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {
 	}, repo.listWithFiltersParams)
 }
 
+func TestAdminService_GetGroupModelsListCandidates_IncludesMappedImageTargetModels(t *testing.T) {
+	groupID := int64(46)
+	svc := &adminServiceImpl{
+		groupRepo: &groupRepoStubForAdmin{getByID: &Group{
+			ID:       groupID,
+			Platform: PlatformOpenAI,
+		}},
+		accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{
+			groupID: {{
+				ID:       7,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"nano-banana-2": "gemini-3.1-flash-image",
+					},
+				},
+			}},
+		}},
+	}
+
+	models, err := svc.GetGroupModelsListCandidates(context.Background(), groupID, PlatformOpenAI)
+
+	require.NoError(t, err)
+	require.Contains(t, models, "nano-banana-2")
+	require.Contains(t, models, "gemini-3.1-flash-image")
+}
+
 // TestAdminService_CreateGroup_WithImagePricing 测试创建分组时 ImagePrice 字段正确传递
 func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}

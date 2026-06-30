@@ -374,7 +374,12 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 			lastErr = fmt.Errorf("target group has no available account")
 			break
 		}
-		result, err := s.callOpenAIImages4KEnhancementAttempt(ctx, c, selection.Account, targetChannel, targetRequestModel, imageBytes, mimeType, sourceParsed, index)
+		targetForwardModel := strings.TrimSpace(selection.Account.GetMappedModel(targetRequestModel))
+		if targetForwardModel == "" {
+			targetForwardModel = targetRequestModel
+		}
+		attemptChannel := cloneImageEnhancementTargetChannelForModel(targetChannel, targetRequestModel, targetForwardModel)
+		result, err := s.callOpenAIImages4KEnhancementAttempt(ctx, c, selection.Account, attemptChannel, targetForwardModel, imageBytes, mimeType, sourceParsed, index)
 		if selection.ReleaseFunc != nil {
 			selection.ReleaseFunc()
 		}
@@ -435,6 +440,27 @@ func (s *OpenAIGatewayService) resolveImage4KEnhancementTargetRequestModel(ctx c
 		}
 	}
 	return candidates[0]
+}
+
+func cloneImageEnhancementTargetChannelForModel(channel *Channel, requestModel, mappedModel string) *Channel {
+	if channel == nil || channel.ShouldForwardOpenAIImagesViaChatCompletions() {
+		return channel
+	}
+	upstreamModel := strings.TrimSpace(mappedModel)
+	if upstreamModel == "" {
+		upstreamModel = requestModel
+	}
+	if validateOpenAIImagesModel(upstreamModel) == nil {
+		return channel
+	}
+	cloned := channel.Clone()
+	if cloned.FeaturesConfig == nil {
+		cloned.FeaturesConfig = map[string]any{}
+	}
+	cloned.FeaturesConfig[featureKeyOpenAIImagesUpstream] = map[string]any{
+		"mode": openAIImagesUpstreamModeChatCompletions,
+	}
+	return cloned
 }
 
 func (s *OpenAIGatewayService) callOpenAIImages4KEnhancementAttempt(
