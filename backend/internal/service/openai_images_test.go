@@ -832,7 +832,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementUsesTargetImageGro
 	require.Equal(t, "data:image/png;base64,b3JpZ2luYWw=", content.Get("1.image_url.url").String())
 }
 
-func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUsesTargetImageGroupAndOriginalSize(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUpscalesLocallyToExplicitSize(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a product photo","size":"2048x2048","response_format":"b64_json"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
@@ -840,38 +840,26 @@ func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUsesTargetImageGro
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = req
-	targetGroupID := int64(46)
 	c.Set("api_key", &APIKey{
 		ID: 42,
 		Group: &Group{
 			ID:                        7,
 			AllowImageGeneration:      true,
 			Image2KEnhancementEnabled: true,
-			Image2KEnhancementGroupID: &targetGroupID,
 		},
 	})
 
+	srcB64 := base64.StdEncoding.EncodeToString(encodeOpenAIImagesTestPNG(t, 320, 180))
 	upstream := &httpUpstreamRecorder{
 		responses: []*http.Response{
 			{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"b3JpZ2luYWw="}],"model":"gpt-image-2","size":"2048x2048"}`)),
-			},
-			{
-				StatusCode: http.StatusOK,
-				Header: http.Header{
-					"Content-Type": []string{"application/json"},
-					"X-Request-Id": []string{"req_img_2k_enhance"},
-				},
-				Body: io.NopCloser(strings.NewReader(`{
-					"choices":[{"message":{"role":"assistant","content":"data:image/png;base64,dHdvay11cHNjYWxlZA=="}}],
-					"usage":{"prompt_tokens":9,"completion_tokens":2}
-				}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"` + srcB64 + `"}],"model":"gpt-image-2","size":"2048x2048"}`)),
 			},
 		},
 	}
-	svc := newOpenAIImages4KEnhancementTestService(upstream, targetGroupID, []Account{openAIImages4KEnhancementTargetAccount(targetGroupID)})
+	svc := newOpenAIImages4KEnhancementTestService(upstream, 46, nil)
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
@@ -888,15 +876,121 @@ func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUsesTargetImageGro
 	require.NotNil(t, result)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, ImageBillingSize2K, result.ImageSize)
-	require.Equal(t, "2048x2048", result.ImageInputSize)
-	require.Equal(t, "dHdvay11cHNjYWxlZA==", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	// 仅 1 次上游调用 = 原始生成；本地放大不产生第二段网络请求。
+	require.Len(t, upstream.requests, 1)
 	require.Equal(t, "2048x2048", gjson.Get(rec.Body.String(), "size").String())
-	require.Len(t, upstream.requests, 2)
-	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.requests[1].URL.String())
-	require.Equal(t, "banana-upstream-model", gjson.GetBytes(upstream.bodies[1], "model").String())
-	require.Equal(t, "2K", gjson.GetBytes(upstream.bodies[1], "generationConfig.imageConfig.imageSize").String())
-	require.Equal(t, "1:1", gjson.GetBytes(upstream.bodies[1], "generationConfig.imageConfig.aspectRatio").String())
-	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "messages.0.content.0.text").String(), "2048x2048")
+
+	outputB64 := gjson.Get(rec.Body.String(), "data.0.b64_json").String()
+	require.NotEqual(t, srcB64, outputB64)
+	outputBytes, err := base64.StdEncoding.DecodeString(outputB64)
+	require.NoError(t, err)
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(outputBytes))
+	require.NoError(t, err)
+	require.Equal(t, "png", format)
+	require.Equal(t, 2048, cfg.Width)
+	require.Equal(t, 2048, cfg.Height)
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUpscalesLocallyByLongestEdge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// size 用 "2K" 关键字（无具体像素）→ 长边放大到 2048，保持宽高比。
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a product photo","size":"2K","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                        7,
+			AllowImageGeneration:      true,
+			Image2KEnhancementEnabled: true,
+		},
+	})
+
+	srcB64 := base64.StdEncoding.EncodeToString(encodeOpenAIImagesTestPNG(t, 512, 256))
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"` + srcB64 + `"}],"model":"gpt-image-2"}`)),
+			},
+		},
+	}
+	svc := newOpenAIImages4KEnhancementTestService(upstream, 46, nil)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	_, err = svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, upstream.requests, 1)
+
+	outputBytes, err := base64.StdEncoding.DecodeString(gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.NoError(t, err)
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(outputBytes))
+	require.NoError(t, err)
+	// 512x256 长边 512 → 放大 4 倍 → 2048x1024。
+	require.Equal(t, 2048, cfg.Width)
+	require.Equal(t, 1024, cfg.Height)
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementSkipsWhenAlreadyAtLeast2K(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// 无显式像素（"2K" 关键字），原图长边已 ≥ 2048 → 不放大，原样返回。
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a product photo","size":"2K","response_format":"b64_json"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{
+		ID: 42,
+		Group: &Group{
+			ID:                        7,
+			AllowImageGeneration:      true,
+			Image2KEnhancementEnabled: true,
+		},
+	})
+
+	srcB64 := base64.StdEncoding.EncodeToString(encodeOpenAIImagesTestPNG(t, 2048, 1152))
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"` + srcB64 + `"}],"model":"gpt-image-2"}`)),
+			},
+		},
+	}
+	svc := newOpenAIImages4KEnhancementTestService(upstream, 46, nil)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          1,
+		Name:        "image2",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-image2"},
+	}
+
+	_, err = svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, upstream.requests, 1)
+	// 原图未被放大，b64 保持不变。
+	require.Equal(t, srcB64, gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementSkipsImplicitDefaultSize(t *testing.T) {

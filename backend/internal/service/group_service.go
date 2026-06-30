@@ -122,8 +122,9 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		AllowImageGeneration:        req.AllowImageGeneration,
 		ImageSuperResolutionEnabled: req.ImageSuperResolutionEnabled,
 		Image2KEnhancementEnabled:   req.Image2KEnhancementEnabled,
-		Image2KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image2KEnhancementGroupID),
-		Image4KEnhancementEnabled:   req.Image4KEnhancementEnabled,
+		// 2K 超分为纯本地放大，不再使用目标分组（字段已废弃）。
+		Image2KEnhancementGroupID: nil,
+		Image4KEnhancementEnabled: req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
 		Image4KEnhancementModel:     normalizeImageTierEnhancementModel(req.Image4KEnhancementEnabled, req.Image4KEnhancementModel),
 		ImageRateIndependent:        req.ImageRateIndependent,
@@ -208,9 +209,8 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 	if req.Image2KEnhancementEnabled != nil {
 		group.Image2KEnhancementEnabled = *req.Image2KEnhancementEnabled
 	}
-	if req.Image2KEnhancementGroupID != nil {
-		group.Image2KEnhancementGroupID = normalizePositiveInt64Ptr(req.Image2KEnhancementGroupID)
-	}
+	// 2K 超分为纯本地放大，不再使用目标分组（字段已废弃，始终置空）。
+	group.Image2KEnhancementGroupID = nil
 	if req.Image4KEnhancementEnabled != nil {
 		group.Image4KEnhancementEnabled = *req.Image4KEnhancementEnabled
 	}

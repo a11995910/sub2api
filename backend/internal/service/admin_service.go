@@ -1995,7 +1995,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
-	image2KEnhancementGroupID := normalizeImageTierEnhancementGroupID(input.Image2KEnhancementEnabled, input.Image2KEnhancementGroupID)
+	// 2K 超分为纯本地放大，不再使用目标分组，始终置空。
+	var image2KEnhancementGroupID *int64
 	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, input.AllowImageGeneration, input.Image2KEnhancementEnabled, image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
 		return nil, err
 	}
@@ -2177,6 +2178,10 @@ func (s *adminServiceImpl) validateImageTierEnhancementConfig(ctx context.Contex
 	if !allowImageGeneration {
 		return fmt.Errorf("image_%s_enhancement_enabled requires allow_image_generation", fieldPrefix)
 	}
+	// 2K 超分为纯本地等比放大，不依赖目标分组，无需校验 target group。
+	if tier == ImageBillingSize2K {
+		return nil
+	}
 	if targetGroupID == nil || *targetGroupID <= 0 {
 		return fmt.Errorf("image_%s_enhancement_group_id is required when image %s enhancement is enabled", fieldPrefix, tier)
 	}
@@ -2315,9 +2320,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Image2KEnhancementEnabled != nil {
 		group.Image2KEnhancementEnabled = *input.Image2KEnhancementEnabled
 	}
-	if input.Image2KEnhancementGroupID != nil {
-		group.Image2KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image2KEnhancementGroupID)
-	}
+	// 2K 超分为纯本地放大，不再使用目标分组（Image2KEnhancementGroupID 已废弃，始终置空）。
 	if input.Image4KEnhancementEnabled != nil {
 		group.Image4KEnhancementEnabled = *input.Image4KEnhancementEnabled
 	}
@@ -2419,9 +2422,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
-	if !group.Image2KEnhancementEnabled {
-		group.Image2KEnhancementGroupID = nil
-	}
+	// 2K 超分为纯本地放大，目标分组字段已废弃，始终清空。
+	group.Image2KEnhancementGroupID = nil
 	if !group.Image4KEnhancementEnabled {
 		group.Image4KEnhancementGroupID = nil
 		group.Image4KEnhancementModel = nil

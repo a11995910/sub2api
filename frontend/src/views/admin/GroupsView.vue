@@ -871,28 +871,6 @@
           <div
             v-if="
               createForm.platform === 'openai' &&
-              createForm.image_2k_enhancement_enabled
-            "
-            class="mb-4"
-          >
-            <label class="input-label">
-              {{ t("admin.groups.imagePricing.image2KEnhancementGroup") }}
-            </label>
-            <Select
-              v-model="createForm.image_2k_enhancement_group_id"
-              :options="image2KEnhancementGroupOptions"
-              :placeholder="t('admin.groups.imagePricing.selectImage2KEnhancementGroup')"
-              :searchable="true"
-              :clearable="true"
-              :disabled="imageEnhancementGroupsLoading"
-            />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.imagePricing.image2KEnhancementGroupHint") }}
-            </p>
-          </div>
-          <div
-            v-if="
-              createForm.platform === 'openai' &&
               createForm.image_4k_enhancement_enabled
             "
             class="mb-4"
@@ -2286,28 +2264,6 @@
           <div
             v-if="
               editForm.platform === 'openai' &&
-              editForm.image_2k_enhancement_enabled
-            "
-            class="mb-4"
-          >
-            <label class="input-label">
-              {{ t("admin.groups.imagePricing.image2KEnhancementGroup") }}
-            </label>
-            <Select
-              v-model="editForm.image_2k_enhancement_group_id"
-              :options="image2KEnhancementGroupOptionsForEdit"
-              :placeholder="t('admin.groups.imagePricing.selectImage2KEnhancementGroup')"
-              :searchable="true"
-              :clearable="true"
-              :disabled="imageEnhancementGroupsLoading"
-            />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.imagePricing.image2KEnhancementGroupHint") }}
-            </p>
-          </div>
-          <div
-            v-if="
-              editForm.platform === 'openai' &&
               editForm.image_4k_enhancement_enabled
             "
             class="mb-4"
@@ -3684,32 +3640,6 @@ const buildImage4KEnhancementGroupOptions = (currentGroupID?: number) => {
   return options;
 };
 
-const buildImage2KEnhancementGroupOptions = (currentGroupID?: number) => {
-  const options: { value: number | null; label: string }[] = [
-    { value: null, label: t("admin.groups.imagePricing.noImage2KEnhancementGroup") },
-  ];
-  imageEnhancementGroups.value
-    .filter(
-      (group) =>
-        group.platform === "openai" &&
-        group.status === "active" &&
-        group.allow_image_generation &&
-        group.id !== currentGroupID,
-    )
-    .forEach((group) => {
-      options.push({ value: group.id, label: group.name });
-    });
-  return options;
-};
-
-const image2KEnhancementGroupOptions = computed(() =>
-  buildImage2KEnhancementGroupOptions(),
-);
-
-const image2KEnhancementGroupOptionsForEdit = computed(() =>
-  buildImage2KEnhancementGroupOptions(editingGroup.value?.id),
-);
-
 const image4KEnhancementGroupOptions = computed(() =>
   buildImage4KEnhancementGroupOptions(),
 );
@@ -3920,7 +3850,6 @@ const createForm = reactive({
   allow_image_generation: false,
   image_super_resolution_enabled: false,
   image_2k_enhancement_enabled: false,
-  image_2k_enhancement_group_id: null as number | null,
   image_4k_enhancement_enabled: false,
   image_4k_enhancement_group_id: null as number | null,
   image_4k_enhancement_model: null as string | null,
@@ -4258,7 +4187,6 @@ const editForm = reactive({
   allow_image_generation: false,
   image_super_resolution_enabled: false,
   image_2k_enhancement_enabled: false,
-  image_2k_enhancement_group_id: null as number | null,
   image_4k_enhancement_enabled: false,
   image_4k_enhancement_group_id: null as number | null,
   image_4k_enhancement_model: null as string | null,
@@ -4578,7 +4506,6 @@ const closeCreateModal = () => {
   createForm.allow_image_generation = false;
   createForm.image_super_resolution_enabled = false;
   createForm.image_2k_enhancement_enabled = false;
-  createForm.image_2k_enhancement_group_id = null;
   createForm.image_4k_enhancement_enabled = false;
   createForm.image_4k_enhancement_group_id = null;
   createForm.image_4k_enhancement_model = null;
@@ -4635,14 +4562,6 @@ const normalizeImageRateMultiplier = (
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
-    return;
-  }
-  if (
-    createForm.platform === "openai" &&
-    createForm.image_2k_enhancement_enabled &&
-    !createForm.image_2k_enhancement_group_id
-  ) {
-    appStore.showError(t("admin.groups.imagePricing.image2KEnhancementGroupRequired"));
     return;
   }
   if (
@@ -4704,12 +4623,6 @@ const handleCreateGroup = async () => {
     );
     if (
       requestData.platform !== "openai" ||
-      !requestData.image_2k_enhancement_enabled
-    ) {
-      requestData.image_2k_enhancement_group_id = null;
-    }
-    if (
-      requestData.platform !== "openai" ||
       !requestData.image_4k_enhancement_enabled
     ) {
       requestData.image_4k_enhancement_group_id = null;
@@ -4751,8 +4664,6 @@ const handleEdit = async (group: AdminGroup) => {
     group.image_super_resolution_enabled ?? false;
   editForm.image_2k_enhancement_enabled =
     group.image_2k_enhancement_enabled ?? false;
-  editForm.image_2k_enhancement_group_id =
-    group.image_2k_enhancement_group_id ?? null;
   editForm.image_4k_enhancement_enabled =
     group.image_4k_enhancement_enabled ?? false;
   editImage4KEnhancementModelInitializing = true;
@@ -4818,7 +4729,6 @@ const closeEditModal = () => {
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
   editForm.image_2k_enhancement_enabled = false;
-  editForm.image_2k_enhancement_group_id = null;
   editForm.image_4k_enhancement_enabled = false;
   editForm.image_4k_enhancement_group_id = null;
   editForm.image_4k_enhancement_model = null;
@@ -4831,14 +4741,6 @@ const handleUpdateGroup = async () => {
   if (!editingGroup.value) return;
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
-    return;
-  }
-  if (
-    editForm.platform === "openai" &&
-    editForm.image_2k_enhancement_enabled &&
-    !editForm.image_2k_enhancement_group_id
-  ) {
-    appStore.showError(t("admin.groups.imagePricing.image2KEnhancementGroupRequired"));
     return;
   }
   if (
@@ -4905,12 +4807,6 @@ const handleUpdateGroup = async () => {
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );
-    if (
-      payload.platform !== "openai" ||
-      !payload.image_2k_enhancement_enabled
-    ) {
-      payload.image_2k_enhancement_group_id = null;
-    }
     if (
       payload.platform !== "openai" ||
       !payload.image_4k_enhancement_enabled
@@ -5156,7 +5052,6 @@ watch(
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
       createForm.image_2k_enhancement_enabled = false;
-      createForm.image_2k_enhancement_group_id = null;
       createForm.image_4k_enhancement_enabled = false;
       createForm.image_4k_enhancement_group_id = null;
       createForm.image_4k_enhancement_model = null;
@@ -5180,7 +5075,6 @@ watch(
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
       editForm.image_2k_enhancement_enabled = false;
-      editForm.image_2k_enhancement_group_id = null;
       editForm.image_4k_enhancement_enabled = false;
       editForm.image_4k_enhancement_group_id = null;
       editForm.image_4k_enhancement_model = null;
@@ -5202,7 +5096,6 @@ watch(
   (enabled) => {
     if (!enabled) {
       createForm.image_2k_enhancement_enabled = false;
-      createForm.image_2k_enhancement_group_id = null;
       createForm.image_4k_enhancement_enabled = false;
       createForm.image_4k_enhancement_group_id = null;
       createForm.image_4k_enhancement_model = null;
@@ -5216,29 +5109,10 @@ watch(
   (enabled) => {
     if (!enabled) {
       editForm.image_2k_enhancement_enabled = false;
-      editForm.image_2k_enhancement_group_id = null;
       editForm.image_4k_enhancement_enabled = false;
       editForm.image_4k_enhancement_group_id = null;
       editForm.image_4k_enhancement_model = null;
       editImage4KEnhancementModels.value = [];
-    }
-  },
-);
-
-watch(
-  () => createForm.image_2k_enhancement_enabled,
-  (enabled) => {
-    if (!enabled) {
-      createForm.image_2k_enhancement_group_id = null;
-    }
-  },
-);
-
-watch(
-  () => editForm.image_2k_enhancement_enabled,
-  (enabled) => {
-    if (!enabled) {
-      editForm.image_2k_enhancement_group_id = null;
     }
   },
 );

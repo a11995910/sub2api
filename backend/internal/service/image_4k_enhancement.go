@@ -49,12 +49,14 @@ func (s *OpenAIGatewayService) image4KEnhancementSkipReason(c *gin.Context, pars
 	tier := imageEnhancementRequestTier(parsed, "")
 	switch tier {
 	case ImageBillingSize2K:
+		// 2K 命中走纯本地等比放大（CatmullRom），不转发目标分组、不产生二段计费。
 		if !imageEnhancementRequestHasExplicitTier(parsed) {
 			return "request_2k_not_explicit"
 		}
 		if !apiKey.Group.Image2KEnhancementEnabled {
 			return "group_2k_enhancement_disabled"
 		}
+		return ""
 	case ImageBillingSize4K:
 		if !apiKey.Group.Image4KEnhancementEnabled {
 			return "group_4k_enhancement_disabled"
@@ -62,6 +64,7 @@ func (s *OpenAIGatewayService) image4KEnhancementSkipReason(c *gin.Context, pars
 	default:
 		return "request_not_2k_or_4k"
 	}
+	// 仅 4K 二段提升依赖目标分组。
 	targetGroupID := imageEnhancementTargetGroupID(apiKey.Group, tier)
 	if targetGroupID == nil || *targetGroupID <= 0 {
 		return "target_group_missing"
@@ -279,12 +282,23 @@ func (s *OpenAIGatewayService) applyOpenAIResponses4KEnhancement(
 	}
 	logImage4KEnhancementDecision(c, "apply", "", parsed)
 
+	tier := imageEnhancementRequestTier(parsed, "")
 	out := make([]openAIResponsesImageResult, len(results))
 	copy(out, results)
 	for index := range out {
 		imageBytes, mimeType, err := openAIResponsesImageResultBytes(out[index])
 		if err != nil {
-			logger.LegacyPrintf(image4KEnhancementLogComponent, "skip image 4k enhancement: index=%d err=%v", index, err)
+			logger.LegacyPrintf(image4KEnhancementLogComponent, "skip image tier enhancement: index=%d err=%v", index, err)
+			continue
+		}
+		if tier == ImageBillingSize2K {
+			// 2K：纯本地等比放大，不调用目标分组。
+			enhanced, err := upscaleImage2KLocally(out[index], imageBytes, parsed)
+			if err != nil {
+				logger.LegacyPrintf(image4KEnhancementLogComponent, "image 2k local upscale failed: index=%d err=%v", index, err)
+				continue
+			}
+			out[index] = enhanced
 			continue
 		}
 		enhanced, err := s.enhanceOpenAIImageViaTargetGroup(ctx, c, imageBytes, mimeType, parsed, index)
@@ -295,6 +309,65 @@ func (s *OpenAIGatewayService) applyOpenAIResponses4KEnhancement(
 		out[index] = enhanced
 	}
 	return out
+}
+
+// upscaleImage2KLocally 用本地 CatmullRom 算法把生成图等比放大到 2K，
+// 不发起任何上游调用、不产生二段计费。目标尺寸取自请求 size：
+//   - 请求 size 是明确像素（如 2048x1152）→ 放大到该精确尺寸；
+//   - 请求 size 是 "2K" 关键字（无具体像素）→ 长边放大到 2048，保持宽高比；
+//   - 原图长边已 ≥ 2048 → 不放大，原样返回。
+func upscaleImage2KLocally(source openAIResponsesImageResult, imageBytes []byte, parsed *OpenAIImagesRequest) (openAIResponsesImageResult, error) {
+	width, height, ok := compute2KTargetDimensions(imageBytes, parsed)
+	if !ok {
+		return source, nil
+	}
+	targetFormat := normalizeOpenAIImage4KEnhancementOutputFormat(parsed)
+	resized, format, changed, err := resizeOpenAIImageBytesToDimensionsAndFormat(imageBytes, width, height, targetFormat)
+	if err != nil {
+		return source, err
+	}
+	if !changed {
+		return source, nil
+	}
+	out := source
+	out.Result = base64.StdEncoding.EncodeToString(resized)
+	out.URL = ""
+	out.MimeType = "image/" + format
+	if format == "jpeg" {
+		out.MimeType = "image/jpeg"
+	}
+	out.OutputFormat = format
+	out.Size = fmt.Sprintf("%dx%d", width, height)
+	if model := openAIImagesRequestModel(parsed); model != "" {
+		out.Model = model
+	}
+	return out, nil
+}
+
+// compute2KTargetDimensions 计算 2K 本地放大的目标像素尺寸。
+// 返回 ok=false 表示无需/无法放大（应原样返回）。
+func compute2KTargetDimensions(imageBytes []byte, parsed *OpenAIImagesRequest) (int, int, bool) {
+	const maxEdge2K = 2048
+	if width, height, ok := parseImageBillingDimensions(openAIImagesRequestSize(parsed)); ok {
+		return width, height, true
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(imageBytes))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return 0, 0, false
+	}
+	longest := cfg.Width
+	if cfg.Height > longest {
+		longest = cfg.Height
+	}
+	if longest >= maxEdge2K {
+		// 原图长边已达到/超过 2K，本地放大无意义。
+		return 0, 0, false
+	}
+	scale := float64(maxEdge2K) / float64(longest)
+	if cfg.Width >= cfg.Height {
+		return maxEdge2K, int(float64(cfg.Height)*scale + 0.5), true
+	}
+	return int(float64(cfg.Width)*scale + 0.5), maxEdge2K, true
 }
 
 func openAIResponsesImageResultBytes(result openAIResponsesImageResult) ([]byte, string, error) {
