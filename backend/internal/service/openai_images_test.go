@@ -917,7 +917,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementResizesEnhancedIma
 			name:       "JPEG",
 			mimeType:   "image/jpeg",
 			imageBytes: encodeOpenAIImagesTestJPEG(t, 320, 180),
-			wantFormat: "jpeg",
+			wantFormat: "png",
 		},
 	}
 
@@ -978,7 +978,9 @@ func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementResizesEnhancedIma
 			require.NotNil(t, result)
 			require.Equal(t, http.StatusOK, rec.Code)
 			require.Equal(t, "3840x2160", gjson.Get(rec.Body.String(), "size").String())
+			require.Equal(t, "3840x2160", gjson.Get(rec.Body.String(), "data.0.size").String())
 			require.Equal(t, tt.wantFormat, gjson.Get(rec.Body.String(), "output_format").String())
+			require.Equal(t, []string{"3840x2160"}, result.ImageOutputSizes)
 
 			outputB64 := gjson.Get(rec.Body.String(), "data.0.b64_json").String()
 			outputBytes, err := base64.StdEncoding.DecodeString(outputB64)
@@ -991,6 +993,21 @@ func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementResizesEnhancedIma
 			require.NotEqual(t, targetB64, outputB64)
 		})
 	}
+}
+
+func TestBuildOpenAIImagesAPIResponseUsesInlineImageDimensionsForDataSize(t *testing.T) {
+	img := encodeOpenAIImagesTestPNG(t, 4, 3)
+	body, err := buildOpenAIImagesAPIResponse([]openAIResponsesImageResult{{
+		Result: base64.StdEncoding.EncodeToString(img),
+		Size:   "3840x2160",
+	}}, 1710000000, nil, openAIResponsesImageResult{
+		Size: "3840x2160",
+	}, "b64_json")
+	require.NoError(t, err)
+
+	require.Equal(t, "4x3", gjson.GetBytes(body, "data.0.size").String())
+	require.Equal(t, "3840x2160", gjson.GetBytes(body, "size").String())
+	require.Equal(t, []string{"4x3"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKey4KEnhancementFallsBackAfterThreeTargetFailures(t *testing.T) {

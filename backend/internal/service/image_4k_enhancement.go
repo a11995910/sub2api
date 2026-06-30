@@ -389,7 +389,7 @@ func (s *OpenAIGatewayService) callOpenAIImages4KEnhancementAttempt(
 	}
 	enhanced.Model = openAIImagesRequestModel(sourceParsed)
 	enhanced.Size = openAIImagesRequestSize(sourceParsed)
-	if resized, err := resizeOpenAIImage4KEnhancementResultToRequestedSize(enhanced, sourceParsed); err != nil {
+	if resized, err := resizeOpenAIImage4KEnhancementResult(enhanced, enhanceParsed); err != nil {
 		logger.LegacyPrintf(image4KEnhancementLogComponent, "image 4k enhancement pixel resize skipped: err=%v", err)
 	} else {
 		enhanced = resized
@@ -482,11 +482,12 @@ func firstOpenAIImageResultFromAPIResponse(body []byte) (openAIResponsesImageRes
 	return result, nil
 }
 
-func resizeOpenAIImage4KEnhancementResultToRequestedSize(result openAIResponsesImageResult, sourceParsed *OpenAIImagesRequest) (openAIResponsesImageResult, error) {
-	width, height, ok := parseImageBillingDimensions(openAIImagesRequestSize(sourceParsed))
+func resizeOpenAIImage4KEnhancementResult(result openAIResponsesImageResult, enhanceParsed *OpenAIImagesRequest) (openAIResponsesImageResult, error) {
+	width, height, ok := parseImageBillingDimensions(openAIImagesRequestSize(enhanceParsed))
 	if !ok {
 		return result, nil
 	}
+	targetFormat := normalizeOpenAIImage4KEnhancementOutputFormat(enhanceParsed)
 	b64 := normalizeOpenAIImageBase64(result.Result)
 	if b64 == "" {
 		return result, nil
@@ -495,7 +496,7 @@ func resizeOpenAIImage4KEnhancementResultToRequestedSize(result openAIResponsesI
 	if err != nil {
 		return result, err
 	}
-	resized, format, changed, err := resizeOpenAIImageBytesToDimensions(data, width, height)
+	resized, format, changed, err := resizeOpenAIImageBytesToDimensionsAndFormat(data, width, height, targetFormat)
 	if err != nil || !changed {
 		return result, err
 	}
@@ -509,7 +510,22 @@ func resizeOpenAIImage4KEnhancementResultToRequestedSize(result openAIResponsesI
 	return result, nil
 }
 
-func resizeOpenAIImageBytesToDimensions(data []byte, width, height int) ([]byte, string, bool, error) {
+func normalizeOpenAIImage4KEnhancementOutputFormat(parsed *OpenAIImagesRequest) string {
+	if parsed == nil {
+		return ""
+	}
+	format := strings.ToLower(strings.TrimSpace(parsed.OutputFormat))
+	switch format {
+	case "jpg":
+		return "jpeg"
+	case "jpeg", "png":
+		return format
+	default:
+		return ""
+	}
+}
+
+func resizeOpenAIImageBytesToDimensionsAndFormat(data []byte, width, height int, targetFormat string) ([]byte, string, bool, error) {
 	if width <= 0 || height <= 0 {
 		return data, "", false, nil
 	}
@@ -524,15 +540,22 @@ func resizeOpenAIImageBytesToDimensions(data []byte, width, height int) ([]byte,
 	if strings.EqualFold(format, "jpg") {
 		format = "jpeg"
 	}
+	targetFormat = strings.ToLower(strings.TrimSpace(targetFormat))
+	if targetFormat == "" {
+		targetFormat = format
+	}
+	if targetFormat == "jpg" {
+		targetFormat = "jpeg"
+	}
 	bounds := src.Bounds()
-	if bounds.Dx() == width && bounds.Dy() == height {
+	if bounds.Dx() == width && bounds.Dy() == height && strings.EqualFold(format, targetFormat) {
 		return data, format, false, nil
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 	xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, xdraw.Over, nil)
 
 	var out bytes.Buffer
-	switch strings.ToLower(format) {
+	switch targetFormat {
 	case "jpeg":
 		if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 95}); err != nil {
 			return data, format, false, err

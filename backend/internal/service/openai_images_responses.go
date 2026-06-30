@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"net/http"
 	"strings"
@@ -298,8 +299,8 @@ func buildOpenAIImagesStreamCompletedPayload(
 	if img.Quality != "" {
 		payload, _ = sjson.SetBytes(payload, "quality", img.Quality)
 	}
-	if img.Size != "" {
-		payload, _ = sjson.SetBytes(payload, "size", img.Size)
+	if size := openAIResponsesImageResultOutputSize(img); size != "" {
+		payload, _ = sjson.SetBytes(payload, "size", size)
 	}
 	if img.Model != "" {
 		payload, _ = sjson.SetBytes(payload, "model", img.Model)
@@ -1078,6 +1079,9 @@ func buildOpenAIImagesAPIResponse(
 		if img.RevisedPrompt != "" {
 			item, _ = sjson.SetBytes(item, "revised_prompt", img.RevisedPrompt)
 		}
+		if size := openAIResponsesImageResultOutputSize(img); size != "" {
+			item, _ = sjson.SetBytes(item, "size", size)
+		}
 		out, _ = sjson.SetRawBytes(out, "data.-1", item)
 	}
 	if firstMeta.Background != "" {
@@ -1099,6 +1103,34 @@ func buildOpenAIImagesAPIResponse(
 		out, _ = sjson.SetRawBytes(out, "usage", usageRaw)
 	}
 	return out, nil
+}
+
+func openAIResponsesImageResultOutputSize(img openAIResponsesImageResult) string {
+	if size := openAIInlineImageOutputSize(img); size != "" {
+		return size
+	}
+	return strings.TrimSpace(img.Size)
+}
+
+func openAIInlineImageOutputSize(img openAIResponsesImageResult) string {
+	b64 := normalizeOpenAIImageBase64(img.Result)
+	if b64 == "" {
+		if dataURLB64, _ := openAIImageBase64FromDataURL(img.URL); dataURLB64 != "" {
+			b64 = dataURLB64
+		}
+	}
+	if b64 == "" {
+		return ""
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return ""
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dx%d", cfg.Width, cfg.Height)
 }
 
 func (s *OpenAIGatewayService) materializeOpenAIResponsesImageURLs(
