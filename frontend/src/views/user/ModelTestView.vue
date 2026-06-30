@@ -291,7 +291,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
 import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
+import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   ADAPTIVE_IMAGE_SIZE_VALUE,
   IMAGE_SIZE_PRESET_OPTIONS,
@@ -648,6 +648,8 @@ function applyQuerySelection() {
   const queryGroupID = queryNumber(route.query.group_id)
   if (queryKind === 'token' || queryKind === 'image') {
     selectedKind.value = queryKind
+  } else {
+    selectedKind.value = selectAvailableModelKind(allModels.value, selectedKind.value)
   }
 
   const candidates = allModels.value.filter((model) => model.kind === selectedKind.value)

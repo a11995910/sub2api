@@ -147,6 +147,8 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 测试请求使用用户选中的真实 API Key 发起，因此会自然经过 API Key 鉴权、分组路由、限流、用量记录和灵石扣费。若某个分组没有 active API Key，页面只提示用户去 API Key 页面创建或绑定该分组的 Key，不会用无分组 Key 代替，避免测试流量落到错误分组。
 
+页面按模型能力区分文本模式和图片模式。打开页面时会优先保留当前模式；如果当前模式没有可用模型而另一个模式存在可用模型，页面会自动切换到可用模式，确保只配置图片分组或只配置文本分组的环境也能直接展示可测试模型。
+
 图片测试支持固定尺寸和自适应尺寸。固定尺寸会向图片网关传递 `size`；自适应尺寸不会传递 `size`，适用于用户在提示词中自行描述尺寸、画幅或比例的场景。自适应尺寸的价格预览按后端当前默认 `2K` 分档展示，真实请求仍经过网关的图片计费记录链路。
 
 图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传本地参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。远程参考图可通过 JSON `images[].image_url` 提交到网关；当上游账号为 OpenAI APIKey 类型时，网关会校验远程地址为公网 HTTP/HTTPS 图片地址，并由服务器直接下载图片内容后转成 multipart 文件上传给上游。远程地址不可访问、返回非 2xx、返回 HTML/鉴权页等非图片内容或超过大小限制时，网关返回 `400 invalid_request_error`，不会把本地输入校验失败显示为上游 `502`。开启 `features_config.openai_images_upstream.mode=chat_completions` 的渠道会把图片入口转发到上游 `/v1/chat/completions`：文生图请求发送文本消息，图生图请求发送文本加 `image_url` 多模态消息，保证参考图随请求传递给上游。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
