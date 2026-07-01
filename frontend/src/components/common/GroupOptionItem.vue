@@ -45,7 +45,7 @@
           <span class="font-bold">{{ userRateMultiplier }}x</span>
         </template>
         <template v-else>
-          {{ rateMultiplier }}x 倍率
+          {{ rateMultiplier }}x {{ t('admin.groups.rateLabel') }}
         </template>
       </span>
       <!-- Checkmark -->
@@ -70,6 +70,8 @@ import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
 
+const { t } = useI18n()
+
 interface Props {
   name: string
   platform: GroupPlatform
@@ -91,8 +93,6 @@ const props = withDefaults(defineProps<Props>(), {
   allowImageGeneration: false,
   accessCountdown: null
 })
-
-const { t } = useI18n()
 
 // Whether user has a custom rate different from default
 const hasCustomRate = computed(() => {

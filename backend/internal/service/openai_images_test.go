@@ -1871,6 +1871,10 @@ func (r *openAIImages4KEnhancementAccountRepo) GetByIDs(ctx context.Context, ids
 	panic("unexpected GetByIDs call")
 }
 
+func (r *openAIImages4KEnhancementAccountRepo) ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error) {
+	panic("unexpected ListShadowsByParent call")
+}
+
 func (r *openAIImages4KEnhancementAccountRepo) ExistsByID(ctx context.Context, id int64) (bool, error) {
 	panic("unexpected ExistsByID call")
 }
