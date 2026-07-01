@@ -2530,7 +2530,7 @@ export default {
         imageSuperResolution: '自动 4K 超分',
         imageSuperResolutionHint: '开启后，当前分组的生图结果会在返回前自动超分。',
         image2KEnhancement: '2K 超分',
-        image2KEnhancementHint: '当前分组命中显式 2K 生图时，用本地算法把生成图等比放大到 2K（不调用其它分组、不额外计费）。',
+        image2KEnhancementHint: '开启后，当前分组命中 2K 生图时，生图结果会在返回前自动超分。',
         image4KEnhancement: '4K 提升',
         image4KEnhancementHint: '当前分组命中 4K 生图时，先生成原图，再用目标图片分组按原始 size 做二段提升。',
         image4KEnhancementGroup: '4K 提升目标分组',

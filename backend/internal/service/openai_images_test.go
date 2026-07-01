@@ -891,6 +891,80 @@ func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUpscalesLocallyToE
 	require.Equal(t, 2048, cfg.Height)
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementSupportsPresetSizes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		size       string
+		wantWidth  int
+		wantHeight int
+	}{
+		{size: "1536x1024", wantWidth: 1536, wantHeight: 1024},
+		{size: "1024x1536", wantWidth: 1024, wantHeight: 1536},
+		{size: "2048x2048", wantWidth: 2048, wantHeight: 2048},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.size, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":"gpt-image-2","prompt":"draw a product photo","size":%q,"response_format":"b64_json"}`, tt.size))
+			req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = req
+			c.Set("api_key", &APIKey{
+				ID: 42,
+				Group: &Group{
+					ID:                        7,
+					AllowImageGeneration:      true,
+					Image2KEnhancementEnabled: true,
+				},
+			})
+
+			srcB64 := base64.StdEncoding.EncodeToString(encodeOpenAIImagesTestPNG(t, 320, 180))
+			upstream := &httpUpstreamRecorder{
+				responses: []*http.Response{
+					{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"}},
+						Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"b64_json":"` + srcB64 + `"}],"model":"gpt-image-2"}`)),
+					},
+				},
+			}
+			svc := newOpenAIImages4KEnhancementTestService(upstream, 46, nil)
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+			require.Equal(t, ImageBillingSize2K, parsed.SizeTier)
+
+			account := &Account{
+				ID:          1,
+				Name:        "image2",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-image2"},
+			}
+
+			result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, ImageBillingSize2K, result.ImageSize)
+			// 2K 本地超分只使用原始生成结果，不会二次调用上游。
+			require.Len(t, upstream.requests, 1)
+			require.Equal(t, tt.size, gjson.Get(rec.Body.String(), "size").String())
+
+			outputB64 := gjson.Get(rec.Body.String(), "data.0.b64_json").String()
+			require.NotEqual(t, srcB64, outputB64)
+			outputBytes, err := base64.StdEncoding.DecodeString(outputB64)
+			require.NoError(t, err)
+			cfg, format, err := image.DecodeConfig(bytes.NewReader(outputBytes))
+			require.NoError(t, err)
+			require.Equal(t, "png", format)
+			require.Equal(t, tt.wantWidth, cfg.Width)
+			require.Equal(t, tt.wantHeight, cfg.Height)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKey2KEnhancementUpscalesLocallyByLongestEdge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	// size 用 "2K" 关键字（无具体像素）→ 长边放大到 2048，保持宽高比。
