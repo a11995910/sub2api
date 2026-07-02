@@ -34,6 +34,17 @@ export function filterGroupsByModelKind(
   )
 }
 
+export function selectAvailableModelKind<T extends { kind: ModelKind }>(
+  models: T[],
+  preferred: ModelKind,
+): ModelKind {
+  if (models.some((model) => model.kind === preferred)) {
+    return preferred
+  }
+  const fallback: ModelKind = preferred === 'token' ? 'image' : 'token'
+  return models.some((model) => model.kind === fallback) ? fallback : preferred
+}
+
 function isImageModelName(name: string): boolean {
   const normalized = name.trim().toLowerCase()
   return normalized.startsWith('gpt-image-') || normalized === 'image-2'

@@ -117,6 +117,69 @@ func (_u *GroupUpdate) AddRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetPeakRateEnabled(v)
+	return _u
+}
+
+// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePeakRateEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetPeakRateEnabled(*v)
+	}
+	return _u
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (_u *GroupUpdate) SetPeakStart(v string) *GroupUpdate {
+	_u.mutation.SetPeakStart(v)
+	return _u
+}
+
+// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePeakStart(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetPeakStart(*v)
+	}
+	return _u
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (_u *GroupUpdate) SetPeakEnd(v string) *GroupUpdate {
+	_u.mutation.SetPeakEnd(v)
+	return _u
+}
+
+// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePeakEnd(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetPeakEnd(*v)
+	}
+	return _u
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (_u *GroupUpdate) SetPeakRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetPeakRateMultiplier()
+	_u.mutation.SetPeakRateMultiplier(v)
+	return _u
+}
+
+// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePeakRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetPeakRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddPeakRateMultiplier adds value to the "peak_rate_multiplier" field.
+func (_u *GroupUpdate) AddPeakRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddPeakRateMultiplier(v)
+	return _u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_u *GroupUpdate) SetIsExclusive(v bool) *GroupUpdate {
 	_u.mutation.SetIsExclusive(v)
@@ -303,6 +366,47 @@ func (_u *GroupUpdate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpd
 	return _u
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (_u *GroupUpdate) SetImage2kEnhancementEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetImage2kEnhancementEnabled(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage2kEnhancementEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImage2kEnhancementEnabled(*v)
+	}
+	return _u
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdate) SetImage2kEnhancementGroupID(v int64) *GroupUpdate {
+	_u.mutation.ResetImage2kEnhancementGroupID()
+	_u.mutation.SetImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage2kEnhancementGroupID(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetImage2kEnhancementGroupID(*v)
+	}
+	return _u
+}
+
+// AddImage2kEnhancementGroupID adds value to the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdate) AddImage2kEnhancementGroupID(v int64) *GroupUpdate {
+	_u.mutation.AddImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdate) ClearImage2kEnhancementGroupID() *GroupUpdate {
+	_u.mutation.ClearImage2kEnhancementGroupID()
+	return _u
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (_u *GroupUpdate) SetImage4kEnhancementEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetImage4kEnhancementEnabled(v)
@@ -341,6 +445,26 @@ func (_u *GroupUpdate) AddImage4kEnhancementGroupID(v int64) *GroupUpdate {
 // ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
 func (_u *GroupUpdate) ClearImage4kEnhancementGroupID() *GroupUpdate {
 	_u.mutation.ClearImage4kEnhancementGroupID()
+	return _u
+}
+
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (_u *GroupUpdate) SetImage4kEnhancementModel(v string) *GroupUpdate {
+	_u.mutation.SetImage4kEnhancementModel(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImage4kEnhancementModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetImage4kEnhancementModel(*v)
+	}
+	return _u
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (_u *GroupUpdate) ClearImage4kEnhancementModel() *GroupUpdate {
+	_u.mutation.ClearImage4kEnhancementModel()
 	return _u
 }
 
@@ -990,6 +1114,16 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PeakStart(); ok {
+		if err := group.PeakStartValidator(v); err != nil {
+			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PeakEnd(); ok {
+		if err := group.PeakEndValidator(v); err != nil {
+			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := group.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
@@ -1003,6 +1137,11 @@ func (_u *GroupUpdate) check() error {
 	if v, ok := _u.mutation.SubscriptionType(); ok {
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		if err := group.Image4kEnhancementModelValidator(v); err != nil {
+			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
@@ -1048,6 +1187,21 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PeakRateEnabled(); ok {
+		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PeakStart(); ok {
+		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PeakEnd(); ok {
+		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
+		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
@@ -1100,6 +1254,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.Image2kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image2kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedImage2kEnhancementGroupID(); ok {
+		_spec.AddField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.Image2kEnhancementGroupIDCleared() {
+		_spec.ClearField(group.FieldImage2kEnhancementGroupID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
 	}
@@ -1111,6 +1277,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.Image4kEnhancementGroupIDCleared() {
 		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
+	}
+	if _u.mutation.Image4kEnhancementModelCleared() {
+		_spec.ClearField(group.FieldImage4kEnhancementModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -1617,6 +1789,69 @@ func (_u *GroupUpdateOne) AddRateMultiplier(v float64) *GroupUpdateOne {
 	return _u
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (_u *GroupUpdateOne) SetPeakRateEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetPeakRateEnabled(v)
+	return _u
+}
+
+// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePeakRateEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPeakRateEnabled(*v)
+	}
+	return _u
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (_u *GroupUpdateOne) SetPeakStart(v string) *GroupUpdateOne {
+	_u.mutation.SetPeakStart(v)
+	return _u
+}
+
+// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePeakStart(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPeakStart(*v)
+	}
+	return _u
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (_u *GroupUpdateOne) SetPeakEnd(v string) *GroupUpdateOne {
+	_u.mutation.SetPeakEnd(v)
+	return _u
+}
+
+// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePeakEnd(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPeakEnd(*v)
+	}
+	return _u
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetPeakRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetPeakRateMultiplier()
+	_u.mutation.SetPeakRateMultiplier(v)
+	return _u
+}
+
+// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePeakRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPeakRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddPeakRateMultiplier adds value to the "peak_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddPeakRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddPeakRateMultiplier(v)
+	return _u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_u *GroupUpdateOne) SetIsExclusive(v bool) *GroupUpdateOne {
 	_u.mutation.SetIsExclusive(v)
@@ -1803,6 +2038,47 @@ func (_u *GroupUpdateOne) SetNillableImageSuperResolutionEnabled(v *bool) *Group
 	return _u
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (_u *GroupUpdateOne) SetImage2kEnhancementEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetImage2kEnhancementEnabled(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage2kEnhancementEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage2kEnhancementEnabled(*v)
+	}
+	return _u
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) SetImage2kEnhancementGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.ResetImage2kEnhancementGroupID()
+	_u.mutation.SetImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage2kEnhancementGroupID(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage2kEnhancementGroupID(*v)
+	}
+	return _u
+}
+
+// AddImage2kEnhancementGroupID adds value to the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) AddImage2kEnhancementGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.AddImage2kEnhancementGroupID(v)
+	return _u
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (_u *GroupUpdateOne) ClearImage2kEnhancementGroupID() *GroupUpdateOne {
+	_u.mutation.ClearImage2kEnhancementGroupID()
+	return _u
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (_u *GroupUpdateOne) SetImage4kEnhancementEnabled(v bool) *GroupUpdateOne {
 	_u.mutation.SetImage4kEnhancementEnabled(v)
@@ -1841,6 +2117,26 @@ func (_u *GroupUpdateOne) AddImage4kEnhancementGroupID(v int64) *GroupUpdateOne 
 // ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
 func (_u *GroupUpdateOne) ClearImage4kEnhancementGroupID() *GroupUpdateOne {
 	_u.mutation.ClearImage4kEnhancementGroupID()
+	return _u
+}
+
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (_u *GroupUpdateOne) SetImage4kEnhancementModel(v string) *GroupUpdateOne {
+	_u.mutation.SetImage4kEnhancementModel(v)
+	return _u
+}
+
+// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImage4kEnhancementModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImage4kEnhancementModel(*v)
+	}
+	return _u
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (_u *GroupUpdateOne) ClearImage4kEnhancementModel() *GroupUpdateOne {
+	_u.mutation.ClearImage4kEnhancementModel()
 	return _u
 }
 
@@ -2503,6 +2799,16 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PeakStart(); ok {
+		if err := group.PeakStartValidator(v); err != nil {
+			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PeakEnd(); ok {
+		if err := group.PeakEndValidator(v); err != nil {
+			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := group.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
@@ -2516,6 +2822,11 @@ func (_u *GroupUpdateOne) check() error {
 	if v, ok := _u.mutation.SubscriptionType(); ok {
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		if err := group.Image4kEnhancementModelValidator(v); err != nil {
+			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
@@ -2579,6 +2890,21 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.PeakRateEnabled(); ok {
+		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PeakStart(); ok {
+		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PeakEnd(); ok {
+		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
+		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 	}
@@ -2630,6 +2956,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.Image2kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Image2kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedImage2kEnhancementGroupID(); ok {
+		_spec.AddField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.Image2kEnhancementGroupIDCleared() {
+		_spec.ClearField(group.FieldImage2kEnhancementGroupID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
 	}
@@ -2641,6 +2979,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.Image4kEnhancementGroupIDCleared() {
 		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.Image4kEnhancementModel(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
+	}
+	if _u.mutation.Image4kEnhancementModelCleared() {
+		_spec.ClearField(group.FieldImage4kEnhancementModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)

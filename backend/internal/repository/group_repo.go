@@ -51,8 +51,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
+		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
+		SetNillableImage2kEnhancementGroupID(groupIn.Image2KEnhancementGroupID).
 		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
 		SetNillableImage4kEnhancementGroupID(groupIn.Image4KEnhancementGroupID).
+		SetNillableImage4kEnhancementModel(groupIn.Image4KEnhancementModel).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
@@ -71,7 +74,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
-		SetRpmLimit(groupIn.RPMLimit)
+		SetRpmLimit(groupIn.RPMLimit).
+		SetPeakRateEnabled(groupIn.PeakRateEnabled).
+		SetPeakStart(groupIn.PeakStart).
+		SetPeakEnd(groupIn.PeakEnd).
+		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
 
 	// 设置模型路由配置
 	if groupIn.ModelRouting != nil {
@@ -133,6 +140,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
+		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
 		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
@@ -150,7 +158,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDefaultMappedModel(groupIn.DefaultMappedModel).
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
-		SetRpmLimit(groupIn.RPMLimit)
+		SetRpmLimit(groupIn.RPMLimit).
+		SetPeakRateEnabled(groupIn.PeakRateEnabled).
+		SetPeakStart(groupIn.PeakStart).
+		SetPeakEnd(groupIn.PeakEnd).
+		SetPeakRateMultiplier(groupIn.PeakRateMultiplier)
 
 	// 显式处理可空字段：nil 需要 clear，非 nil 需要 set。
 	if groupIn.DailyLimitUSD != nil {
@@ -187,6 +199,16 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetImage4kEnhancementGroupID(*groupIn.Image4KEnhancementGroupID)
 	} else {
 		builder = builder.ClearImage4kEnhancementGroupID()
+	}
+	if groupIn.Image4KEnhancementModel != nil {
+		builder = builder.SetImage4kEnhancementModel(*groupIn.Image4KEnhancementModel)
+	} else {
+		builder = builder.ClearImage4kEnhancementModel()
+	}
+	if groupIn.Image2KEnhancementGroupID != nil {
+		builder = builder.SetImage2kEnhancementGroupID(*groupIn.Image2KEnhancementGroupID)
+	} else {
+		builder = builder.ClearImage2kEnhancementGroupID()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置

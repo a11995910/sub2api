@@ -20,12 +20,22 @@
 
 - 修改前后都要查看 `git status --short`，确认工作区状态。
 - 提交前必须检查 diff，确保只包含本次任务相关内容。
+- 日常新功能开发默认在 `dev` 分支完成并推送到 `origin/dev`，测试 VPS 验证通过后，必须等待用户口头确认再合并到 `main` 并上线正式 VPS。
 - 提交说明使用中文，格式保持简洁，例如 `docs: 规范源码定制上线流程`。
 - `AGENTS.md` 被 `.gitignore` 忽略，首次加入仓库时必须使用 `git add -f AGENTS.md`。
 - 任何生产构建前，本地相关改动必须先完成 Git 提交并推送到远端；严禁用未提交工作区直接构建生产产物。
 - VPS 上线前必须在 `/opt/sub2api-src` 执行 `git pull --ff-only`，并核对线上源码 commit 与本次构建 commit 一致。
 
-## VPS 与生产操作
+## 测试 VPS 与正式 VPS 操作
+
+- 测试 VPS：`192.220.36.75`，用途为新功能预发布验证，默认源码目录、部署目录和构建方式应尽量与正式 VPS 保持一致。
+- 测试 VPS 默认拉取 `origin/dev` 分支；新功能完成后必须先部署到测试 VPS 验证。
+- 测试 VPS 验证通过后，只能报告验证结果和风险点；必须等用户明确口头命令后，才允许合并 `dev` 到 `main` 并上线正式 VPS。
+- 正式 VPS：`192.220.24.46`，内部包含 VPN、`sub2api`、`chatgpt2api`，正式上线仍按生产上线规范执行。
+- 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
+- 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 等敏感信息不得写入仓库、文档、提交记录或日志；如需使用，只能通过运行时凭据或环境变量临时注入。
+
+## 生产操作
 
 - 生产操作前必须确认当前运行来源，包括源码目录、Git remote、当前 commit、容器挂载路径和运行中的二进制路径。
 - 线上敏感信息不得写入仓库，包括服务器密码、Token、数据库密码、OAuth 密钥和 Cookie。
@@ -68,7 +78,7 @@ expected_commit='填写本地 git rev-parse HEAD 的输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 /usr/local/bin/prebuild-cleanup
-pnpm --dir frontend install --frozen-lockfile
+(cd frontend && pnpm install --frozen-lockfile)
 GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
 file backend/bin/server
 sha256sum backend/bin/server

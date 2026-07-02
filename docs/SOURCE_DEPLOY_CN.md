@@ -4,6 +4,9 @@
 
 ## 强制原则
 
+- 新功能开发默认走 `dev -> 测试 VPS -> 用户口头确认 -> main -> 正式 VPS` 链路；不得跳过测试 VPS 直接上线正式 VPS。
+- 测试 VPS 固定为 `192.220.36.75`，默认拉取 `origin/dev` 分支，源码目录、部署目录、构建命令和二进制替换方式应尽量与正式 VPS 保持一致。
+- 测试 VPS 验证通过后，只能在用户明确口头命令后合并到 `main` 并执行正式上线。
 - 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
 - VPS `/opt/sub2api-src` 必须拉取到本次构建对应的同一 commit，确保线上运行产物有可追溯源码。
 - 默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只替换 `/opt/sub2api-deploy/custom/sub2api-pool-overview`。
@@ -20,6 +23,7 @@
 
 - GitHub：`git@github.com:a11995910/sub2api.git`
 - 主分支：`main`
+- 开发分支：`dev`
 - 本地开发完成后，提交并推送到 GitHub：
 
 ```bash
@@ -44,6 +48,76 @@ git log -1 --oneline
 ```
 
 如 `git status --short` 仍有未提交改动，必须确认这些改动与本次上线无关；否则禁止继续上线。
+
+## 测试 VPS 预发布流程
+
+测试 VPS 用于承接 `dev` 分支的新功能验证。默认环境信息：
+
+| 项目 | 值 |
+| --- | --- |
+| 测试 VPS | `192.220.36.75` |
+| Git 分支 | `origin/dev` |
+| 源码目录 | `/opt/sub2api-src` |
+| 部署目录 | `/opt/sub2api-deploy` |
+| 挂载二进制 | `/opt/sub2api-deploy/custom/sub2api-pool-overview` |
+
+测试 VPS 部署前，本地必须先在 `dev` 分支提交并推送：
+
+```bash
+cd /Users/wangjun/Documents/GitHub/sub2api
+git status --short
+git branch --show-current
+git add 本次相关文件
+git commit -m "说明本次修改"
+git push -u origin dev
+git rev-parse HEAD
+git log -1 --oneline
+```
+
+测试 VPS 首次准备源码目录：
+
+```bash
+git clone -b dev git@github.com:a11995910/sub2api.git /opt/sub2api-src
+```
+
+如果服务器未配置 GitHub SSH Key，可临时使用 HTTPS：
+
+```bash
+git clone -b dev https://github.com/a11995910/sub2api.git /opt/sub2api-src
+```
+
+测试 VPS 每次构建必须拉取 `dev` 并核对 commit：
+
+```bash
+cd /opt/sub2api-src
+git status --short
+git fetch origin
+git switch dev
+git pull --ff-only origin dev
+expected_commit='填写本地 dev 的 git rev-parse HEAD 输出'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+git log -1 --oneline
+/usr/local/bin/prebuild-cleanup || true
+(cd frontend && pnpm install --frozen-lockfile)
+GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
+file backend/bin/server
+sha256sum backend/bin/server
+timeout 5 backend/bin/server --version
+```
+
+测试 VPS 替换运行二进制和验证流程与正式 VPS 保持一致。测试通过后，必须等待用户明确口头命令，才能把 `dev` 合并到 `main` 并按正式 VPS 流程发布。
+
+### 测试 VPS 源码运行边界
+
+`sub2api` 后端是 Go 编译型服务，前端是 Vite/Vue 应用。后端不能像解释型脚本一样在 Git 提交后不经过编译直接生效；`go run ./cmd/server` 本质上也会先编译，再启动临时二进制。生产形态还要求前端 `dist` 通过 `embed` 标签打入后端二进制，因此完整功能验证仍应使用 `make build-deploy` 生成可追溯产物。
+
+测试 VPS `192.220.36.75` 当前内存较小，不适合作为常驻源码热编译机器。实测后端首次编译会卡在 `backend/ent` 大包编译阶段并触发明显 swap，容易影响 PostgreSQL、Redis 和现有测试服务稳定性。因此测试 VPS 不默认启用“提交后自动源码编译并接管 8080”的模式。
+
+测试环境需要更快自动生效时，优先采用以下低风险方案：
+
+- 前端页面调试可单独使用 Vite 开发服务，并让 `/api`、`/v1` 代理到当前测试后端。
+- 后端改动仍以 `dev` 分支提交为准，由测试 VPS 拉取同一 commit 后低资源构建二进制，再原子替换挂载文件。
+- 如需实现“提交后自动更新测试环境”，应使用外部构建产物或 CI 构建 Linux amd64 二进制，再由测试 VPS 只负责拉取产物、校验 commit/SHA256、备份旧二进制、替换并重启容器；测试 VPS 不应承担完整 Go/Vite 构建压力。
 
 ## VPS 源码目录
 
@@ -129,7 +203,7 @@ expected_commit='填写本地 git rev-parse HEAD 的输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 /usr/local/bin/prebuild-cleanup
-pnpm --dir frontend install --frozen-lockfile
+(cd frontend && pnpm install --frozen-lockfile)
 GOFLAGS='-p=1' GOMAXPROCS=1 make build-deploy
 file backend/bin/server
 sha256sum backend/bin/server

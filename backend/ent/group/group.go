@@ -28,6 +28,14 @@ const (
 	FieldDescription = "description"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
+	FieldPeakRateEnabled = "peak_rate_enabled"
+	// FieldPeakStart holds the string denoting the peak_start field in the database.
+	FieldPeakStart = "peak_start"
+	// FieldPeakEnd holds the string denoting the peak_end field in the database.
+	FieldPeakEnd = "peak_end"
+	// FieldPeakRateMultiplier holds the string denoting the peak_rate_multiplier field in the database.
+	FieldPeakRateMultiplier = "peak_rate_multiplier"
 	// FieldIsExclusive holds the string denoting the is_exclusive field in the database.
 	FieldIsExclusive = "is_exclusive"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -48,10 +56,16 @@ const (
 	FieldAllowImageGeneration = "allow_image_generation"
 	// FieldImageSuperResolutionEnabled holds the string denoting the image_super_resolution_enabled field in the database.
 	FieldImageSuperResolutionEnabled = "image_super_resolution_enabled"
+	// FieldImage2kEnhancementEnabled holds the string denoting the image_2k_enhancement_enabled field in the database.
+	FieldImage2kEnhancementEnabled = "image_2k_enhancement_enabled"
+	// FieldImage2kEnhancementGroupID holds the string denoting the image_2k_enhancement_group_id field in the database.
+	FieldImage2kEnhancementGroupID = "image_2k_enhancement_group_id"
 	// FieldImage4kEnhancementEnabled holds the string denoting the image_4k_enhancement_enabled field in the database.
 	FieldImage4kEnhancementEnabled = "image_4k_enhancement_enabled"
 	// FieldImage4kEnhancementGroupID holds the string denoting the image_4k_enhancement_group_id field in the database.
 	FieldImage4kEnhancementGroupID = "image_4k_enhancement_group_id"
+	// FieldImage4kEnhancementModel holds the string denoting the image_4k_enhancement_model field in the database.
+	FieldImage4kEnhancementModel = "image_4k_enhancement_model"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldCacheHitQuarterToInputEnabled holds the string denoting the cache_hit_quarter_to_input_enabled field in the database.
@@ -175,6 +189,10 @@ var Columns = []string{
 	FieldName,
 	FieldDescription,
 	FieldRateMultiplier,
+	FieldPeakRateEnabled,
+	FieldPeakStart,
+	FieldPeakEnd,
+	FieldPeakRateMultiplier,
 	FieldIsExclusive,
 	FieldStatus,
 	FieldPlatform,
@@ -185,8 +203,11 @@ var Columns = []string{
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldImageSuperResolutionEnabled,
+	FieldImage2kEnhancementEnabled,
+	FieldImage2kEnhancementGroupID,
 	FieldImage4kEnhancementEnabled,
 	FieldImage4kEnhancementGroupID,
+	FieldImage4kEnhancementModel,
 	FieldImageRateIndependent,
 	FieldCacheHitQuarterToInputEnabled,
 	FieldImageRateMultiplier,
@@ -247,6 +268,18 @@ var (
 	NameValidator func(string) error
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
+	DefaultPeakRateEnabled bool
+	// DefaultPeakStart holds the default value on creation for the "peak_start" field.
+	DefaultPeakStart string
+	// PeakStartValidator is a validator for the "peak_start" field. It is called by the builders before save.
+	PeakStartValidator func(string) error
+	// DefaultPeakEnd holds the default value on creation for the "peak_end" field.
+	DefaultPeakEnd string
+	// PeakEndValidator is a validator for the "peak_end" field. It is called by the builders before save.
+	PeakEndValidator func(string) error
+	// DefaultPeakRateMultiplier holds the default value on creation for the "peak_rate_multiplier" field.
+	DefaultPeakRateMultiplier float64
 	// DefaultIsExclusive holds the default value on creation for the "is_exclusive" field.
 	DefaultIsExclusive bool
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -267,8 +300,12 @@ var (
 	DefaultAllowImageGeneration bool
 	// DefaultImageSuperResolutionEnabled holds the default value on creation for the "image_super_resolution_enabled" field.
 	DefaultImageSuperResolutionEnabled bool
+	// DefaultImage2kEnhancementEnabled holds the default value on creation for the "image_2k_enhancement_enabled" field.
+	DefaultImage2kEnhancementEnabled bool
 	// DefaultImage4kEnhancementEnabled holds the default value on creation for the "image_4k_enhancement_enabled" field.
 	DefaultImage4kEnhancementEnabled bool
+	// Image4kEnhancementModelValidator is a validator for the "image_4k_enhancement_model" field. It is called by the builders before save.
+	Image4kEnhancementModelValidator func(string) error
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
 	// DefaultCacheHitQuarterToInputEnabled holds the default value on creation for the "cache_hit_quarter_to_input_enabled" field.
@@ -341,6 +378,26 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
 }
 
+// ByPeakRateEnabled orders the results by the peak_rate_enabled field.
+func ByPeakRateEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPeakRateEnabled, opts...).ToFunc()
+}
+
+// ByPeakStart orders the results by the peak_start field.
+func ByPeakStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPeakStart, opts...).ToFunc()
+}
+
+// ByPeakEnd orders the results by the peak_end field.
+func ByPeakEnd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPeakEnd, opts...).ToFunc()
+}
+
+// ByPeakRateMultiplier orders the results by the peak_rate_multiplier field.
+func ByPeakRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPeakRateMultiplier, opts...).ToFunc()
+}
+
 // ByIsExclusive orders the results by the is_exclusive field.
 func ByIsExclusive(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsExclusive, opts...).ToFunc()
@@ -391,6 +448,16 @@ func ByImageSuperResolutionEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageSuperResolutionEnabled, opts...).ToFunc()
 }
 
+// ByImage2kEnhancementEnabled orders the results by the image_2k_enhancement_enabled field.
+func ByImage2kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage2kEnhancementEnabled, opts...).ToFunc()
+}
+
+// ByImage2kEnhancementGroupID orders the results by the image_2k_enhancement_group_id field.
+func ByImage2kEnhancementGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage2kEnhancementGroupID, opts...).ToFunc()
+}
+
 // ByImage4kEnhancementEnabled orders the results by the image_4k_enhancement_enabled field.
 func ByImage4kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImage4kEnhancementEnabled, opts...).ToFunc()
@@ -399,6 +466,11 @@ func ByImage4kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByImage4kEnhancementGroupID orders the results by the image_4k_enhancement_group_id field.
 func ByImage4kEnhancementGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImage4kEnhancementGroupID, opts...).ToFunc()
+}
+
+// ByImage4kEnhancementModel orders the results by the image_4k_enhancement_model field.
+func ByImage4kEnhancementModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImage4kEnhancementModel, opts...).ToFunc()
 }
 
 // ByImageRateIndependent orders the results by the image_rate_independent field.

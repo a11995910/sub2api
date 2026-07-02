@@ -105,6 +105,56 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite
 	require.True(t, got.Group.CacheHitQuarterToInput)
 }
 
+func TestAPIKeyRepository_GetByKeyForAuth_PreservesImageEnhancementConfig_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-image-enhancement-unit@test.com")
+
+	targetGroup, err := client.Group.Create().
+		SetName("g-auth-image-enhancement-target-unit").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		SetSubscriptionType(service.SubscriptionTypeStandard).
+		SetRateMultiplier(1).
+		SetAllowImageGeneration(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	group, err := client.Group.Create().
+		SetName("g-auth-image-enhancement-unit").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		SetSubscriptionType(service.SubscriptionTypeStandard).
+		SetRateMultiplier(1).
+		SetAllowImageGeneration(true).
+		SetImage2kEnhancementEnabled(true).
+		SetImage4kEnhancementEnabled(true).
+		SetImage4kEnhancementGroupID(targetGroup.ID).
+		SetImage4kEnhancementModel("gpt-image-2").
+		Save(ctx)
+	require.NoError(t, err)
+
+	key := &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-getbykey-auth-image-enhancement-unit",
+		Name:    "Image Enhancement Key Unit",
+		GroupID: &group.ID,
+		Status:  service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.NotNil(t, got.Group)
+	require.True(t, got.Group.AllowImageGeneration)
+	require.True(t, got.Group.Image2KEnhancementEnabled)
+	require.True(t, got.Group.Image4KEnhancementEnabled)
+	require.NotNil(t, got.Group.Image4KEnhancementGroupID)
+	require.Equal(t, targetGroup.ID, *got.Group.Image4KEnhancementGroupID)
+	require.NotNil(t, got.Group.Image4KEnhancementModel)
+	require.Equal(t, "gpt-image-2", *got.Group.Image4KEnhancementModel)
+}
+
 func TestAPIKeyRepository_GetByKeyForAuth_FiltersExpiredAllowedGroups_SQLite(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()

@@ -105,6 +105,62 @@ func (_c *GroupCreate) SetNillableRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
+	_c.mutation.SetPeakRateEnabled(v)
+	return _c
+}
+
+// SetNillablePeakRateEnabled sets the "peak_rate_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakRateEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetPeakRateEnabled(*v)
+	}
+	return _c
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (_c *GroupCreate) SetPeakStart(v string) *GroupCreate {
+	_c.mutation.SetPeakStart(v)
+	return _c
+}
+
+// SetNillablePeakStart sets the "peak_start" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakStart(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetPeakStart(*v)
+	}
+	return _c
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (_c *GroupCreate) SetPeakEnd(v string) *GroupCreate {
+	_c.mutation.SetPeakEnd(v)
+	return _c
+}
+
+// SetNillablePeakEnd sets the "peak_end" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakEnd(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetPeakEnd(*v)
+	}
+	return _c
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (_c *GroupCreate) SetPeakRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetPeakRateMultiplier(v)
+	return _c
+}
+
+// SetNillablePeakRateMultiplier sets the "peak_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePeakRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetPeakRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_c *GroupCreate) SetIsExclusive(v bool) *GroupCreate {
 	_c.mutation.SetIsExclusive(v)
@@ -245,6 +301,34 @@ func (_c *GroupCreate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupCre
 	return _c
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (_c *GroupCreate) SetImage2kEnhancementEnabled(v bool) *GroupCreate {
+	_c.mutation.SetImage2kEnhancementEnabled(v)
+	return _c
+}
+
+// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImage2kEnhancementEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImage2kEnhancementEnabled(*v)
+	}
+	return _c
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (_c *GroupCreate) SetImage2kEnhancementGroupID(v int64) *GroupCreate {
+	_c.mutation.SetImage2kEnhancementGroupID(v)
+	return _c
+}
+
+// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImage2kEnhancementGroupID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetImage2kEnhancementGroupID(*v)
+	}
+	return _c
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (_c *GroupCreate) SetImage4kEnhancementEnabled(v bool) *GroupCreate {
 	_c.mutation.SetImage4kEnhancementEnabled(v)
@@ -269,6 +353,20 @@ func (_c *GroupCreate) SetImage4kEnhancementGroupID(v int64) *GroupCreate {
 func (_c *GroupCreate) SetNillableImage4kEnhancementGroupID(v *int64) *GroupCreate {
 	if v != nil {
 		_c.SetImage4kEnhancementGroupID(*v)
+	}
+	return _c
+}
+
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (_c *GroupCreate) SetImage4kEnhancementModel(v string) *GroupCreate {
+	_c.mutation.SetImage4kEnhancementModel(v)
+	return _c
+}
+
+// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImage4kEnhancementModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetImage4kEnhancementModel(*v)
 	}
 	return _c
 }
@@ -696,6 +794,22 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
+		v := group.DefaultPeakRateEnabled
+		_c.mutation.SetPeakRateEnabled(v)
+	}
+	if _, ok := _c.mutation.PeakStart(); !ok {
+		v := group.DefaultPeakStart
+		_c.mutation.SetPeakStart(v)
+	}
+	if _, ok := _c.mutation.PeakEnd(); !ok {
+		v := group.DefaultPeakEnd
+		_c.mutation.SetPeakEnd(v)
+	}
+	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
+		v := group.DefaultPeakRateMultiplier
+		_c.mutation.SetPeakRateMultiplier(v)
+	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
@@ -723,6 +837,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
 		v := group.DefaultImageSuperResolutionEnabled
 		_c.mutation.SetImageSuperResolutionEnabled(v)
+	}
+	if _, ok := _c.mutation.Image2kEnhancementEnabled(); !ok {
+		v := group.DefaultImage2kEnhancementEnabled
+		_c.mutation.SetImage2kEnhancementEnabled(v)
 	}
 	if _, ok := _c.mutation.Image4kEnhancementEnabled(); !ok {
 		v := group.DefaultImage4kEnhancementEnabled
@@ -810,6 +928,28 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
 	}
+	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
+		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
+	}
+	if _, ok := _c.mutation.PeakStart(); !ok {
+		return &ValidationError{Name: "peak_start", err: errors.New(`ent: missing required field "Group.peak_start"`)}
+	}
+	if v, ok := _c.mutation.PeakStart(); ok {
+		if err := group.PeakStartValidator(v); err != nil {
+			return &ValidationError{Name: "peak_start", err: fmt.Errorf(`ent: validator failed for field "Group.peak_start": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PeakEnd(); !ok {
+		return &ValidationError{Name: "peak_end", err: errors.New(`ent: missing required field "Group.peak_end"`)}
+	}
+	if v, ok := _c.mutation.PeakEnd(); ok {
+		if err := group.PeakEndValidator(v); err != nil {
+			return &ValidationError{Name: "peak_end", err: fmt.Errorf(`ent: validator failed for field "Group.peak_end": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
+		return &ValidationError{Name: "peak_rate_multiplier", err: errors.New(`ent: missing required field "Group.peak_rate_multiplier"`)}
+	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
 	}
@@ -846,8 +986,16 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
 		return &ValidationError{Name: "image_super_resolution_enabled", err: errors.New(`ent: missing required field "Group.image_super_resolution_enabled"`)}
 	}
+	if _, ok := _c.mutation.Image2kEnhancementEnabled(); !ok {
+		return &ValidationError{Name: "image_2k_enhancement_enabled", err: errors.New(`ent: missing required field "Group.image_2k_enhancement_enabled"`)}
+	}
 	if _, ok := _c.mutation.Image4kEnhancementEnabled(); !ok {
 		return &ValidationError{Name: "image_4k_enhancement_enabled", err: errors.New(`ent: missing required field "Group.image_4k_enhancement_enabled"`)}
+	}
+	if v, ok := _c.mutation.Image4kEnhancementModel(); ok {
+		if err := group.Image4kEnhancementModelValidator(v); err != nil {
+			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
@@ -950,6 +1098,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
 	}
+	if value, ok := _c.mutation.PeakRateEnabled(); ok {
+		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
+		_node.PeakRateEnabled = value
+	}
+	if value, ok := _c.mutation.PeakStart(); ok {
+		_spec.SetField(group.FieldPeakStart, field.TypeString, value)
+		_node.PeakStart = value
+	}
+	if value, ok := _c.mutation.PeakEnd(); ok {
+		_spec.SetField(group.FieldPeakEnd, field.TypeString, value)
+		_node.PeakEnd = value
+	}
+	if value, ok := _c.mutation.PeakRateMultiplier(); ok {
+		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+		_node.PeakRateMultiplier = value
+	}
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 		_node.IsExclusive = value
@@ -990,6 +1154,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
 		_node.ImageSuperResolutionEnabled = value
 	}
+	if value, ok := _c.mutation.Image2kEnhancementEnabled(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
+		_node.Image2kEnhancementEnabled = value
+	}
+	if value, ok := _c.mutation.Image2kEnhancementGroupID(); ok {
+		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
+		_node.Image2kEnhancementGroupID = &value
+	}
 	if value, ok := _c.mutation.Image4kEnhancementEnabled(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
 		_node.Image4kEnhancementEnabled = value
@@ -997,6 +1169,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Image4kEnhancementGroupID(); ok {
 		_spec.SetField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
 		_node.Image4kEnhancementGroupID = &value
+	}
+	if value, ok := _c.mutation.Image4kEnhancementModel(); ok {
+		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
+		_node.Image4kEnhancementModel = &value
 	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -1316,6 +1492,60 @@ func (u *GroupUpsert) AddRateMultiplier(v float64) *GroupUpsert {
 	return u
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (u *GroupUpsert) SetPeakRateEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldPeakRateEnabled, v)
+	return u
+}
+
+// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakRateEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakRateEnabled)
+	return u
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (u *GroupUpsert) SetPeakStart(v string) *GroupUpsert {
+	u.Set(group.FieldPeakStart, v)
+	return u
+}
+
+// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakStart() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakStart)
+	return u
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (u *GroupUpsert) SetPeakEnd(v string) *GroupUpsert {
+	u.Set(group.FieldPeakEnd, v)
+	return u
+}
+
+// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakEnd() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakEnd)
+	return u
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (u *GroupUpsert) SetPeakRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldPeakRateMultiplier, v)
+	return u
+}
+
+// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePeakRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldPeakRateMultiplier)
+	return u
+}
+
+// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
+func (u *GroupUpsert) AddPeakRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldPeakRateMultiplier, v)
+	return u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (u *GroupUpsert) SetIsExclusive(v bool) *GroupUpsert {
 	u.Set(group.FieldIsExclusive, v)
@@ -1478,6 +1708,42 @@ func (u *GroupUpsert) UpdateImageSuperResolutionEnabled() *GroupUpsert {
 	return u
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (u *GroupUpsert) SetImage2kEnhancementEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldImage2kEnhancementEnabled, v)
+	return u
+}
+
+// UpdateImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImage2kEnhancementEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldImage2kEnhancementEnabled)
+	return u
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsert) SetImage2kEnhancementGroupID(v int64) *GroupUpsert {
+	u.Set(group.FieldImage2kEnhancementGroupID, v)
+	return u
+}
+
+// UpdateImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImage2kEnhancementGroupID() *GroupUpsert {
+	u.SetExcluded(group.FieldImage2kEnhancementGroupID)
+	return u
+}
+
+// AddImage2kEnhancementGroupID adds v to the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsert) AddImage2kEnhancementGroupID(v int64) *GroupUpsert {
+	u.Add(group.FieldImage2kEnhancementGroupID, v)
+	return u
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsert) ClearImage2kEnhancementGroupID() *GroupUpsert {
+	u.SetNull(group.FieldImage2kEnhancementGroupID)
+	return u
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (u *GroupUpsert) SetImage4kEnhancementEnabled(v bool) *GroupUpsert {
 	u.Set(group.FieldImage4kEnhancementEnabled, v)
@@ -1511,6 +1777,24 @@ func (u *GroupUpsert) AddImage4kEnhancementGroupID(v int64) *GroupUpsert {
 // ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
 func (u *GroupUpsert) ClearImage4kEnhancementGroupID() *GroupUpsert {
 	u.SetNull(group.FieldImage4kEnhancementGroupID)
+	return u
+}
+
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (u *GroupUpsert) SetImage4kEnhancementModel(v string) *GroupUpsert {
+	u.Set(group.FieldImage4kEnhancementModel, v)
+	return u
+}
+
+// UpdateImage4kEnhancementModel sets the "image_4k_enhancement_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImage4kEnhancementModel() *GroupUpsert {
+	u.SetExcluded(group.FieldImage4kEnhancementModel)
+	return u
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (u *GroupUpsert) ClearImage4kEnhancementModel() *GroupUpsert {
+	u.SetNull(group.FieldImage4kEnhancementModel)
 	return u
 }
 
@@ -1986,6 +2270,69 @@ func (u *GroupUpsertOne) UpdateRateMultiplier() *GroupUpsertOne {
 	})
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (u *GroupUpsertOne) SetPeakRateEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateEnabled(v)
+	})
+}
+
+// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakRateEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateEnabled()
+	})
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (u *GroupUpsertOne) SetPeakStart(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakStart(v)
+	})
+}
+
+// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakStart() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakStart()
+	})
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (u *GroupUpsertOne) SetPeakEnd(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakEnd(v)
+	})
+}
+
+// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakEnd() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakEnd()
+	})
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (u *GroupUpsertOne) SetPeakRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateMultiplier(v)
+	})
+}
+
+// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
+func (u *GroupUpsertOne) AddPeakRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPeakRateMultiplier(v)
+	})
+}
+
+// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePeakRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateMultiplier()
+	})
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (u *GroupUpsertOne) SetIsExclusive(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -2175,6 +2522,48 @@ func (u *GroupUpsertOne) UpdateImageSuperResolutionEnabled() *GroupUpsertOne {
 	})
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (u *GroupUpsertOne) SetImage2kEnhancementEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementEnabled(v)
+	})
+}
+
+// UpdateImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImage2kEnhancementEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementEnabled()
+	})
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertOne) SetImage2kEnhancementGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementGroupID(v)
+	})
+}
+
+// AddImage2kEnhancementGroupID adds v to the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertOne) AddImage2kEnhancementGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImage2kEnhancementGroupID(v)
+	})
+}
+
+// UpdateImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImage2kEnhancementGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementGroupID()
+	})
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertOne) ClearImage2kEnhancementGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImage2kEnhancementGroupID()
+	})
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (u *GroupUpsertOne) SetImage4kEnhancementEnabled(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -2214,6 +2603,27 @@ func (u *GroupUpsertOne) UpdateImage4kEnhancementGroupID() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImage4kEnhancementGroupID() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImage4kEnhancementGroupID()
+	})
+}
+
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (u *GroupUpsertOne) SetImage4kEnhancementModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage4kEnhancementModel(v)
+	})
+}
+
+// UpdateImage4kEnhancementModel sets the "image_4k_enhancement_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImage4kEnhancementModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage4kEnhancementModel()
+	})
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (u *GroupUpsertOne) ClearImage4kEnhancementModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImage4kEnhancementModel()
 	})
 }
 
@@ -2911,6 +3321,69 @@ func (u *GroupUpsertBulk) UpdateRateMultiplier() *GroupUpsertBulk {
 	})
 }
 
+// SetPeakRateEnabled sets the "peak_rate_enabled" field.
+func (u *GroupUpsertBulk) SetPeakRateEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateEnabled(v)
+	})
+}
+
+// UpdatePeakRateEnabled sets the "peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakRateEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateEnabled()
+	})
+}
+
+// SetPeakStart sets the "peak_start" field.
+func (u *GroupUpsertBulk) SetPeakStart(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakStart(v)
+	})
+}
+
+// UpdatePeakStart sets the "peak_start" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakStart() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakStart()
+	})
+}
+
+// SetPeakEnd sets the "peak_end" field.
+func (u *GroupUpsertBulk) SetPeakEnd(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakEnd(v)
+	})
+}
+
+// UpdatePeakEnd sets the "peak_end" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakEnd() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakEnd()
+	})
+}
+
+// SetPeakRateMultiplier sets the "peak_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetPeakRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPeakRateMultiplier(v)
+	})
+}
+
+// AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddPeakRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPeakRateMultiplier(v)
+	})
+}
+
+// UpdatePeakRateMultiplier sets the "peak_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePeakRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePeakRateMultiplier()
+	})
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (u *GroupUpsertBulk) SetIsExclusive(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -3100,6 +3573,48 @@ func (u *GroupUpsertBulk) UpdateImageSuperResolutionEnabled() *GroupUpsertBulk {
 	})
 }
 
+// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
+func (u *GroupUpsertBulk) SetImage2kEnhancementEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementEnabled(v)
+	})
+}
+
+// UpdateImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImage2kEnhancementEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementEnabled()
+	})
+}
+
+// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertBulk) SetImage2kEnhancementGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage2kEnhancementGroupID(v)
+	})
+}
+
+// AddImage2kEnhancementGroupID adds v to the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertBulk) AddImage2kEnhancementGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImage2kEnhancementGroupID(v)
+	})
+}
+
+// UpdateImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImage2kEnhancementGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage2kEnhancementGroupID()
+	})
+}
+
+// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
+func (u *GroupUpsertBulk) ClearImage2kEnhancementGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImage2kEnhancementGroupID()
+	})
+}
+
 // SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
 func (u *GroupUpsertBulk) SetImage4kEnhancementEnabled(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -3139,6 +3654,27 @@ func (u *GroupUpsertBulk) UpdateImage4kEnhancementGroupID() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImage4kEnhancementGroupID() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImage4kEnhancementGroupID()
+	})
+}
+
+// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
+func (u *GroupUpsertBulk) SetImage4kEnhancementModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImage4kEnhancementModel(v)
+	})
+}
+
+// UpdateImage4kEnhancementModel sets the "image_4k_enhancement_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImage4kEnhancementModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImage4kEnhancementModel()
+	})
+}
+
+// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
+func (u *GroupUpsertBulk) ClearImage4kEnhancementModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImage4kEnhancementModel()
 	})
 }
 

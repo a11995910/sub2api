@@ -11,8 +11,11 @@
 - `rate_multiplier`：分组默认文本倍率。
 - `allow_image_generation`：该分组是否允许图片生成。
 - `image_super_resolution_enabled`：该分组的图片生成结果是否会在返回前自动执行 4K 超分。
+- `image_2k_enhancement_enabled`：该分组命中显式 2K 生图时，是否优先调用另一个图片分组做二段提升。
+- `image_2k_enhancement_group_id`：二段 2K 提升使用的目标图片分组 ID；仅管理端配置和内部调度使用，用户侧无需手动传参。
 - `image_4k_enhancement_enabled`：该分组命中 4K 生图时，是否优先调用另一个图片分组做二段提升。
 - `image_4k_enhancement_group_id`：二段 4K 提升使用的目标图片分组 ID；仅管理端配置和内部调度使用，用户侧无需手动传参。
+- `image_4k_enhancement_model`：二段 4K 提升使用的目标图片模型；管理端在选择目标分组后从目标分组候选模型中选择。为空时后端沿用目标分组自动模型解析。
 - `image_rate_independent`：图片生成是否使用独立倍率。
 - `cache_hit_quarter_to_input_enabled`：缓存命中重新计费开关。开启后，本次请求有缓存读取 token 时，会把缓存读取 token 的四分之一按整数向下取整划入输入 token，再用调整后的 token 分类写入用量记录并扣除余额、订阅额度、API Key 配额和账号配额；历史用量不回填。
 - `image_rate_multiplier`：图片独立倍率，仅 `image_rate_independent=true` 时生效。
@@ -20,9 +23,10 @@
 
 前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。
 
-图片分组存在两种 4K 后处理方式：
+图片分组存在以下后处理方式：
 
-- `image_4k_enhancement_enabled=true` 时，非流式 4K 图片请求会先生成基础图片，再调用 `image_4k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `3840x2160`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素，避免元数据与实际尺寸不一致；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。
+- `image_2k_enhancement_enabled=true` 时，非流式且显式声明 2K `size` 的图片请求会先生成基础图片，再调用 `image_2k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `2048x2048` 或 `2048x1152`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。未传 `size` 的默认 2K 请求不会触发二段提升，避免默认生图流量被误放大。
+- `image_4k_enhancement_enabled=true` 时，非流式且请求明确落在 4K 档位的图片请求会先生成基础图片，再调用 `image_4k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。配置 `image_4k_enhancement_model` 后，二段请求固定使用该目标模型；未配置时后端沿用目标分组模型映射或账号候选自动解析。网关会把原请求 `size` 原样传给二段请求，例如 `3840x2160`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素，避免元数据与实际尺寸不一致；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。未传 `size` 的自适应请求按网关默认图片档位处理，不会因为分组开启 4K 提升而自动改写为 4K。
 - 未启用图片分组 4K 提升时，若 `image_super_resolution_enabled=true`，网关继续使用旧外部超分服务。同步图片响应会在完整 JSON 返回前改写最终图片；流式图片响应会继续透传上游进度事件和局部图片，待最终完成事件出现后对最终图片执行超分并返回超分后的完成事件。超分失败时保留原图返回并记录日志。
 
 ## API Key 默认分组

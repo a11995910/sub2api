@@ -45,6 +45,22 @@ func (Group) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+		// 高峰时段倍率（added by migration 158）
+		field.Bool("peak_rate_enabled").
+			Default(false).
+			Comment("是否启用高峰时段倍率"),
+		field.String("peak_start").
+			MaxLen(5).
+			Default("").
+			Comment("高峰开始时间 HH:MM（含），如 14:00；空表示未配置；不支持跨天"),
+		field.String("peak_end").
+			MaxLen(5).
+			Default("").
+			Comment("高峰结束时间 HH:MM（不含），必须大于 peak_start；不支持跨天，如 22:00-02:00"),
+		field.Float("peak_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("高峰时段叠加倍率，仅在 peak_rate_enabled 且处于 [peak_start, peak_end) 时乘入文本倍率"),
 		field.Bool("is_exclusive").
 			Default(false),
 		field.String("status").
@@ -80,6 +96,13 @@ func (Group) Fields() []ent.Field {
 		field.Bool("image_super_resolution_enabled").
 			Default(false).
 			Comment("是否对图片生成结果自动执行 4K 超分"),
+		field.Bool("image_2k_enhancement_enabled").
+			Default(false).
+			Comment("是否在 2K 生图命中后调用指定图片分组做二段提升"),
+		field.Int64("image_2k_enhancement_group_id").
+			Optional().
+			Nillable().
+			Comment("2K 生图二段提升使用的目标图片分组 ID"),
 		field.Bool("image_4k_enhancement_enabled").
 			Default(false).
 			Comment("是否在 4K 生图命中后调用指定图片分组做二段提升"),
@@ -87,6 +110,11 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("4K 生图二段提升使用的目标图片分组 ID"),
+		field.String("image_4k_enhancement_model").
+			MaxLen(100).
+			Optional().
+			Nillable().
+			Comment("4K 生图二段提升使用的目标图片模型；为空时沿用目标分组自动模型解析"),
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),

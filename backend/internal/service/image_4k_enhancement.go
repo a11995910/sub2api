@@ -40,23 +40,37 @@ func (s *OpenAIGatewayService) image4KEnhancementSkipReason(c *gin.Context, pars
 	if !apiKey.Group.AllowImageGeneration {
 		return "group_image_generation_disabled"
 	}
-	if !apiKey.Group.Image4KEnhancementEnabled {
-		return "group_4k_enhancement_disabled"
-	}
-	if apiKey.Group.Image4KEnhancementGroupID == nil || *apiKey.Group.Image4KEnhancementGroupID <= 0 {
-		return "target_group_missing"
-	}
-	if *apiKey.Group.Image4KEnhancementGroupID == apiKey.Group.ID {
-		return "target_group_self"
-	}
 	if parsed == nil {
 		return "request_missing"
 	}
 	if parsed.Stream {
 		return "stream_not_supported"
 	}
-	if NormalizeImageBillingTierOrDefault(parsed.SizeTier) != ImageBillingSize4K {
-		return "request_not_4k"
+	tier := imageEnhancementRequestTier(parsed, "")
+	switch tier {
+	case ImageBillingSize2K:
+		// 2K 命中走纯本地等比放大（CatmullRom），不转发目标分组、不产生二段计费。
+		if !imageEnhancementRequestHasExplicitTier(parsed) {
+			return "request_2k_not_explicit"
+		}
+		if !apiKey.Group.Image2KEnhancementEnabled {
+			return "group_2k_enhancement_disabled"
+		}
+		return ""
+	case ImageBillingSize4K:
+		if !apiKey.Group.Image4KEnhancementEnabled {
+			return "group_4k_enhancement_disabled"
+		}
+	default:
+		return "request_not_2k_or_4k"
+	}
+	// 仅 4K 二段提升依赖目标分组。
+	targetGroupID := imageEnhancementTargetGroupID(apiKey.Group, tier)
+	if targetGroupID == nil || *targetGroupID <= 0 {
+		return "target_group_missing"
+	}
+	if *targetGroupID == apiKey.Group.ID {
+		return "target_group_self"
 	}
 	return ""
 }
@@ -73,11 +87,20 @@ func (s *OpenAIGatewayService) shouldBlockLegacyImageSuperResolutionFor4KEnhance
 	if apiKey == nil || apiKey.Group == nil {
 		return false
 	}
-	if !apiKey.Group.AllowImageGeneration || !apiKey.Group.Image4KEnhancementEnabled {
+	if !apiKey.Group.AllowImageGeneration {
 		return false
 	}
-	sizeTier := firstNonEmptyString(openAIImagesRequestSizeTier(parsed), requestSizeTier)
-	if NormalizeImageBillingTierOrDefault(sizeTier) != ImageBillingSize4K {
+	tier := imageEnhancementRequestTier(parsed, requestSizeTier)
+	switch tier {
+	case ImageBillingSize2K:
+		if !imageEnhancementRequestHasExplicitTier(parsed) || !apiKey.Group.Image2KEnhancementEnabled {
+			return false
+		}
+	case ImageBillingSize4K:
+		if !apiKey.Group.Image4KEnhancementEnabled {
+			return false
+		}
+	default:
 		return false
 	}
 	if reason := s.image4KEnhancementSkipReason(c, parsed); reason != "" {
@@ -92,37 +115,97 @@ func logImage4KEnhancementDecision(c *gin.Context, phase, reason string, parsed 
 	groupID := int64(0)
 	targetGroupID := int64(0)
 	enabled := false
+	requestSizeTier := ""
+	requestSize := ""
+	targetModel := ""
+	if parsed != nil {
+		requestSizeTier = imageEnhancementRequestTier(parsed, "")
+		requestSize = parsed.Size
+	}
 	if apiKey != nil {
 		apiKeyID = apiKey.ID
 		if apiKey.Group != nil {
 			groupID = apiKey.Group.ID
-			enabled = apiKey.Group.Image4KEnhancementEnabled
-			if apiKey.Group.Image4KEnhancementGroupID != nil {
-				targetGroupID = *apiKey.Group.Image4KEnhancementGroupID
+			enabled = imageEnhancementEnabled(apiKey.Group, requestSizeTier)
+			if target := imageEnhancementTargetGroupID(apiKey.Group, requestSizeTier); target != nil {
+				targetGroupID = *target
 			}
+			targetModel = imageEnhancementTargetModel(apiKey.Group, requestSizeTier)
 		}
 	}
 	if strings.TrimSpace(reason) == "" {
 		reason = "apply"
 	}
-	requestSizeTier := ""
-	requestSize := ""
-	if parsed != nil {
-		requestSizeTier = parsed.SizeTier
-		requestSize = parsed.Size
-	}
 	logger.LegacyPrintf(
 		image4KEnhancementLogComponent,
-		"image 4k enhancement %s: reason=%s api_key_id=%d group_id=%d target_group_id=%d enabled=%t request_size_tier=%s request_size=%s",
+		"image tier enhancement %s: reason=%s api_key_id=%d group_id=%d target_group_id=%d target_model=%s enabled=%t request_size_tier=%s request_size=%s",
 		phase,
 		reason,
 		apiKeyID,
 		groupID,
 		targetGroupID,
+		targetModel,
 		enabled,
-		NormalizeImageBillingTierOrDefault(requestSizeTier),
+		imageEnhancementRequestTier(parsed, requestSizeTier),
 		strings.TrimSpace(requestSize),
 	)
+}
+
+func imageEnhancementRequestTier(parsed *OpenAIImagesRequest, fallback string) string {
+	sizeTier := firstNonEmptyString(openAIImagesRequestSizeTier(parsed), fallback)
+	return NormalizeImageBillingTierOrDefault(sizeTier)
+}
+
+func imageEnhancementRequestHasExplicitTier(parsed *OpenAIImagesRequest) bool {
+	if parsed == nil {
+		return false
+	}
+	// 仅当尺寸能明确归类到具体计费档位（1K/2K/4K）时才算显式指定。
+	// 注意：size="auto" 会让 parsed.ExplicitSize 为 true，但它无法归类、
+	// 会回退到 2K 默认值，不应据此触发计费的 2K 二段提升。
+	_, ok := ClassifyImageBillingTier(parsed.Size)
+	return ok
+}
+
+func imageEnhancementEnabled(group *Group, tier string) bool {
+	if group == nil {
+		return false
+	}
+	switch NormalizeImageBillingTierOrDefault(tier) {
+	case ImageBillingSize2K:
+		return group.Image2KEnhancementEnabled
+	case ImageBillingSize4K:
+		return group.Image4KEnhancementEnabled
+	default:
+		return false
+	}
+}
+
+func imageEnhancementTargetGroupID(group *Group, tier string) *int64 {
+	if group == nil {
+		return nil
+	}
+	switch NormalizeImageBillingTierOrDefault(tier) {
+	case ImageBillingSize2K:
+		return group.Image2KEnhancementGroupID
+	case ImageBillingSize4K:
+		return group.Image4KEnhancementGroupID
+	default:
+		return nil
+	}
+}
+
+func imageEnhancementTargetModel(group *Group, tier string) string {
+	if group == nil {
+		return ""
+	}
+	switch NormalizeImageBillingTierOrDefault(tier) {
+	case ImageBillingSize4K:
+		if group.Image4KEnhancementModel != nil {
+			return strings.TrimSpace(*group.Image4KEnhancementModel)
+		}
+	}
+	return ""
 }
 
 func (s *OpenAIGatewayService) applyOpenAIImages4KEnhancementToJSON(
@@ -199,12 +282,23 @@ func (s *OpenAIGatewayService) applyOpenAIResponses4KEnhancement(
 	}
 	logImage4KEnhancementDecision(c, "apply", "", parsed)
 
+	tier := imageEnhancementRequestTier(parsed, "")
 	out := make([]openAIResponsesImageResult, len(results))
 	copy(out, results)
 	for index := range out {
 		imageBytes, mimeType, err := openAIResponsesImageResultBytes(out[index])
 		if err != nil {
-			logger.LegacyPrintf(image4KEnhancementLogComponent, "skip image 4k enhancement: index=%d err=%v", index, err)
+			logger.LegacyPrintf(image4KEnhancementLogComponent, "skip image tier enhancement: index=%d err=%v", index, err)
+			continue
+		}
+		if tier == ImageBillingSize2K {
+			// 2K：纯本地等比放大，不调用目标分组。
+			enhanced, err := upscaleImage2KLocally(out[index], imageBytes, parsed)
+			if err != nil {
+				logger.LegacyPrintf(image4KEnhancementLogComponent, "image 2k local upscale failed: index=%d err=%v", index, err)
+				continue
+			}
+			out[index] = enhanced
 			continue
 		}
 		enhanced, err := s.enhanceOpenAIImageViaTargetGroup(ctx, c, imageBytes, mimeType, parsed, index)
@@ -215,6 +309,65 @@ func (s *OpenAIGatewayService) applyOpenAIResponses4KEnhancement(
 		out[index] = enhanced
 	}
 	return out
+}
+
+// upscaleImage2KLocally 用本地 CatmullRom 算法把生成图等比放大到 2K，
+// 不发起任何上游调用、不产生二段计费。目标尺寸取自请求 size：
+//   - 请求 size 是明确像素（如 2048x1152）→ 放大到该精确尺寸；
+//   - 请求 size 是 "2K" 关键字（无具体像素）→ 长边放大到 2048，保持宽高比；
+//   - 原图长边已 ≥ 2048 → 不放大，原样返回。
+func upscaleImage2KLocally(source openAIResponsesImageResult, imageBytes []byte, parsed *OpenAIImagesRequest) (openAIResponsesImageResult, error) {
+	width, height, ok := compute2KTargetDimensions(imageBytes, parsed)
+	if !ok {
+		return source, nil
+	}
+	targetFormat := normalizeOpenAIImage4KEnhancementOutputFormat(parsed)
+	resized, format, changed, err := resizeOpenAIImageBytesToDimensionsAndFormat(imageBytes, width, height, targetFormat)
+	if err != nil {
+		return source, err
+	}
+	if !changed {
+		return source, nil
+	}
+	out := source
+	out.Result = base64.StdEncoding.EncodeToString(resized)
+	out.URL = ""
+	out.MimeType = "image/" + format
+	if format == "jpeg" {
+		out.MimeType = "image/jpeg"
+	}
+	out.OutputFormat = format
+	out.Size = fmt.Sprintf("%dx%d", width, height)
+	if model := openAIImagesRequestModel(parsed); model != "" {
+		out.Model = model
+	}
+	return out, nil
+}
+
+// compute2KTargetDimensions 计算 2K 本地放大的目标像素尺寸。
+// 返回 ok=false 表示无需/无法放大（应原样返回）。
+func compute2KTargetDimensions(imageBytes []byte, parsed *OpenAIImagesRequest) (int, int, bool) {
+	const maxEdge2K = 2048
+	if width, height, ok := parseImageBillingDimensions(openAIImagesRequestSize(parsed)); ok {
+		return width, height, true
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(imageBytes))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return 0, 0, false
+	}
+	longest := cfg.Width
+	if cfg.Height > longest {
+		longest = cfg.Height
+	}
+	if longest >= maxEdge2K {
+		// 原图长边已达到/超过 2K，本地放大无意义。
+		return 0, 0, false
+	}
+	scale := float64(maxEdge2K) / float64(longest)
+	if cfg.Width >= cfg.Height {
+		return maxEdge2K, int(float64(cfg.Height)*scale + 0.5), true
+	}
+	return int(float64(cfg.Width)*scale + 0.5), maxEdge2K, true
 }
 
 func openAIResponsesImageResultBytes(result openAIResponsesImageResult) ([]byte, string, error) {
@@ -244,10 +397,15 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 	index int,
 ) (openAIResponsesImageResult, error) {
 	apiKey := getAPIKeyFromContext(c)
-	if apiKey == nil || apiKey.Group == nil || apiKey.Group.Image4KEnhancementGroupID == nil {
+	if apiKey == nil || apiKey.Group == nil {
 		return openAIResponsesImageResult{}, fmt.Errorf("target group is not configured")
 	}
-	targetGroupID := *apiKey.Group.Image4KEnhancementGroupID
+	tier := imageEnhancementRequestTier(sourceParsed, "")
+	targetGroupIDPtr := imageEnhancementTargetGroupID(apiKey.Group, tier)
+	if targetGroupIDPtr == nil {
+		return openAIResponsesImageResult{}, fmt.Errorf("target group is not configured")
+	}
+	targetGroupID := *targetGroupIDPtr
 	if targetGroupID <= 0 {
 		return openAIResponsesImageResult{}, fmt.Errorf("target group is not configured")
 	}
@@ -261,7 +419,10 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 	requestModel := openAIImagesRequestModel(sourceParsed)
 	mapping := s.ResolveChannelMapping(ctx, targetGroupID, requestModel)
 	targetRequestModel := strings.TrimSpace(requestModel)
-	if strings.TrimSpace(mapping.MappedModel) != "" && strings.TrimSpace(mapping.MappedModel) != strings.TrimSpace(requestModel) {
+	if configuredModel := imageEnhancementTargetModel(apiKey.Group, tier); configuredModel != "" {
+		targetRequestModel = configuredModel
+		mapping.MappedModel = configuredModel
+	} else if strings.TrimSpace(mapping.MappedModel) != "" && strings.TrimSpace(mapping.MappedModel) != strings.TrimSpace(requestModel) {
 		targetRequestModel = strings.TrimSpace(mapping.MappedModel)
 	} else if fallbackModel := s.resolveImage4KEnhancementTargetRequestModel(ctx, targetGroupID, requestModel); fallbackModel != "" {
 		targetRequestModel = fallbackModel
@@ -286,7 +447,12 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 			lastErr = fmt.Errorf("target group has no available account")
 			break
 		}
-		result, err := s.callOpenAIImages4KEnhancementAttempt(ctx, c, selection.Account, targetChannel, mapping.MappedModel, imageBytes, mimeType, sourceParsed, index)
+		targetForwardModel := strings.TrimSpace(selection.Account.GetMappedModel(targetRequestModel))
+		if targetForwardModel == "" {
+			targetForwardModel = targetRequestModel
+		}
+		attemptChannel := cloneImageEnhancementTargetChannelForModel(targetChannel, targetRequestModel, targetForwardModel)
+		result, err := s.callOpenAIImages4KEnhancementAttempt(ctx, c, selection.Account, attemptChannel, targetForwardModel, imageBytes, mimeType, sourceParsed, index)
 		if selection.ReleaseFunc != nil {
 			selection.ReleaseFunc()
 		}
@@ -347,6 +513,27 @@ func (s *OpenAIGatewayService) resolveImage4KEnhancementTargetRequestModel(ctx c
 		}
 	}
 	return candidates[0]
+}
+
+func cloneImageEnhancementTargetChannelForModel(channel *Channel, requestModel, mappedModel string) *Channel {
+	if channel == nil || channel.ShouldForwardOpenAIImagesViaChatCompletions() {
+		return channel
+	}
+	upstreamModel := strings.TrimSpace(mappedModel)
+	if upstreamModel == "" {
+		upstreamModel = requestModel
+	}
+	if validateOpenAIImagesModel(upstreamModel) == nil {
+		return channel
+	}
+	cloned := channel.Clone()
+	if cloned.FeaturesConfig == nil {
+		cloned.FeaturesConfig = map[string]any{}
+	}
+	cloned.FeaturesConfig[featureKeyOpenAIImagesUpstream] = map[string]any{
+		"mode": openAIImagesUpstreamModeChatCompletions,
+	}
+	return cloned
 }
 
 func (s *OpenAIGatewayService) callOpenAIImages4KEnhancementAttempt(

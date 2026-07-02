@@ -94,11 +94,18 @@ type CreateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     bool     `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled       bool     `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID       *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled       bool     `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID       *int64   `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel         *string  `json:"image_4k_enhancement_model"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool     `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
+	PeakRateEnabled                 bool     `json:"peak_rate_enabled"`
+	PeakStart                       string   `json:"peak_start"`
+	PeakEnd                         string   `json:"peak_end"`
+	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
@@ -139,11 +146,18 @@ type UpdateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled     *bool    `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled       *bool    `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID       *int64   `json:"image_2k_enhancement_group_id"`
 	Image4KEnhancementEnabled       *bool    `json:"image_4k_enhancement_enabled"`
 	Image4KEnhancementGroupID       *int64   `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel         *string  `json:"image_4k_enhancement_model"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
 	CacheHitQuarterToInput          *bool    `json:"cache_hit_quarter_to_input_enabled"`
 	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
+	PeakRateEnabled                 *bool    `json:"peak_rate_enabled"`
+	PeakStart                       *string  `json:"peak_start"`
+	PeakEnd                         *string  `json:"peak_end"`
+	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
@@ -290,6 +304,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if err := service.ValidatePeakRateConfig(req.SubscriptionType, req.PeakRateEnabled, req.PeakStart, req.PeakEnd, float64ValueOrDefault(req.PeakRateMultiplier, 1.0)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -302,11 +321,18 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:       req.Image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       req.Image4KEnhancementGroupID,
+		Image4KEnhancementModel:         req.Image4KEnhancementModel,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
+		PeakRateEnabled:                 req.PeakRateEnabled,
+		PeakStart:                       req.PeakStart,
+		PeakEnd:                         req.PeakEnd,
+		PeakRateMultiplier:              req.PeakRateMultiplier,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -362,11 +388,18 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
+		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:       req.Image2KEnhancementGroupID,
 		Image4KEnhancementEnabled:       req.Image4KEnhancementEnabled,
 		Image4KEnhancementGroupID:       req.Image4KEnhancementGroupID,
+		Image4KEnhancementModel:         req.Image4KEnhancementModel,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
+		PeakRateEnabled:                 req.PeakRateEnabled,
+		PeakStart:                       req.PeakStart,
+		PeakEnd:                         req.PeakEnd,
+		PeakRateMultiplier:              req.PeakRateMultiplier,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
