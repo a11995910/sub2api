@@ -970,7 +970,7 @@ export interface SendTestEmailRequest {
 }
 
 /**
- * Send test email with provided SMTP config
+ * Test SMTP login with provided config without sending a real email.
  * @param request - Email address and SMTP config
  * @returns Test result message
  */

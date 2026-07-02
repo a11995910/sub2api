@@ -6697,13 +6697,13 @@ export default {
         useTlsHint: '为 SMTP 连接启用 TLS 加密'
       },
       testEmail: {
-        title: '发送测试邮件',
-        description: '发送测试邮件以验证 SMTP 配置',
-        recipientEmail: '收件人邮箱',
+        title: '测试 SMTP 连接',
+        description: '仅验证 SMTP 服务器连接和登录，不发送真实邮件',
+        recipientEmail: '测试邮箱',
         recipientEmailPlaceholder: "test{'@'}example.com",
-        sendTestEmail: '发送测试邮件',
-        sending: '发送中...',
-        enterRecipientHint: '请输入收件人邮箱地址'
+        sendTestEmail: '测试 SMTP 连接',
+        sending: '测试中...',
+        enterRecipientHint: '请输入测试邮箱地址'
       },
       emailTemplates: {
         title: '邮件模板',
@@ -7068,11 +7068,11 @@ export default {
       saving: '保存中...',
       settingsSaved: '设置保存成功',
       smtpConnectionSuccess: 'SMTP 连接成功',
-      testEmailSent: '测试邮件发送成功',
+      testEmailSent: 'SMTP 连接测试成功',
       failedToLoad: '加载设置失败',
       failedToSave: '保存设置失败',
       failedToTestSmtp: 'SMTP 连接测试失败',
-      failedToSendTestEmail: '发送测试邮件失败'
+      failedToSendTestEmail: 'SMTP 连接测试失败'
     },
 
     // Error Passthrough Rules

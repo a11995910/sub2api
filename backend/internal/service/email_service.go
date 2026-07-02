@@ -20,10 +20,11 @@ import (
 )
 
 var (
-	ErrEmailNotConfigured    = infraerrors.ServiceUnavailable("EMAIL_NOT_CONFIGURED", "email service not configured")
-	ErrInvalidVerifyCode     = infraerrors.BadRequest("INVALID_VERIFY_CODE", "invalid or expired verification code")
-	ErrVerifyCodeTooFrequent = infraerrors.TooManyRequests("VERIFY_CODE_TOO_FREQUENT", "please wait before requesting a new code")
-	ErrVerifyCodeMaxAttempts = infraerrors.TooManyRequests("VERIFY_CODE_MAX_ATTEMPTS", "too many failed attempts, please request a new code")
+	ErrEmailNotConfigured     = infraerrors.ServiceUnavailable("EMAIL_NOT_CONFIGURED", "email service not configured")
+	ErrEmailSendingRestricted = infraerrors.Forbidden("EMAIL_SENDING_RESTRICTED", "email sending is restricted to registration verification and password reset")
+	ErrInvalidVerifyCode      = infraerrors.BadRequest("INVALID_VERIFY_CODE", "invalid or expired verification code")
+	ErrVerifyCodeTooFrequent  = infraerrors.TooManyRequests("VERIFY_CODE_TOO_FREQUENT", "please wait before requesting a new code")
+	ErrVerifyCodeMaxAttempts  = infraerrors.TooManyRequests("VERIFY_CODE_MAX_ATTEMPTS", "too many failed attempts, please request a new code")
 
 	// Password reset errors
 	ErrInvalidResetToken = infraerrors.BadRequest("INVALID_RESET_TOKEN", "invalid or expired password reset token")
@@ -90,6 +91,17 @@ type SMTPConfig struct {
 	From     string
 	FromName string
 	UseTLS   bool
+}
+
+type EmailPurpose string
+
+const (
+	EmailPurposeAuthVerifyCode    EmailPurpose = "auth.verify_code"
+	EmailPurposeAuthPasswordReset EmailPurpose = "auth.password_reset"
+)
+
+func isAllowedEmailPurpose(purpose EmailPurpose) bool {
+	return purpose == EmailPurposeAuthVerifyCode || purpose == EmailPurposeAuthPasswordReset
 }
 
 // EmailService 邮件服务
@@ -173,11 +185,18 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 
 // SendEmail 发送邮件（使用数据库中保存的配置）
 func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) error {
+	return s.SendEmailForPurpose(ctx, "", to, subject, body)
+}
+
+func (s *EmailService) SendEmailForPurpose(ctx context.Context, purpose EmailPurpose, to, subject, body string) error {
+	if !isAllowedEmailPurpose(purpose) {
+		return ErrEmailSendingRestricted
+	}
 	config, err := s.GetSMTPConfig(ctx)
 	if err != nil {
 		return err
 	}
-	return s.SendEmailWithConfig(config, to, subject, body)
+	return s.SendEmailWithConfigForPurpose(config, purpose, to, subject, body)
 }
 
 const smtpDialTimeout = 10 * time.Second
@@ -185,6 +204,13 @@ const smtpIOTimeout = 20 * time.Second
 
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	return s.SendEmailWithConfigForPurpose(config, "", to, subject, body)
+}
+
+func (s *EmailService) SendEmailWithConfigForPurpose(config *SMTPConfig, purpose EmailPurpose, to, subject, body string) error {
+	if !isAllowedEmailPurpose(purpose) {
+		return ErrEmailSendingRestricted
+	}
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
 	to = sanitizeEmailHeader(to)
 	subject = sanitizeEmailHeader(subject)
@@ -375,7 +401,7 @@ func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName strin
 	body := s.buildVerifyCodeEmailBody(code, siteName)
 
 	// 发送邮件
-	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+	if err := s.SendEmailForPurpose(ctx, EmailPurposeAuthVerifyCode, email, subject, body); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 
@@ -570,7 +596,7 @@ func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteNa
 	body := s.buildPasswordResetEmailBody(fullResetURL, siteName)
 
 	// Send email
-	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+	if err := s.SendEmailForPurpose(ctx, EmailPurposeAuthPasswordReset, email, subject, body); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 

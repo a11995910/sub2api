@@ -6543,13 +6543,13 @@ export default {
         useTlsHint: 'Enable TLS encryption for SMTP connection'
       },
       testEmail: {
-        title: 'Send Test Email',
-        description: 'Send a test email to verify your SMTP configuration',
-        recipientEmail: 'Recipient Email',
+        title: 'Test SMTP Connection',
+        description: 'Verify SMTP server connection and login without sending a real email',
+        recipientEmail: 'Test Email',
         recipientEmailPlaceholder: "test{'@'}example.com",
-        sendTestEmail: 'Send Test Email',
-        sending: 'Sending...',
-        enterRecipientHint: 'Please enter a recipient email address'
+        sendTestEmail: 'Test SMTP Connection',
+        sending: 'Testing...',
+        enterRecipientHint: 'Please enter a test email address'
       },
       emailTemplates: {
         title: 'Email Templates',
@@ -6915,11 +6915,11 @@ export default {
       saving: 'Saving...',
       settingsSaved: 'Settings saved successfully',
       smtpConnectionSuccess: 'SMTP connection successful',
-      testEmailSent: 'Test email sent successfully',
+      testEmailSent: 'SMTP connection tested successfully',
       failedToLoad: 'Failed to load settings',
       failedToSave: 'Failed to save settings',
       failedToTestSmtp: 'SMTP connection test failed',
-      failedToSendTestEmail: 'Failed to send test email'
+      failedToSendTestEmail: 'SMTP connection test failed'
     },
 
     // Error Passthrough Rules

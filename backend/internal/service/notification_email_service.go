@@ -53,6 +53,17 @@ var (
 	notificationEmailCommonPlaceholders = []string{"site_name", "recipient_name", "recipient_email"}
 )
 
+func notificationEmailPurpose(event string) (EmailPurpose, bool) {
+	switch event {
+	case NotificationEmailEventAuthVerifyCode:
+		return EmailPurposeAuthVerifyCode, true
+	case NotificationEmailEventAuthPasswordReset:
+		return EmailPurposeAuthPasswordReset, true
+	default:
+		return "", false
+	}
+}
+
 type NotificationEmailService struct {
 	settingRepo  SettingRepository
 	emailService *EmailService
@@ -395,7 +406,11 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 	if s.emailService == nil {
 		return notificationEmailConfigErr(errors.New("email service is not configured"))
 	}
-	if err := s.emailService.SendEmail(ctx, recipient, rendered.Subject, rendered.HTML); err != nil {
+	purpose, ok := notificationEmailPurpose(normalizedEvent)
+	if !ok {
+		return ErrEmailSendingRestricted
+	}
+	if err := s.emailService.SendEmailForPurpose(ctx, purpose, recipient, rendered.Subject, rendered.HTML); err != nil {
 		return notificationEmailDeliveryErr(err)
 	}
 	if deliveryKey != "" {

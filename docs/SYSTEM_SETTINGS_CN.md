@@ -58,6 +58,40 @@
 
 用户签到接口、签到记录、重复签到限制、并发幂等控制和余额发放逻辑由签到业务模块实现。完整规则见 `docs/CHECKIN_CN.md`。
 
+## 邮件与 SMTP 配置
+
+管理员在后台 `系统设置 > 安全与认证` 中启用邮箱验证和密码重置，在 `系统设置 > 邮件` 中维护 SMTP 配置。配置通过 `settings` 表的 key/value 记录保存，不需要独立数据表。
+
+SMTP 配置包含以下字段：
+
+| 配置项 | settings key | 说明 |
+| --- | --- | --- |
+| SMTP 主机 | `smtp_host` | SMTP 服务器地址，未配置时邮件服务不可用。 |
+| SMTP 端口 | `smtp_port` | SMTP 服务端口，默认 `587`。 |
+| SMTP 用户名 | `smtp_username` | SMTP 登录用户名。 |
+| SMTP 密码 | `smtp_password` | SMTP 登录密码，后台保存时允许留空以保留原密码。 |
+| 发件人邮箱 | `smtp_from` | SMTP envelope sender 和邮件 From 地址。 |
+| 发件人名称 | `smtp_from_name` | 邮件 From 展示名称。 |
+| 使用 TLS | `smtp_use_tls` | 为 `true` 时使用 TLS 直连；为 `false` 时连接后如服务端支持则尝试 STARTTLS。 |
+
+邮件发送范围：
+
+- 系统只允许注册邮箱验证码和密码重置邮件实际投递。
+- 注册邮箱验证码通过 `auth.verify_code` 事件或内置验证码模板发送，验证码写入缓存并受 1 分钟冷却和 15 分钟有效期限制。
+- 密码重置邮件通过 `auth.password_reset` 事件或内置密码重置模板发送，重置令牌写入缓存并受 30 秒冷却和 30 分钟有效期限制。
+- 订阅到期提醒、余额不足提醒、账号限额通知、支付成功通知、风控通知、运营告警、定时报表、额外通知邮箱验证等邮件事件不会投递到 SMTP，用于避免普通 SMTP 账号被非必要通知耗尽每日发信额度。
+- 后台 SMTP 测试入口只验证 SMTP 连接和登录认证，不发送真实测试邮件。
+
+相关接口：
+
+| 入口 | 说明 |
+| --- | --- |
+| `GET /api/v1/admin/settings` | 管理端读取 SMTP 配置展示字段，密码仅返回是否已配置。 |
+| `PUT /api/v1/admin/settings` | 管理端保存 SMTP 配置，密码为空时保留已有密码。 |
+| `POST /api/v1/admin/settings/send-test-email` | 使用提交的 SMTP 配置测试连接和认证，不发送真实邮件。 |
+| 注册验证码发送入口 | 根据注册流程提交邮箱后进入邮件队列，队列任务类型为 `verify_code`。 |
+| 密码重置发送入口 | 根据忘记密码流程提交邮箱后进入邮件队列，队列任务类型为 `password_reset`。 |
+
 ## 运维高级设置
 
 管理员在后台 `运维监控 > 设置` 中维护运维高级设置。配置通过 `settings` 表的 `ops_advanced_settings` JSON 保存，读取和保存接口为：

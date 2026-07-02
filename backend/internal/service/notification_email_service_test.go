@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -322,7 +323,7 @@ func TestNotificationEmailPreferenceKeyUsesShortStableHashAndReadsLegacyKey(t *t
 	require.True(t, unsubscribed)
 }
 
-func TestNotificationEmailSendDeduplicatesSubscriptionExpiryReminder(t *testing.T) {
+func TestNotificationEmailSendRestrictsSubscriptionExpiryReminder(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()
 	smtpServer := startNotificationEmailTestSMTPServer(t)
@@ -345,16 +346,15 @@ func TestNotificationEmailSendDeduplicatesSubscriptionExpiryReminder(t *testing.
 		},
 	}
 
-	require.NoError(t, svc.Send(ctx, input))
-	require.Equal(t, int64(1), smtpServer.messageCount())
+	err := svc.Send(ctx, input)
+	require.Error(t, err)
+	require.Equal(t, "EMAIL_SENDING_RESTRICTED", infraerrors.Reason(err))
+	require.Equal(t, int64(0), smtpServer.messageCount())
 
 	key := notificationEmailDeliveryKey(input.Event, input.SourceType, input.SourceID, input.RecipientEmail, input.ReminderKey)
 	require.LessOrEqual(t, len(key), 100)
-	_, err := repo.GetValue(ctx, key)
-	require.NoError(t, err)
-
-	require.NoError(t, svc.Send(ctx, input))
-	require.Equal(t, int64(1), smtpServer.messageCount())
+	_, err = repo.GetValue(ctx, key)
+	require.Error(t, err)
 }
 
 func TestNotificationEmailSendRespectsLegacyDeliveryKey(t *testing.T) {
