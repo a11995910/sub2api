@@ -41,13 +41,14 @@ type SystemSettings struct {
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
 
-	SMTPHost               string `json:"smtp_host"`
-	SMTPPort               int    `json:"smtp_port"`
-	SMTPUsername           string `json:"smtp_username"`
-	SMTPPasswordConfigured bool   `json:"smtp_password_configured"`
-	SMTPFrom               string `json:"smtp_from_email"`
-	SMTPFromName           string `json:"smtp_from_name"`
-	SMTPUseTLS             bool   `json:"smtp_use_tls"`
+	SMTPHost               string               `json:"smtp_host"`
+	SMTPPort               int                  `json:"smtp_port"`
+	SMTPUsername           string               `json:"smtp_username"`
+	SMTPPasswordConfigured bool                 `json:"smtp_password_configured"`
+	SMTPFrom               string               `json:"smtp_from_email"`
+	SMTPFromName           string               `json:"smtp_from_name"`
+	SMTPUseTLS             bool                 `json:"smtp_use_tls"`
+	SMTPFallbacks          []SMTPFallbackConfig `json:"smtp_fallbacks"`
 
 	TurnstileEnabled             bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey             string `json:"turnstile_site_key"`
@@ -280,6 +281,16 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+}
+
+type SMTPFallbackConfig struct {
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	Username           string `json:"username"`
+	PasswordConfigured bool   `json:"password_configured"`
+	From               string `json:"from_email"`
+	FromName           string `json:"from_name"`
+	UseTLS             bool   `json:"use_tls"`
 }
 
 type DefaultSubscriptionSetting struct {

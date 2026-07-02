@@ -463,6 +463,7 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  smtp_fallbacks: SmtpFallbackConfig[];
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean;
   turnstile_site_key: string;
@@ -745,6 +746,7 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  smtp_fallbacks?: SmtpFallbackConfigRequest[];
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
@@ -927,6 +929,32 @@ export async function updateSettings(
     settings,
   );
   return data;
+}
+
+/**
+ * Backup SMTP configuration returned by admin settings.
+ */
+export interface SmtpFallbackConfig {
+  host: string;
+  port: number;
+  username: string;
+  password_configured: boolean;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
+}
+
+/**
+ * Backup SMTP configuration submitted by admin settings.
+ */
+export interface SmtpFallbackConfigRequest {
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
 }
 
 /**

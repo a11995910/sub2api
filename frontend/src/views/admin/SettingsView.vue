@@ -6909,8 +6909,8 @@
             </div>
           </div>
 
-          <!-- SMTP Settings - Only show when email verification is enabled -->
-          <div v-if="form.email_verify_enabled" class="card">
+          <!-- SMTP Settings -->
+          <div class="card">
             <div
               class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -7069,11 +7069,168 @@
                 </div>
                 <Toggle v-model="form.smtp_use_tls" />
               </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <h3 class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.smtp.fallbacks") }}
+                    </h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.smtp.fallbacksHint") }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    @click="addSmtpFallback"
+                  >
+                    {{ t("admin.settings.smtp.addFallback") }}
+                  </button>
+                </div>
+                <div
+                  v-if="form.smtp_fallbacks.length === 0"
+                  class="rounded-md border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400"
+                >
+                  {{ t("admin.settings.smtp.noFallbacks") }}
+                </div>
+                <div v-else class="space-y-4">
+                  <div
+                    v-for="(fallback, index) in form.smtp_fallbacks"
+                    :key="index"
+                    class="rounded-md border border-gray-200 p-4 dark:border-dark-700"
+                  >
+                    <div class="mb-4 flex items-center justify-between">
+                      <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{
+                          t("admin.settings.smtp.fallbackTitle", {
+                            index: index + 1,
+                          })
+                        }}
+                      </h4>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm"
+                        @click="removeSmtpFallback(index)"
+                      >
+                        {{ t("common.delete") }}
+                      </button>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.smtp.host") }}
+                        </label>
+                        <input
+                          v-model="fallback.host"
+                          type="text"
+                          class="input"
+                          :placeholder="t('admin.settings.smtp.hostPlaceholder')"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.smtp.port") }}
+                        </label>
+                        <input
+                          v-model.number="fallback.port"
+                          type="number"
+                          min="1"
+                          max="65535"
+                          class="input"
+                          :placeholder="t('admin.settings.smtp.portPlaceholder')"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.smtp.username") }}
+                        </label>
+                        <input
+                          v-model="fallback.username"
+                          type="text"
+                          class="input"
+                          :placeholder="t('admin.settings.smtp.usernamePlaceholder')"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.smtp.password") }}
+                        </label>
+                        <input
+                          v-model="fallback.password"
+                          type="password"
+                          class="input"
+                          autocomplete="new-password"
+                          autocapitalize="off"
+                          spellcheck="false"
+                          :placeholder="
+                            fallback.password_configured
+                              ? t('admin.settings.smtp.passwordConfiguredPlaceholder')
+                              : t('admin.settings.smtp.passwordPlaceholder')
+                          "
+                        />
+                        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{
+                            fallback.password_configured
+                              ? t("admin.settings.smtp.passwordConfiguredHint")
+                              : t("admin.settings.smtp.passwordHint")
+                          }}
+                        </p>
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.smtp.fromEmail") }}
+                        </label>
+                        <input
+                          v-model="fallback.from_email"
+                          type="email"
+                          class="input"
+                          :placeholder="t('admin.settings.smtp.fromEmailPlaceholder')"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.smtp.fromName") }}
+                        </label>
+                        <input
+                          v-model="fallback.from_name"
+                          type="text"
+                          class="input"
+                          :placeholder="t('admin.settings.smtp.fromNamePlaceholder')"
+                        />
+                      </div>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between">
+                      <div>
+                        <label class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.smtp.useTls") }}
+                        </label>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.smtp.useTlsHint") }}
+                        </p>
+                      </div>
+                      <Toggle v-model="fallback.use_tls" />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Send Test Email - Only show when email verification is enabled -->
-          <div v-if="form.email_verify_enabled" class="card">
+          <!-- Send Test Email -->
+          <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -8062,8 +8219,19 @@ type SettingsForm = Omit<
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
+  | "smtp_fallbacks"
 > & {
   smtp_password: string;
+  smtp_fallbacks: Array<{
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    password_configured?: boolean;
+    from_email: string;
+    from_name: string;
+    use_tls: boolean;
+  }>;
   turnstile_secret_key: string;
   linuxdo_connect_client_secret: string;
   dingtalk_connect_client_secret: string;
@@ -8174,6 +8342,7 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  smtp_fallbacks: [],
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: "",
@@ -9013,6 +9182,23 @@ function removeCodexWhitelistRow(i: number): void {
   codexWhitelistRows.value.splice(i, 1);
 }
 
+function addSmtpFallback(): void {
+  form.smtp_fallbacks.push({
+    host: "",
+    port: 587,
+    username: "",
+    password: "",
+    password_configured: false,
+    from_email: "",
+    from_name: "",
+    use_tls: true,
+  });
+}
+
+function removeSmtpFallback(index: number): void {
+  form.smtp_fallbacks.splice(index, 1);
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -9057,6 +9243,18 @@ async function loadSettings() {
             content_md: doc.content_md || "",
           }))
         : defaultLoginAgreementDocuments();
+    form.smtp_fallbacks = Array.isArray(settings.smtp_fallbacks)
+      ? settings.smtp_fallbacks.map((item) => ({
+          host: item.host || "",
+          port: Number(item.port) || 587,
+          username: item.username || "",
+          password: "",
+          password_configured: Boolean(item.password_configured),
+          from_email: item.from_email || "",
+          from_name: item.from_name || "",
+          use_tls: Boolean(item.use_tls),
+        }))
+      : [];
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
@@ -9463,6 +9661,17 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_fallbacks: form.smtp_fallbacks
+        .map((item) => ({
+          host: item.host.trim(),
+          port: Number(item.port) || 587,
+          username: item.username.trim(),
+          password: item.password || undefined,
+          from_email: item.from_email.trim(),
+          from_name: item.from_name.trim(),
+          use_tls: item.use_tls,
+        }))
+        .filter((item) => item.host),
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,

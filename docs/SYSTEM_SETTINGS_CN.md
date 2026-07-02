@@ -60,7 +60,7 @@
 
 ## 邮件与 SMTP 配置
 
-管理员在后台 `系统设置 > 安全与认证` 中启用邮箱验证和密码重置，在 `系统设置 > 邮件` 中维护 SMTP 配置。配置通过 `settings` 表的 key/value 记录保存，不需要独立数据表。
+管理员在后台 `系统设置 > 邮件` 中维护 SMTP 配置，SMTP 配置入口不依赖邮箱验证开关；即使未启用邮箱验证，也可以提前配置、测试和保存邮件服务。邮箱验证和密码重置是否实际对用户开放仍由 `系统设置 > 安全与认证` 中的对应开关控制。配置通过 `settings` 表的 key/value 记录保存，不需要独立数据表。
 
 SMTP 配置包含以下字段：
 
@@ -73,6 +73,13 @@ SMTP 配置包含以下字段：
 | 发件人邮箱 | `smtp_from` | SMTP envelope sender 和邮件 From 地址。 |
 | 发件人名称 | `smtp_from_name` | 邮件 From 展示名称。 |
 | 使用 TLS | `smtp_use_tls` | 为 `true` 时使用 TLS 直连；为 `false` 时连接后如服务端支持则尝试 STARTTLS。 |
+| 备用 SMTP 服务 | `smtp_fallbacks` | JSON 数组，按顺序保存备用 SMTP 配置；每项包含 `host`、`port`、`username`、`password`、`from_email`、`from_name`、`use_tls`。 |
+
+发送策略：
+
+- 系统发送注册验证码或密码重置邮件时，优先使用主 SMTP 配置。
+- 主 SMTP 连接、认证或投递失败时，系统会按 `smtp_fallbacks` 中的顺序尝试备用 SMTP 服务，直到某个服务发送成功或所有配置都失败。
+- 后台读取设置时不会返回主 SMTP 密码或备用 SMTP 密码明文，只返回是否已配置密码；保存时主 SMTP 密码留空会保留原密码，备用 SMTP 密码留空会按同序号保留原密码。
 
 邮件发送范围：
 
@@ -87,7 +94,7 @@ SMTP 配置包含以下字段：
 | 入口 | 说明 |
 | --- | --- |
 | `GET /api/v1/admin/settings` | 管理端读取 SMTP 配置展示字段，密码仅返回是否已配置。 |
-| `PUT /api/v1/admin/settings` | 管理端保存 SMTP 配置，密码为空时保留已有密码。 |
+| `PUT /api/v1/admin/settings` | 管理端保存主 SMTP 与备用 SMTP 配置，密码为空时保留已有密码。 |
 | `POST /api/v1/admin/settings/send-test-email` | 使用提交的 SMTP 配置测试连接和认证，不发送真实邮件。 |
 | 注册验证码发送入口 | 根据注册流程提交邮箱后进入邮件队列，队列任务类型为 `verify_code`。 |
 | 密码重置发送入口 | 根据忘记密码流程提交邮箱后进入邮件队列，队列任务类型为 `password_reset`。 |

@@ -139,6 +139,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SMTPFrom:                               settings.SMTPFrom,
 		SMTPFromName:                           settings.SMTPFromName,
 		SMTPUseTLS:                             settings.SMTPUseTLS,
+		SMTPFallbacks:                          smtpFallbacksToDTO(settings.SMTPFallbacks),
 		TurnstileEnabled:                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           settings.TurnstileSecretKeyConfigured,
@@ -385,6 +386,45 @@ func loginAgreementDocumentsToDTO(items []service.LoginAgreementDocument) []dto.
 	return result
 }
 
+func smtpFallbacksToDTO(items []service.SMTPFallbackConfig) []dto.SMTPFallbackConfig {
+	result := make([]dto.SMTPFallbackConfig, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.SMTPFallbackConfig{
+			Host:               item.Host,
+			Port:               item.Port,
+			Username:           item.Username,
+			PasswordConfigured: item.Password != "",
+			From:               item.From,
+			FromName:           item.FromName,
+			UseTLS:             item.UseTLS,
+		})
+	}
+	return result
+}
+
+func smtpFallbacksToService(items []SMTPFallbackConfigRequest, previous []service.SMTPFallbackConfig) []service.SMTPFallbackConfig {
+	result := make([]service.SMTPFallbackConfig, 0, len(items))
+	for i, item := range items {
+		password := strings.TrimSpace(item.Password)
+		if password == "" && i < len(previous) &&
+			strings.TrimSpace(item.Host) == previous[i].Host &&
+			strings.TrimSpace(item.Username) == previous[i].Username &&
+			strings.TrimSpace(item.From) == previous[i].From {
+			password = previous[i].Password
+		}
+		result = append(result, service.SMTPFallbackConfig{
+			Host:     strings.TrimSpace(item.Host),
+			Port:     item.Port,
+			Username: strings.TrimSpace(item.Username),
+			Password: password,
+			From:     strings.TrimSpace(item.From),
+			FromName: strings.TrimSpace(item.FromName),
+			UseTLS:   item.UseTLS,
+		})
+	}
+	return service.NormalizeSMTPFallbacks(result)
+}
+
 func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []service.LoginAgreementDocument {
 	result := make([]service.LoginAgreementDocument, 0, len(items))
 	for _, item := range items {
@@ -419,13 +459,14 @@ type UpdateSettingsRequest struct {
 	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
 
 	// 邮件服务设置
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPFrom     string `json:"smtp_from_email"`
-	SMTPFromName string `json:"smtp_from_name"`
-	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost      string                      `json:"smtp_host"`
+	SMTPPort      int                         `json:"smtp_port"`
+	SMTPUsername  string                      `json:"smtp_username"`
+	SMTPPassword  string                      `json:"smtp_password"`
+	SMTPFrom      string                      `json:"smtp_from_email"`
+	SMTPFromName  string                      `json:"smtp_from_name"`
+	SMTPUseTLS    bool                        `json:"smtp_use_tls"`
+	SMTPFallbacks []SMTPFallbackConfigRequest `json:"smtp_fallbacks"`
 
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
@@ -708,6 +749,16 @@ type UpdateSettingsRequest struct {
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
 
 	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
+}
+
+type SMTPFallbackConfigRequest struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from_email"`
+	FromName string `json:"from_name"`
+	UseTLS   bool   `json:"use_tls"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1590,6 +1641,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                         req.SMTPFrom,
 		SMTPFromName:                     req.SMTPFromName,
 		SMTPUseTLS:                       req.SMTPUseTLS,
+		SMTPFallbacks:                    smtpFallbacksToService(req.SMTPFallbacks, previousSettings.SMTPFallbacks),
 		TurnstileEnabled:                 req.TurnstileEnabled,
 		TurnstileSiteKey:                 req.TurnstileSiteKey,
 		TurnstileSecretKey:               req.TurnstileSecretKey,
@@ -2089,6 +2141,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                               updatedSettings.SMTPFrom,
 		SMTPFromName:                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                             updatedSettings.SMTPUseTLS,
+		SMTPFallbacks:                          smtpFallbacksToDTO(updatedSettings.SMTPFallbacks),
 		TurnstileEnabled:                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           updatedSettings.TurnstileSecretKeyConfigured,
@@ -2390,6 +2443,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.SMTPUseTLS != after.SMTPUseTLS {
 		changed = append(changed, "smtp_use_tls")
+	}
+	if !equalSMTPFallbacks(before.SMTPFallbacks, after.SMTPFallbacks) {
+		changed = append(changed, "smtp_fallbacks")
 	}
 	if before.TurnstileEnabled != after.TurnstileEnabled {
 		changed = append(changed, "turnstile_enabled")
@@ -3043,6 +3099,24 @@ func equalNotifyEmailEntries(a, b []service.NotifyEmailEntry) bool {
 	}
 	for i := range a {
 		if a[i].Email != b[i].Email || a[i].Verified != b[i].Verified || a[i].Disabled != b[i].Disabled {
+			return false
+		}
+	}
+	return true
+}
+
+func equalSMTPFallbacks(a, b []service.SMTPFallbackConfig) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Host != b[i].Host ||
+			a[i].Port != b[i].Port ||
+			a[i].Username != b[i].Username ||
+			a[i].Password != b[i].Password ||
+			a[i].From != b[i].From ||
+			a[i].FromName != b[i].FromName ||
+			a[i].UseTLS != b[i].UseTLS {
 			return false
 		}
 	}

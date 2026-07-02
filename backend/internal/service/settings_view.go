@@ -33,6 +33,7 @@ type SystemSettings struct {
 	SMTPFrom               string
 	SMTPFromName           string
 	SMTPUseTLS             bool
+	SMTPFallbacks          []SMTPFallbackConfig
 
 	TurnstileEnabled             bool
 	TurnstileSiteKey             string

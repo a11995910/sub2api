@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -93,6 +94,16 @@ type SMTPConfig struct {
 	UseTLS   bool
 }
 
+type SMTPFallbackConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password,omitempty"`
+	From     string `json:"from_email"`
+	FromName string `json:"from_name"`
+	UseTLS   bool   `json:"use_tls"`
+}
+
 type EmailPurpose string
 
 const (
@@ -109,6 +120,7 @@ type EmailService struct {
 	settingRepo              SettingRepository
 	cache                    EmailCache
 	notificationEmailService *NotificationEmailService
+	sendEmailWithConfigFunc  func(config *SMTPConfig, to, subject, body string) error
 }
 
 // NewEmailService 创建邮件服务实例
@@ -158,19 +170,54 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 		return nil, fmt.Errorf("get smtp settings: %w", err)
 	}
 
+	return smtpConfigFromSettings(settings)
+}
+
+func (s *EmailService) GetSMTPConfigs(ctx context.Context) ([]*SMTPConfig, error) {
+	keys := []string{
+		SettingKeySMTPHost,
+		SettingKeySMTPPort,
+		SettingKeySMTPUsername,
+		SettingKeySMTPPassword,
+		SettingKeySMTPFrom,
+		SettingKeySMTPFromName,
+		SettingKeySMTPUseTLS,
+		SettingKeySMTPFallbacks,
+	}
+
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("get smtp settings: %w", err)
+	}
+
+	primary, err := smtpConfigFromSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+	configs := []*SMTPConfig{primary}
+
+	fallbacks, err := ParseSMTPFallbacks(settings[SettingKeySMTPFallbacks])
+	if err != nil {
+		return nil, err
+	}
+	for _, fallback := range fallbacks {
+		configs = append(configs, smtpConfigFromFallback(fallback))
+	}
+	return configs, nil
+}
+
+func smtpConfigFromSettings(settings map[string]string) (*SMTPConfig, error) {
 	host := strings.TrimSpace(settings[SettingKeySMTPHost])
 	if host == "" {
 		return nil, ErrEmailNotConfigured
 	}
 
-	port := 587 // 默认端口
+	port := 587
 	if portStr := settings[SettingKeySMTPPort]; portStr != "" {
 		if p, err := strconv.Atoi(portStr); err == nil {
 			port = p
 		}
 	}
-
-	useTLS := settings[SettingKeySMTPUseTLS] == "true"
 
 	return &SMTPConfig{
 		Host:     host,
@@ -179,8 +226,51 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 		Password: strings.TrimSpace(settings[SettingKeySMTPPassword]),
 		From:     strings.TrimSpace(settings[SettingKeySMTPFrom]),
 		FromName: strings.TrimSpace(settings[SettingKeySMTPFromName]),
-		UseTLS:   useTLS,
+		UseTLS:   settings[SettingKeySMTPUseTLS] == "true",
 	}, nil
+}
+
+func ParseSMTPFallbacks(raw string) ([]SMTPFallbackConfig, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var fallbacks []SMTPFallbackConfig
+	if err := json.Unmarshal([]byte(raw), &fallbacks); err != nil {
+		return nil, fmt.Errorf("parse smtp fallbacks: %w", err)
+	}
+	return NormalizeSMTPFallbacks(fallbacks), nil
+}
+
+func NormalizeSMTPFallbacks(fallbacks []SMTPFallbackConfig) []SMTPFallbackConfig {
+	normalized := make([]SMTPFallbackConfig, 0, len(fallbacks))
+	for _, fallback := range fallbacks {
+		fallback.Host = strings.TrimSpace(fallback.Host)
+		if fallback.Host == "" {
+			continue
+		}
+		if fallback.Port <= 0 {
+			fallback.Port = 587
+		}
+		fallback.Username = strings.TrimSpace(fallback.Username)
+		fallback.Password = strings.TrimSpace(fallback.Password)
+		fallback.From = strings.TrimSpace(fallback.From)
+		fallback.FromName = strings.TrimSpace(fallback.FromName)
+		normalized = append(normalized, fallback)
+	}
+	return normalized
+}
+
+func smtpConfigFromFallback(fallback SMTPFallbackConfig) *SMTPConfig {
+	return &SMTPConfig{
+		Host:     fallback.Host,
+		Port:     fallback.Port,
+		Username: fallback.Username,
+		Password: fallback.Password,
+		From:     fallback.From,
+		FromName: fallback.FromName,
+		UseTLS:   fallback.UseTLS,
+	}
 }
 
 // SendEmail 发送邮件（使用数据库中保存的配置）
@@ -192,11 +282,11 @@ func (s *EmailService) SendEmailForPurpose(ctx context.Context, purpose EmailPur
 	if !isAllowedEmailPurpose(purpose) {
 		return ErrEmailSendingRestricted
 	}
-	config, err := s.GetSMTPConfig(ctx)
+	configs, err := s.GetSMTPConfigs(ctx)
 	if err != nil {
 		return err
 	}
-	return s.SendEmailWithConfigForPurpose(config, purpose, to, subject, body)
+	return s.SendEmailWithFallbackConfigsForPurpose(configs, purpose, to, subject, body)
 }
 
 const smtpDialTimeout = 10 * time.Second
@@ -211,6 +301,53 @@ func (s *EmailService) SendEmailWithConfigForPurpose(config *SMTPConfig, purpose
 	if !isAllowedEmailPurpose(purpose) {
 		return ErrEmailSendingRestricted
 	}
+	return s.sendEmailWithConfig(config, to, subject, body)
+}
+
+func (s *EmailService) SendEmailWithFallbackConfigsForPurpose(configs []*SMTPConfig, purpose EmailPurpose, to, subject, body string) error {
+	if !isAllowedEmailPurpose(purpose) {
+		return ErrEmailSendingRestricted
+	}
+	if len(configs) == 0 {
+		return ErrEmailNotConfigured
+	}
+
+	var failures []string
+	for i, config := range configs {
+		if config == nil || strings.TrimSpace(config.Host) == "" {
+			failures = append(failures, fmt.Sprintf("#%d: smtp host is empty", i+1))
+			continue
+		}
+		if err := s.sendEmailWithConfig(config, to, subject, body); err != nil {
+			failures = append(failures, fmt.Sprintf("#%d %s:%d: %v", i+1, config.Host, config.Port, err))
+			slog.Warn("email send failed, trying next smtp config",
+				"index", i+1,
+				"host", config.Host,
+				"port", config.Port,
+				"err", err,
+			)
+			continue
+		}
+		if i > 0 {
+			slog.Info("email send succeeded with fallback smtp config",
+				"index", i+1,
+				"host", config.Host,
+				"port", config.Port,
+			)
+		}
+		return nil
+	}
+	return fmt.Errorf("all smtp configs failed: %s", strings.Join(failures, "; "))
+}
+
+func (s *EmailService) sendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	if s.sendEmailWithConfigFunc != nil {
+		return s.sendEmailWithConfigFunc(config, to, subject, body)
+	}
+	return s.deliverEmailWithConfig(config, to, subject, body)
+}
+
+func (s *EmailService) deliverEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
 	to = sanitizeEmailHeader(to)
 	subject = sanitizeEmailHeader(subject)

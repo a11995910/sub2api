@@ -6540,7 +6540,12 @@ export default {
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection'
+        useTlsHint: 'Enable TLS encryption for SMTP connection',
+        fallbacks: 'Backup SMTP Services',
+        fallbacksHint: 'When the primary SMTP send fails, the system tries backup services in order.',
+        addFallback: 'Add Backup Service',
+        noFallbacks: 'No backup SMTP services configured.',
+        fallbackTitle: 'Backup Service {index}'
       },
       testEmail: {
         title: 'Test SMTP Connection',

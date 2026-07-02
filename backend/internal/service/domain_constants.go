@@ -161,13 +161,14 @@ const (
 	SettingKeyLoginAgreementDocuments          = "login_agreement_documents"              // 条款文档列表（JSON，Markdown 内容）
 
 	// 邮件服务设置
-	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
-	SettingKeySMTPPort     = "smtp_port"      // SMTP端口
-	SettingKeySMTPUsername = "smtp_username"  // SMTP用户名
-	SettingKeySMTPPassword = "smtp_password"  // SMTP密码（加密存储）
-	SettingKeySMTPFrom     = "smtp_from"      // 发件人地址
-	SettingKeySMTPFromName = "smtp_from_name" // 发件人名称
-	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
+	SettingKeySMTPHost      = "smtp_host"      // SMTP服务器地址
+	SettingKeySMTPPort      = "smtp_port"      // SMTP端口
+	SettingKeySMTPUsername  = "smtp_username"  // SMTP用户名
+	SettingKeySMTPPassword  = "smtp_password"  // SMTP密码（加密存储）
+	SettingKeySMTPFrom      = "smtp_from"      // 发件人地址
+	SettingKeySMTPFromName  = "smtp_from_name" // 发件人名称
+	SettingKeySMTPUseTLS    = "smtp_use_tls"   // 是否使用TLS
+	SettingKeySMTPFallbacks = "smtp_fallbacks" // 备用 SMTP 配置列表（JSON）
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证

@@ -6694,7 +6694,12 @@ export default {
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密'
+        useTlsHint: '为 SMTP 连接启用 TLS 加密',
+        fallbacks: '备用 SMTP 服务',
+        fallbacksHint: '主 SMTP 发送失败时，系统会按顺序尝试备用服务。',
+        addFallback: '添加备用服务',
+        noFallbacks: '暂未配置备用 SMTP 服务。',
+        fallbackTitle: '备用服务 {index}'
       },
       testEmail: {
         title: '测试 SMTP 连接',

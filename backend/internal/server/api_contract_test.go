@@ -610,13 +610,14 @@ func TestAPIContracts(t *testing.T) {
 					service.SettingKeyRegistrationEmailSuffixWhitelist: "[]",
 					service.SettingKeyPromoCodeEnabled:                 "true",
 
-					service.SettingKeySMTPHost:     "smtp.example.com",
-					service.SettingKeySMTPPort:     "587",
-					service.SettingKeySMTPUsername: "user",
-					service.SettingKeySMTPPassword: "secret",
-					service.SettingKeySMTPFrom:     "no-reply@example.com",
-					service.SettingKeySMTPFromName: "Sub2API",
-					service.SettingKeySMTPUseTLS:   "true",
+					service.SettingKeySMTPHost:      "smtp.example.com",
+					service.SettingKeySMTPPort:      "587",
+					service.SettingKeySMTPUsername:  "user",
+					service.SettingKeySMTPPassword:  "secret",
+					service.SettingKeySMTPFrom:      "no-reply@example.com",
+					service.SettingKeySMTPFromName:  "Sub2API",
+					service.SettingKeySMTPUseTLS:    "true",
+					service.SettingKeySMTPFallbacks: `[{"host":"smtp-backup.example.com","port":465,"username":"backup","password":"backup-secret","from_email":"backup@example.com","from_name":"Backup","use_tls":true}]`,
 
 					service.SettingKeyTurnstileEnabled:   "true",
 					service.SettingKeyTurnstileSiteKey:   "site-key",
@@ -698,6 +699,17 @@ func TestAPIContracts(t *testing.T) {
 					"smtp_from_email": "no-reply@example.com",
 					"smtp_from_name": "Sub2API",
 					"smtp_use_tls": true,
+					"smtp_fallbacks": [
+						{
+							"host": "smtp-backup.example.com",
+							"port": 465,
+							"username": "backup",
+							"password_configured": true,
+							"from_email": "backup@example.com",
+							"from_name": "Backup",
+							"use_tls": true
+						}
+					],
 					"turnstile_enabled": true,
 					"turnstile_site_key": "site-key",
 					"turnstile_secret_key_configured": true,
@@ -989,6 +1001,7 @@ func TestAPIContracts(t *testing.T) {
 					"smtp_from_email": "",
 					"smtp_from_name": "",
 					"smtp_use_tls": false,
+					"smtp_fallbacks": [],
 					"turnstile_enabled": false,
 					"turnstile_site_key": "",
 					"turnstile_secret_key_configured": false,

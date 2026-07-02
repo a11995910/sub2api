@@ -464,6 +464,15 @@ func marshalLoginAgreementDocuments(docs []LoginAgreementDocument) (string, erro
 	return string(b), nil
 }
 
+func mustParseSMTPFallbacks(raw string) []SMTPFallbackConfig {
+	fallbacks, err := ParseSMTPFallbacks(raw)
+	if err != nil {
+		slog.Warn("failed to parse smtp_fallbacks, using empty list", "err", err)
+		return nil
+	}
+	return fallbacks
+}
+
 func buildLoginAgreementRevision(updatedAt string, docs []LoginAgreementDocument) string {
 	normalized := normalizeLoginAgreementDocuments(docs)
 	payload, err := json.Marshal(struct {
@@ -2106,6 +2115,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	settings.SMTPFallbacks = NormalizeSMTPFallbacks(settings.SMTPFallbacks)
+	smtpFallbacksJSON, err := json.Marshal(settings.SMTPFallbacks)
+	if err != nil {
+		return nil, fmt.Errorf("marshal smtp fallbacks: %w", err)
+	}
+	updates[SettingKeySMTPFallbacks] = string(smtpFallbacksJSON)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
@@ -3361,6 +3376,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyForceEmailOnThirdPartySignup:              "false",
 		SettingKeySMTPPort:                                  "587",
 		SettingKeySMTPUseTLS:                                "false",
+		SettingKeySMTPFallbacks:                             "[]",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -3466,6 +3482,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFromName:                     settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                       settings[SettingKeySMTPUseTLS] == "true",
 		SMTPPasswordConfigured:           settings[SettingKeySMTPPassword] != "",
+		SMTPFallbacks:                    NormalizeSMTPFallbacks(mustParseSMTPFallbacks(settings[SettingKeySMTPFallbacks])),
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
