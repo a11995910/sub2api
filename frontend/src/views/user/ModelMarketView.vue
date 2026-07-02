@@ -298,6 +298,10 @@ const toAvailableGroup = (group: Group): UserAvailableGroup => ({
   image_price_1k: group.image_price_1k,
   image_price_2k: group.image_price_2k,
   image_price_4k: group.image_price_4k,
+  peak_rate_enabled: group.peak_rate_enabled ?? false,
+  peak_start: group.peak_start ?? '',
+  peak_end: group.peak_end ?? '',
+  peak_rate_multiplier: group.peak_rate_multiplier ?? 1,
 })
 
 const pricingSignature = (pricing: UserSupportedModelPricing | null): string => {

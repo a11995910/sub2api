@@ -155,7 +155,8 @@
           default-sort-key="created_at"
           default-sort-order="desc"
           @sort="handleSort"
-          />
+          @ipGeoBatchFailed="handleIpGeoBatchFailed"
+        />
 
         <Pagination
           v-if="pagination.total > 0"
@@ -512,6 +513,10 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   sortState.sort_order = order
   pagination.page = 1
   void loadLogs()
+}
+
+const handleIpGeoBatchFailed = () => {
+  appStore.showError(t('usage.ipGeo.batchFailed'))
 }
 
 const getRequestTypeExportText = (log: UsageLog): string => {

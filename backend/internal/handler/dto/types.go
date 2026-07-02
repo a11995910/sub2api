@@ -114,19 +114,24 @@ type Group struct {
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 
 	// 分组计费配置
-	AllowImageGeneration        bool     `json:"allow_image_generation"`
-	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled"`
-	Image2KEnhancementEnabled   bool     `json:"image_2k_enhancement_enabled"`
-	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
-	Image4KEnhancementEnabled   bool     `json:"image_4k_enhancement_enabled"`
-	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
-	Image4KEnhancementModel     *string  `json:"image_4k_enhancement_model"`
-	ImageRateIndependent        bool     `json:"image_rate_independent"`
-	CacheHitQuarterToInput      bool     `json:"cache_hit_quarter_to_input_enabled"`
-	ImageRateMultiplier         float64  `json:"image_rate_multiplier"`
-	ImagePrice1K                *float64 `json:"image_price_1k"`
-	ImagePrice2K                *float64 `json:"image_price_2k"`
-	ImagePrice4K                *float64 `json:"image_price_4k"`
+	AllowImageGeneration        bool    `json:"allow_image_generation"`
+	ImageSuperResolutionEnabled bool    `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled   bool    `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID   *int64  `json:"image_2k_enhancement_group_id"`
+	Image4KEnhancementEnabled   bool    `json:"image_4k_enhancement_enabled"`
+	Image4KEnhancementGroupID   *int64  `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel     *string `json:"image_4k_enhancement_model"`
+	ImageRateIndependent        bool    `json:"image_rate_independent"`
+	CacheHitQuarterToInput      bool    `json:"cache_hit_quarter_to_input_enabled"`
+	ImageRateMultiplier         float64 `json:"image_rate_multiplier"`
+	// 高峰时段倍率配置
+	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+	PeakStart          string   `json:"peak_start"`
+	PeakEnd            string   `json:"peak_end"`
+	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	ImagePrice1K       *float64 `json:"image_price_1k"`
+	ImagePrice2K       *float64 `json:"image_price_2k"`
+	ImagePrice4K       *float64 `json:"image_price_4k"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`

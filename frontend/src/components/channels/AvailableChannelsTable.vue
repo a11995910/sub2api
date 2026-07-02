@@ -90,7 +90,7 @@
                 <span
                   v-for="g in exclusiveGroups(card.section)"
                   :key="`ex-${card.channel.name}-${card.channelIndex}-${card.section.platform}-${g.id}`"
-                  class="inline-flex items-center gap-1"
+                  class="inline-flex flex-wrap items-center gap-1"
                 >
                   <GroupBadge
                     :name="g.name"
@@ -107,6 +107,14 @@
                   >
                     <Icon name="sparkles" size="xs" class="h-3 w-3" />
                     {{ t('availableChannels.imageEnabled') }}
+                  </span>
+                  <span
+                    v-if="hasPeakRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                    :title="peakRateTitle(g)"
+                  >
+                    <Icon name="clock" size="xs" class="h-3 w-3" />
+                    {{ peakRateLabel(g) }}
                   </span>
                 </span>
               </div>
@@ -125,7 +133,7 @@
                 <span
                   v-for="g in publicGroups(card.section)"
                   :key="`pub-${card.channel.name}-${card.channelIndex}-${card.section.platform}-${g.id}`"
-                  class="inline-flex items-center gap-1"
+                  class="inline-flex flex-wrap items-center gap-1"
                 >
                   <GroupBadge
                     :name="g.name"
@@ -142,6 +150,14 @@
                   >
                     <Icon name="sparkles" size="xs" class="h-3 w-3" />
                     {{ t('availableChannels.imageEnabled') }}
+                  </span>
+                  <span
+                    v-if="hasPeakRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                    :title="peakRateTitle(g)"
+                  >
+                    <Icon name="clock" size="xs" class="h-3 w-3" />
+                    {{ peakRateLabel(g) }}
                   </span>
                 </span>
               </div>
@@ -166,6 +182,8 @@ import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSecti
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBadgeClass, platformBorderClass } from '@/utils/platformColors'
 import { filterGroupsByModelKind, resolveModelKind } from '@/utils/modelKind'
+import { useAppStore } from '@/stores/app'
+import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 
 const props = defineProps<{
   columns: {
@@ -223,5 +241,19 @@ function effectiveImageRate(group: UserAvailableGroup): number {
 
 function imageRateTitle(group: UserAvailableGroup): string {
   return t('availableChannels.imageRateTooltip', { rate: effectiveImageRate(group) })
+}
+
+const appStore = useAppStore()
+
+function hasPeakRate(group: UserAvailableGroup): boolean {
+  return groupHasPeakRate(group)
+}
+
+function peakRateLabel(group: UserAvailableGroup): string {
+  return formatPeakRateWindow(group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
+}
+
+function peakRateTitle(group: UserAvailableGroup): string {
+  return t('common.peakRateTooltip', { window: peakRateLabel(group) }) + t('common.peakRateImageNote')
 }
 </script>
