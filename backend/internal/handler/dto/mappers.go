@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -241,6 +242,72 @@ func groupFromServiceBase(g *service.Group) Group {
 	}
 }
 
+func anthropicForwardingRiskFromService(a *service.Account) *AnthropicForwardingRisk {
+	if a == nil || a.Platform != service.PlatformAnthropic {
+		return nil
+	}
+
+	reasons := make([]string, 0, 4)
+	level := ""
+	summary := ""
+	switch a.Type {
+	case service.AccountTypeOAuth, service.AccountTypeSetupToken:
+		level = "high"
+		summary = "Anthropic OAuth/SetupToken 请求会按 Claude Code 形态转发，上游可看到账号令牌、出口 IP、TLS/HTTP 指纹和会话形态。"
+		reasons = append(reasons, "OAuth/SetupToken 转发依赖 Claude Code 请求指纹")
+		if a.GetBaseRPM() <= 0 {
+			reasons = append(reasons, "未设置账号级 RPM 限制，高频或并发流量会增加风控风险")
+		}
+		if a.GetMaxSessions() <= 0 {
+			reasons = append(reasons, "未设置账号级会话数量上限，多用户共享同一账号时会增加风控风险")
+		}
+		if a.ProxyID == nil {
+			reasons = append(reasons, "未绑定代理，流量将使用服务器默认出口")
+		}
+		if a.IsTLSFingerprintEnabled() {
+			reasons = append(reasons, "已启用 TLS 指纹伪装，需要保持 TLS profile 与 User-Agent/X-Stainless-* 一致")
+		}
+		if a.IsCustomBaseURLEnabled() {
+			reasons = append(reasons, "已启用自定义 Base URL 中继，需确认中继不会额外泄露或改写指纹")
+		}
+	case service.AccountTypeAPIKey:
+		if !a.IsAnthropicAPIKeyPassthroughEnabled() {
+			return nil
+		}
+		level = "medium"
+		summary = "Anthropic API Key 透传会转发白名单客户端头并替换认证，上游仍可看到出口 IP 和调用形态。"
+		reasons = append(reasons, "API Key 自动透传会保留白名单客户端请求头")
+		if a.ProxyID == nil {
+			reasons = append(reasons, "未绑定代理，流量将使用服务器默认出口")
+		}
+	default:
+		return nil
+	}
+
+	return &AnthropicForwardingRisk{
+		Level:   level,
+		Summary: summary,
+		Reasons: dedupeNonEmptyStrings(reasons),
+	}
+}
+
+func dedupeNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
 func AccountFromServiceShallow(a *service.Account) *Account {
 	if a == nil {
 		return nil
@@ -282,6 +349,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		ParentAccountID:         a.ParentAccountID,
 		QuotaDimension:          a.QuotaDimension,
 	}
+	out.AnthropicForwardingRisk = anthropicForwardingRiskFromService(a)
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）
 	if a.IsAnthropicOAuthOrSetupToken() {

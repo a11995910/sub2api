@@ -16,15 +16,45 @@
 - `POST /api/v1/admin/accounts/batch-refresh`：批量刷新已选账号令牌。
 - `POST /api/v1/admin/accounts/batch-clear-error`：批量重置已选账号错误状态。
 
+## Anthropic 转发风险提示
+
+账号列表和账号详情返回的 Anthropic 账号包含只读字段 `anthropic_forwarding_risk`，用于描述当前账号转发形态的风险级别、摘要和原因。该字段由服务端根据账号平台、账号类型、`extra` 配置和代理绑定状态实时计算，不写入数据库。
+
+- Anthropic `oauth` / `setup-token` 账号返回 `high` 风险摘要。该类账号的请求会按 Claude Code 形态转发，上游可看到账号令牌、出口 IP、TLS/HTTP 指纹和会话形态。
+- 创建或批量创建 Anthropic `oauth` / `setup-token` 账号时，如果请求未显式配置 `extra.base_rpm`、`extra.max_sessions` 或 `extra.session_idle_timeout_minutes`，服务端会写入保守默认值：`base_rpm=12`、`max_sessions=3`、`session_idle_timeout_minutes=5`。这些默认值用于降低共享账号高频请求和多会话并发带来的风控风险。
+- 已存在账号或编辑账号时，服务端不会自动覆盖 `base_rpm`、`max_sessions`、`session_idle_timeout_minutes` 的显式配置；管理员可以在账号编辑或批量编辑中按真实使用量调整。
+- Anthropic `apikey` 账号仅在 `extra.anthropic_passthrough=true` 时返回 `medium` 风险摘要。该模式会透传白名单客户端请求头并替换上游认证，上游仍可看到出口 IP 和调用形态。
+- 未设置 `extra.base_rpm` 或 `extra.max_sessions` 的 Anthropic `oauth` / `setup-token` 风险摘要会提示缺少账号级请求节流或会话数量上限。
+- 未绑定代理的 Anthropic 风险摘要会提示流量使用服务器默认出口。
+- 启用 `extra.enable_tls_fingerprint=true` 时，风险摘要会提示 TLS profile 需要与 `User-Agent`、`X-Stainless-*` 运行时字段保持一致。
+- 启用 `extra.custom_base_url_enabled=true` 时，风险摘要会提示需要确认自定义中继不会额外泄露或改写指纹。
+
+`anthropic_forwarding_risk` 只用于管理端识别和提示配置风险，不会改变账号请求转发和计费逻辑。创建 Anthropic `oauth` / `setup-token` 账号时写入的默认 `base_rpm` 与 `max_sessions` 会参与现有调度限流和会话数量控制。
+
+## 调试日志脱敏
+
+网关调试日志用于排查客户端原始请求与上游转发请求的差异。开启 `SUB2API_DEBUG_GATEWAY_BODY` 或 `SUB2API_DEBUG_CLAUDE_MIMIC` 时，系统会对认证和会话指纹做脱敏后再写入日志：
+
+- 请求头中的 `authorization`、`x-api-key` 会保留认证类型但隐藏密钥值。
+- `X-Claude-Code-Session-Id`、`x-client-request-id` 只保留短前后缀。
+- 请求体中的 `metadata.user_id`、`metadata.account_id`、`metadata.session_id`、`metadata.client_id`、`prompt_cache_key` 会替换为 `[redacted]`。
+- Claude mimic 诊断行不会写入完整 `metadata.user_id` 或完整系统提示词预览，只保留短标识用于排障关联。
+
+调试日志仍可能包含用户输入内容、模型名、请求结构和上游错误摘要。生产环境仅应在短时排障时开启调试日志，并在排障结束后关闭。
+
 ## 边界与异常
 
 - 批量编辑未勾选任何更新字段时不会提交。
 - 已选账号模式下账号 ID 为空时不会提交。
 - 筛选结果模式下如果当前筛选条件没有命中账号，服务端返回成功和失败数量均为 0，不会写入账号数据。
 - 更新分组时会先校验分组是否存在；存在混合渠道风险时需要管理员确认后继续。
+- `anthropic_forwarding_risk` 为派生提示字段，旧账号和旧数据不需要迁移；非 Anthropic 账号和未启用透传的 Anthropic API Key 账号不会返回该字段。
 
 ## 测试建议
 
 - 组件测试覆盖批量操作栏在“已选账号”和“未选账号”两种状态下展示不同入口。
 - 页面测试覆盖全选当前页后打开批量编辑时提交 `account_ids`，不提交 `filters`。
 - 接口或服务测试覆盖 `POST /api/v1/admin/accounts/bulk-update` 的 `account_ids` 模式、`filters` 模式、空目标、无更新字段和混合渠道风险确认流程。
+- DTO 测试覆盖 `anthropic_forwarding_risk` 对 Anthropic OAuth/SetupToken、Anthropic API Key 透传和非 Anthropic 账号的返回差异。
+- Handler 测试覆盖创建 Anthropic OAuth/SetupToken 账号时自动写入保守 `base_rpm`、`max_sessions`、`session_idle_timeout_minutes`，且不影响 Anthropic API Key 账号。
+- 服务测试覆盖网关调试日志对认证头、Claude Code session、metadata 用户标识和 prompt cache key 的脱敏。

@@ -134,6 +134,12 @@ type UpdateAccountRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
+const (
+	defaultAnthropicForwardingBaseRPM                   = 12
+	defaultAnthropicForwardingMaxSessions               = 3
+	defaultAnthropicForwardingSessionIdleTimeoutMinutes = 5
+)
+
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
 	AccountIDs              []int64                   `json:"account_ids"`
@@ -567,6 +573,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	applyAnthropicForwardingSafeDefaults(req.Platform, req.Type, &req.Extra)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1405,6 +1412,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
+			applyAnthropicForwardingSafeDefaults(item.Platform, item.Type, &item.Extra)
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
@@ -2539,4 +2547,30 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+func applyAnthropicForwardingSafeDefaults(platform, accountType string, extra *map[string]any) {
+	if platform != service.PlatformAnthropic ||
+		(accountType != service.AccountTypeOAuth && accountType != service.AccountTypeSetupToken) {
+		return
+	}
+	if extra == nil {
+		return
+	}
+	if *extra == nil {
+		*extra = make(map[string]any, 3)
+	}
+	setDefaultPositiveInt(*extra, "base_rpm", defaultAnthropicForwardingBaseRPM)
+	setDefaultPositiveInt(*extra, "max_sessions", defaultAnthropicForwardingMaxSessions)
+	setDefaultPositiveInt(*extra, "session_idle_timeout_minutes", defaultAnthropicForwardingSessionIdleTimeoutMinutes)
+}
+
+func setDefaultPositiveInt(extra map[string]any, key string, defaultValue int) {
+	if extra == nil || defaultValue <= 0 {
+		return
+	}
+	if raw, ok := extra[key]; ok && service.ParseExtraInt(raw) > 0 {
+		return
+	}
+	extra[key] = defaultValue
 }

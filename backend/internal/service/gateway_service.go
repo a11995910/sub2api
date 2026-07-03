@@ -278,14 +278,48 @@ func redactAuthHeaderValue(v string) string {
 	return "[redacted]"
 }
 
+func redactIdentifierForLog(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	if len(v) <= 8 {
+		return "[redacted]"
+	}
+	return v[:4] + "..." + v[len(v)-4:]
+}
+
 func safeHeaderValueForLog(key string, v string) string {
 	key = strings.ToLower(strings.TrimSpace(key))
 	switch key {
 	case "authorization", "x-api-key":
 		return redactAuthHeaderValue(v)
+	case "x-claude-code-session-id", "x-client-request-id":
+		return redactIdentifierForLog(v)
 	default:
 		return strings.TrimSpace(v)
 	}
+}
+
+func redactGatewayBodyForLog(body []byte) []byte {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body
+	}
+	redacted := body
+	for _, path := range []string{
+		"metadata.user_id",
+		"metadata.account_id",
+		"metadata.session_id",
+		"metadata.client_id",
+		"prompt_cache_key",
+	} {
+		if gjson.GetBytes(redacted, path).Exists() {
+			if next, err := sjson.SetBytes(redacted, path, "[redacted]"); err == nil {
+				redacted = next
+			}
+		}
+	}
+	return redacted
 }
 
 func extractSystemPreviewFromBody(body []byte) string {
@@ -351,10 +385,11 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 		}
 	}
 
-	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
+	metaUserID := redactIdentifierForLog(gjson.GetBytes(body, "metadata.user_id").String())
 	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
 
 	// Truncate preview to keep logs sane.
+	sysPreview = strings.TrimSpace(redactIdentifierForLog(sysPreview))
 	if len(sysPreview) > 300 {
 		sysPreview = sysPreview[:300] + "..."
 	}
@@ -10932,17 +10967,17 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 		}
 	}
 
-	// 3. body（完整输出，格式化 JSON 便于 diff）
+	// 3. body（脱敏后输出，保留结构便于 diff，避免写入会话和账号指纹）
 	fmt.Fprint(&buf, "--- body ---\n")
 	if len(body) == 0 {
 		fmt.Fprint(&buf, "  (empty)\n")
 	} else {
 		var pretty bytes.Buffer
-		if json.Indent(&pretty, body, "  ", "  ") == nil {
+		redactedBody := redactGatewayBodyForLog(body)
+		if json.Indent(&pretty, redactedBody, "  ", "  ") == nil {
 			fmt.Fprintf(&buf, "  %s\n", pretty.Bytes())
 		} else {
-			// JSON 格式化失败时原样输出
-			fmt.Fprintf(&buf, "  %s\n", body)
+			fmt.Fprintf(&buf, "  %s\n", redactedBody)
 		}
 	}
 
