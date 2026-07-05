@@ -2649,6 +2649,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	setOpenAICompatMessagesBridgeContext(c, compatMessagesBridge)
 
 	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	apiKey := getAPIKeyFromContext(c)
+	imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+	if shouldStripCodexAdvertisedImageGenerationTool(openAIResponsesEndpoint, reqModel, body, isCodexCLI, imageGenerationAllowed) {
+		strippedBody, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(body)
+		if stripErr != nil {
+			return nil, stripErr
+		}
+		if changed {
+			body = strippedBody
+			originalBody = strippedBody
+			requestView = newOpenAIRequestView(body)
+			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+			originalModel = reqModel
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Stripped Codex-advertised image_generation tool for group without image generation")
+		}
+	}
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	clientTransport := GetOpenAIClientTransport(c)
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
@@ -2741,11 +2757,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		disablePatch()
 	}
 
-	apiKey := getAPIKeyFromContext(c)
-	imageGenerationAllowed := GroupAllowsImageGeneration(nil)
-	if apiKey != nil {
-		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
-	}
 	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 	imageIntent := IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body)
 	if imageIntent && !imageGenerationAllowed {

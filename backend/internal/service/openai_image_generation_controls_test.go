@@ -79,6 +79,50 @@ func TestOpenAIGatewayServiceForward_DisabledGroupAllowsTextOnlyResponses(t *tes
 	require.NotNil(t, upstream.lastReq)
 }
 
+func TestOpenAIGatewayServiceForward_DisabledGroupStripsCodexAdvertisedImageTool(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_text","model":"gpt-5.5","usage":{"input_tokens":4,"output_tokens":2}}`)),
+		},
+	}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, recorder := newOpenAIImageGenerationControlTestContext(false, "codex_cli_rs/0.98.0")
+	account := newOpenAIImageGenerationControlTestAccount()
+	body := []byte(`{"model":"gpt-5.5","input":"write code","stream":false,"tools":[{"type":"function","name":"shell"},{"type":"image_generation","output_format":"png"}]}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotNil(t, upstream.lastReq)
+	require.False(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="function")`).Exists())
+	require.Equal(t, 0, result.ImageCount)
+}
+
+func TestOpenAIGatewayServiceForward_DisabledGroupStillRejectsCodexForcedImageToolChoice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, recorder := newOpenAIImageGenerationControlTestContext(false, "codex_cli_rs/0.98.0")
+	account := newOpenAIImageGenerationControlTestAccount()
+	body := []byte(`{"model":"gpt-5.5","input":"draw","stream":false,"tools":[{"type":"image_generation"}],"tool_choice":{"type":"image_generation"}}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, "permission_error", gjson.GetBytes(recorder.Body.Bytes(), "error.type").String())
+	require.Nil(t, upstream.lastReq)
+}
+
 func TestOpenAIGatewayServiceForward_CodexImageInjectionRespectsGroupCapability(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

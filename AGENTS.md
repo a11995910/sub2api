@@ -32,6 +32,9 @@
 - 测试 VPS 默认拉取 `origin/dev` 分支；新功能完成后必须先部署到测试 VPS 验证。
 - 测试 VPS 验证通过后，只能报告验证结果和风险点；必须等用户明确口头命令后，才允许合并 `dev` 到 `main` 并上线正式 VPS。
 - 正式 VPS：`192.220.24.46`，内部包含 VPN、`sub2api`、`chatgpt2api`，正式上线仍按生产上线规范执行。
+- 新正式 VPS 迁移目标：`152.53.170.10`，SSH 用户为 `root`，用于承接旧正式 VPS `192.220.24.46` 上的 VPN、`sub2api`、`chatgpt2api` 及其他实际运行服务和数据。迁移完成并经用户确认切换前，旧正式 VPS 仍视为当前生产环境。
+- 新正式 VPS 资源较旧 VPS 充足，源码构建时不需要沿用旧机器为节省内存而设置的 `GOFLAGS='-p=1' GOMAXPROCS=1` 低并发构建策略；仍必须完整构建前端和后端、核对 Git commit、`--version`、SHA256、容器状态、接口健康和日志。
+- 新正式 VPS 的 `sub2api` 迁移目标生产形态必须改为“从 `/opt/sub2api-src` 的同一 Git commit 构建完整自定义 Docker 镜像，再由 Docker Compose 使用该镜像运行”。不得把旧 VPS 的“`weishaw/sub2api:latest` + 只挂载 `/app/sub2api` 单个自定义二进制”作为新正式 VPS 的默认生产形态。
 - 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
 - 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 等敏感信息不得写入仓库、文档、提交记录或日志；如需使用，只能通过运行时凭据或环境变量临时注入。
 
@@ -42,9 +45,62 @@
 - 涉及数据库写入、迁移或批量数据修复时，必须先确认表结构、影响范围、备份方式和回滚方式。
 - 不确定线上实际状态时，优先通过只读命令核实，例如 `git status --short`、`git remote -v`、`git rev-parse HEAD`、`docker compose ps`、`docker compose logs --tail=200`。
 
-## Sub2API 定制二进制上线规范
+## Sub2API 新正式 VPS 自定义镜像部署规范
 
-当前线上 `sub2api` 使用自定义二进制挂载运行，挂载文件为：
+新正式 VPS `152.53.170.10` 上的 `sub2api` 必须按源码构建完整自定义镜像运行，用于长期承接频繁同步上游和自定义功能开发。
+
+目标原则：
+
+- 源码目录固定为 `/opt/sub2api-src`，部署目录固定为 `/opt/sub2api-deploy`。
+- 构建产物必须是完整 Docker 镜像，例如 `sub2api-custom:<commit>`，镜像内应包含同一次源码构建出的后端二进制、内嵌前端资源、`resources`、入口脚本和运行依赖。
+- Docker Compose 的 `sub2api` 服务必须使用本地自定义镜像，不再默认使用 `weishaw/sub2api:latest` 叠加单个二进制挂载。
+- 新正式 VPS 的 `sub2api` 服务不应再挂载 `/opt/sub2api-deploy/custom/sub2api-pool-overview` 到 `/app/sub2api`；只保留业务数据、数据库、Redis、必要配置和明确需要的宿主机 Socket/静态资源挂载。
+- 生产构建前仍必须保证本地改动已提交并推送，VPS `/opt/sub2api-src` 拉取到同一 commit，并核对 `git rev-parse HEAD`、镜像标签、容器内 `/app/sub2api --version` 输出一致。
+- 新正式 VPS 资源充足，默认不使用旧 VPS 的低并发构建参数；除非实际构建失败并已定位为资源问题，否则不要添加 `GOFLAGS='-p=1' GOMAXPROCS=1`。
+- 回滚优先通过切换 Docker Compose 中的镜像 tag 到上一版自定义镜像完成，而不是替换单个二进制文件。
+
+新正式 VPS 默认构建示例：
+
+```bash
+cd /opt/sub2api-src
+git status --short
+git fetch origin
+git pull --ff-only
+expected_commit='填写本次要发布的完整 commit'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+
+commit_short="$(git rev-parse --short=12 HEAD)"
+build_date="$(git show -s --format=%cI HEAD)"
+version="$(cd backend && ./scripts/resolve-version.sh)"
+docker build \
+  --build-arg VERSION="$version" \
+  --build-arg COMMIT="$commit_short" \
+  --build-arg DATE="$build_date" \
+  -t "sub2api-custom:${commit_short}" \
+  -t "sub2api-custom:current" \
+  .
+docker image inspect "sub2api-custom:${commit_short}" >/dev/null
+```
+
+新正式 VPS 默认部署验证：
+
+```bash
+cd /opt/sub2api-deploy
+docker compose config
+docker compose up -d
+docker compose ps
+docker compose exec sub2api /app/sub2api --version
+curl -I https://fast.youkeduo.site/health
+curl -I https://fast.youkeduo.site/purchase
+curl -I https://fast.youkeduo.site/models
+docker compose logs --tail=200 sub2api
+```
+
+迁移时必须先在新 VPS 以自定义镜像形态完成不接流量验证，再进入数据同步和 DNS 切换。旧 VPS `192.220.24.46` 的二进制挂载方式只作为迁移切换前的现状和回滚参照，不得反向作为新正式 VPS 的目标架构。
+
+## Sub2API 旧正式 VPS 定制二进制上线规范
+
+旧正式 VPS `192.220.24.46` 当前 `sub2api` 使用自定义二进制挂载运行，挂载文件为：
 
 ```bash
 /opt/sub2api-deploy/custom/sub2api-pool-overview
@@ -56,7 +112,7 @@
 /opt/sub2api-src
 ```
 
-生产上线默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只允许构建并替换 Linux amd64 的定制二进制。
+旧正式 VPS 生产上线默认不重建 Docker 镜像。除非容器基础环境、入口脚本或系统依赖发生变化，否则只允许构建并替换 Linux amd64 的定制二进制。该规则不适用于新正式 VPS `152.53.170.10` 的迁移目标形态；新正式 VPS 必须使用完整自定义镜像。
 
 默认构建方式为 VPS 线上同源构建：本地只负责提交并推送代码，生产二进制必须在 VPS `/opt/sub2api-src` 拉取同一 Git commit 后构建。构建前必须保证本地改动已提交并推送：
 

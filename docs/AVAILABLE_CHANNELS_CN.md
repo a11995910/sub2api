@@ -23,6 +23,8 @@
 
 前端“可用渠道”页会将“我可访问的分组”作为独立区域展示。支持图片生成的分组会显示“图片可用”标签，用户在创建 API 密钥前即可识别图片分组。
 
+未开启 `allow_image_generation` 的 OpenAI 分组会继续拒绝专用图片端点、图片模型和显式选择 `tool_choice:image_generation` 的请求。对于新版 CC-Switch / Codex 官方客户端在普通文本请求中默认携带的 `image_generation` tool 能力声明，网关会在转发前移除该 tool，避免文本请求被误判为生图请求而返回 403。
+
 图片分组存在以下后处理方式：
 
 - `image_2k_enhancement_enabled=true` 时，非流式且显式声明 2K `size` 的图片请求会先生成基础图片，再调用 `image_2k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `2048x2048` 或 `2048x1152`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。未传 `size` 的默认 2K 请求不会触发二段提升，避免默认生图流量被误放大。

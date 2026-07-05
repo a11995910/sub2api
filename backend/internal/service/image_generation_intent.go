@@ -42,6 +42,24 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	return openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(body, "tool_choice"))
 }
 
+// 新版 Codex 登录原始账号后会在文本请求中默认声明 image_generation 能力；
+// 对未开生图的分组只移除这类能力声明，显式生图选择仍按真实生图请求拦截。
+func shouldStripCodexAdvertisedImageGenerationTool(endpoint string, requestedModel string, body []byte, isCodexCLI bool, imageGenerationAllowed bool) bool {
+	if !isCodexCLI || imageGenerationAllowed || !openAIRequestBodyHasImageGenerationTool(body) {
+		return false
+	}
+	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
+		return false
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); isOpenAIImageGenerationModel(model) {
+		return false
+	}
+	return !openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(body, "tool_choice"))
+}
+
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.
 func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody map[string]any) bool {
 	if IsImageGenerationEndpoint(endpoint) {
