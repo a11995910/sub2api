@@ -2660,7 +2660,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		apiKey := getAPIKeyFromContext(c)
 		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
-		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
+		if isCodexCLI {
+			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
+		}
+		codexBridgeEnabled := isCodexCLI && imageGenerationAllowed && codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 		if codexBridgeEnabled {
 			payloadMap := make(map[string]any)
 			if err := json.Unmarshal(normalized, &payloadMap); err != nil {
@@ -2698,14 +2702,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			normalized = next
 		}
-		if shouldStripCodexAdvertisedImageGenerationTool(openAIResponsesEndpoint, originalModel, normalized, isCodexCLI, imageGenerationAllowed) {
-			stripped, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(normalized)
-			if stripErr != nil {
+		stripByGroupPolicy := shouldStripCodexAdvertisedImageGenerationTool(openAIResponsesEndpoint, originalModel, normalized, isCodexCLI, imageGenerationAllowed)
+		stripByAccountPolicy := isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip
+		if stripByGroupPolicy || stripByAccountPolicy {
+			if stripped, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(normalized); stripErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)
-			}
-			if changed {
+			} else if changed {
 				normalized = stripped
-				logOpenAIWSModeInfo("ingress_ws_codex_advertised_image_tool_stripped account_id=%d", account.ID)
+				if stripByAccountPolicy {
+					logOpenAIWSModeInfo("ingress_ws_codex_image_tool_stripped_by_policy account_id=%d", account.ID)
+				} else {
+					logOpenAIWSModeInfo("ingress_ws_codex_advertised_image_tool_stripped account_id=%d", account.ID)
+				}
 			}
 		}
 		if stripped, changed, stripErr := stripCodexSparkImageGenerationToolFromRawPayload(normalized, upstreamModel); stripErr != nil {

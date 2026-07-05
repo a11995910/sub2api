@@ -610,10 +610,18 @@ func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
 func stripOpenAIImageGenerationTools(reqBody map[string]any) bool {
 	rawTools, ok := reqBody["tools"]
 	if !ok || rawTools == nil {
+		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+			delete(reqBody, "tool_choice")
+			return true
+		}
 		return false
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
+		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+			delete(reqBody, "tool_choice")
+			return true
+		}
 		return false
 	}
 	filtered := make([]any, 0, len(tools))
@@ -626,13 +634,18 @@ func stripOpenAIImageGenerationTools(reqBody map[string]any) bool {
 		}
 		filtered = append(filtered, rawTool)
 	}
-	if !removed {
+	if !removed && !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
 		return false
 	}
-	if len(filtered) == 0 {
-		delete(reqBody, "tools")
-	} else {
-		reqBody["tools"] = filtered
+	if removed {
+		if len(filtered) == 0 {
+			delete(reqBody, "tools")
+		} else {
+			reqBody["tools"] = filtered
+		}
+	}
+	if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		delete(reqBody, "tool_choice")
 	}
 	return true
 }
@@ -655,8 +668,12 @@ func stripOpenAIImageGenerationToolsFromRawPayload(payload []byte) ([]byte, bool
 	return rebuilt, true, nil
 }
 
-// gpt-5.3-codex-spark 上游会拒绝 image_generation tool；Codex CLI 默认声明该能力，
-// 所以 Spark 请求必须删除这类 tool。删除后 tools 为空时会直接移除 tools 字段。
+func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
+	return stripOpenAIImageGenerationToolsFromRawPayload(payload)
+}
+
+// stripCodexSparkImageGenerationTools 删除 Codex 客户端声明的 image_generation tool。
+// gpt-5.3-codex-spark 上游会拒绝该 tool；删除后 tools 为空时会直接移除 tools 字段。
 func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
 	return stripOpenAIImageGenerationTools(reqBody)
 }
