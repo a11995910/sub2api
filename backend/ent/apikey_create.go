@@ -113,6 +113,20 @@ func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field.
+func (_c *APIKeyCreate) SetOpenaiFastModeEnabled(v bool) *APIKeyCreate {
+	_c.mutation.SetOpenaiFastModeEnabled(v)
+	return _c
+}
+
+// SetNillableOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableOpenaiFastModeEnabled(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetOpenaiFastModeEnabled(*v)
+	}
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -387,6 +401,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.OpenaiFastModeEnabled(); !ok {
+		v := apikey.DefaultOpenaiFastModeEnabled
+		_c.mutation.SetOpenaiFastModeEnabled(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -456,6 +474,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.OpenaiFastModeEnabled(); !ok {
+		return &ValidationError{Name: "openai_fast_mode_enabled", err: errors.New(`ent: missing required field "APIKey.openai_fast_mode_enabled"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -534,6 +555,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.OpenaiFastModeEnabled(); ok {
+		_spec.SetField(apikey.FieldOpenaiFastModeEnabled, field.TypeBool, value)
+		_node.OpenaiFastModeEnabled = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -790,6 +815,18 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
+	return u
+}
+
+// SetOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field.
+func (u *APIKeyUpsert) SetOpenaiFastModeEnabled(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldOpenaiFastModeEnabled, v)
+	return u
+}
+
+// UpdateOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateOpenaiFastModeEnabled() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldOpenaiFastModeEnabled)
 	return u
 }
 
@@ -1217,6 +1254,20 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field.
+func (u *APIKeyUpsertOne) SetOpenaiFastModeEnabled(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetOpenaiFastModeEnabled(v)
+	})
+}
+
+// UpdateOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateOpenaiFastModeEnabled() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateOpenaiFastModeEnabled()
 	})
 }
 
@@ -1855,6 +1906,20 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field.
+func (u *APIKeyUpsertBulk) SetOpenaiFastModeEnabled(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetOpenaiFastModeEnabled(v)
+	})
+}
+
+// UpdateOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateOpenaiFastModeEnabled() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateOpenaiFastModeEnabled()
 	})
 }
 

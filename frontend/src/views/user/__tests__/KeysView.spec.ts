@@ -109,6 +109,7 @@ const createApiKey = (): ApiKey => ({
   name: 'test-key',
   group_id: null,
   status: 'active',
+  openai_fast_mode_enabled: false,
   ip_whitelist: [],
   ip_blacklist: [],
   last_used_at: null,

@@ -164,6 +164,58 @@ func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) 
 	require.Equal(t, string(body), string(updated))
 }
 
+func TestApplyAPIKeyOpenAIFastDefaultToBody(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	t.Run("key enabled injects priority when client omits tier", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.5","input":"hi"}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToBody(&APIKey{OpenAIFastModeEnabled: true}, account, body)
+		require.NoError(t, err)
+		require.True(t, injected)
+		require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
+		require.Equal(t, "hi", gjson.GetBytes(updated, "input").String())
+	})
+
+	t.Run("key disabled leaves body unchanged", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.5","input":"hi"}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToBody(&APIKey{}, account, body)
+		require.NoError(t, err)
+		require.False(t, injected)
+		require.Equal(t, string(body), string(updated))
+	})
+
+	t.Run("explicit client tier is not overwritten", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.5","service_tier":"flex","input":"hi"}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToBody(&APIKey{OpenAIFastModeEnabled: true}, account, body)
+		require.NoError(t, err)
+		require.False(t, injected)
+		require.Equal(t, "flex", gjson.GetBytes(updated, "service_tier").String())
+	})
+
+	t.Run("non openai accounts are ignored", func(t *testing.T) {
+		body := []byte(`{"model":"grok-4","input":"hi"}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToBody(&APIKey{OpenAIFastModeEnabled: true}, &Account{Platform: PlatformGrok}, body)
+		require.NoError(t, err)
+		require.False(t, injected)
+		require.Equal(t, string(body), string(updated))
+	})
+}
+
+func TestApplyAPIKeyOpenAIFastDefaultToBody_StillHonorsFastPolicy(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"gpt-5.5","input":"hi"}`)
+
+	updated, injected, err := applyAPIKeyOpenAIFastDefaultToBody(&APIKey{OpenAIFastModeEnabled: true}, account, body)
+	require.NoError(t, err)
+	require.True(t, injected)
+	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
+
+	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", updated)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists(), "全局 filter 规则必须仍能剥离 Key 层注入的 priority")
+}
+
 func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

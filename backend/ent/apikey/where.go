@@ -95,6 +95,11 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 }
 
+// OpenaiFastModeEnabled applies equality check predicate on the "openai_fast_mode_enabled" field. It's identical to OpenaiFastModeEnabledEQ.
+func OpenaiFastModeEnabled(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldOpenaiFastModeEnabled, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -533,6 +538,16 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// OpenaiFastModeEnabledEQ applies the EQ predicate on the "openai_fast_mode_enabled" field.
+func OpenaiFastModeEnabledEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldOpenaiFastModeEnabled, v))
+}
+
+// OpenaiFastModeEnabledNEQ applies the NEQ predicate on the "openai_fast_mode_enabled" field.
+func OpenaiFastModeEnabledNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldOpenaiFastModeEnabled, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

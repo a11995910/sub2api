@@ -38,3 +38,18 @@ func TestAPIKeyFromService_MapsNilLastUsedAt(t *testing.T) {
 	require.NotNil(t, out)
 	require.Nil(t, out.LastUsedAt)
 }
+
+func TestAPIKeyFromService_MapsOpenAIFastModeEnabled(t *testing.T) {
+	src := &service.APIKey{
+		ID:                    1,
+		UserID:                2,
+		Key:                   "sk-openai-fast",
+		Name:                  "OpenAI Fast",
+		Status:                service.StatusActive,
+		OpenAIFastModeEnabled: true,
+	}
+
+	out := APIKeyFromService(src)
+	require.NotNil(t, out)
+	require.True(t, out.OpenAIFastModeEnabled)
+}

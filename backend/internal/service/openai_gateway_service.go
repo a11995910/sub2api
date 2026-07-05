@@ -2961,7 +2961,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	if rawTier := requestView.ServiceTier; rawTier != "" {
+	rawTier := requestView.ServiceTier
+	if rawTier == "" && shouldApplyAPIKeyOpenAIFastDefault(getAPIKeyFromContext(c), account, body) {
+		rawTier = OpenAIFastTierPriority
+		markPatchSet("service_tier", rawTier)
+	}
+	if rawTier != "" {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
 			switch action {
@@ -3465,6 +3470,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	policyModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if policyModel == "" {
 		policyModel = reqModel
+	}
+	body, _, err = applyAPIKeyOpenAIFastDefaultToBody(getAPIKeyFromContext(c), account, body)
+	if err != nil {
+		return nil, err
 	}
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, policyModel, body)
 	if policyErr != nil {
@@ -7228,6 +7237,31 @@ func extractOpenAIServiceTierFromBody(body []byte) *string {
 		return nil
 	}
 	return normalizeOpenAIServiceTier(gjson.GetBytes(body, "service_tier").String())
+}
+
+func shouldApplyAPIKeyOpenAIFastDefault(apiKey *APIKey, account *Account, body []byte) bool {
+	if apiKey == nil || !apiKey.OpenAIFastModeEnabled || account == nil || account.Platform != PlatformOpenAI || len(body) == 0 {
+		return false
+	}
+	return !gjson.GetBytes(body, "service_tier").Exists()
+}
+
+func applyAPIKeyOpenAIFastDefaultToBody(apiKey *APIKey, account *Account, body []byte) ([]byte, bool, error) {
+	if !shouldApplyAPIKeyOpenAIFastDefault(apiKey, account, body) {
+		return body, false, nil
+	}
+	updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+	if err != nil {
+		return body, false, fmt.Errorf("inject openai priority service_tier: %w", err)
+	}
+	return updated, true, nil
+}
+
+func applyAPIKeyOpenAIFastDefaultToWSResponseCreate(apiKey *APIKey, account *Account, frame []byte) ([]byte, bool, error) {
+	if strings.TrimSpace(gjson.GetBytes(frame, "type").String()) != "response.create" {
+		return frame, false, nil
+	}
+	return applyAPIKeyOpenAIFastDefaultToBody(apiKey, account, frame)
 }
 
 func normalizeOpenAIServiceTier(raw string) *string {

@@ -159,6 +159,8 @@ type CreateAPIKeyRequest struct {
 	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+	// OpenAIFastModeEnabled 为 true 时，请求未带 service_tier 的 OpenAI 流量默认补 priority。
+	OpenAIFastModeEnabled bool `json:"openai_fast_mode_enabled"`
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
@@ -177,6 +179,8 @@ type UpdateAPIKeyRequest struct {
 	Status      *string  `json:"status"`
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单（空数组清空）
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
+	// OpenAIFastModeEnabled 为 nil 表示不变；非 nil 时更新 Key 层 OpenAI fast 默认补齐开关。
+	OpenAIFastModeEnabled *bool `json:"openai_fast_mode_enabled"`
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -402,18 +406,19 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:                userID,
+		Key:                   key,
+		Name:                  html.EscapeString(req.Name),
+		GroupID:               req.GroupID,
+		Status:                StatusActive,
+		IPWhitelist:           req.IPWhitelist,
+		IPBlacklist:           req.IPBlacklist,
+		OpenAIFastModeEnabled: req.OpenAIFastModeEnabled,
+		Quota:                 req.Quota,
+		QuotaUsed:             0,
+		RateLimit5h:           req.RateLimit5h,
+		RateLimit1d:           req.RateLimit1d,
+		RateLimit7d:           req.RateLimit7d,
 	}
 
 	// Set expiration time if specified
@@ -571,6 +576,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		if s.cache != nil {
 			_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
 		}
+	}
+	if req.OpenAIFastModeEnabled != nil {
+		apiKey.OpenAIFastModeEnabled = *req.OpenAIFastModeEnabled
 	}
 
 	// Update quota fields

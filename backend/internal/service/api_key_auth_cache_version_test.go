@@ -2,6 +2,35 @@ package service
 
 import "testing"
 
+func TestAPIKeyService_AuthSnapshotPreservesOpenAIFastModeEnabled(t *testing.T) {
+	svc := &APIKeyService{}
+	apiKey := &APIKey{
+		ID:                    11,
+		UserID:                22,
+		GroupID:               nil,
+		Name:                  "fast-key",
+		Status:                StatusActive,
+		OpenAIFastModeEnabled: true,
+		User:                  &User{ID: 22, Status: StatusActive, Role: RoleUser, Balance: 10, Concurrency: 1},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(nil, apiKey)
+	if snapshot == nil {
+		t.Fatalf("expected snapshot")
+	}
+	if !snapshot.OpenAIFastModeEnabled {
+		t.Fatalf("expected snapshot to preserve openai_fast_mode_enabled")
+	}
+
+	roundTripped := svc.snapshotToAPIKey("sk-fast", snapshot)
+	if roundTripped == nil {
+		t.Fatalf("expected api key from snapshot")
+	}
+	if !roundTripped.OpenAIFastModeEnabled {
+		t.Fatalf("expected api key to preserve openai_fast_mode_enabled after snapshot round trip")
+	}
+}
+
 func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelsListConfig(t *testing.T) {
 	groupID := int64(9)
 	svc := &APIKeyService{}

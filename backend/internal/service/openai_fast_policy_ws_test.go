@@ -113,6 +113,34 @@ func TestWSResponseCreate_NoServiceTierUntouched(t *testing.T) {
 	require.Equal(t, string(frame), string(updated), "no service_tier present must result in zero mutation")
 }
 
+func TestApplyAPIKeyOpenAIFastDefaultToWSResponseCreate(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	t.Run("key enabled injects priority into response.create", func(t *testing.T) {
+		frame := []byte(`{"type":"response.create","model":"gpt-5.5","input":[]}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToWSResponseCreate(&APIKey{OpenAIFastModeEnabled: true}, account, frame)
+		require.NoError(t, err)
+		require.True(t, injected)
+		require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
+	})
+
+	t.Run("explicit client tier is not overwritten", func(t *testing.T) {
+		frame := []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":"flex","input":[]}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToWSResponseCreate(&APIKey{OpenAIFastModeEnabled: true}, account, frame)
+		require.NoError(t, err)
+		require.False(t, injected)
+		require.Equal(t, "flex", gjson.GetBytes(updated, "service_tier").String())
+	})
+
+	t.Run("non response.create frames are ignored", func(t *testing.T) {
+		frame := []byte(`{"type":"response.cancel","response_id":"resp_123"}`)
+		updated, injected, err := applyAPIKeyOpenAIFastDefaultToWSResponseCreate(&APIKey{OpenAIFastModeEnabled: true}, account, frame)
+		require.NoError(t, err)
+		require.False(t, injected)
+		require.Equal(t, string(frame), string(updated))
+	})
+}
+
 func TestWSResponseCreate_NonResponseCreateFrameUntouched(t *testing.T) {
 	settings := &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{

@@ -75,6 +75,29 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyRepository_PreservesOpenAIFastModeEnabled_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "openai-fast-mode-key@test.com")
+
+	key := &service.APIKey{
+		UserID:                user.ID,
+		Key:                   "sk-openai-fast-mode",
+		Name:                  "OpenAI Fast Mode",
+		Status:                service.StatusActive,
+		OpenAIFastModeEnabled: true,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	gotByID, err := repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.True(t, gotByID.OpenAIFastModeEnabled)
+
+	gotForAuth, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.True(t, gotForAuth.OpenAIFastModeEnabled)
+}
+
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()

@@ -55,6 +55,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param quota - Optional quota limit in USD (0 = unlimited)
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
  * @param rateLimitData - Optional rate limit fields
+ * @param openaiFastModeEnabled - When true, OpenAI requests without service_tier use priority by default
  * @returns Created API key
  */
 export async function create(
@@ -65,7 +66,8 @@ export async function create(
   ipBlacklist?: string[],
   quota?: number,
   expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
+  openaiFastModeEnabled?: boolean
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -73,6 +75,9 @@ export async function create(
   }
   if (customKey) {
     payload.custom_key = customKey
+  }
+  if (openaiFastModeEnabled !== undefined) {
+    payload.openai_fast_mode_enabled = openaiFastModeEnabled
   }
   if (ipWhitelist && ipWhitelist.length > 0) {
     payload.ip_whitelist = ipWhitelist

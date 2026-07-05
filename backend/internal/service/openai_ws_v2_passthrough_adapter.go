@@ -275,6 +275,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		initialRequestModel = hooks.InitialRequestModel
 	}
 	usageMeta := newOpenAIWSPassthroughUsageMeta(initialRequestModel, firstClientMessage)
+	apiKey := getAPIKeyFromContext(c)
+	firstClientMessage, _, policyErr := applyAPIKeyOpenAIFastDefaultToWSResponseCreate(apiKey, account, firstClientMessage)
+	if policyErr != nil {
+		return fmt.Errorf("inject openai priority service_tier on first ws frame: %w", policyErr)
+	}
 	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, capturedSessionModel, firstClientMessage)
 	if policyErr != nil {
 		return fmt.Errorf("apply openai fast policy on first ws frame: %w", policyErr)
@@ -438,6 +443,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if model == "" {
 				model = capturedSessionModel
 			}
+			injectedPayload, _, injectErr := applyAPIKeyOpenAIFastDefaultToWSResponseCreate(apiKey, account, payload)
+			if injectErr != nil {
+				return payload, nil, fmt.Errorf("inject openai priority service_tier on ws frame: %w", injectErr)
+			}
+			payload = injectedPayload
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）
 			// 的 response.create 帧上更新 usageMeta，使用

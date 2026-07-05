@@ -228,6 +228,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	// Mirrors the Claude anthropic-beta "fast-mode-2026-02-01" filter, but keyed
 	// on the body-level service_tier field (priority/flex).
+	responsesBody, _, err = applyAPIKeyOpenAIFastDefaultToBody(getAPIKeyFromContext(c), account, responsesBody)
+	if err != nil {
+		return nil, err
+	}
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
@@ -238,6 +242,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
+	if serviceTier := extractOpenAIServiceTierFromBody(responsesBody); serviceTier != nil {
+		responsesReq.ServiceTier = *serviceTier
+	} else {
+		responsesReq.ServiceTier = ""
+	}
 	if account.Platform == PlatformGrok {
 		patchedBody, patchErr := patchGrokResponsesBody(responsesBody, upstreamModel)
 		if patchErr != nil {

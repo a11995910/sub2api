@@ -47,6 +47,9 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Bool("openai_fast_mode_enabled").
+			Default(false).
+			Comment("When enabled, OpenAI requests without service_tier are sent with priority tier by default"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
