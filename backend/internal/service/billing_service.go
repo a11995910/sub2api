@@ -136,6 +136,10 @@ func serviceTierCostMultiplier(serviceTier string) float64 {
 	}
 }
 
+func priorityServiceTierPrice(price float64) float64 {
+	return price * serviceTierCostMultiplier("priority")
+}
+
 // UsageTokens 使用的token数量
 type UsageTokens struct {
 	InputTokens           int
@@ -754,11 +758,11 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	}
 	if channelPricing.InputPrice != nil {
 		pricing.InputPricePerToken = *channelPricing.InputPrice
-		pricing.InputPricePerTokenPriority = *channelPricing.InputPrice
+		pricing.InputPricePerTokenPriority = priorityServiceTierPrice(*channelPricing.InputPrice)
 	}
 	if channelPricing.OutputPrice != nil {
 		pricing.OutputPricePerToken = *channelPricing.OutputPrice
-		pricing.OutputPricePerTokenPriority = *channelPricing.OutputPrice
+		pricing.OutputPricePerTokenPriority = priorityServiceTierPrice(*channelPricing.OutputPrice)
 	}
 	if channelPricing.CacheWritePrice != nil {
 		pricing.CacheCreationPricePerToken = *channelPricing.CacheWritePrice
@@ -767,7 +771,7 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	}
 	if channelPricing.CacheReadPrice != nil {
 		pricing.CacheReadPricePerToken = *channelPricing.CacheReadPrice
-		pricing.CacheReadPricePerTokenPriority = *channelPricing.CacheReadPrice
+		pricing.CacheReadPricePerTokenPriority = priorityServiceTierPrice(*channelPricing.CacheReadPrice)
 	}
 	if channelPricing.ImageOutputPrice != nil {
 		pricing.ImageOutputPricePerToken = *channelPricing.ImageOutputPrice

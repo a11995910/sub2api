@@ -215,9 +215,9 @@ func TestResolve_WithChannelOverride_TokenFlat(t *testing.T) {
 	require.Equal(t, "channel", resolved.Source)
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
-	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 20e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
-	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 100e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
@@ -240,6 +240,7 @@ func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
 	require.NotNil(t, resolved.BasePricing)
 	// InputPrice overridden by channel
 	require.InDelta(t, 20e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 40e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
 	// OutputPrice kept from base (fallback: 15e-6)
 	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
 }
@@ -268,12 +269,16 @@ func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 	iv := r.GetIntervalPricing(resolved, 50000)
 	require.NotNil(t, iv)
 	require.InDelta(t, 2e-6, iv.InputPricePerToken, 1e-12)
+	require.InDelta(t, 4e-6, iv.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 8e-6, iv.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 16e-6, iv.OutputPricePerTokenPriority, 1e-12)
 
 	iv2 := r.GetIntervalPricing(resolved, 200000)
 	require.NotNil(t, iv2)
 	require.InDelta(t, 4e-6, iv2.InputPricePerToken, 1e-12)
+	require.InDelta(t, 8e-6, iv2.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 16e-6, iv2.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 32e-6, iv2.OutputPricePerTokenPriority, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {
@@ -296,7 +301,51 @@ func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {
 	// BasePricing was nil from resolveBasePricing but applyTokenOverrides creates a new one
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 7e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 14e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 21e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 42e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+}
+
+func TestCalculateCostUnified_ChannelOverridePriorityDoublesTokenCost(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:       "anthropic",
+		Models:         []string{"claude-sonnet-4"},
+		BillingMode:    BillingModeToken,
+		InputPrice:     testPtrFloat64(5e-6),
+		OutputPrice:    testPtrFloat64(30e-6),
+		CacheReadPrice: testPtrFloat64(0.5e-6),
+	}})
+	tokens := UsageTokens{InputTokens: 1200, OutputTokens: 80, CacheReadTokens: 32000}
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	normal, err := r.billingService.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "claude-sonnet-4",
+		GroupID:        groupIDPtr(),
+		Tokens:         tokens,
+		RateMultiplier: 1,
+		Resolver:       r,
+		Resolved:       resolved,
+	})
+	require.NoError(t, err)
+
+	priority, err := r.billingService.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "claude-sonnet-4",
+		GroupID:        groupIDPtr(),
+		Tokens:         tokens,
+		RateMultiplier: 1,
+		ServiceTier:    "priority",
+		Resolver:       r,
+		Resolved:       resolved,
+	})
+	require.NoError(t, err)
+
+	require.InDelta(t, normal.TotalCost*2, priority.TotalCost, 1e-10)
+	require.InDelta(t, normal.ActualCost*2, priority.ActualCost, 1e-10)
 }
 
 // ---------------------------------------------------------------------------
