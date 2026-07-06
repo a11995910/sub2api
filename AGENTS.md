@@ -126,9 +126,9 @@ docker compose up -d --force-recreate --no-deps sub2api
 ```bash
 cd /opt/sub2api-deploy
 docker compose ps
-curl -I https://fast.youkeduo.site/health
-curl -I https://fast.youkeduo.site/purchase
-curl -I https://fast.youkeduo.site/models
+curl -I https://fast.youkeduo.xyz/health
+curl -I https://fast.youkeduo.xyz/purchase
+curl -I https://fast.youkeduo.xyz/models
 docker compose logs --tail=200 sub2api
 ```
 

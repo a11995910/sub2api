@@ -103,8 +103,8 @@ upstream_rate_monitors
 除常规上线验证外，建议回归：
 
 ```bash
-curl -I https://fast.youkeduo.site/admin/upstream-rate-monitors
-curl -I https://fast.youkeduo.site/api/v1/admin/upstream-rate-monitors
+curl -I https://fast.youkeduo.xyz/admin/upstream-rate-monitors
+curl -I https://fast.youkeduo.xyz/api/v1/admin/upstream-rate-monitors
 ```
 
 由于接口需要管理员登录，上述第二个命令未携带认证时应返回非 5xx。上线后还应通过浏览器登录管理端确认：

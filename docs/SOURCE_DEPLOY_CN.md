@@ -158,7 +158,8 @@ git rev-parse --short HEAD
 
 | 域名 | Nginx 配置 | 证书来源 | 证书路径 | 说明 |
 | --- | --- | --- | --- | --- |
-| `fast.youkeduo.site` | `/etc/nginx/sites-available/fast.youkeduo.site` | Certbot 自动管理 | `/etc/letsencrypt/live/fast.youkeduo.site/` | 主访问域名 |
+| `fast.youkeduo.xyz` | `/etc/nginx/sites-available/fast.youkeduo.xyz` | Certbot 自动管理 | `/etc/letsencrypt/live/fast.youkeduo.xyz/` | 主访问域名，A 记录直接指向正式 VPS |
+| `fast.youkeduo.shop` | `/etc/nginx/sites-available/fast.youkeduo.shop` | Certbot 自动管理 | `/etc/letsencrypt/live/fast.youkeduo.shop/` | 备用访问域名，当前经 Cloudflare 解析 |
 | `img.hctoken.top` | `/etc/nginx/sites-available/img.hctoken.top` | `*.hctoken.top` 通配符证书手动部署 | `/etc/nginx/ssl/img.hctoken.top/` | 新增访问域名，HTTP 自动跳转 HTTPS |
 
 `img.hctoken.top` 当前证书文件固定为：
@@ -273,12 +274,12 @@ docker compose up -d --force-recreate --no-deps sub2api
 cd /opt/sub2api-deploy
 docker compose ps
 /opt/sub2api-deploy/custom/sub2api-pool-overview --version
-curl -I https://fast.youkeduo.site/health
-curl -I https://fast.youkeduo.site/redeem
-curl -I https://fast.youkeduo.site/purchase
-curl -I https://fast.youkeduo.site/models
-curl -I -H 'Accept-Encoding: gzip' https://fast.youkeduo.site/dashboard
-curl -I https://fast.youkeduo.site/assets/实际构建出的任一-js-文件名.js
+curl -I https://fast.youkeduo.xyz/health
+curl -I https://fast.youkeduo.xyz/redeem
+curl -I https://fast.youkeduo.xyz/purchase
+curl -I https://fast.youkeduo.xyz/models
+curl -I -H 'Accept-Encoding: gzip' https://fast.youkeduo.xyz/dashboard
+curl -I https://fast.youkeduo.xyz/assets/实际构建出的任一-js-文件名.js
 docker compose logs --tail=200 sub2api
 ```
 
