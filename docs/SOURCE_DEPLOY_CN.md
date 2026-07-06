@@ -1,82 +1,23 @@
 # Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。旧正式 VPS `192.220.24.46` 上的 `sub2api` 当前仍使用自定义二进制挂载运行；新正式 VPS `152.53.170.10` 的迁移目标形态改为从 `/opt/sub2api-src` 的同一 Git commit 构建完整自定义 Docker 镜像，再由 Docker Compose 使用该镜像运行。
+本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。正式 VPS `192.220.24.46` 上的 `sub2api` 当前使用自定义二进制挂载运行。
 
 ## 强制原则
 
 - 新功能开发默认走 `dev -> 测试 VPS -> 用户口头确认 -> main -> 正式 VPS` 链路；不得跳过测试 VPS 直接上线正式 VPS。
-- 测试 VPS 固定为 `192.220.36.75`，默认拉取 `origin/dev` 分支；迁移完成前仍按旧正式 VPS 的二进制挂载方式做预发布验证，后续如新正式 VPS 稳定切换为自定义镜像形态，应单独同步测试 VPS 的镜像预发布流程。
+- 测试 VPS 固定为 `192.220.36.75`，默认拉取 `origin/dev` 分支，并按正式 VPS 的二进制挂载方式做预发布验证。
 - 测试 VPS 验证通过后，只能在用户明确口头命令后合并到 `main` 并执行正式上线。
 - 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
 - VPS `/opt/sub2api-src` 必须拉取到本次构建对应的同一 commit，确保线上运行产物有可追溯源码。
-- 新正式 VPS `152.53.170.10` 必须使用完整自定义 Docker 镜像运行 `sub2api`，不得沿用旧正式 VPS 的“`weishaw/sub2api:latest` + 只挂载 `/app/sub2api` 单个自定义二进制”作为默认生产形态。
-- 旧正式 VPS `192.220.24.46` 在迁移切换前仍按当前二进制挂载流程维护；该流程只作为旧环境现状和回滚参照。
-- 新正式 VPS 自定义镜像流程必须执行仓库根目录 `Dockerfile` 的完整 `docker build`，该 Dockerfile 会先构建前端，再用 `embed` 标签构建后端二进制，并把 `resources`、入口脚本和运行依赖一并打入镜像。
-- 旧正式 VPS 二进制挂载流程必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
-- 不允许只执行 `go build -tags embed` 就覆盖线上；无论镜像流程还是二进制流程，都必须确认前端资源、后端二进制、资源文件和源码 commit 属于同一次构建。
+- 正式 VPS `192.220.24.46` 按当前二进制挂载流程维护。
+- 正式 VPS 二进制挂载流程必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
+- 不允许只执行 `go build -tags embed` 就覆盖线上；必须确认前端资源、后端二进制、资源文件和源码 commit 属于同一次构建。
 - 内嵌前端由后端直接提供时，`/assets/*` 会返回长期缓存头，HTML/JS/CSS/JSON 会按浏览器 `Accept-Encoding` 返回 gzip 压缩；外层 Nginx 或 Caddy 仍可继续做 HTTPS、HTTP/2 和代理层优化。
-- 构建产物必须包含 Git commit 和提交时间；新正式 VPS 必须核对容器内 `/app/sub2api --version`，旧正式 VPS 必须核对 `/opt/sub2api-src/backend/bin/server --version`，输出 commit 必须与待上线 commit 一致。
-- 旧正式 VPS 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。新正式 VPS 自定义镜像流程不得通过替换单个二进制发布。
+- 构建产物必须包含 Git commit 和提交时间；正式 VPS 必须核对 `/opt/sub2api-src/backend/bin/server --version`，输出 commit 必须与待上线 commit 一致。
+- 正式 VPS 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
-- 验证通过后必须清理 Docker 构建缓存和无回滚价值的旧镜像；旧正式 VPS 二进制流程还必须清理旧二进制备份，只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
+- 验证通过后必须清理 Docker 构建缓存、无回滚价值的旧镜像和旧二进制备份，只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
-
-## 新正式 VPS 自定义镜像目标形态
-
-新正式 VPS `152.53.170.10` 资源较旧 VPS 充足，`sub2api` 迁移时必须采用完整自定义镜像部署，原因是长期自定义开发会同时涉及后端二进制、内嵌前端资源、`resources` 目录、数据库迁移、Dockerfile、入口脚本和运行依赖。只挂载单个二进制容易造成镜像内资源与源码 commit 不一致。
-
-目标目录：
-
-| 项目 | 路径 |
-| --- | --- |
-| 源码目录 | `/opt/sub2api-src` |
-| 部署目录 | `/opt/sub2api-deploy` |
-| 数据目录 | `/opt/sub2api-deploy/data` |
-| PostgreSQL 数据目录 | `/opt/sub2api-deploy/postgres_data` |
-| Redis 数据目录 | `/opt/sub2api-deploy/redis_data` |
-
-Compose 要求：
-
-- `sub2api` 服务使用本地镜像，例如 `sub2api-custom:<commit>` 或 `sub2api-custom:current`。
-- 不再挂载 `/opt/sub2api-deploy/custom/sub2api-pool-overview:/app/sub2api`。
-- 继续保留 `/app/data`、PostgreSQL、Redis 等业务数据挂载。
-- 如后续启用数据管理、宿主机 Socket 或静态文件挂载，必须单独说明挂载目的和影响范围。
-
-构建示例：
-
-```bash
-cd /opt/sub2api-src
-git status --short
-git fetch origin
-git pull --ff-only
-expected_commit='填写本次要发布的完整 commit'
-test "$(git rev-parse HEAD)" = "$expected_commit"
-git log -1 --oneline
-
-commit_short="$(git rev-parse --short=12 HEAD)"
-build_date="$(git show -s --format=%cI HEAD)"
-version="$(cd backend && ./scripts/resolve-version.sh)"
-docker build \
-  --build-arg VERSION="$version" \
-  --build-arg COMMIT="$commit_short" \
-  --build-arg DATE="$build_date" \
-  -t "sub2api-custom:${commit_short}" \
-  -t "sub2api-custom:current" \
-  .
-docker image inspect "sub2api-custom:${commit_short}" >/dev/null
-```
-
-部署前必须确认 `docker-compose.yml` 中的 `sub2api.image` 指向本次构建的自定义镜像，并确认没有单独挂载 `/app/sub2api`：
-
-```bash
-cd /opt/sub2api-deploy
-docker compose config
-docker compose up -d
-docker compose ps
-docker compose exec sub2api /app/sub2api --version
-```
-
-上线验证仍按健康接口、管理端账号页、日志和关键接口回归执行。回滚优先切回上一版 `sub2api-custom:<commit>` 镜像 tag，再 `docker compose up -d` 重建 `sub2api` 服务。
 
 ## 源码仓库
 
@@ -94,7 +35,7 @@ git push
 
 ## 本地提交与推送要求
 
-本地开发完成后，必须先提交并推送。生产产物不在本地构建；新正式 VPS 从已推送的 Git commit 构建完整自定义镜像，旧正式 VPS 从已推送的 Git commit 构建二进制：
+本地开发完成后，必须先提交并推送。生产产物不在本地构建；正式 VPS 从已推送的 Git commit 构建二进制：
 
 ```bash
 cd /Users/wangjun/Documents/GitHub/sub2api
@@ -164,7 +105,7 @@ sha256sum backend/bin/server
 timeout 5 backend/bin/server --version
 ```
 
-测试 VPS 替换运行二进制和验证流程与旧正式 VPS 的二进制流程保持一致。测试通过后，必须等待用户明确口头命令，才能把 `dev` 合并到 `main` 并按正式 VPS 对应目标形态发布。
+测试 VPS 替换运行二进制和验证流程与正式 VPS 的二进制流程保持一致。测试通过后，必须等待用户明确口头命令，才能把 `dev` 合并到 `main` 并按正式 VPS 二进制挂载流程发布。
 
 ### 测试 VPS 源码运行边界
 
@@ -242,9 +183,9 @@ openssl x509 -in fullchain.pem -pubkey -noout | openssl pkey -pubin -outform DER
 openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 ```
 
-## 旧正式 VPS 二进制编译要求
+## 正式 VPS 二进制编译要求
 
-本节仅适用于旧正式 VPS `192.220.24.46` 和当前测试 VPS `192.220.36.75` 的二进制挂载流程，不适用于新正式 VPS `152.53.170.10` 的自定义镜像流程。
+本节适用于正式 VPS `192.220.24.46` 和当前测试 VPS `192.220.36.75` 的二进制挂载流程。
 
 部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标。
 
@@ -254,7 +195,7 @@ openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 - Node.js / pnpm：用于构建 `frontend`
 - make：用于执行仓库根目录的构建目标
 
-旧正式 VPS 和当前测试 VPS 默认在 `/opt/sub2api-src` 构建 Linux amd64 二进制。构建前必须先清理可再生成缓存，避免系统盘被 Go / Node / Docker 构建缓存打满：
+正式 VPS 和当前测试 VPS 默认在 `/opt/sub2api-src` 构建 Linux amd64 二进制。构建前必须先清理可再生成缓存，避免系统盘被 Go / Node / Docker 构建缓存打满：
 
 ```bash
 cd /opt/sub2api-src
@@ -288,7 +229,7 @@ git rev-parse HEAD
 git log -1 --oneline
 ```
 
-## 旧正式 VPS 替换当前运行版本
+## 正式 VPS 替换当前运行版本
 
 当前容器挂载的可执行文件路径：
 
@@ -326,7 +267,7 @@ docker compose up -d --force-recreate --no-deps sub2api
 
 如果 Docker Compose 服务名变化，先用 `docker compose ps` 确认实际服务名，再重启对应服务。
 
-## 旧正式 VPS 二进制流程验证
+## 正式 VPS 二进制流程验证
 
 ```bash
 cd /opt/sub2api-deploy
@@ -352,7 +293,7 @@ docker compose logs --tail=200 sub2api
 - 管理端 `/admin/accounts` 能正常打开，账号列表接口 `/api/v1/admin/accounts` 不出现 5xx
 - 日志中没有启动失败、前端资源缺失、数据库迁移失败或账号列表序列化异常
 
-## 旧正式 VPS 二进制流程构建后清理
+## 正式 VPS 二进制流程构建后清理
 
 上线验证通过后必须清理一次 VPS 构建缓存和旧备份，避免磁盘持续膨胀。
 
@@ -386,7 +327,7 @@ ls -lt /opt/sub2api-deploy/custom/sub2api-pool-overview*
 - 镜像清理必须先保护正在运行的容器镜像；如果存在多个 `weishaw/sub2api:backup-*`，只保留最近一份确有回滚价值的备份镜像。
 - 不删除 `data`、`postgres_data`、`redis_data`、数据库卷或任何业务数据目录。
 
-## 旧正式 VPS 二进制流程回滚
+## 正式 VPS 二进制流程回滚
 
 如果新版本异常，使用最近一次备份恢复：
 
