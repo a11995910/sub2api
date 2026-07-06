@@ -1242,7 +1242,7 @@ export default {
   // Model Test
   modelTest: {
     title: '模型测试台',
-    description: '选择模型、分组和 API Key，直接通过真实网关在线测试',
+    description: '选择已有 API Key，自动带出所属分组，并在该分组可用模型中发起真实网关测试',
     modes: {
       text: '文本',
       image: '图片'
@@ -1292,6 +1292,7 @@ export default {
       missingSelection: '请先选择模型、分组和 API Key',
       promptRequired: '请输入提示词'
     },
+    noActiveKey: '当前没有可用的 active API Key，请先创建或启用一个 Key。',
     noGroupKey: '当前分组“{group}”没有可用的 active API Key，请先创建或绑定该分组的 Key。',
     goCreateKey: '去创建 Key',
     realBillingNotice: '本测试会调用真实网关，并按所选分组扣除对应灵石。',

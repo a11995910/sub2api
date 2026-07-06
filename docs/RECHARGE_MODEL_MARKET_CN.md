@@ -140,12 +140,12 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 - `/api/v1/channels/available`：读取用户可见模型、可用分组和图片价格。
 - `/api/v1/groups/rates`：读取用户专属分组倍率。
-- `/api/v1/keys`：读取当前用户 active API Key，并按所选分组筛选可用 Key。
+- `/api/v1/keys`：读取当前用户 active API Key，作为测试入口的主选择项。
 - `/v1/chat/completions`：文本模型测试端点。
 - `/v1/images/generations`：图片模型测试端点。
 - `/v1/images/edits`：上传参考图后的图片编辑测试端点。
 
-测试请求使用用户选中的真实 API Key 发起，因此会自然经过 API Key 鉴权、分组路由、限流、用量记录和灵石扣费。若某个分组没有 active API Key，页面只提示用户去 API Key 页面创建或绑定该分组的 Key，不会用无分组 Key 代替，避免测试流量落到错误分组。
+测试台以用户已有 active API Key 为主入口。用户先选择 Key，页面自动带出该 Key 绑定的分组，并只展示此分组下可用的模型供用户选择。测试请求使用用户选中的真实 API Key 发起，因此会自然经过 API Key 鉴权、分组路由、限流、用量记录和灵石扣费。若没有 active API Key，或从模型广场跳转到某个分组但该分组没有 active API Key，页面只提示用户去 API Key 页面创建或绑定 Key，不会用其他分组的 Key 代替，避免测试流量落到错误分组。
 
 页面按模型能力区分文本模式和图片模式。打开页面时会优先保留当前模式；如果当前模式没有可用模型而另一个模式存在可用模型，页面会自动切换到可用模式，确保只配置图片分组或只配置文本分组的环境也能直接展示可测试模型。
 

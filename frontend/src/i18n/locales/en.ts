@@ -1238,7 +1238,7 @@ export default {
   // Model Test
   modelTest: {
     title: 'Model Test',
-    description: 'Select a model, group, and API key, then test through the real gateway',
+    description: 'Select an existing API key, review its group, and test one of the models available to that group through the real gateway',
     modes: {
       text: 'Text',
       image: 'Image'
@@ -1288,6 +1288,7 @@ export default {
       missingSelection: 'Select a model, group, and API key first',
       promptRequired: 'Enter a prompt'
     },
+    noActiveKey: 'No active API key is available. Create or enable a key first.',
     noGroupKey: 'Group "{group}" has no active API key. Create or bind a key for this group first.',
     goCreateKey: 'Create Key',
     realBillingNotice: 'This test calls the real gateway and charges Spirit Stones for the selected group.',

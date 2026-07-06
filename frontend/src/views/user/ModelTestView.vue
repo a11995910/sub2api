@@ -2,7 +2,7 @@
   <AppLayout>
     <div class="space-y-6">
       <section class="card p-5">
-        <div class="grid gap-4 xl:grid-cols-[auto_minmax(220px,1fr)_minmax(180px,0.8fr)_minmax(220px,0.9fr)_auto] xl:items-end">
+        <div class="grid gap-4 xl:grid-cols-[auto_minmax(220px,0.9fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_auto] xl:items-end">
           <div>
             <label class="input-label">{{ t('modelTest.fields.type') }}</label>
             <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-dark-600 dark:bg-dark-800">
@@ -28,18 +28,18 @@
           </div>
 
           <div>
-            <label class="input-label">{{ t('modelTest.fields.model') }}</label>
-            <select v-model="selectedModelKey" class="input" :disabled="loading || filteredModels.length === 0">
-              <option value="">{{ t('modelTest.placeholders.model') }}</option>
-              <option v-for="model in filteredModels" :key="model.key" :value="model.key">
-                    {{ model.displayName }} · {{ platformLabel(model.platform) }}
+            <label class="input-label">{{ t('modelTest.fields.apiKey') }}</label>
+            <select v-model.number="selectedApiKeyId" class="input" :disabled="loading || activeKeyOptions.length === 0">
+              <option :value="null">{{ t('modelTest.placeholders.apiKey') }}</option>
+              <option v-for="key in activeKeyOptions" :key="key.id" :value="key.id">
+                {{ keyLabel(key) }}
               </option>
             </select>
           </div>
 
           <div>
             <label class="input-label">{{ t('modelTest.fields.group') }}</label>
-            <select v-model.number="selectedGroupId" class="input" :disabled="loading || availableGroups.length === 0">
+            <select v-model.number="selectedGroupId" class="input" disabled>
               <option :value="null">{{ t('modelTest.placeholders.group') }}</option>
               <option v-for="group in availableGroups" :key="group.id" :value="group.id">
                 {{ group.name }}
@@ -48,11 +48,11 @@
           </div>
 
           <div>
-            <label class="input-label">{{ t('modelTest.fields.apiKey') }}</label>
-            <select v-model.number="selectedApiKeyId" class="input" :disabled="loading || keysForSelectedGroup.length === 0">
-              <option :value="null">{{ t('modelTest.placeholders.apiKey') }}</option>
-              <option v-for="key in keysForSelectedGroup" :key="key.id" :value="key.id">
-                {{ keyLabel(key) }}
+            <label class="input-label">{{ t('modelTest.fields.model') }}</label>
+            <select v-model="selectedModelKey" class="input" :disabled="loading || filteredModels.length === 0">
+              <option value="">{{ t('modelTest.placeholders.model') }}</option>
+              <option v-for="model in filteredModels" :key="model.key" :value="model.key">
+                    {{ model.displayName }} · {{ platformLabel(model.platform) }}
               </option>
             </select>
           </div>
@@ -83,7 +83,15 @@
           </div>
         </div>
 
-        <div v-if="selectedGroup && keysForSelectedGroup.length === 0" class="mt-4 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+        <div v-if="!loading && activeKeyOptions.length === 0" class="mt-4 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <span>{{ t('modelTest.noActiveKey') }}</span>
+          <button type="button" class="btn btn-secondary" @click="router.push('/keys')">
+            <Icon name="key" size="sm" />
+            {{ t('modelTest.goCreateKey') }}
+          </button>
+        </div>
+
+        <div v-else-if="selectedGroup && !hasKeyForSelectedGroup" class="mt-4 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <span>{{ t('modelTest.noGroupKey', { group: selectedGroup.name }) }}</span>
           <button type="button" class="btn btn-secondary" @click="router.push('/keys')">
             <Icon name="key" size="sm" />
@@ -418,13 +426,26 @@ const allModels = computed<TestModelOption[]>(() => {
     .sort((a, b) => a.platform.localeCompare(b.platform) || a.displayName.localeCompare(b.displayName))
 })
 
-const filteredModels = computed(() => allModels.value.filter((model) => model.kind === selectedKind.value))
-const selectedModel = computed(() => allModels.value.find((model) => model.key === selectedModelKey.value) || null)
-const availableGroups = computed(() => selectedModel.value?.groups || [])
-const selectedGroup = computed(() => availableGroups.value.find((group) => group.id === selectedGroupId.value) || null)
-const keysForSelectedGroup = computed(() => {
-  if (selectedGroupId.value == null) return []
-  return activeKeys.value.filter((key) => key.status === 'active' && Number(key.group_id) === selectedGroupId.value)
+const activeKeyOptions = computed(() => activeKeys.value.filter((key) => key.status === 'active'))
+const allAvailableGroups = computed(() => {
+  const byID = new Map<number, UserAvailableGroup>()
+  for (const model of allModels.value) {
+    for (const group of model.groups) {
+      if (!byID.has(group.id)) {
+        byID.set(group.id, group)
+      }
+    }
+  }
+  return Array.from(byID.values()).sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id)
+})
+const selectedGroup = computed(() => allAvailableGroups.value.find((group) => group.id === selectedGroupId.value) || null)
+const availableGroups = computed(() => selectedGroup.value ? [selectedGroup.value] : [])
+const modelsInSelectedGroup = computed(() => modelsForGroupID(selectedGroupId.value))
+const filteredModels = computed(() => modelsInSelectedGroup.value.filter((model) => model.kind === selectedKind.value))
+const selectedModel = computed(() => filteredModels.value.find((model) => model.key === selectedModelKey.value) || null)
+const hasKeyForSelectedGroup = computed(() => {
+  if (selectedGroupId.value == null) return false
+  return activeKeyOptions.value.some((key) => groupIDFromKey(key) === selectedGroupId.value)
 })
 const selectedApiKey = computed(() => activeKeys.value.find((key) => key.id === selectedApiKeyId.value) || null)
 const referenceImagesFull = computed(() => referenceImages.value.length >= maxReferenceImages)
@@ -482,23 +503,12 @@ watch(selectedKind, (kind) => {
   }
 })
 
-watch(selectedModelKey, () => {
-  const groups = availableGroups.value
-  if (!groups.some((group) => group.id === selectedGroupId.value)) {
-    selectedGroupId.value = groups[0]?.id ?? null
-  }
+watch(selectedApiKeyId, () => {
+  syncSelectedGroupFromKey()
+  syncSelectedModel()
 })
 
-watch(selectedGroupId, (groupId) => {
-  selectedApiKeyId.value = null
-  if (groupId != null) {
-    void ensureKeysForGroup(groupId)
-  } else {
-    syncSelectedApiKey()
-  }
-})
-
-watch(keysForSelectedGroup, syncSelectedApiKey)
+watch(modelsInSelectedGroup, syncSelectedKindAndModel)
 
 watch(
   () => route.query,
@@ -569,6 +579,20 @@ function imageSizeTier(size: string): string {
   return getImageBillingTier(size)
 }
 
+function groupIDFromKey(key: ApiKey | null | undefined): number | null {
+  const groupID = Number(key?.group_id)
+  return Number.isFinite(groupID) && groupID > 0 ? groupID : null
+}
+
+function modelSupportsGroup(model: TestModelOption, groupID: number | null): boolean {
+  if (groupID == null) return false
+  return model.groups.some((group) => group.id === groupID)
+}
+
+function modelsForGroupID(groupID: number | null): TestModelOption[] {
+  return allModels.value.filter((model) => modelSupportsGroup(model, groupID))
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -609,54 +633,58 @@ async function loadActiveKeys(): Promise<ApiKey[]> {
   return out
 }
 
-async function ensureKeysForGroup(groupId: number) {
-  try {
-    const result = await keysAPI.list(1, 1000, {
-      status: 'active',
-      group_id: groupId,
-      sort_by: 'created_at',
-      sort_order: 'desc',
-    })
-    mergeKeys(result.items)
-  } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('modelTest.loadKeysFailed')))
-  } finally {
-    syncSelectedApiKey()
-  }
+function syncSelectedGroupFromKey() {
+  const key = selectedApiKey.value
+  if (!key) return
+  selectedGroupId.value = groupIDFromKey(key)
 }
 
-function mergeKeys(items: ApiKey[]) {
-  const byID = new Map(activeKeys.value.map((key) => [key.id, key]))
-  for (const item of items) {
-    byID.set(item.id, item)
-  }
-  activeKeys.value = Array.from(byID.values())
+function syncSelectedKindAndModel() {
+  selectedKind.value = selectAvailableModelKind(modelsInSelectedGroup.value, selectedKind.value)
+  syncSelectedModel()
 }
 
-function syncSelectedApiKey() {
-  if (selectedApiKeyId.value != null && keysForSelectedGroup.value.some((key) => key.id === selectedApiKeyId.value)) {
+function syncSelectedModel() {
+  if (selectedModelKey.value && filteredModels.value.some((model) => model.key === selectedModelKey.value)) {
     return
   }
-  selectedApiKeyId.value = keysForSelectedGroup.value[0]?.id ?? null
+  selectedModelKey.value = filteredModels.value[0]?.key || ''
 }
 
 function applyQuerySelection() {
-  if (allModels.value.length === 0) return
   const queryKind = queryString(route.query.kind)
   const queryModel = queryString(route.query.model)
   const queryPlatform = queryString(route.query.platform)
   const queryGroupID = queryNumber(route.query.group_id)
+
+  const queryGroupKey = queryGroupID == null
+    ? null
+    : activeKeyOptions.value.find((key) => groupIDFromKey(key) === queryGroupID) || null
+  const currentKey = selectedApiKeyId.value == null
+    ? null
+    : activeKeyOptions.value.find((key) => key.id === selectedApiKeyId.value) || null
+  const targetKey = queryGroupID != null
+    ? queryGroupKey
+    : currentKey || activeKeyOptions.value[0] || null
+
+  selectedApiKeyId.value = targetKey?.id ?? null
+  selectedGroupId.value = targetKey ? groupIDFromKey(targetKey) : queryGroupID
+
+  const groupModels = modelsForGroupID(selectedGroupId.value)
   if (queryKind === 'token' || queryKind === 'image') {
     selectedKind.value = queryKind
   } else {
-    selectedKind.value = selectAvailableModelKind(allModels.value, selectedKind.value)
+    selectedKind.value = selectAvailableModelKind(groupModels, selectedKind.value)
+  }
+  if (!groupModels.some((model) => model.kind === selectedKind.value)) {
+    selectedKind.value = selectAvailableModelKind(groupModels, selectedKind.value)
   }
 
-  const candidates = allModels.value.filter((model) => model.kind === selectedKind.value)
+  const candidates = groupModels.filter((model) => model.kind === selectedKind.value)
   let target = candidates.find((model) =>
     (!queryModel || model.displayName === queryModel || model.name === queryModel) &&
     (!queryPlatform || model.platform === queryPlatform) &&
-    (queryGroupID == null || model.groups.some((group) => group.id === queryGroupID)),
+    modelSupportsGroup(model, selectedGroupId.value),
   )
   if (!target && queryModel) {
     target = candidates.find((model) =>
@@ -672,10 +700,6 @@ function applyQuerySelection() {
   }
 
   selectedModelKey.value = target?.key || ''
-  const targetGroups = target?.groups || []
-  selectedGroupId.value = queryGroupID != null && targetGroups.some((group) => group.id === queryGroupID)
-    ? queryGroupID
-    : targetGroups[0]?.id ?? null
 }
 
 function queryString(value: unknown): string {
