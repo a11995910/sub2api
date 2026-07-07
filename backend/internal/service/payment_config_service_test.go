@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -96,6 +98,9 @@ func TestParsePaymentConfig(t *testing.T) {
 		if cfg.MaxPendingOrders != 3 {
 			t.Fatalf("expected MaxPendingOrders=3, got %v", cfg.MaxPendingOrders)
 		}
+		if cfg.SubscriptionUSDToCNYRate != 0 {
+			t.Fatalf("expected SubscriptionUSDToCNYRate=0 by default, got %v", cfg.SubscriptionUSDToCNYRate)
+		}
 		if cfg.LoadBalanceStrategy != payment.DefaultLoadBalanceStrategy {
 			t.Fatalf("expected LoadBalanceStrategy=%s, got %q", payment.DefaultLoadBalanceStrategy, cfg.LoadBalanceStrategy)
 		}
@@ -107,17 +112,19 @@ func TestParsePaymentConfig(t *testing.T) {
 	t.Run("all values populated", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
-			SettingPaymentEnabled:      "true",
-			SettingMinRechargeAmount:   "5.00",
-			SettingMaxRechargeAmount:   "1000.00",
-			SettingDailyRechargeLimit:  "5000.00",
-			SettingOrderTimeoutMinutes: "15",
-			SettingMaxPendingOrders:    "5",
-			SettingEnabledPaymentTypes: "alipay,wxpay,stripe",
-			SettingBalancePayDisabled:  "true",
-			SettingLoadBalanceStrategy: "least_amount",
-			SettingProductNamePrefix:   "PRE",
-			SettingProductNameSuffix:   "SUF",
+			SettingPaymentEnabled:           "true",
+			SettingMinRechargeAmount:        "5.00",
+			SettingMaxRechargeAmount:        "1000.00",
+			SettingDailyRechargeLimit:       "5000.00",
+			SettingOrderTimeoutMinutes:      "15",
+			SettingMaxPendingOrders:         "5",
+			SettingEnabledPaymentTypes:      "alipay,wxpay,stripe",
+			SettingBalancePayDisabled:       "true",
+			SettingSubscriptionUSDToCNYRate: "7.1532",
+			SettingRechargeFeeRate:          "2.50",
+			SettingLoadBalanceStrategy:      "least_amount",
+			SettingProductNamePrefix:        "PRE",
+			SettingProductNameSuffix:        "SUF",
 		}
 		cfg := svc.parsePaymentConfig(vals)
 
@@ -147,6 +154,12 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 		if !cfg.BalanceDisabled {
 			t.Fatal("expected BalanceDisabled=true")
+		}
+		if cfg.SubscriptionUSDToCNYRate != 7.1532 {
+			t.Fatalf("SubscriptionUSDToCNYRate = %v, want 7.1532", cfg.SubscriptionUSDToCNYRate)
+		}
+		if cfg.RechargeFeeRate != 2.5 {
+			t.Fatalf("RechargeFeeRate = %v, want 2.5", cfg.RechargeFeeRate)
 		}
 		if cfg.LoadBalanceStrategy != "least_amount" {
 			t.Fatalf("LoadBalanceStrategy = %q, want %q", cfg.LoadBalanceStrategy, "least_amount")
@@ -429,6 +442,39 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	}
 	if repo.values[SettingPaymentVisibleMethodWxpaySource] != VisibleMethodSourceOfficialWechat {
 		t.Fatalf("wxpay source = %q, want %q", repo.values[SettingPaymentVisibleMethodWxpaySource], VisibleMethodSourceOfficialWechat)
+	}
+}
+
+func TestUpdatePaymentConfig_PersistsSubscriptionUSDToCNYRate(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	rate := 7.1532
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		SubscriptionUSDToCNYRate: &rate,
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	if repo.values[SettingSubscriptionUSDToCNYRate] != "7.1532" {
+		t.Fatalf("subscription USD to CNY rate = %q, want 7.1532", repo.values[SettingSubscriptionUSDToCNYRate])
+	}
+}
+
+func TestUpdatePaymentConfig_RejectsInvalidSubscriptionUSDToCNYRate(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	rate := math.Inf(1)
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		SubscriptionUSDToCNYRate: &rate,
+	})
+	if err == nil {
+		t.Fatal("expected invalid subscription USD to CNY rate to fail")
+	}
+	if appErr := infraerrors.FromError(err); appErr.Reason != "INVALID_SUBSCRIPTION_USD_TO_CNY_RATE" {
+		t.Fatalf("reason = %q, want INVALID_SUBSCRIPTION_USD_TO_CNY_RATE", appErr.Reason)
 	}
 }
 

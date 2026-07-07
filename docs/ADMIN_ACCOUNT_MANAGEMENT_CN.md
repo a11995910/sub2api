@@ -15,6 +15,28 @@
 - `POST /api/v1/admin/accounts/bulk-update`：批量更新账号。请求包含 `account_ids` 时按账号 ID 列表更新；请求仅包含 `filters` 时按筛选条件解析全部目标账号。
 - `POST /api/v1/admin/accounts/batch-refresh`：批量刷新已选账号令牌。
 - `POST /api/v1/admin/accounts/batch-clear-error`：批量重置已选账号错误状态。
+- `GET /api/v1/keys`、`POST /api/v1/keys`、`GET /api/v1/admin/users/:id/keys` 等 API Key DTO 会返回 `current_concurrency`，表示该 Key 当前正在执行的实时请求数。
+
+## API Key 当前并发
+
+API Key 列表、创建响应、详情响应和管理员查看用户 Key 时会返回 `current_concurrency` 字段。该字段来自运行时并发缓存，只用于页面展示和排障参考，不写入 API Key 数据表，也不改变 API Key 的并发限制、配额、状态或调度规则。
+
+当 Redis 并发缓存不可用或没有活跃请求时，服务端返回 `0`。前端应把该字段作为瞬时状态展示，不能用它替代历史用量统计或并发上限配置。
+
+## 请求头覆写
+
+Anthropic 和 OpenAI 平台的 `api_key` 类型账号支持请求头覆写。管理员可在创建账号、编辑账号或批量编辑账号时开启该能力，并在账号 `credentials` 中保存：
+
+- `header_override_enabled`：布尔值，表示是否启用覆写。
+- `header_overrides`：对象，键为 Header 名，值为覆写后的 Header 值。
+
+服务端保存账号时会统一校验并规范化该配置：Header 名去除首尾空白并转为小写，Header 值去除首尾空白；名和值都为空的占位行会被丢弃；同名 Header 按大小写不敏感规则去重。每个账号最多保存 64 条覆写，Header 名最长 200 字符，Header 值最长 8192 字符。
+
+请求转发到上游前，系统会按账号配置覆盖同名请求头。覆写只对符合条件的 `anthropic/api_key` 和 `openai/api_key` 账号生效；OAuth、Setup Token、Gemini、Grok、Antigravity 等其他账号类型不会应用该配置。
+
+以下 Header 不允许覆写：连接控制、逐跳传输、认证密钥、Cookie、压缩协商、WebSocket 握手以及逐请求会话隔离相关 Header，例如 `host`、`content-length`、`content-type`、`connection`、`authorization`、`x-api-key`、`x-goog-api-key`、`cookie`、`accept-encoding`、`sec-websocket-*`、`session_id`、`conversation_id`、`x-codex-turn-state`、`x-codex-turn-metadata`、`chatgpt-account-id`、`x-claude-code-session-id`、`x-client-request-id`。保存非法 Header 时接口返回 `400 INVALID_HEADER_OVERRIDE`。
+
+批量编辑中的请求头覆写是整组替换语义：开启批量字段后，提交的 `header_override_enabled` 和 `header_overrides` 会覆盖所选账号或筛选结果账号的原配置；关闭时会清空已有覆写配置。
 
 ## Anthropic 转发风险提示
 
@@ -48,10 +70,13 @@
 - 已选账号模式下账号 ID 为空时不会提交。
 - 筛选结果模式下如果当前筛选条件没有命中账号，服务端返回成功和失败数量均为 0，不会写入账号数据。
 - 更新分组时会先校验分组是否存在；存在混合渠道风险时需要管理员确认后继续。
+- 请求头覆写只在支持的平台和账号类型上展示和保存；非法 Header、重复 Header、非字符串值和超长配置会被服务端拒绝。
 - `anthropic_forwarding_risk` 为派生提示字段，旧账号和旧数据不需要迁移；非 Anthropic 账号和未启用透传的 Anthropic API Key 账号不会返回该字段。
 
 ## 测试建议
 
+- API Key DTO 测试覆盖 `current_concurrency` 的映射；服务测试覆盖 Redis 并发缓存不可用时返回 `0`。
+- 账号服务测试覆盖请求头覆写的合法保存、非法 Header 拒绝、大小写去重、空占位行丢弃和批量编辑整组替换。
 - 组件测试覆盖批量操作栏在“已选账号”和“未选账号”两种状态下展示不同入口。
 - 页面测试覆盖全选当前页后打开批量编辑时提交 `account_ids`，不提交 `filters`。
 - 接口或服务测试覆盖 `POST /api/v1/admin/accounts/bulk-update` 的 `account_ids` 模式、`filters` 模式、空目标、无更新字段和混合渠道风险确认流程。
