@@ -1,6 +1,6 @@
 # Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。正式 VPS `192.220.24.46` 上的 `sub2api` 当前使用自定义二进制挂载运行。
+本文档记录当前源码仓库、VPS 源码目录和从源码完整编译上线的固定流程。老正式 VPS `192.220.24.46` 上的 `sub2api` 当前使用自定义二进制挂载运行；新正式 VPS `207.57.145.15` 使用 Git 拉取源码、本机构建 Docker 镜像、staging 验证后再切换 prod 的部署方式。
 
 ## 强制原则
 
@@ -8,12 +8,15 @@
 - 测试 VPS 固定为 `192.220.36.75`，默认拉取 `origin/dev` 分支，并按正式 VPS 的二进制挂载方式做预发布验证。
 - 测试 VPS 验证通过后，只能在用户明确口头命令后合并到 `main` 并执行正式上线。
 - 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
-- VPS `/opt/sub2api-src` 必须拉取到本次构建对应的同一 commit，确保线上运行产物有可追溯源码。
+- 老正式 VPS / 测试 VPS 的 `/opt/sub2api-src`，以及新正式 VPS 的 `/opt/sub2api/repo`，都必须拉取到本次构建对应的同一 commit，确保线上运行产物有可追溯源码。
 - 正式 VPS `192.220.24.46` 按当前二进制挂载流程维护。
-- 正式 VPS 二进制挂载流程必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
+- 新正式 VPS 迁移目标为 `207.57.145.15`，登录账户 `root`。迁移完成并切换正式流量前，`192.220.24.46` 仍是当前正式环境。
+- 新正式 VPS 资源空间充足，迁移完成后默认使用 `deploy/Dockerfile` 构建完整 Docker 镜像，不使用旧 VPS 的低资源保护参数；只有在旧 VPS、测试 VPS 或临时资源紧张时，才继续使用 `GOFLAGS='-p=1' GOMAXPROCS=1` 等限制。
+- 老正式 VPS 二进制挂载流程必须执行仓库根目录的 `make build-deploy`，该目标会先构建前端，再用 `embed` 标签构建后端二进制。
+- 新正式 VPS 镜像化流程必须执行 `docker buildx build -f deploy/Dockerfile ... --load .`，由 Dockerfile 先构建前端，再把前端资源嵌入 Go 后端镜像。
 - 不允许只执行 `go build -tags embed` 就覆盖线上；必须确认前端资源、后端二进制、资源文件和源码 commit 属于同一次构建。
 - 内嵌前端由后端直接提供时，`/assets/*` 会返回长期缓存头，HTML/JS/CSS/JSON 会按浏览器 `Accept-Encoding` 返回 gzip 压缩；外层 Nginx 或 Caddy 仍可继续做 HTTPS、HTTP/2 和代理层优化。
-- 构建产物必须包含 Git commit 和提交时间；正式 VPS 必须核对 `/opt/sub2api-src/backend/bin/server --version`，输出 commit 必须与待上线 commit 一致。
+- 构建产物必须包含 Git commit 和提交时间；老正式 VPS 必须核对 `/opt/sub2api-src/backend/bin/server --version`，新正式 VPS 必须核对镜像内 `/app/sub2api --version`，输出 commit 必须与待上线 commit 一致。
 - 正式 VPS 替换线上二进制前必须校验 SHA256 并备份当前文件；使用同目录临时文件原子替换，禁止用 `cp` 直接覆盖正在执行的挂载文件。
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
 - 验证通过后必须清理 Docker 构建缓存、无回滚价值的旧镜像和旧二进制备份，只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
@@ -119,9 +122,9 @@ timeout 5 backend/bin/server --version
 - 后端改动仍以 `dev` 分支提交为准，由测试 VPS 拉取同一 commit 后低资源构建二进制，再原子替换挂载文件。
 - 如需实现“提交后自动更新测试环境”，应使用外部构建产物或 CI 构建 Linux amd64 二进制，再由测试 VPS 只负责拉取产物、校验 commit/SHA256、备份旧二进制、替换并重启容器；测试 VPS 不应承担完整 Go/Vite 构建压力。
 
-## VPS 源码目录
+## 老正式 VPS / 测试 VPS 源码目录
 
-当前 VPS 源码目录固定为：
+老正式 VPS 和当前测试 VPS 的源码目录固定为：
 
 ```bash
 /opt/sub2api-src
@@ -149,6 +152,113 @@ git rev-parse --short HEAD
 ```
 
 执行 `git pull --ff-only` 前，`git status --short` 应为空。如果有未提交改动，必须先确认来源，不能直接覆盖或回滚。
+
+## 新正式 VPS 迁移目标
+
+新正式 VPS 迁移目标信息如下：
+
+| 项目 | 值 |
+| --- | --- |
+| 新正式 VPS | `207.57.145.15` |
+| 登录账户 | `root` |
+| 凭据管理 | 不在仓库或文档记录明文密码；建议使用本机 Keychain 服务 `sub2api-new-vps-root` 或 SSH Key |
+| SSH 别名 | `sub2api-new-vps` |
+| 构建策略 | 新 VPS 拉取 Git 源码，在 VPS 本机构建 Docker 镜像，staging 验证后再切换 prod |
+
+新 VPS 初始化和迁移清单见 `docs/VPS_MIGRATION_CN.md`。DNS 切换前，旧正式 VPS `192.220.24.46` 仍是生产基准；任何迁移验证都必须先在新 VPS 本机完成健康检查，再进入域名切换。
+
+## 新正式 VPS 镜像化部署流程
+
+新正式 VPS `207.57.145.15` 默认目录结构如下：
+
+```bash
+/opt/sub2api/
+  repo/
+  env/
+    staging/.env
+    prod/.env
+  compose/
+    staging/docker-compose.yml
+    prod/docker-compose.yml
+  data/
+    staging/
+    prod/
+  backups/
+  scripts/
+```
+
+`repo/` 是干净 Git 工作区，只负责拉取、切分支和构建镜像；`.env`、证书、数据库目录和业务数据不得写入 `repo/` 或 Git。
+
+### staging 构建与发布
+
+staging 用于承接 `dev` 或功能分支。每次构建都必须核对本地已推送 commit 与新 VPS 工作区 commit 一致：
+
+```bash
+ssh sub2api-new-vps
+cd /opt/sub2api/repo
+git status --short
+git fetch origin
+git switch dev
+git pull --ff-only origin dev
+expected_commit='填写本地 dev 的 git rev-parse HEAD 输出'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+git log -1 --oneline
+
+commit="$(git rev-parse --short=12 HEAD)"
+date="$(git show -s --format=%cI HEAD)"
+docker buildx build \
+  -f deploy/Dockerfile \
+  --build-arg COMMIT="$commit" \
+  --build-arg DATE="$date" \
+  -t "sub2api:staging-$commit" \
+  --load .
+docker run --rm "sub2api:staging-$commit" --version
+
+cd /opt/sub2api/compose/staging
+docker compose --env-file /opt/sub2api/env/staging/.env up -d
+docker compose --env-file /opt/sub2api/env/staging/.env ps
+curl -I http://127.0.0.1:18080/health
+docker compose --env-file /opt/sub2api/env/staging/.env logs --tail=200 sub2api
+```
+
+### prod 切换与回滚
+
+prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。prod 发布前应记录当前运行镜像 tag，确保可以快速回滚：
+
+```bash
+ssh sub2api-new-vps
+cd /opt/sub2api/repo
+git status --short
+git fetch origin
+git switch main
+git pull --ff-only origin main
+expected_commit='填写已确认上线的 main commit'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+git log -1 --oneline
+
+commit="$(git rev-parse --short=12 HEAD)"
+docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
+  docker buildx build -f deploy/Dockerfile -t "sub2api:prod-$commit" --load .
+docker run --rm "sub2api:prod-$commit" --version
+
+cd /opt/sub2api/compose/prod
+docker compose --env-file /opt/sub2api/env/prod/.env up -d
+docker compose --env-file /opt/sub2api/env/prod/.env ps
+curl -I http://127.0.0.1:8080/health
+docker compose --env-file /opt/sub2api/env/prod/.env logs --tail=200 sub2api
+```
+
+回滚优先切回上一版 `sub2api:prod-<commit>` 镜像 tag，而不是重新构建或覆盖二进制。回滚后仍需验证容器状态、健康接口、管理端账号页、关键 API 和日志。
+
+### 上游同步
+
+上游同步不直接进入 prod。同步流程必须先建立独立分支，例如：
+
+```bash
+git switch -c sync/upstream-YYYYMMDD
+```
+
+解决冲突并完成本地验证后，先部署到新 VPS staging。只有 staging 验证通过后，才允许把同步结果并入 `dev`，再按正常流程进入 `main` 和 prod。
 
 ## 线上域名与 Nginx
 
@@ -186,17 +296,17 @@ openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 
 ## 正式 VPS 二进制编译要求
 
-本节适用于正式 VPS `192.220.24.46` 和当前测试 VPS `192.220.36.75` 的二进制挂载流程。
+本节仅适用于老正式 VPS `192.220.24.46` 和当前测试 VPS `192.220.36.75` 的二进制挂载流程。新正式 VPS `207.57.145.15` 使用上文的镜像化部署流程。
 
 部署产物必须包含前端静态资源，因此后端编译必须使用 `embed` 标签。当前仓库已经提供统一目标。
 
-线上编译机器为 VPS `/opt/sub2api-src`。VPS 需要先准备：
+老正式 VPS / 测试 VPS 的线上编译机器为 `/opt/sub2api-src`。VPS 需要先准备：
 
 - Go：以 `backend/go.mod` 中声明的版本为准
 - Node.js / pnpm：用于构建 `frontend`
 - make：用于执行仓库根目录的构建目标
 
-正式 VPS 和当前测试 VPS 默认在 `/opt/sub2api-src` 构建 Linux amd64 二进制。构建前必须先清理可再生成缓存，避免系统盘被 Go / Node / Docker 构建缓存打满：
+旧正式 VPS 和当前测试 VPS 默认在 `/opt/sub2api-src` 构建 Linux amd64 二进制。构建前必须先清理可再生成缓存，避免系统盘被 Go / Node / Docker 构建缓存打满：
 
 ```bash
 cd /opt/sub2api-src

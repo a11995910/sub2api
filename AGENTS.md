@@ -24,7 +24,7 @@
 - 提交说明使用中文，格式保持简洁，例如 `docs: 规范源码定制上线流程`。
 - `AGENTS.md` 被 `.gitignore` 忽略，首次加入仓库时必须使用 `git add -f AGENTS.md`。
 - 任何生产构建前，本地相关改动必须先完成 Git 提交并推送到远端；严禁用未提交工作区直接构建生产产物。
-- VPS 上线前必须在 `/opt/sub2api-src` 执行 `git pull --ff-only`，并核对线上源码 commit 与本次构建 commit 一致。
+- 老正式 VPS / 测试 VPS 上线前必须在 `/opt/sub2api-src` 执行 `git pull --ff-only`，并核对线上源码 commit 与本次构建 commit 一致；新正式 VPS 上线前必须在 `/opt/sub2api/repo` 执行 `git fetch`、切换目标分支、`git pull --ff-only`，并核对镜像构建 commit 与本次待发布 commit 一致。
 
 ## 测试 VPS 与正式 VPS 操作
 
@@ -32,6 +32,9 @@
 - 测试 VPS 默认拉取 `origin/dev` 分支；新功能完成后必须先部署到测试 VPS 验证。
 - 测试 VPS 验证通过后，只能报告验证结果和风险点；必须等用户明确口头命令后，才允许合并 `dev` 到 `main` 并上线正式 VPS。
 - 正式 VPS：`192.220.24.46`，内部包含 VPN、`sub2api`、`chatgpt2api`，正式上线仍按生产上线规范执行。
+- 新正式 VPS 迁移目标：`207.57.145.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`。该服务器资源空间充足，迁移完成并切换为正式环境后，构建默认不需要使用旧 VPS 的低资源管控参数；仍需在构建前核对磁盘、内存、CPU 余量和当前运行服务，避免与线上请求争抢资源。
+- 新 VPS 的 root 密码不得写入本文件、仓库、文档、提交记录或日志；后续如需密码登录，应使用运行时凭据或本机 Keychain 凭据引用，例如 `sub2api-new-vps-root`，并尽快配置 SSH Key 免密登录。
+- 老 VPS 到新 VPS 的迁移必须先完成项目盘点、数据目录盘点、Nginx/证书/DNS 入口盘点和回滚方案确认，再分项目迁移；切换 DNS 前，老 VPS `192.220.24.46` 仍视为正式环境。
 - 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
 - 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 等敏感信息不得写入仓库、文档、提交记录或日志；如需使用，只能通过运行时凭据或环境变量临时注入。
 
@@ -43,6 +46,8 @@
 - 不确定线上实际状态时，优先通过只读命令核实，例如 `git status --short`、`git remote -v`、`git rev-parse HEAD`、`docker compose ps`、`docker compose logs --tail=200`。
 
 ## Sub2API 正式 VPS 定制二进制上线规范
+
+本节仅适用于老正式 VPS `192.220.24.46` 当前运行形态。新正式 VPS `207.57.145.15` 必须使用下一节的 Git 拉取与镜像化部署规范。
 
 正式 VPS `192.220.24.46` 当前 `sub2api` 使用自定义二进制挂载运行，挂载文件为：
 
@@ -163,6 +168,94 @@ find /opt/sub2api-deploy/custom -maxdepth 1 -type f \
 - 账号列表字段显示正常，特别是模型能力、状态、可调度状态和错误信息。
 
 更完整的部署说明见 `docs/SOURCE_DEPLOY_CN.md`。
+
+## Sub2API 新正式 VPS Git 拉取与镜像化部署规范
+
+新正式 VPS `207.57.145.15` 采用“VPS 拉取 Git 源码 -> VPS 本机构建 Docker 镜像 -> staging 验证 -> prod 切换镜像”的部署方式。禁止在新 VPS 上沿用老 VPS 的直接覆盖挂载二进制流程；除非 Docker 构建链路不可用且用户明确同意应急 fallback。
+
+推荐目录结构：
+
+```bash
+/opt/sub2api/
+  repo/                 # 干净 Git 源码仓库，只用于 fetch / checkout / build
+  env/
+    staging/.env         # 预发布配置，不进 Git
+    prod/.env            # 正式配置，不进 Git
+  compose/
+    staging/docker-compose.yml
+    prod/docker-compose.yml
+  data/
+    staging/
+    prod/
+  backups/
+  scripts/
+```
+
+新 VPS 部署硬性要求：
+
+- 本地开发完成后必须先提交并推送到 GitHub；新 VPS 只从 GitHub 拉取已推送 commit，不接收本地未提交源码或本地构建产物。
+- 新 VPS 源码目录必须保持干净：每次构建前执行 `git status --short`，若存在未确认改动，必须先核实来源，不得直接覆盖。
+- staging 默认跟随 `dev` 或功能分支；prod 只允许使用 `main`。staging 验证通过后，必须等待用户明确口头确认，才允许合并到 `main` 并切换 prod。
+- 每次构建必须使用 `deploy/Dockerfile` 在新 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
+- Docker 构建必须传入可追溯版本信息，至少包含 `COMMIT=$(git rev-parse --short=12 HEAD)` 和 `DATE=$(git show -s --format=%cI HEAD)`。
+- staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
+- `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在新 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
+- 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。
+- 上游同步必须先进入独立同步分支，例如 `sync/upstream-YYYYMMDD`，构建到 staging 验证后再进入 `dev/main`，禁止直接把 upstream 合并到 prod。
+
+新 VPS staging 构建示例：
+
+```bash
+ssh sub2api-new-vps
+cd /opt/sub2api/repo
+git status --short
+git fetch origin
+git switch dev
+git pull --ff-only origin dev
+expected_commit='填写本地 dev 的 git rev-parse HEAD 输出'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+commit="$(git rev-parse --short=12 HEAD)"
+date="$(git show -s --format=%cI HEAD)"
+docker buildx build \
+  -f deploy/Dockerfile \
+  --build-arg COMMIT="$commit" \
+  --build-arg DATE="$date" \
+  -t "sub2api:staging-$commit" \
+  --load .
+docker run --rm "sub2api:staging-$commit" --version
+```
+
+staging 发布后必须验证：
+
+```bash
+cd /opt/sub2api/compose/staging
+docker compose --env-file /opt/sub2api/env/staging/.env up -d
+docker compose --env-file /opt/sub2api/env/staging/.env ps
+curl -I http://127.0.0.1:18080/health
+docker compose --env-file /opt/sub2api/env/staging/.env logs --tail=200 sub2api
+```
+
+prod 发布必须在用户明确确认后执行，并使用同一 commit 构建 prod 镜像或复用已验证镜像：
+
+```bash
+cd /opt/sub2api/repo
+git status --short
+git fetch origin
+git switch main
+git pull --ff-only origin main
+expected_commit='填写已确认上线的 main commit'
+test "$(git rev-parse HEAD)" = "$expected_commit"
+commit="$(git rev-parse --short=12 HEAD)"
+docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
+  docker buildx build -f deploy/Dockerfile -t "sub2api:prod-$commit" --load .
+docker run --rm "sub2api:prod-$commit" --version
+cd /opt/sub2api/compose/prod
+docker compose --env-file /opt/sub2api/env/prod/.env up -d
+docker compose --env-file /opt/sub2api/env/prod/.env ps
+curl -I http://127.0.0.1:8080/health
+```
+
+新 VPS `sub2api` 验证通过后，还必须检查 Nginx/Caddy 反代、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/models`、容器日志和数据库连接。DNS 切换前，老 VPS 仍保留回滚窗口。
 
 ## 文档同步
 

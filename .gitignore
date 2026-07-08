@@ -141,6 +141,7 @@ docs/*
 !docs/RECHARGE_MODEL_MARKET_CN.md
 !docs/SOURCE_DEPLOY_CN.md
 !docs/THIRD_PARTY_NOTICES_CN.md
+!docs/VPS_MIGRATION_CN.md
 !docs/legal/
 !docs/legal/*.md
 .serena/
