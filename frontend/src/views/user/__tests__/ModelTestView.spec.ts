@@ -252,6 +252,8 @@ describe('ModelTestView', () => {
     showWarning.mockReset()
     showSuccess.mockReset()
     push.mockReset()
+    window.URL.createObjectURL = vi.fn(() => 'blob:model-test-reference') as typeof window.URL.createObjectURL
+    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
 
     getUserGroupRates.mockResolvedValue({})
     getAvailableChannels.mockResolvedValue([
@@ -419,6 +421,36 @@ describe('ModelTestView', () => {
                   intervals: [],
                 },
               },
+              {
+                name: 'grok-imagine-edit',
+                platform: 'grok',
+                kind: 'image',
+                pricing: {
+                  billing_mode: 'image',
+                  input_price: null,
+                  output_price: null,
+                  cache_write_price: null,
+                  cache_read_price: null,
+                  image_output_price: null,
+                  per_request_price: 0.08,
+                  intervals: [],
+                },
+              },
+              {
+                name: 'grok-imagine-video',
+                platform: 'grok',
+                kind: 'image',
+                pricing: {
+                  billing_mode: 'image',
+                  input_price: null,
+                  output_price: null,
+                  cache_write_price: null,
+                  cache_read_price: null,
+                  image_output_price: null,
+                  per_request_price: 2.1,
+                  intervals: [],
+                },
+              },
             ],
           },
         ],
@@ -435,5 +467,30 @@ describe('ModelTestView', () => {
     expect(groupSelect.value).toBe('56')
     expect(optionTexts(modelSelect).some((text) => text.includes('grok-4.3'))).toBe(true)
     expect(modelSelect.value).not.toBe('')
+
+    const imageModeButton = wrapper.findAll('button').find((button) => button.text() === '图片')
+    if (!imageModeButton) {
+      throw new Error('找不到图片模式按钮')
+    }
+    await imageModeButton.trigger('click')
+    await flushPromises()
+
+    const imageModelOptions = optionTexts(selectByLabel(wrapper, '模型'))
+    expect(imageModelOptions.some((text) => text.includes('grok-imagine-image'))).toBe(true)
+    expect(imageModelOptions.some((text) => text.includes('grok-imagine-edit'))).toBe(false)
+    expect(imageModelOptions.some((text) => text.includes('grok-imagine-video'))).toBe(false)
+
+    const fileInput = wrapper.find('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['reference image'], 'reference.png', { type: 'image/png' })],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    const editModelOptions = optionTexts(selectByLabel(wrapper, '模型'))
+    expect(editModelOptions.some((text) => text.includes('grok-imagine-image'))).toBe(true)
+    expect(editModelOptions.some((text) => text.includes('grok-imagine-edit'))).toBe(true)
+    expect(editModelOptions.some((text) => text.includes('grok-imagine-video'))).toBe(false)
   })
 })

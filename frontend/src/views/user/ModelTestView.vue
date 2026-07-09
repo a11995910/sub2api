@@ -441,7 +441,11 @@ const allAvailableGroups = computed(() => {
 const selectedGroup = computed(() => allAvailableGroups.value.find((group) => group.id === selectedGroupId.value) || null)
 const availableGroups = computed(() => selectedGroup.value ? [selectedGroup.value] : [])
 const modelsInSelectedGroup = computed(() => modelsForGroupID(selectedGroupId.value))
-const filteredModels = computed(() => modelsInSelectedGroup.value.filter((model) => model.kind === selectedKind.value))
+const filteredModels = computed(() =>
+  modelsInSelectedGroup.value.filter((model) =>
+    model.kind === selectedKind.value && modelSupportsCurrentEndpoint(model),
+  ),
+)
 const selectedModel = computed(() => filteredModels.value.find((model) => model.key === selectedModelKey.value) || null)
 const hasKeyForSelectedGroup = computed(() => {
   if (selectedGroupId.value == null) return false
@@ -509,6 +513,8 @@ watch(selectedApiKeyId, () => {
 })
 
 watch(modelsInSelectedGroup, syncSelectedKindAndModel)
+
+watch(() => referenceImages.value.length, syncSelectedModel)
 
 watch(
   () => route.query,
@@ -591,6 +597,14 @@ function modelSupportsGroup(model: TestModelOption, groupID: number | null): boo
 
 function modelsForGroupID(groupID: number | null): TestModelOption[] {
   return allModels.value.filter((model) => modelSupportsGroup(model, groupID))
+}
+
+function modelSupportsCurrentEndpoint(model: TestModelOption): boolean {
+  if (selectedKind.value !== 'image') return true
+  const normalized = model.name.trim().toLowerCase()
+  if (normalized.includes('video')) return false
+  if (normalized.includes('edit')) return referenceImages.value.length > 0
+  return true
 }
 
 async function loadData() {
