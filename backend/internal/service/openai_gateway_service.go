@@ -2065,6 +2065,75 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return excluded
 	}
 
+	// Per-pass parent-health cache to avoid repeated DB calls when multiple shadow
+	// accounts share the same parent.
+	parentCacheL2 := make(map[int64]*Account)
+	parentLookupL2 := func(id int64) *Account {
+		if a, ok := parentCacheL2[id]; ok {
+			return a
+		}
+		if s.accountRepo == nil {
+			return nil
+		}
+		a, _ := s.accountRepo.GetByID(ctx, id)
+		parentCacheL2[id] = a
+		return a
+	}
+	isLoadAwareCandidate := func(acc *Account) bool {
+		if acc == nil {
+			return false
+		}
+		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
+		// re-check schedulability here so recently rate-limited/overloaded accounts
+		// are not selected again before the bucket is rebuilt.
+		if !isOpenAICompatibleAccountEligibleForRequest(ctx, acc, platform, requestedModel, false, requiredCapability) {
+			return false
+		}
+		if !parentHealthyForShadow(acc, parentLookupL2) {
+			return false
+		}
+		if s.isOpenAIAccountRuntimeBlocked(acc) {
+			return false
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+			return false
+		}
+		return true
+	}
+	higherPriorityAccountHasCapacity := func(sticky *Account) bool {
+		if sticky == nil || s.concurrencyService == nil {
+			return false
+		}
+		loadReq := make([]AccountWithConcurrency, 0)
+		for i := range accounts {
+			acc := &accounts[i]
+			if acc.ID == sticky.ID || isExcluded(acc.ID) || acc.Priority >= sticky.Priority {
+				continue
+			}
+			if !isLoadAwareCandidate(acc) {
+				continue
+			}
+			loadReq = append(loadReq, AccountWithConcurrency{
+				ID:             acc.ID,
+				MaxConcurrency: acc.EffectiveLoadFactor(),
+			})
+		}
+		if len(loadReq) == 0 {
+			return false
+		}
+		loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, loadReq)
+		if err != nil {
+			return false
+		}
+		for _, req := range loadReq {
+			loadInfo := loadMap[req.ID]
+			if loadInfo == nil || loadInfo.LoadRate < 100 {
+				return true
+			}
+		}
+		return false
+	}
+
 	// ============ Layer 1: Sticky session ============
 	if sessionHash != "" {
 		accountID := stickyAccountID
@@ -2086,6 +2155,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
+						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if higherPriorityAccountHasCapacity(account) {
+						// 粘性会话保证同一会话稳定，但不能让低优先级账号在高优先级有空槽时持续抢流量。
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -2114,20 +2186,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	// ============ Layer 2: Load-aware selection ============
-	// Per-pass parent-health cache to avoid repeated DB calls when multiple shadow
-	// accounts share the same parent.
-	parentCacheL2 := make(map[int64]*Account)
-	parentLookupL2 := func(id int64) *Account {
-		if a, ok := parentCacheL2[id]; ok {
-			return a
-		}
-		if s.accountRepo == nil {
-			return nil
-		}
-		a, _ := s.accountRepo.GetByID(ctx, id)
-		parentCacheL2[id] = a
-		return a
-	}
 	baseCandidateCount := 0
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
@@ -2135,19 +2193,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if isExcluded(acc.ID) {
 			continue
 		}
-		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
-		// re-check schedulability here so recently rate-limited/overloaded accounts
-		// are not selected again before the bucket is rebuilt.
-		if !isOpenAICompatibleAccountEligibleForRequest(ctx, acc, platform, requestedModel, false, requiredCapability) {
-			continue
-		}
-		if !parentHealthyForShadow(acc, parentLookupL2) {
-			continue
-		}
-		if s.isOpenAIAccountRuntimeBlocked(acc) {
-			continue
-		}
-		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+		if !isLoadAwareCandidate(acc) {
 			continue
 		}
 		baseCandidateCount++

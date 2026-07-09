@@ -711,6 +711,129 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyOutsideGroupClearsSession(t 
 	}
 }
 
+func TestOpenAISelectAccountWithLoadAwareness_StickyLowerPriorityClearsWhenHigherPriorityHasCapacity(t *testing.T) {
+	sessionHash := "sticky-lower-priority"
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 7101, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+			{ID: 7102, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+		},
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{"openai:" + sessionHash: 7101},
+	}
+	concurrencyCache := stubConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			7101: {AccountID: 7101, LoadRate: 0},
+			7102: {AccountID: 7102, LoadRate: 0},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, sessionHash, "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+	}
+	if selection == nil || selection.Account == nil || selection.Account.ID != 7102 {
+		t.Fatalf("expected account 7102, got %+v", selection)
+	}
+	if cache.deletedSessions["openai:"+sessionHash] != 1 {
+		t.Fatalf("expected low-priority sticky session to be deleted")
+	}
+	if cache.sessionBindings["openai:"+sessionHash] != 7102 {
+		t.Fatalf("expected sticky session to bind to higher-priority account")
+	}
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_StickyLowerPriorityKeptWhenHigherPriorityFull(t *testing.T) {
+	sessionHash := "sticky-lower-priority-high-full"
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 7201, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+			{ID: 7202, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+		},
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{"openai:" + sessionHash: 7201},
+	}
+	concurrencyCache := stubConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			7201: {AccountID: 7201, LoadRate: 0},
+			7202: {AccountID: 7202, LoadRate: 100},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, sessionHash, "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+	}
+	if selection == nil || selection.Account == nil || selection.Account.ID != 7201 {
+		t.Fatalf("expected sticky account 7201, got %+v", selection)
+	}
+	if cache.deletedSessions["openai:"+sessionHash] != 0 {
+		t.Fatalf("expected sticky session to be kept")
+	}
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_StickySamePriorityKept(t *testing.T) {
+	sessionHash := "sticky-same-priority"
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 7301, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+			{ID: 7302, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+		},
+	}
+	cache := &stubGatewayCache{
+		sessionBindings: map[string]int64{"openai:" + sessionHash: 7301},
+	}
+	concurrencyCache := stubConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			7301: {AccountID: 7301, LoadRate: 0},
+			7302: {AccountID: 7302, LoadRate: 0},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, sessionHash, "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+	}
+	if selection == nil || selection.Account == nil {
+		t.Fatalf("expected selection, got %+v", selection)
+	}
+	if cache.deletedSessions["openai:"+sessionHash] != 0 {
+		t.Fatalf("expected same-priority sticky session to be kept")
+	}
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestOpenAISelectAccountForModelWithExclusions_NoModelSupport(t *testing.T) {
 	repo := stubOpenAIAccountRepo{
 		accounts: []Account{
