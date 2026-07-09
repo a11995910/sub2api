@@ -361,4 +361,79 @@ describe('ModelTestView', () => {
     expect(optionTexts(modelSelect)).toEqual(['请选择模型', 'image-2 · OpenAI'])
     expect(modelSelect.value).not.toBe('')
   })
+
+  it('Grok 图片能力分组在文本模式下仍能选择文本模型', async () => {
+    const grokGroup = groupFixture({
+      id: 56,
+      name: 'grok测试',
+      platform: 'grok',
+      allow_image_generation: true,
+      image_rate_independent: true,
+      image_rate_multiplier: 1,
+      image_price_1k: 0.05,
+      image_price_2k: 0.07,
+      image_price_4k: 0.07,
+    })
+    const grokKey = apiKeyFixture({
+      id: 1088,
+      name: 'grok',
+      key: 'sk-grok-key-1234567890',
+      group_id: 56,
+    })
+    getAvailableChannels.mockResolvedValue([
+      {
+        name: 'grok',
+        description: '',
+        platforms: [
+          {
+            platform: 'grok',
+            groups: [grokGroup],
+            supported_models: [
+              {
+                name: 'grok-4.3',
+                platform: 'grok',
+                kind: 'token',
+                pricing: {
+                  billing_mode: 'token',
+                  input_price: 0.00000125,
+                  output_price: 0.0000025,
+                  cache_write_price: null,
+                  cache_read_price: 0.0000002,
+                  image_output_price: null,
+                  per_request_price: null,
+                  intervals: [],
+                },
+              },
+              {
+                name: 'grok-imagine-image',
+                platform: 'grok',
+                kind: 'image',
+                pricing: {
+                  billing_mode: 'image',
+                  input_price: null,
+                  output_price: null,
+                  cache_write_price: null,
+                  cache_read_price: null,
+                  image_output_price: null,
+                  per_request_price: 0.02,
+                  intervals: [],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ])
+    listKeys.mockResolvedValue({ items: [grokKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const groupSelect = selectByLabel(wrapper, '分组')
+    const modelSelect = selectByLabel(wrapper, '模型')
+
+    expect(groupSelect.value).toBe('56')
+    expect(optionTexts(modelSelect).some((text) => text.includes('grok-4.3'))).toBe(true)
+    expect(modelSelect.value).not.toBe('')
+  })
 })

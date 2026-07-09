@@ -7966,11 +7966,18 @@ func extractUpstreamErrorMessage(body []byte) string {
 		inner := strings.TrimSpace(m)
 		// 有些上游会把完整 JSON 作为字符串塞进 message
 		if strings.HasPrefix(inner, "{") {
-			if innerMsg := gjson.Get(inner, "error.message").String(); strings.TrimSpace(innerMsg) != "" {
+			if innerMsg := extractUpstreamErrorMessageFromJSONString(inner); strings.TrimSpace(innerMsg) != "" {
 				return innerMsg
 			}
 		}
 		return m
+	}
+
+	// xAI 图片接口风格：{"code":"...","error":"Generated image rejected ..."}
+	if e := gjson.GetBytes(body, "error"); e.Type == gjson.String {
+		if msg := strings.TrimSpace(e.String()); msg != "" {
+			return msg
+		}
 	}
 
 	// ChatGPT 内部 API 风格：{"detail":"..."}
@@ -7980,6 +7987,15 @@ func extractUpstreamErrorMessage(body []byte) string {
 
 	// 兜底：尝试顶层 message
 	return gjson.GetBytes(body, "message").String()
+}
+
+func extractUpstreamErrorMessageFromJSONString(raw string) string {
+	for _, path := range []string{"error.message", "error", "detail", "message"} {
+		if msg := strings.TrimSpace(gjson.Get(raw, path).String()); msg != "" {
+			return msg
+		}
+	}
+	return ""
 }
 
 func extractUpstreamErrorCode(body []byte) string {

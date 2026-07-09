@@ -30,7 +30,7 @@ export function filterGroupsByModelKind(
   kind: ModelKind,
 ): UserAvailableGroup[] {
   return (groups || []).filter((group) =>
-    kind === 'image' ? group.allow_image_generation : !group.allow_image_generation,
+    kind === 'image' ? group.allow_image_generation : !isLegacyOpenAIImageGroup(group),
   )
 }
 
@@ -48,4 +48,9 @@ export function selectAvailableModelKind<T extends { kind: ModelKind }>(
 function isImageModelName(name: string): boolean {
   const normalized = name.trim().toLowerCase()
   return normalized.startsWith('gpt-image-') || normalized === 'image-2'
+}
+
+function isLegacyOpenAIImageGroup(group: UserAvailableGroup): boolean {
+  // OpenAI 兼容图片分组历史上只承载 image-2；Grok 等原生多模态平台的图片能力是附加能力。
+  return group.allow_image_generation && group.platform === 'openai'
 }
