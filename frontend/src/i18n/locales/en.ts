@@ -297,6 +297,9 @@ export default {
     disabled: 'Disabled',
     total: 'Total',
     balance: 'Balance',
+    availableBalance: 'Available balance',
+    frozenBalance: 'Frozen balance',
+    totalBalance: 'Total balance',
     currencyName: 'Spirit Stones',
     available: 'Available',
     copiedToClipboard: 'Copied to clipboard',
@@ -2326,6 +2329,7 @@ export default {
       sortOrderHint: 'Drag groups to adjust display order, groups at the top will be displayed first',
       sortOrderUpdated: 'Sort order updated',
       failedToUpdateSortOrder: 'Failed to update sort order',
+      failedToSave: 'Failed to save group',
       allPlatforms: 'All Platforms',
       allStatus: 'All Status',
       allGroups: 'All Groups',
@@ -2498,6 +2502,7 @@ export default {
         title: 'Image Generation Pricing',
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
         allowImageGeneration: 'Allow image generation for this group',
+        allowBatchImageGeneration: 'Allow batch image generation for this group',
         imageSuperResolution: 'Auto 4K super resolution',
         imageSuperResolutionHint: 'Generated images are upscaled before being returned.',
         image2KEnhancement: '2K super resolution',
@@ -2518,8 +2523,24 @@ export default {
         image4KEnhancementModelLoadFailed: 'Failed to load 4K enhancement target models',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',
+        batchDiscountMultiplier: 'Batch image discount',
+        batchHoldMultiplier: 'Batch hold price ratio',
+        batchSectionHint: 'Batch image settings only apply to batch jobs: settlement applies the batch discount, and the upfront hold is normal image price × batch hold price ratio. Reference images also create upstream input-token usage, so a batch image discount above 0.5 is recommended.',
+        batchDisabledHint: 'Enable image generation for this group before enabling batch image generation.',
+        batchGeminiOnlyHint: 'Batch image generation is currently available only for Gemini groups.',
         modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
         finalPricePreview: 'Final per-image price preview',
+        notConfigured: 'Not configured'
+      },
+      videoPricing: {
+        title: 'Video Generation Pricing',
+        description:
+          'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
+        independentMultiplier: 'Use independent video multiplier',
+        videoMultiplier: 'Video multiplier',
+        modeHint:
+          'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
+        finalPricePreview: 'Final per-second price preview',
         notConfigured: 'Not configured'
       },
       peakRate: {
@@ -3586,6 +3607,7 @@ export default {
         priority: 'Priority',
         billingRateMultiplier: 'Billing Rate',
         weight: 'Weight',
+        schedulerScore: 'Scheduler Score',
         status: 'Status',
         schedulable: 'Schedulable',
         todayStats: 'Today Stats',
@@ -3596,6 +3618,12 @@ export default {
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      },
+      schedulerScore: {
+        baseShort: 'Base',
+        stickyShort: 'Sticky',
+        ungrouped: 'Ungrouped',
+        hint: 'Displayed as "group / base score / sticky bonus". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred.'
       },
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
       allPrivacyModes: 'All Privacy States',
@@ -5211,6 +5239,7 @@ export default {
       lastRun: 'last_run:',
       lastSuccess: 'last_success:',
       lastError: 'last_error:',
+      result: 'Result',
       noData: 'No data.',
       loadingText: 'loading',
       ready: 'ready',
@@ -5331,7 +5360,12 @@ export default {
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours',
         '7d': 'Last 7 days',
-        '30d': 'Last 30 days'
+        '30d': 'Last 30 days',
+        custom: 'Custom Range'
+      },
+      customTimeRange: {
+        startTime: 'Start Time',
+        endTime: 'End Time'
       },
       openaiTokenStats: {
         title: 'OpenAI Token Request Stats',

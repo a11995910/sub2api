@@ -513,6 +513,15 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
 }
 
+func (r *accountRepository) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error) {
+	now := time.Now()
+	accounts, err := r.buildAccountListQuery(now, platform, accountType, status, search, groupID, privacyMode).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return r.accountsToService(ctx, accounts)
+}
+
 func (r *accountRepository) ListIDsWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]int64, *pagination.PaginationResult, error) {
 	now := time.Now()
 	q := r.buildAccountListQuery(now, platform, accountType, status, search, groupID, privacyMode)
