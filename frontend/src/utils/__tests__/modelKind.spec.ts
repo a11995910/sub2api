@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import type { UserAvailableGroup } from '@/api/channels'
-import { filterGroupsByModelKind, selectAvailableModelKind } from '../modelKind'
+import type { UserAvailableGroup, UserSupportedModelPricing } from '@/api/channels'
+import { BILLING_MODE_IMAGE } from '@/constants/channel'
+import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind } from '../modelKind'
+
+describe('resolveModelKind', () => {
+  it('模型名为 Grok 视频时覆盖历史 kind=image', () => {
+    expect(resolveModelKind({
+      name: 'grok-imagine-video-1.5',
+      kind: 'image',
+      pricing: { billing_mode: BILLING_MODE_IMAGE } as UserSupportedModelPricing,
+    })).toBe('video')
+  })
+})
 
 describe('selectAvailableModelKind', () => {
   it('优先保留当前有可用模型的模式', () => {

@@ -8,7 +8,7 @@ import type {
 export type ModelKind = 'token' | 'image' | 'video'
 
 /**
- * 旧后端没有 kind 字段时，前端用计费模式和模型名兜底识别图片模型。
+ * 旧后端没有 kind 字段时，前端用计费模式和模型名兜底识别图片、视频模型。
  * 这里仅用于展示分组归属，不参与真实路由或扣费判断。
  */
 export function modelKindFromPricing(
@@ -25,6 +25,7 @@ export function modelKindFromPricing(
 }
 
 export function resolveModelKind(model: Pick<UserSupportedModel, 'kind' | 'name' | 'pricing'>): ModelKind {
+  if (isVideoModelName(model.name)) return 'video'
   if (model.kind === 'image' || model.kind === 'video') return model.kind
   return modelKindFromPricing(model.pricing, model.name)
 }
@@ -56,8 +57,8 @@ function isImageModelName(name: string): boolean {
   return normalized.startsWith('gpt-image-') || normalized === 'image-2'
 }
 
-function isVideoModelName(name: string): boolean {
-  return name.trim().toLowerCase().includes('video')
+export function isVideoModelName(name: string): boolean {
+  return name.trim().toLowerCase().startsWith('grok-imagine-video')
 }
 
 function isLegacyOpenAIImageGroup(group: UserAvailableGroup): boolean {

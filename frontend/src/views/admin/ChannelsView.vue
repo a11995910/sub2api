@@ -630,7 +630,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, BillingMode } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
@@ -650,6 +650,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useKeyedDebouncedSearch } from '@/composables/useKeyedDebouncedSearch'
+import { preserveChannelBillingMode } from './channelPricingCompatibility'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1189,7 +1190,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       .filter(p => (p.platform || 'anthropic') === platform)
       .map(p => ({
         models: p.models || [],
-        billing_mode: normalizedPricingBillingMode(p.billing_mode, p.models || []),
+        billing_mode: preserveChannelBillingMode(p),
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
@@ -1377,7 +1378,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
       account_ids: [...(apiRule.account_ids || [])],
       pricing: (apiRule.pricing || []).map(p => ({
         models: [...(p.models || [])],
-        billing_mode: normalizedPricingBillingMode(p.billing_mode, p.models || []),
+        billing_mode: preserveChannelBillingMode(p),
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
@@ -1389,11 +1390,6 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
     }
     section.account_stats_pricing_rules.push(formRule)
   }
-}
-
-function normalizedPricingBillingMode(mode: BillingMode, models: string[]): BillingMode {
-  if (mode !== 'image' || models.length === 0) return mode
-  return models.every(model => model.trim().toLowerCase().includes('video')) ? 'video' : mode
 }
 
 /** Populate ruleAccountNameCache by fetching account details for all account_ids in rules */
