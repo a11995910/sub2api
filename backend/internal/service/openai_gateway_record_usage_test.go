@@ -2262,6 +2262,8 @@ func TestOpenAIGatewayServiceRecordUsage_LegacyImageVideoPriceStaysPerRequest(t 
 	require.Equal(t, 2, usageRepo.lastLog.VideoCount)
 	require.InDelta(t, 4.2, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 4.2, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_LegacyPerRequestVideoPriceStaysPerRequest(t *testing.T) {
@@ -2302,6 +2304,8 @@ func TestOpenAIGatewayServiceRecordUsage_LegacyPerRequestVideoPriceStaysPerReque
 	require.Equal(t, 2, usageRepo.lastLog.VideoCount)
 	require.InDelta(t, 4.2, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 4.2, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModePerRequest), *usageRepo.lastLog.BillingMode)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_HydratesGroupImagePriceWhenAuthSnapshotOmitsIt(t *testing.T) {

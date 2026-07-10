@@ -7303,7 +7303,6 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 			Resolved:       resolved,
 		})
 		if err == nil {
-			cost.BillingMode = string(BillingModeVideo)
 			return cost
 		}
 		logger.LegacyPrintf("service.openai_gateway", "Calculate video channel cost failed: %v", err)

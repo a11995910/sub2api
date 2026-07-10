@@ -1432,6 +1432,89 @@ func TestCreate_InvalidPricingIntervals(t *testing.T) {
 	require.Contains(t, err.Error(), "overlap")
 }
 
+func TestCreate_RejectsVideoIntervalWithoutPerSecondPrice(t *testing.T) {
+	repo := &mockChannelRepository{
+		existsByNameFn: func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	_, err := svc.Create(context.Background(), &CreateChannelInput{
+		Name: "video-channel",
+		ModelPricing: []ChannelModelPricing{{
+			Platform:    PlatformGrok,
+			Models:      []string{"grok-imagine-video"},
+			BillingMode: BillingModeVideo,
+			Intervals: []PricingInterval{{
+				TierLabel:  VideoBillingResolution720P,
+				InputPrice: testPtrFloat64(0.001),
+			}},
+		}},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "VIDEO_INTERVAL_MISSING_PRICE", infraerrors.Reason(err))
+}
+
+func TestCreate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
+	repo := &mockChannelRepository{
+		existsByNameFn: func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	_, err := svc.Create(context.Background(), &CreateChannelInput{
+		Name: "video-stats-channel",
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{10},
+			Pricing: []ChannelModelPricing{{
+				Platform:        PlatformGrok,
+				Models:          []string{"grok-imagine-video"},
+				BillingMode:     BillingModeVideo,
+				PerRequestPrice: testPtrFloat64(0.07),
+			}},
+		}},
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+}
+
+func TestCreate_AllowsVideoBillingInMainModelPricing(t *testing.T) {
+	var captured *Channel
+	repo := &mockChannelRepository{
+		existsByNameFn: func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		},
+		createFn: func(_ context.Context, channel *Channel) error {
+			channel.ID = 101
+			captured = channel.Clone()
+			return nil
+		},
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return captured.Clone(), nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	created, err := svc.Create(context.Background(), &CreateChannelInput{
+		Name: "video-channel",
+		ModelPricing: []ChannelModelPricing{{
+			Platform:        PlatformGrok,
+			Models:          []string{"grok-imagine-video"},
+			BillingMode:     BillingModeVideo,
+			PerRequestPrice: testPtrFloat64(0.07),
+		}},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	require.Len(t, created.ModelPricing, 1)
+	require.Equal(t, BillingModeVideo, created.ModelPricing[0].BillingMode)
+}
+
 func TestCreate_DefaultBillingModelSource(t *testing.T) {
 	var capturedChannel *Channel
 	repo := &mockChannelRepository{
@@ -1652,6 +1735,64 @@ func TestUpdate_InvalidPricingIntervals(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "INVALID_PRICING_INTERVALS")
 	require.Contains(t, err.Error(), "unbounded")
+}
+
+func TestUpdate_RejectsDuplicateVideoResolutionTiers(t *testing.T) {
+	existing := &Channel{
+		ID:     1,
+		Name:   "video-channel",
+		Status: StatusActive,
+	}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return existing.Clone(), nil
+		},
+	}
+	svc := newTestChannelService(repo)
+	pricing := []ChannelModelPricing{{
+		Platform:    PlatformGrok,
+		Models:      []string{"grok-imagine-video"},
+		BillingMode: BillingModeVideo,
+		Intervals: []PricingInterval{
+			{TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.07)},
+			{TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.08)},
+		},
+	}}
+
+	_, err := svc.Update(context.Background(), existing.ID, &UpdateChannelInput{ModelPricing: &pricing})
+
+	require.Error(t, err)
+	require.Equal(t, "DUPLICATE_VIDEO_RESOLUTION", infraerrors.Reason(err))
+}
+
+func TestUpdate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
+	existing := &Channel{
+		ID:     1,
+		Name:   "video-stats-channel",
+		Status: StatusActive,
+	}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return existing.Clone(), nil
+		},
+	}
+	svc := newTestChannelService(repo)
+	rules := []AccountStatsPricingRule{{
+		AccountIDs: []int64{20},
+		Pricing: []ChannelModelPricing{{
+			Platform:        PlatformGrok,
+			Models:          []string{"grok-imagine-video"},
+			BillingMode:     BillingModeVideo,
+			PerRequestPrice: testPtrFloat64(0.07),
+		}},
+	}}
+
+	_, err := svc.Update(context.Background(), existing.ID, &UpdateChannelInput{
+		AccountStatsPricingRules: &rules,
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
 }
 
 func TestUpdate_InvalidatesChannelCache(t *testing.T) {
@@ -2337,6 +2478,56 @@ func TestValidatePricingBillingMode(t *testing.T) {
 				BillingMode: BillingModeVideo,
 				Intervals:   []PricingInterval{{TierLabel: "720p", PerRequestPrice: testPtrFloat64(0.14)}},
 			}},
+		},
+		{
+			name: "video with canonical resolution tiers and explicit zero - valid",
+			pricing: []ChannelModelPricing{{
+				BillingMode: BillingModeVideo,
+				Intervals: []PricingInterval{
+					{TierLabel: VideoBillingResolution480P, PerRequestPrice: testPtrFloat64(0)},
+					{TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.07)},
+					{TierLabel: VideoBillingResolution1080P, PerRequestPrice: testPtrFloat64(0.14)},
+				},
+			}},
+		},
+		{
+			name: "video interval with token price only - invalid",
+			pricing: []ChannelModelPricing{{
+				BillingMode: BillingModeVideo,
+				Intervals: []PricingInterval{{
+					TierLabel:  VideoBillingResolution720P,
+					InputPrice: testPtrFloat64(0.001),
+				}},
+			}},
+			wantErr: true,
+			errMsg:  "per-second price required",
+			errCode: "VIDEO_INTERVAL_MISSING_PRICE",
+		},
+		{
+			name: "video interval with noncanonical resolution - invalid",
+			pricing: []ChannelModelPricing{{
+				BillingMode: BillingModeVideo,
+				Intervals: []PricingInterval{{
+					TierLabel:       "HD",
+					PerRequestPrice: testPtrFloat64(0.07),
+				}},
+			}},
+			wantErr: true,
+			errMsg:  "invalid video resolution",
+			errCode: "INVALID_VIDEO_RESOLUTION",
+		},
+		{
+			name: "video interval with duplicate resolution - invalid",
+			pricing: []ChannelModelPricing{{
+				BillingMode: BillingModeVideo,
+				Intervals: []PricingInterval{
+					{TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.07)},
+					{TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.08)},
+				},
+			}},
+			wantErr: true,
+			errMsg:  "duplicate video resolution",
+			errCode: "DUPLICATE_VIDEO_RESOLUTION",
 		},
 		{
 			name:    "unknown billing mode - invalid",

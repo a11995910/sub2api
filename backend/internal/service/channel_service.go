@@ -613,6 +613,20 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	return validatePricingBillingMode(pricing)
 }
 
+// validateAccountStatsPricingEntries 校验账号统计规则内的定价。
+// 当前统计计算链路未消费视频数量、分辨率和时长，先明确拒绝，避免配置成功后静默回退到其他价格。
+func validateAccountStatsPricingEntries(pricing []ChannelModelPricing) error {
+	for _, p := range pricing {
+		if p.BillingMode == BillingModeVideo {
+			return infraerrors.BadRequest(
+				"ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED",
+				"video billing mode is not supported in account stats pricing rules",
+			)
+		}
+	}
+	return validatePricingEntries(pricing)
+}
+
 // validatePricingBillingMode 校验计费模式配置：按次/图片/视频模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
 func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 	for _, p := range pricing {
@@ -620,6 +634,9 @@ func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 			return err
 		}
 		if err := checkPricesNotNegative(p); err != nil {
+			return err
+		}
+		if err := checkVideoPricingIntervals(p); err != nil {
 			return err
 		}
 		if err := checkIntervalsHavePrices(p); err != nil {
@@ -647,6 +664,47 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 		)
 	}
 	return nil
+}
+
+// checkVideoPricingIntervals 校验视频分辨率层级。视频运行时只读取每秒价格，
+// 且请求分辨率会归一化为三个规范标签，因此保存时拒绝无法生效或会相互遮蔽的配置。
+func checkVideoPricingIntervals(p ChannelModelPricing) error {
+	if p.BillingMode != BillingModeVideo {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(p.Intervals))
+	for i, iv := range p.Intervals {
+		if iv.PerRequestPrice == nil {
+			return infraerrors.BadRequest(
+				"VIDEO_INTERVAL_MISSING_PRICE",
+				fmt.Sprintf("per-second price required for video interval #%d", i+1),
+			)
+		}
+		if !isCanonicalVideoBillingResolution(iv.TierLabel) {
+			return infraerrors.BadRequest(
+				"INVALID_VIDEO_RESOLUTION",
+				fmt.Sprintf("invalid video resolution %q for interval #%d", iv.TierLabel, i+1),
+			)
+		}
+		if _, exists := seen[iv.TierLabel]; exists {
+			return infraerrors.BadRequest(
+				"DUPLICATE_VIDEO_RESOLUTION",
+				fmt.Sprintf("duplicate video resolution %q", iv.TierLabel),
+			)
+		}
+		seen[iv.TierLabel] = struct{}{}
+	}
+	return nil
+}
+
+func isCanonicalVideoBillingResolution(resolution string) bool {
+	switch resolution {
+	case VideoBillingResolution480P, VideoBillingResolution720P, VideoBillingResolution1080P:
+		return true
+	default:
+		return false
+	}
 }
 
 func checkBillingModeValid(mode BillingMode) error {
@@ -737,7 +795,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		return nil, err
 	}
 	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validatePricingEntries(rule.Pricing); err != nil {
+		if err := validateAccountStatsPricingEntries(rule.Pricing); err != nil {
 			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
 		}
 	}
@@ -781,7 +839,7 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		return nil, err
 	}
 	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validatePricingEntries(rule.Pricing); err != nil {
+		if err := validateAccountStatsPricingEntries(rule.Pricing); err != nil {
 			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
 		}
 	}
