@@ -31,6 +31,15 @@ func bindChannelModelPricingRequestForTest(t *testing.T, body string) error {
 	return c.ShouldBindJSON(&req)
 }
 
+func bindCreateChannelRequestForTest(t *testing.T, body string) error {
+	t.Helper()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/channels", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	var req createChannelRequest
+	return c.ShouldBindJSON(&req)
+}
+
 func TestChannelModelPricingRequestAcceptsVideoBillingMode(t *testing.T) {
 	err := bindChannelModelPricingRequestForTest(t, `{
 		"platform":"grok",
@@ -47,6 +56,19 @@ func TestChannelModelPricingRequestRejectsUnknownBillingMode(t *testing.T) {
 		"billing_mode":"unknown"
 	}`)
 	require.Error(t, err)
+}
+
+func TestCreateChannelRequestAcceptsVideoBillingMode(t *testing.T) {
+	err := bindCreateChannelRequestForTest(t, `{
+		"name":"视频渠道",
+		"model_pricing":[{
+			"platform":"grok",
+			"models":["grok-imagine-video"],
+			"billing_mode":"video",
+			"per_request_price":0.07
+		}]
+	}`)
+	require.NoError(t, err)
 }
 
 // ---------------------------------------------------------------------------
