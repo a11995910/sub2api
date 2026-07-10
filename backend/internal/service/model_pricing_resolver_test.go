@@ -163,18 +163,25 @@ func TestGPT56ExplicitZeroCacheWritePriceIsPreserved(t *testing.T) {
 func TestGetRequestTierPrice(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(&ChannelService{}, bs)
+	zero := 0.0
 
 	resolved := &ResolvedPricing{
 		Mode: BillingModePerRequest,
 		RequestTiers: []PricingInterval{
 			{TierLabel: "1K", PerRequestPrice: testPtrFloat64(0.04)},
 			{TierLabel: "2K", PerRequestPrice: testPtrFloat64(0.08)},
+			{TierLabel: "free", PerRequestPrice: &zero},
 		},
 	}
 
 	require.InDelta(t, 0.04, r.GetRequestTierPrice(resolved, "1K"), 1e-12)
 	require.InDelta(t, 0.08, r.GetRequestTierPrice(resolved, "2K"), 1e-12)
 	require.InDelta(t, 0.0, r.GetRequestTierPrice(resolved, "4K"), 1e-12)
+	price, found := r.LookupRequestTierPrice(resolved, "free")
+	require.True(t, found)
+	require.Zero(t, price)
+	_, found = r.LookupRequestTierPrice(resolved, "missing")
+	require.False(t, found)
 }
 
 func TestGetRequestTierPriceByContext(t *testing.T) {

@@ -1046,26 +1046,29 @@ func (s *BillingService) computeCacheCreationCost(pricing *ModelPricing, tokens 
 	return float64(tokens.CacheCreationTokens) * price * multiplier
 }
 
-// calculatePerRequestCost 按次/图片计费
+// calculatePerRequestCost 按次/图片/视频层级计费；视频调用方已将数量换算为秒数。
 func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
 	count := input.RequestCount
 	if count <= 0 {
 		count = 1
 	}
 
-	var unitPrice float64
+	var (
+		unitPrice  float64
+		priceFound bool
+	)
 
 	if input.SizeTier != "" {
-		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
+		unitPrice, priceFound = input.Resolver.LookupRequestTierPrice(resolved, input.SizeTier)
 	}
 
-	if unitPrice == 0 {
+	if !priceFound {
 		totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
-		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
+		unitPrice, priceFound = input.Resolver.LookupRequestTierPriceByContext(resolved, totalContext)
 	}
 
 	// 回退到默认按次价格
-	if unitPrice == 0 {
+	if !priceFound {
 		unitPrice = resolved.DefaultPerRequestPrice
 	}
 

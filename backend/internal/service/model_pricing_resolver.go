@@ -23,10 +23,10 @@ type ResolvedPricing struct {
 	// Token 模式：区间定价列表（如有，覆盖 BasePricing 中的对应字段）
 	Intervals []PricingInterval
 
-	// 按次/图片模式：分层定价
+	// 按次/图片/视频模式：分层定价；视频层级按分辨率匹配，价格单位为每秒
 	RequestTiers []PricingInterval
 
-	// 按次/图片模式：默认价格（未命中层级时使用）
+	// 按次/图片/视频模式：默认价格（未命中层级时使用；视频单位为每秒）
 	DefaultPerRequestPrice float64
 
 	// 来源标识
@@ -272,21 +272,39 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, ch
 	return pricing
 }
 
-// GetRequestTierPrice 根据层级标签获取按次价格
+// GetRequestTierPrice 根据层级标签获取按次/图片/视频价格。
 func (r *ModelPricingResolver) GetRequestTierPrice(resolved *ResolvedPricing, tierLabel string) float64 {
-	for _, tier := range resolved.RequestTiers {
-		if tier.TierLabel == tierLabel && tier.PerRequestPrice != nil {
-			return *tier.PerRequestPrice
-		}
-	}
-	return 0
+	price, _ := r.LookupRequestTierPrice(resolved, tierLabel)
+	return price
 }
 
-// GetRequestTierPriceByContext 根据 context token 数获取按次价格
+// LookupRequestTierPrice 根据层级标签查找价格，并区分未配置与显式零价格。
+func (r *ModelPricingResolver) LookupRequestTierPrice(resolved *ResolvedPricing, tierLabel string) (float64, bool) {
+	if resolved == nil {
+		return 0, false
+	}
+	for _, tier := range resolved.RequestTiers {
+		if tier.TierLabel == tierLabel && tier.PerRequestPrice != nil {
+			return *tier.PerRequestPrice, true
+		}
+	}
+	return 0, false
+}
+
+// GetRequestTierPriceByContext 根据 context token 数获取按次价格。
 func (r *ModelPricingResolver) GetRequestTierPriceByContext(resolved *ResolvedPricing, totalContextTokens int) float64 {
+	price, _ := r.LookupRequestTierPriceByContext(resolved, totalContextTokens)
+	return price
+}
+
+// LookupRequestTierPriceByContext 根据 context token 数查找按次价格，并区分未配置与显式零价格。
+func (r *ModelPricingResolver) LookupRequestTierPriceByContext(resolved *ResolvedPricing, totalContextTokens int) (float64, bool) {
+	if resolved == nil {
+		return 0, false
+	}
 	iv := FindMatchingInterval(resolved.RequestTiers, totalContextTokens)
 	if iv != nil && iv.PerRequestPrice != nil {
-		return *iv.PerRequestPrice
+		return *iv.PerRequestPrice, true
 	}
-	return 0
+	return 0, false
 }

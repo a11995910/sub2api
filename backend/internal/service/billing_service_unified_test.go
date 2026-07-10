@@ -125,6 +125,33 @@ func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_ExplicitZeroTierOverridesNonzeroDefault(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	zero := 0.0
+	resolved := &ResolvedPricing{
+		Mode: BillingModeVideo,
+		RequestTiers: []PricingInterval{
+			{TierLabel: VideoBillingResolution480P, PerRequestPrice: &zero},
+		},
+		DefaultPerRequestPrice: 0.2,
+	}
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "grok-imagine-video",
+		RequestCount:   5,
+		SizeTier:       VideoBillingResolution480P,
+		RateMultiplier: 1,
+		Resolver:       resolver,
+		Resolved:       resolved,
+	})
+
+	require.NoError(t, err)
+	require.Zero(t, cost.TotalCost)
+	require.Zero(t, cost.ActualCost)
+}
+
 func TestCalculateCostUnified_ImageMode(t *testing.T) {
 	cs := newTestChannelServiceWithCache(t, &channelCache{
 		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{

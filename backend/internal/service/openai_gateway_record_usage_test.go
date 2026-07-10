@@ -2168,6 +2168,7 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelVideoBillingFallsBackToSystemPri
 
 func TestOpenAIGatewayServiceRecordUsage_ChannelVideoBillingExplicitZeroPriceStaysFree(t *testing.T) {
 	zero := 0.0
+	nonzeroDefault := 0.2
 	tests := []struct {
 		name         string
 		defaultPrice *float64
@@ -2175,7 +2176,8 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelVideoBillingExplicitZeroPriceSta
 	}{
 		{name: "默认价格显式为零", defaultPrice: &zero},
 		{
-			name: "匹配分辨率层级显式为零",
+			name:         "匹配分辨率层级显式为零覆盖非零默认价",
+			defaultPrice: &nonzeroDefault,
 			intervals: []PricingInterval{{
 				TierLabel:       VideoBillingResolution480P,
 				PerRequestPrice: &zero,
