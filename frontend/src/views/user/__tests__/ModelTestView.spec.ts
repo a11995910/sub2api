@@ -14,6 +14,7 @@ const routeState = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
 
 const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeToken': 'Token',
+  'availableChannels.pricing.billingModePerRequest': '按次',
   'common.cancel': '取消',
   'common.currencyName': '灵石',
   'common.error': '错误',
@@ -26,6 +27,8 @@ const messages: Record<string, string> = {
   'modelTest.fields.model': '模型',
   'modelTest.fields.prompt': '提示词',
   'modelTest.fields.referenceImages': '参考图片',
+  'modelTest.fields.videoDuration': '视频时长（秒）',
+  'modelTest.fields.videoResolution': '视频分辨率',
   'modelTest.fields.type': '类型',
   'modelTest.goCreateKey': '去创建 Key',
   'modelTest.imageSizeAdaptivePreview': '自适应（{tier} 预估）',
@@ -33,17 +36,20 @@ const messages: Record<string, string> = {
   'modelTest.loadKeysFailed': '加载 API Key 失败',
   'modelTest.modes.image': '图片',
   'modelTest.modes.text': '文本',
+  'modelTest.modes.video': '视频',
   'modelTest.perImage': '张',
   'modelTest.placeholders.apiKey': '请选择 API Key',
   'modelTest.placeholders.group': '请选择分组',
   'modelTest.placeholders.imagePrompt': '描述要生成的图片',
   'modelTest.placeholders.model': '请选择模型',
   'modelTest.placeholders.textPrompt': '输入要测试的文本提示词',
+  'modelTest.placeholders.videoPrompt': '描述要生成的视频',
   'modelTest.realBillingNotice': '本测试会调用真实网关',
   'modelTest.referenceImageLimit': '最多上传 {count} 张参考图片',
   'modelTest.referenceImageSizeError': '单张图片不能超过 {size}',
   'modelTest.referenceImageTypeError': '请选择图片文件',
   'modelTest.referenceImagesHint': '上传后将调用图片编辑接口',
+  'modelTest.videoReferenceImageHint': '可上传 1 张起始参考图',
   'modelTest.removeReferenceImage': '移除参考图',
   'modelTest.result.empty': '运行一次测试后，这里会显示返回结果',
   'modelTest.result.raw': '原始响应',
@@ -154,6 +160,11 @@ function groupFixture(overrides: Record<string, unknown>) {
     image_price_1k: null,
     image_price_2k: null,
     image_price_4k: null,
+    video_rate_independent: false,
+    video_rate_multiplier: 1,
+    video_price_480p: null,
+    video_price_720p: null,
+    video_price_1080p: null,
     ...overrides,
   }
 }
@@ -226,6 +237,15 @@ function selectWrapperByLabel(wrapper: VueWrapper, labelText: string): DOMWrappe
 
 function optionTexts(select: HTMLSelectElement): string[] {
   return Array.from(select.options).map((option) => option.textContent?.trim() || '')
+}
+
+function summaryValue(wrapper: VueWrapper, labelText: string): string {
+  const label = wrapper.findAll('p').find((item) => item.text() === labelText)
+  const value = label?.element.parentElement?.querySelectorAll('p')[1]?.textContent?.trim()
+  if (!value) {
+    throw new Error(`找不到摘要值：${labelText}`)
+  }
+  return value
 }
 
 describe('ModelTestView', () => {
@@ -492,5 +512,94 @@ describe('ModelTestView', () => {
     expect(editModelOptions.some((text) => text.includes('grok-imagine-image'))).toBe(true)
     expect(editModelOptions.some((text) => text.includes('grok-imagine-edit'))).toBe(true)
     expect(editModelOptions.some((text) => text.includes('grok-imagine-video'))).toBe(false)
+  })
+
+  it.each([
+    {
+      name: '渠道 720p 每秒层级价乘视频时长',
+      groupOverrides: {},
+      billingMode: 'video',
+      defaultPrice: 0.07,
+      intervalPrice: 0.14,
+      expectedPreview: '720p 1.12 灵石 / 8s',
+    },
+    {
+      name: '分组 720p 每秒覆盖价乘独立视频倍率和时长',
+      groupOverrides: {
+        video_rate_independent: true,
+        video_rate_multiplier: 2,
+        video_price_720p: 0.03,
+      },
+      billingMode: 'video',
+      defaultPrice: 0.07,
+      intervalPrice: 0.14,
+      expectedPreview: '720p 0.48 灵石 / 8s',
+    },
+    {
+      name: '历史图片模式渠道默认价只按次乘倍率',
+      groupOverrides: { rate_multiplier: 2 },
+      billingMode: 'image',
+      defaultPrice: 2.1,
+      intervalPrice: undefined,
+      expectedPreview: '720p 4.2 灵石 / 按次',
+    },
+  ])('$name', async ({
+    groupOverrides,
+    billingMode,
+    defaultPrice,
+    intervalPrice,
+    expectedPreview,
+  }) => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+      ...groupOverrides,
+    })
+    const videoKey = apiKeyFixture({
+      id: 909,
+      name: '视频 Key',
+      key: 'sk-video-key-1234567890',
+      group_id: 9,
+    })
+    const intervals = intervalPrice === undefined
+      ? []
+      : [{ tier_label: '720p', per_request_price: intervalPrice }]
+
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video-1.5',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: billingMode,
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: defaultPrice,
+            intervals,
+          },
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(selectByLabel(wrapper, '分组').value).toBe('9')
+    expect(optionTexts(selectByLabel(wrapper, '模型'))).toEqual([
+      '请选择模型',
+      'grok-imagine-video-1.5 · Grok',
+    ])
+    expect(summaryValue(wrapper, '价格预览')).toBe(expectedPreview)
   })
 })

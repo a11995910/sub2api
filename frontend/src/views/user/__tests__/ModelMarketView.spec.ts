@@ -14,6 +14,7 @@ const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeToken': 'Token',
   'availableChannels.pricing.billingModePerRequest': '按次',
   'availableChannels.pricing.billingModeImage': '图片',
+  'availableChannels.pricing.billingModeVideo': '视频',
   'common.error': '错误',
   'common.refresh': '刷新',
   'modelMarket.title': '模型广场',
@@ -111,6 +112,11 @@ function groupFixture(overrides: Partial<Record<string, unknown>>) {
     image_price_1k: null,
     image_price_2k: null,
     image_price_4k: null,
+    video_rate_independent: false,
+    video_rate_multiplier: 1,
+    video_price_480p: null,
+    video_price_720p: null,
+    video_price_1080p: null,
     claude_code_only: false,
     fallback_group_id: null,
     fallback_group_id_on_invalid_request: null,
@@ -212,5 +218,98 @@ describe('ModelMarketView', () => {
 
     await groupButtons[2].trigger('click')
     expect(wrapper.text()).toContain('image-2')
+  })
+
+  it.each([
+    {
+      name: '分组 720p 覆盖价',
+      groupOverrides: {
+        video_rate_independent: true,
+        video_rate_multiplier: 2,
+        video_price_720p: 0.03,
+      },
+      billingMode: 'video',
+      defaultPrice: 0.07,
+      intervalPrice: 0.14,
+      expectedPrice: '0.06 灵石',
+      expectedUnit: '720p / s',
+    },
+    {
+      name: '渠道 720p 层级价',
+      groupOverrides: {},
+      billingMode: 'video',
+      defaultPrice: 0.07,
+      intervalPrice: 0.14,
+      expectedPrice: '0.14 灵石',
+      expectedUnit: '720p / s',
+    },
+    {
+      name: '历史图片模式渠道默认价',
+      groupOverrides: {},
+      billingMode: 'image',
+      defaultPrice: 2.1,
+      intervalPrice: undefined,
+      expectedPrice: '2.1 灵石',
+      expectedUnit: '720p / 按次',
+    },
+  ])('视频价格卡展示$name及正确单位', async ({
+    groupOverrides,
+    billingMode,
+    defaultPrice,
+    intervalPrice,
+    expectedPrice,
+    expectedUnit,
+  }) => {
+    const videoGroup = groupFixture({
+      id: 8,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+      ...groupOverrides,
+    })
+    const intervals = intervalPrice === undefined
+      ? []
+      : [{ tier_label: '720p', per_request_price: intervalPrice }]
+
+    getAvailableGroups.mockResolvedValue([videoGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video-1.5',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: billingMode,
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: defaultPrice,
+            intervals,
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('grok-imagine-video-1.5')
+    expect(wrapper.text()).toContain(expectedUnit)
+    expect(wrapper.text()).toContain(expectedPrice)
   })
 })

@@ -328,6 +328,11 @@ import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
+  resolveVideoPriceQuote,
+  type VideoBillingUnit,
+  type VideoResolution,
+} from '@/utils/videoPricing'
+import {
   ADAPTIVE_IMAGE_SIZE_VALUE,
   IMAGE_SIZE_PRESET_OPTIONS,
   getImageBillingTier,
@@ -379,7 +384,7 @@ const selectedApiKeyId = ref<number | null>(null)
 const prompt = ref('')
 const adaptiveImageSizeValue = ADAPTIVE_IMAGE_SIZE_VALUE
 const imageSize = ref(adaptiveImageSizeValue)
-const videoResolution = ref('720p')
+const videoResolution = ref<VideoResolution>('720p')
 const videoDuration = ref(8)
 const referenceImages = ref<ReferenceImage[]>([])
 const imageUploadError = ref('')
@@ -531,10 +536,19 @@ const currentPricePreview = computed(() => {
       : `${tierLabel} ${formatScaled(price * effectiveImageRate(group), 1)} / ${t('modelTest.perImage')}`
   }
   if (selectedKind.value === 'video') {
-    const price = videoResolutionBasePrice(group, videoResolution.value)
-    return price == null
-      ? videoResolutionPrices(group)
-      : `${videoResolution.value} ${formatScaled(price * effectiveVideoRate(group) * normalizedVideoDuration(), 1)} / ${normalizedVideoDuration()}s`
+    const resolved = resolveVideoPriceQuote({
+      group,
+      pricing: model.pricing,
+      modelName: model.displayName,
+      resolution: videoResolution.value,
+      userGroupRate: userGroupRates.value[group.id],
+    })
+    if (!resolved) return '-'
+    const duration = normalizedVideoDuration()
+    const total = resolved.billingUnit === 'second'
+      ? resolved.effectivePrice * duration
+      : resolved.effectivePrice
+    return formatVideoQuote(total, resolved.billingUnit, videoResolution.value, duration)
   }
   return textPricePreview(model.pricing, group)
 })
@@ -591,9 +605,6 @@ function textPricePreview(pricing: UserSupportedModelPricing | null, group: User
   if (pricing.billing_mode === BILLING_MODE_IMAGE) {
     return imageTierPrices(group)
   }
-  if (pricing.billing_mode === BILLING_MODE_VIDEO) {
-    return videoResolutionPrices(group)
-  }
   if (pricing.billing_mode === BILLING_MODE_TOKEN) {
     const input = formatPrice(pricing.input_price, perMillionScale, group, pricing.billing_mode)
     const output = formatPrice(pricing.output_price, perMillionScale, group, pricing.billing_mode)
@@ -633,20 +644,16 @@ function imageTierPrices(group: UserAvailableGroup): string {
     .join(' / ')
 }
 
-function videoResolutionBasePrice(group: UserAvailableGroup, resolution: string): number | null {
-  switch (resolution.toLowerCase()) {
-    case '480p': return group.video_price_480p ?? null
-    case '1080p': return group.video_price_1080p ?? null
-    default: return group.video_price_720p ?? null
-  }
-}
-
-function videoResolutionPrices(group: UserAvailableGroup): string {
-  return [
-    ['480p', group.video_price_480p ?? null],
-    ['720p', group.video_price_720p ?? null],
-    ['1080p', group.video_price_1080p ?? null],
-  ].map(([resolution, value]) => `${resolution} ${typeof value === 'number' ? formatScaled(value * effectiveVideoRate(group), 1) : '-'}/${t('modelTest.perSecond')}`).join(' / ')
+function formatVideoQuote(
+  total: number,
+  billingUnit: VideoBillingUnit,
+  resolution: VideoResolution,
+  duration: number,
+): string {
+  const unit = billingUnit === 'second'
+    ? `${duration}s`
+    : t('availableChannels.pricing.billingModePerRequest')
+  return `${resolution} ${formatScaled(total, 1)} / ${unit}`
 }
 
 function imageSizeTier(size: string): string {

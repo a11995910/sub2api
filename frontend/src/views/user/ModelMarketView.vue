@@ -152,9 +152,18 @@
                 />
               </template>
               <template v-else-if="model.kind === 'video'">
-                <PriceTile label="480p / s" :value="formatSelectedVideoTier('480p')" />
-                <PriceTile label="720p / s" :value="formatSelectedVideoTier('720p')" />
-                <PriceTile label="1080p / s" :value="formatSelectedVideoTier('1080p')" />
+                <PriceTile
+                  :label="formatSelectedVideoTierLabel(model, '480p')"
+                  :value="formatSelectedVideoTier(model, '480p')"
+                />
+                <PriceTile
+                  :label="formatSelectedVideoTierLabel(model, '720p')"
+                  :value="formatSelectedVideoTier(model, '720p')"
+                />
+                <PriceTile
+                  :label="formatSelectedVideoTierLabel(model, '1080p')"
+                  :value="formatSelectedVideoTier(model, '1080p')"
+                />
               </template>
               <template v-else-if="model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST">
                 <PriceTile
@@ -190,7 +199,7 @@
 
             <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400">
               <span>{{ t('modelMarket.effectiveRate') }}</span>
-              <span>{{ selectedMultiplierLabel(model.pricing?.billing_mode) }}</span>
+              <span>{{ selectedMultiplierLabel(model.kind === 'video' ? BILLING_MODE_VIDEO : model.pricing?.billing_mode) }}</span>
             </div>
           </article>
         </section>
@@ -218,6 +227,10 @@ import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { formatScaled, formatUSDScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
 import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
+import {
+  resolveVideoPriceQuote,
+  type VideoResolution,
+} from '@/utils/videoPricing'
 import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
@@ -304,6 +317,11 @@ const toAvailableGroup = (group: Group): UserAvailableGroup => ({
   image_price_1k: group.image_price_1k,
   image_price_2k: group.image_price_2k,
   image_price_4k: group.image_price_4k,
+  video_rate_independent: group.video_rate_independent,
+  video_rate_multiplier: group.video_rate_multiplier,
+  video_price_480p: group.video_price_480p,
+  video_price_720p: group.video_price_720p,
+  video_price_1080p: group.video_price_1080p,
   peak_rate_enabled: group.peak_rate_enabled ?? false,
   peak_start: group.peak_start ?? '',
   peak_end: group.peak_end ?? '',
@@ -519,15 +537,29 @@ function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k'): string {
   return formatImageTierDiscount(group, tier)
 }
 
-function formatSelectedVideoTier(resolution: '480p' | '720p' | '1080p'): string {
+function selectedVideoQuote(model: GroupMarketModel, resolution: VideoResolution) {
   const group = selectedGroup.value?.group
-  if (!group) return '-'
-  const value = resolution === '480p'
-    ? group.video_price_480p
-    : resolution === '1080p'
-      ? group.video_price_1080p
-      : group.video_price_720p
-  return typeof value === 'number' ? formatScaled(value * effectiveVideoRate(group), 1) : '-'
+  if (!group) return null
+  return resolveVideoPriceQuote({
+    group,
+    pricing: model.pricing,
+    modelName: model.name,
+    resolution,
+    userGroupRate: userGroupRates.value[group.id],
+  })
+}
+
+function formatSelectedVideoTier(model: GroupMarketModel, resolution: VideoResolution): string {
+  const resolved = selectedVideoQuote(model, resolution)
+  return resolved ? formatScaled(resolved.effectivePrice, 1) : '-'
+}
+
+function formatSelectedVideoTierLabel(model: GroupMarketModel, resolution: VideoResolution): string {
+  const resolved = selectedVideoQuote(model, resolution)
+  const unit = resolved?.billingUnit === 'request'
+    ? t('modelMarket.columns.perRequest')
+    : 's'
+  return `${resolution} / ${unit}`
 }
 
 function selectedMultiplierLabel(mode?: BillingMode): string {
