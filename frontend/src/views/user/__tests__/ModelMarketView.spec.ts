@@ -339,6 +339,57 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain(expectedPrice)
   })
 
+  it('同名标准视频模型的不同定价卡分别使用自身价格', async () => {
+    const videoGroup = groupFixture({
+      id: 8,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    getAvailableGroups.mockResolvedValue([videoGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [
+          {
+            name: 'grok-imagine-video',
+            platform: 'grok',
+            kind: 'video',
+            pricing: videoPricingFixture(0.07),
+          },
+          {
+            name: 'grok-imagine-video',
+            platform: 'grok',
+            kind: 'video',
+            pricing: videoPricingFixture(0.09),
+          },
+        ],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cards = wrapper.findAll('article').filter((article) =>
+      article.find('h3').text().trim() === 'grok-imagine-video',
+    )
+    expect(cards).toHaveLength(2)
+    expect(cards[0].text()).toContain('720p / 秒当前0.07 灵石')
+    expect(cards[1].text()).toContain('720p / 秒当前0.09 灵石')
+  })
+
   it('video-1.5 默认无参考图时使用同平台标准模型渠道价', async () => {
     const videoGroup = groupFixture({
       id: 8,

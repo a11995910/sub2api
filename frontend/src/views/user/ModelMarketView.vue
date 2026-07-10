@@ -554,6 +554,10 @@ function selectedVideoQuote(model: GroupMarketModel, resolution: VideoResolution
 function videoBillingContext(model: GroupMarketModel) {
   const modelName = normalizeVideoBillingModelName(model.name, false)
   const normalizedModelName = modelName.trim().toLowerCase()
+  if (normalizedModelName === model.name.trim().toLowerCase()) {
+    return { modelName, pricing: model.pricing }
+  }
+
   const normalizedPlatform = model.platform.trim().toLowerCase()
   const matched = selectedGroup.value?.models.find((candidate) =>
     candidate.kind === 'video' &&
