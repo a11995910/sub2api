@@ -257,7 +257,40 @@ mv -f -- "$tmp" "$env_file"
 trap - EXIT
 SCRIPT
 chmod 0700 /opt/sub2api/scripts/update-sub2api-image
+
+tee /opt/sub2api/scripts/assert-no-explicit-video-pricing >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$#" -eq 1
+env_file="$1"
+test -f "$env_file"
+
+video_counts="$(
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml \
+    exec -T postgres sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F ":"' <<'SQL'
+SELECT 'channel_model_pricing', COUNT(*)
+FROM channel_model_pricing
+WHERE billing_mode = 'video'
+UNION ALL
+SELECT 'channel_account_stats_model_pricing', COUNT(*)
+FROM channel_account_stats_model_pricing
+WHERE billing_mode = 'video';
+SQL
+)"
+
+test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_model_pricing:0' || true)" -eq 1
+test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_account_stats_model_pricing:0' || true)" -eq 1
+test "$(printf '%s\n' "$video_counts" | wc -l)" -eq 2
+SCRIPT
+chmod 0700 /opt/sub2api/scripts/assert-no-explicit-video-pricing
 ```
+
+`assert-no-explicit-video-pricing` 是发布与旧镜像回滚共用的 fail-closed 门禁：数据库连接、SQL、输出行数或零计数任一不符合预期都会返回非零。脚本不得改成忽略错误，也不得只查询其中一张表。
 
 ### staging 构建与发布
 
@@ -417,21 +450,7 @@ release_record="/opt/sub2api/backups/prod-release-before-${timestamp}.txt"
 pricing_backup="/opt/sub2api/backups/prod-pricing-before-${timestamp}.dump"
 umask 077
 
-video_counts="$(
-  compose_prod exec -T postgres sh -c \
-    'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F ":"' <<'SQL'
-SELECT 'channel_model_pricing', COUNT(*)
-FROM channel_model_pricing
-WHERE billing_mode = 'video'
-UNION ALL
-SELECT 'channel_account_stats_model_pricing', COUNT(*)
-FROM channel_account_stats_model_pricing
-WHERE billing_mode = 'video';
-SQL
-)"
-test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_model_pricing:0' || true)" -eq 1
-test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_account_stats_model_pricing:0' || true)" -eq 1
-test "$(printf '%s\n' "$video_counts" | wc -l)" -eq 2
+/opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
 
 compose_prod exec -T postgres sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --data-only --table=channel_model_pricing --table=channel_pricing_intervals --table=channel_account_stats_model_pricing --table=channel_account_stats_pricing_intervals' \
@@ -477,6 +496,23 @@ compose_prod() {
 rollback_image='填写发布前记录的旧镜像 tag'
 docker image inspect "$rollback_image" >/dev/null
 
+set -Eeuo pipefail
+current_container_id="$(compose_prod ps -q sub2api)"
+test -n "$current_container_id"
+current_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
+test -n "$current_image"
+
+restore_current_image() {
+  trap - ERR
+  /opt/sub2api/scripts/update-sub2api-image "$env_file" "$current_image" prod-rollback-abort
+  compose_prod up -d --no-deps sub2api
+}
+trap restore_current_image ERR
+
+# 先停止应用写入，再实时查询两张真实定价表；门禁失败会恢复当前镜像并重启。
+compose_prod stop sub2api
+/opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
+
 /opt/sub2api/scripts/update-sub2api-image "$env_file" "$rollback_image" prod-rollback
 compose_prod config -q
 resolved_images="$(compose_prod config --images)"
@@ -488,11 +524,12 @@ test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$rollba
 compose_prod ps
 curl -I http://127.0.0.1:8080/health
 compose_prod logs --tail=200 sub2api
+trap - ERR
 ```
 
 一旦 prod 任一真实定价表写入显式 `billing_mode='video'`，其 `per_request_price` 和分辨率层级价格就表示每秒价格。此后禁止直接回滚到把 video 按请求次数解释的旧镜像，否则会错误计费且旧管理端可能无法保存该配置；应优先保持新镜像并滚前修复。
 
-如果显式 video 写入后必须紧急回滚，先停止相关视频流量或禁用受影响渠道，再根据发布前数据库备份恢复原始定价记录，并重新执行上面的两张真实表查询，确认所有 `video_count` 均为 `0` 后才能切旧镜像。不得把每秒价格直接改成 `image/per_request`，不得按固定时长猜测换算，也不得用全库回档覆盖观察窗口内的其他生产写入。无法证明原定价已准确恢复时，继续停用相关渠道并采用滚前修复。
+如果显式 video 写入后必须紧急回滚，先停止应用写入及相关视频流量或禁用受影响渠道，再根据发布前数据库备份恢复原始定价记录，并调用同一个 `assert-no-explicit-video-pricing` 门禁。只有脚本确认两张真实表均严格为零后才能切旧镜像；脚本失败时必须保持或恢复当前新镜像。不得把每秒价格直接改成 `image/per_request`，不得按固定时长猜测换算，也不得用全库回档覆盖观察窗口内的其他生产写入。无法证明原定价已准确恢复时，继续停用相关渠道并采用滚前修复。
 
 回滚后仍需验证容器状态、实际镜像 tag、健康接口、管理端账号页、关键 API 和日志。发布与回滚期间都要保留当前运行镜像和 `previous_image`，清理构建缓存时不得删除回滚 tag。
 

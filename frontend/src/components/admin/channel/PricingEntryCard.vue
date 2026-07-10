@@ -286,16 +286,23 @@ const emit = defineEmits<{
 // Collapse state: entries with existing models default to collapsed
 const collapsed = ref(props.entry.models.length > 0)
 
-const allBillingModeOptions = computed(() => [
+type BillingModeOption = { value: BillingMode; label: string; disabled?: boolean }
+
+const allBillingModeOptions = computed<BillingModeOption[]>(() => [
   { value: 'token', label: t('admin.channels.billingMode.token') },
   { value: 'per_request', label: t('admin.channels.billingMode.perRequest') },
   { value: 'image', label: t('admin.channels.billingMode.image') },
   { value: 'video', label: t('admin.channels.billingMode.video') }
-] satisfies Array<{ value: BillingMode; label: string }>)
+])
 
-const billingModeOptions = computed(() =>
-  allBillingModeOptions.value.filter(option => props.allowedBillingModes.includes(option.value)),
-)
+const billingModeOptions = computed(() => {
+  const options = allBillingModeOptions.value.filter(option => props.allowedBillingModes.includes(option.value))
+  if (!props.allowedBillingModes.includes(props.entry.billing_mode)) {
+    const current = allBillingModeOptions.value.find(option => option.value === props.entry.billing_mode)
+    if (current) options.push({ ...current, disabled: true })
+  }
+  return options
+})
 
 const billingModeLabel = computed(() => {
   const opt = allBillingModeOptions.value.find(o => o.value === props.entry.billing_mode)

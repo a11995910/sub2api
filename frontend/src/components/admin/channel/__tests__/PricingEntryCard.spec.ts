@@ -49,7 +49,7 @@ function makeEntry(overrides: Partial<PricingFormEntry> = {}): PricingFormEntry 
   }
 }
 
-function mountCard(entry = makeEntry(), allowedBillingModes?: BillingMode[]) {
+function mountCard(entry = makeEntry(), allowedBillingModes?: BillingMode[], useRealSelect = false) {
   return mount(PricingEntryCard, {
     props: {
       entry,
@@ -57,7 +57,7 @@ function mountCard(entry = makeEntry(), allowedBillingModes?: BillingMode[]) {
     },
     global: {
       stubs: {
-        Select: SelectStub,
+        ...(!useRealSelect ? { Select: SelectStub } : {}),
         Icon: true,
         ModelTagInput: true,
         IntervalRow: true,
@@ -101,6 +101,21 @@ describe('PricingEntryCard', () => {
     )
 
     expect(wrapper.findComponent(SelectStub).props('modelValue')).toBe('video')
+    expect(wrapper.findComponent(SelectStub).props('options')).toContainEqual({
+      value: 'video',
+      label: 'admin.channels.billingMode.video',
+      disabled: true,
+    })
     expect(wrapper.emitted('update')).toBeUndefined()
+  })
+
+  it('真实下拉框显示禁用的历史 video 值而不是占位文案', () => {
+    const wrapper = mountCard(
+      makeEntry({ billing_mode: 'video', per_request_price: 0.14 }),
+      ['token', 'per_request', 'image'],
+      true,
+    )
+
+    expect(wrapper.find('.select-value').text()).toBe('admin.channels.billingMode.video')
   })
 })

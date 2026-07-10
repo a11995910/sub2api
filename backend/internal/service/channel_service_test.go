@@ -1795,6 +1795,199 @@ func TestUpdate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
 	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
 }
 
+func TestUpdate_AllowsUnrelatedUpdateWithHistoricalVideoAccountStatsPricing(t *testing.T) {
+	existing := &Channel{
+		ID:     1,
+		Name:   "video-stats-channel",
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{10},
+			Pricing: []ChannelModelPricing{{
+				Platform:        PlatformGrok,
+				Models:          []string{"grok-imagine-video"},
+				BillingMode:     BillingModeVideo,
+				PerRequestPrice: testPtrFloat64(0.07),
+			}},
+		}},
+	}
+	var captured *Channel
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			if captured != nil {
+				return captured.Clone(), nil
+			}
+			return existing.Clone(), nil
+		},
+		updateFn: func(_ context.Context, channel *Channel) error {
+			captured = channel.Clone()
+			return nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	updated, err := svc.Update(context.Background(), existing.ID, &UpdateChannelInput{Status: StatusDisabled})
+
+	require.NoError(t, err)
+	require.Equal(t, StatusDisabled, updated.Status)
+	require.Equal(t, BillingModeVideo, updated.AccountStatsPricingRules[0].Pricing[0].BillingMode)
+}
+
+func TestUpdate_AllowsUnchangedHistoricalVideoAccountStatsPricingRoundTrip(t *testing.T) {
+	existing := &Channel{
+		ID:     1,
+		Name:   "video-stats-channel",
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			ID:         11,
+			ChannelID:  1,
+			Name:       "legacy",
+			GroupIDs:   []int64{10},
+			AccountIDs: []int64{20},
+			Pricing: []ChannelModelPricing{{
+				ID:               21,
+				Platform:         PlatformGrok,
+				Models:           []string{"grok-imagine-video"},
+				BillingMode:      BillingModeVideo,
+				PerRequestPrice:  testPtrFloat64(0.07),
+				InputPrice:       testPtrFloat64(0.001),
+				OutputPrice:      testPtrFloat64(0.002),
+				CacheWritePrice:  testPtrFloat64(0.003),
+				CacheReadPrice:   testPtrFloat64(0.004),
+				ImageOutputPrice: testPtrFloat64(0.005),
+				Intervals: []PricingInterval{{
+					ID:              31,
+					PricingID:       21,
+					TierLabel:       VideoBillingResolution720P,
+					PerRequestPrice: testPtrFloat64(0.08),
+				}},
+			}},
+		}},
+	}
+	var captured *Channel
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			if captured != nil {
+				return captured.Clone(), nil
+			}
+			return existing.Clone(), nil
+		},
+		updateFn: func(_ context.Context, channel *Channel) error {
+			captured = channel.Clone()
+			return nil
+		},
+	}
+	svc := newTestChannelService(repo)
+	roundTrip := []AccountStatsPricingRule{{
+		Name:       "legacy",
+		GroupIDs:   []int64{10},
+		AccountIDs: []int64{20},
+		Pricing: []ChannelModelPricing{{
+			Platform:         PlatformGrok,
+			Models:           []string{"grok-imagine-video"},
+			BillingMode:      BillingModeVideo,
+			PerRequestPrice:  testPtrFloat64(0.07),
+			InputPrice:       testPtrFloat64(0.001),
+			OutputPrice:      testPtrFloat64(0.002),
+			CacheWritePrice:  testPtrFloat64(0.003),
+			CacheReadPrice:   testPtrFloat64(0.004),
+			ImageOutputPrice: testPtrFloat64(0.005),
+			Intervals: []PricingInterval{{
+				TierLabel:       VideoBillingResolution720P,
+				PerRequestPrice: testPtrFloat64(0.08),
+			}},
+		}},
+	}}
+
+	_, err := svc.Update(context.Background(), existing.ID, &UpdateChannelInput{
+		AccountStatsPricingRules: &roundTrip,
+	})
+
+	require.NoError(t, err)
+}
+
+func TestUpdate_RejectsChangedHistoricalVideoAccountStatsPrice(t *testing.T) {
+	existing := &Channel{
+		ID:     1,
+		Name:   "video-stats-channel",
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{10},
+			Pricing: []ChannelModelPricing{{
+				Platform:        PlatformGrok,
+				Models:          []string{"grok-imagine-video"},
+				BillingMode:     BillingModeVideo,
+				PerRequestPrice: testPtrFloat64(0.07),
+			}},
+		}},
+	}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return existing.Clone(), nil
+		},
+	}
+	svc := newTestChannelService(repo)
+	changed := existing.Clone().AccountStatsPricingRules
+	changed[0].Pricing[0].PerRequestPrice = testPtrFloat64(0.08)
+
+	_, err := svc.Update(context.Background(), existing.ID, &UpdateChannelInput{
+		AccountStatsPricingRules: &changed,
+	})
+
+	require.Error(t, err)
+	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+}
+
+func TestUpdate_RejectsChangedHistoricalVideoAccountStatsIntervalOrder(t *testing.T) {
+	existing := []AccountStatsPricingRule{{
+		GroupIDs: []int64{10},
+		Pricing: []ChannelModelPricing{{
+			Platform:        PlatformGrok,
+			Models:          []string{"grok-imagine-video"},
+			BillingMode:     BillingModeVideo,
+			PerRequestPrice: testPtrFloat64(0.07),
+			Intervals: []PricingInterval{
+				{TierLabel: VideoBillingResolution480P, PerRequestPrice: testPtrFloat64(0.05), SortOrder: 0},
+				{TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.07), SortOrder: 1},
+			},
+		}},
+	}}
+	updated := (&Channel{AccountStatsPricingRules: existing}).Clone().AccountStatsPricingRules
+	updated[0].Pricing[0].Intervals[0].SortOrder = 1
+	updated[0].Pricing[0].Intervals[1].SortOrder = 0
+
+	err := validateAccountStatsPricingRulesUpdate(existing, updated)
+
+	require.Error(t, err)
+	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+}
+
+func TestUpdate_RejectsReorderedHistoricalVideoAccountStatsRules(t *testing.T) {
+	existing := []AccountStatsPricingRule{
+		{
+			Name:     "first",
+			GroupIDs: []int64{10},
+			Pricing: []ChannelModelPricing{{
+				Platform: PlatformGrok, Models: []string{"grok-imagine-video"},
+				BillingMode: BillingModeVideo, PerRequestPrice: testPtrFloat64(0.07),
+			}},
+		},
+		{
+			Name:     "second",
+			GroupIDs: []int64{10},
+			Pricing: []ChannelModelPricing{{
+				Platform: PlatformGrok, Models: []string{"grok-imagine-video"},
+				BillingMode: BillingModeVideo, PerRequestPrice: testPtrFloat64(0.09),
+			}},
+		},
+	}
+	updated := []AccountStatsPricingRule{existing[1], existing[0]}
+
+	err := validateAccountStatsPricingRulesUpdate(existing, updated)
+
+	require.Error(t, err)
+	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+}
+
 func TestUpdate_InvalidatesChannelCache(t *testing.T) {
 	existing := &Channel{
 		ID:     1,
