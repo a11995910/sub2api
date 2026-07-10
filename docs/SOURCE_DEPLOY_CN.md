@@ -189,6 +189,8 @@ git rev-parse --short HEAD
 
 `repo/` 是干净 Git 工作区，只负责拉取、切分支和构建镜像；`.env`、证书、数据库目录和业务数据不得写入 `repo/` 或 Git。
 
+新 VPS 的环境 compose 文件只保存 staging 或 prod 差异，不能脱离仓库基础文件单独运行。所有 `up`、`ps`、`logs` 操作都必须同时叠加 `/opt/sub2api/repo/deploy/docker-compose.yml` 和对应环境的 override 文件，并固定 `-p` 项目名与 `--env-file`，避免两个环境共享默认项目名或漏加载基础服务定义。
+
 ### staging 构建与发布
 
 staging 用于承接 `dev` 或功能分支。每次构建都必须核对本地已推送 commit 与新 VPS 工作区 commit 一致：
@@ -214,11 +216,23 @@ docker buildx build \
   --load .
 docker run --rm "sub2api:staging-$commit" --version
 
-cd /opt/sub2api/compose/staging
-docker compose --env-file /opt/sub2api/env/staging/.env up -d
-docker compose --env-file /opt/sub2api/env/staging/.env ps
+cd /opt/sub2api/repo/deploy
+docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml \
+  up -d
+docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml \
+  ps
 curl -I http://127.0.0.1:18080/health
-docker compose --env-file /opt/sub2api/env/staging/.env logs --tail=200 sub2api
+docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml \
+  logs --tail=200 sub2api
 ```
 
 ### prod 切换与回滚
@@ -241,11 +255,23 @@ docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
   docker buildx build -f deploy/Dockerfile -t "sub2api:prod-$commit" --load .
 docker run --rm "sub2api:prod-$commit" --version
 
-cd /opt/sub2api/compose/prod
-docker compose --env-file /opt/sub2api/env/prod/.env up -d
-docker compose --env-file /opt/sub2api/env/prod/.env ps
+cd /opt/sub2api/repo/deploy
+docker compose -p sub2api-prod \
+  --env-file /opt/sub2api/env/prod/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/prod/docker-compose.yml \
+  up -d
+docker compose -p sub2api-prod \
+  --env-file /opt/sub2api/env/prod/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/prod/docker-compose.yml \
+  ps
 curl -I http://127.0.0.1:8080/health
-docker compose --env-file /opt/sub2api/env/prod/.env logs --tail=200 sub2api
+docker compose -p sub2api-prod \
+  --env-file /opt/sub2api/env/prod/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/prod/docker-compose.yml \
+  logs --tail=200 sub2api
 ```
 
 回滚优先切回上一版 `sub2api:prod-<commit>` 镜像 tag，而不是重新构建或覆盖二进制。回滚后仍需验证容器状态、健康接口、管理端账号页、关键 API 和日志。
