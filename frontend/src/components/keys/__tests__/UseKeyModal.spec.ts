@@ -21,7 +21,7 @@ vi.mock('@/composables/useClipboard', () => ({
 import UseKeyModal from '../UseKeyModal.vue'
 
 describe('UseKeyModal', () => {
-  it('renders GPT-5.5 and goals feature in OpenAI Codex config', () => {
+  it('renders GPT-5.6 SOL and goals feature in OpenAI Codex config', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -56,7 +56,7 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('[features]\ngoals = true')
   })
 
-  it('renders GPT-5.5 and goals feature in OpenAI Codex WebSocket config', async () => {
+  it('renders GPT-5.6 SOL and goals feature in OpenAI Codex WebSocket config', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
