@@ -228,6 +228,7 @@ import { formatScaled, formatUSDScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
 import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
+  normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
   type VideoResolution,
 } from '@/utils/videoPricing'
@@ -540,13 +541,29 @@ function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k'): string {
 function selectedVideoQuote(model: GroupMarketModel, resolution: VideoResolution) {
   const group = selectedGroup.value?.group
   if (!group) return null
+  const billingContext = videoBillingContext(model)
   return resolveVideoPriceQuote({
     group,
-    pricing: model.pricing,
-    modelName: model.name,
+    pricing: billingContext.pricing,
+    modelName: billingContext.modelName,
     resolution,
     userGroupRate: userGroupRates.value[group.id],
   })
+}
+
+function videoBillingContext(model: GroupMarketModel) {
+  const modelName = normalizeVideoBillingModelName(model.name, false)
+  const normalizedModelName = modelName.trim().toLowerCase()
+  const normalizedPlatform = model.platform.trim().toLowerCase()
+  const matched = selectedGroup.value?.models.find((candidate) =>
+    candidate.kind === 'video' &&
+    candidate.platform.trim().toLowerCase() === normalizedPlatform &&
+    candidate.name.trim().toLowerCase() === normalizedModelName,
+  )
+  return {
+    modelName,
+    pricing: matched?.pricing ?? null,
+  }
 }
 
 function formatSelectedVideoTier(model: GroupMarketModel, resolution: VideoResolution): string {

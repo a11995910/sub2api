@@ -129,6 +129,27 @@ function groupFixture(overrides: Partial<Record<string, unknown>>) {
   }
 }
 
+function videoPricingFixture(perRequestPrice: number) {
+  return {
+    billing_mode: 'video',
+    input_price: null,
+    output_price: null,
+    cache_write_price: null,
+    cache_read_price: null,
+    image_output_price: null,
+    per_request_price: perRequestPrice,
+    intervals: [],
+  }
+}
+
+function modelCard(wrapper: ReturnType<typeof mount>, modelName: string) {
+  const card = wrapper.findAll('article').find((article) =>
+    article.find('h3').text().trim() === modelName,
+  )
+  expect(card, `未找到模型卡片 ${modelName}`).toBeDefined()
+  return card!
+}
+
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const IconStub = { template: '<span />' }
 const PlatformIconStub = { template: '<span />' }
@@ -224,6 +245,7 @@ describe('ModelMarketView', () => {
   it.each([
     {
       name: '分组 720p 覆盖价',
+      modelName: 'grok-imagine-video-1.5',
       groupOverrides: {
         video_rate_independent: true,
         video_rate_multiplier: 2,
@@ -237,6 +259,7 @@ describe('ModelMarketView', () => {
     },
     {
       name: '渠道 720p 层级价',
+      modelName: 'grok-imagine-video',
       groupOverrides: {},
       billingMode: 'video',
       defaultPrice: 0.07,
@@ -246,6 +269,7 @@ describe('ModelMarketView', () => {
     },
     {
       name: '历史图片模式渠道默认价',
+      modelName: 'grok-imagine-video',
       groupOverrides: {},
       billingMode: 'image',
       defaultPrice: 2.1,
@@ -255,6 +279,7 @@ describe('ModelMarketView', () => {
     },
   ])('视频价格卡展示$name及正确单位', async ({
     groupOverrides,
+    modelName,
     billingMode,
     defaultPrice,
     intervalPrice,
@@ -281,7 +306,7 @@ describe('ModelMarketView', () => {
         platform: 'grok',
         groups: [videoGroup],
         supported_models: [{
-          name: 'grok-imagine-video-1.5',
+          name: modelName,
           platform: 'grok',
           kind: 'video',
           pricing: {
@@ -309,9 +334,97 @@ describe('ModelMarketView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('grok-imagine-video-1.5')
+    expect(wrapper.text()).toContain(modelName)
     expect(wrapper.text()).toContain(expectedUnit)
     expect(wrapper.text()).toContain(expectedPrice)
+  })
+
+  it('video-1.5 默认无参考图时使用同平台标准模型渠道价', async () => {
+    const videoGroup = groupFixture({
+      id: 8,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    getAvailableGroups.mockResolvedValue([videoGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [
+          {
+            name: ' GROK-IMAGINE-VIDEO ',
+            platform: 'grok',
+            kind: 'video',
+            pricing: videoPricingFixture(0.09),
+          },
+          {
+            name: 'grok-imagine-video-1.5',
+            platform: 'grok',
+            kind: 'video',
+            pricing: videoPricingFixture(0.14),
+          },
+        ],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cardText = modelCard(wrapper, 'grok-imagine-video-1.5').text()
+    expect(cardText).toContain('720p / 秒当前0.09 灵石')
+    expect(cardText).not.toContain('720p / 秒当前0.14 灵石')
+  })
+
+  it('video-1.5 默认无参考图且标准条目缺失时使用标准模型系统价', async () => {
+    const videoGroup = groupFixture({
+      id: 8,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    getAvailableGroups.mockResolvedValue([videoGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video-1.5',
+          platform: 'grok',
+          kind: 'video',
+          pricing: videoPricingFixture(0.22),
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cardText = modelCard(wrapper, 'grok-imagine-video-1.5').text()
+    expect(cardText).toContain('720p / 秒当前0.07 灵石')
+    expect(cardText).not.toContain('720p / 秒当前0.22 灵石')
   })
 
   it('视频名称模型使用 token 定价时展示文本倍率', async () => {

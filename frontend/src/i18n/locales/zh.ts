@@ -2824,7 +2824,7 @@ export default {
         token: 'Token',
         perRequest: '按次',
         image: '图片（按次）',
-        video: '视频（按次）'
+        video: '视频（每秒）'
       },
       form: {
         name: '名称',

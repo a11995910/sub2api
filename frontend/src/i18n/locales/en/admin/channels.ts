@@ -94,7 +94,7 @@ export default {
         token: 'Token',
         perRequest: 'Per Request',
         image: 'Image (Per Request)',
-        video: 'Video (Per Request)'
+        video: 'Video (Per Second)'
       },
       form: {
         name: 'Name',

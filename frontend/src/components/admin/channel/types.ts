@@ -26,6 +26,26 @@ export interface PricingFormEntry {
   intervals: IntervalFormEntry[]
 }
 
+/**
+ * 切换计费模式时清除单位不兼容的价格。
+ * 区间含义随模式变化，因此沿用现有行为统一清空；video 的共享价格字段按秒，
+ * 跨入或跨出 video 时不能复用其他模式的按次价格。
+ */
+export function transitionPricingBillingMode(
+  entry: PricingFormEntry,
+  nextMode: BillingMode,
+): PricingFormEntry {
+  if (entry.billing_mode === nextMode) return entry
+
+  const crossesVideoUnitBoundary = entry.billing_mode === 'video' || nextMode === 'video'
+  return {
+    ...entry,
+    billing_mode: nextMode,
+    intervals: [],
+    ...(crossesVideoUnitBoundary ? { per_request_price: null } : {}),
+  }
+}
+
 // 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
 const MTOK = 1_000_000
 

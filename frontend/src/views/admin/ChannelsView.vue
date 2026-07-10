@@ -577,6 +577,7 @@
                       :key="pIdx"
                       :entry="entry"
                       :platform="section.platform"
+                      :allowed-billing-modes="accountStatsBillingModes"
                       @update="rule.pricing.splice(pIdx, 1, $event)"
                       @remove="removeRulePricingEntry(sIdx, ruleIndex, pIdx)"
                     />
@@ -630,7 +631,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, BillingMode } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
@@ -654,6 +655,7 @@ import { mapChannelPricingToForm } from './channelPricingCompatibility'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const accountStatsBillingModes: BillingMode[] = ['token', 'per_request', 'image']
 
 // Web Search global enabled state (loaded once on mount)
 const webSearchGlobalEnabled = ref(false)

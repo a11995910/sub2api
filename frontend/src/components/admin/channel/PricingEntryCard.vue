@@ -87,7 +87,7 @@
             </label>
             <Select
               :modelValue="entry.billing_mode"
-              @update:modelValue="emit('update', { ...entry, billing_mode: $event as BillingMode, intervals: [] })"
+              @update:modelValue="onBillingModeUpdate($event as BillingMode)"
               :options="billingModeOptions"
               class="mt-1"
             />
@@ -264,16 +264,19 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
-import { perTokenToMTok, getPlatformTagClass } from './types'
+import { perTokenToMTok, getPlatformTagClass, transitionPricingBillingMode } from './types'
 import type { BillingMode } from '@/api/admin/channels'
 import channelsAPI from '@/api/admin/channels'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   entry: PricingFormEntry
   platform?: string
-}>()
+  allowedBillingModes?: BillingMode[]
+}>(), {
+  allowedBillingModes: () => ['token', 'per_request', 'image', 'video'],
+})
 
 const emit = defineEmits<{
   update: [entry: PricingFormEntry]
@@ -283,17 +286,27 @@ const emit = defineEmits<{
 // Collapse state: entries with existing models default to collapsed
 const collapsed = ref(props.entry.models.length > 0)
 
-const billingModeOptions = computed(() => [
+const allBillingModeOptions = computed(() => [
   { value: 'token', label: t('admin.channels.billingMode.token') },
   { value: 'per_request', label: t('admin.channels.billingMode.perRequest') },
   { value: 'image', label: t('admin.channels.billingMode.image') },
   { value: 'video', label: t('admin.channels.billingMode.video') }
-])
+] satisfies Array<{ value: BillingMode; label: string }>)
+
+const billingModeOptions = computed(() =>
+  allBillingModeOptions.value.filter(option => props.allowedBillingModes.includes(option.value)),
+)
 
 const billingModeLabel = computed(() => {
-  const opt = billingModeOptions.value.find(o => o.value === props.entry.billing_mode)
+  const opt = allBillingModeOptions.value.find(o => o.value === props.entry.billing_mode)
   return opt ? opt.label : props.entry.billing_mode
 })
+
+function onBillingModeUpdate(nextMode: BillingMode) {
+  if (!props.allowedBillingModes.includes(nextMode)) return
+  const updated = transitionPricingBillingMode(props.entry, nextMode)
+  if (updated !== props.entry) emit('update', updated)
+}
 
 function emitField(field: keyof PricingFormEntry, value: string) {
   emit('update', { ...props.entry, [field]: value === '' ? null : value })

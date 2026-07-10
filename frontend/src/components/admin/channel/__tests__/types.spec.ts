@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { validateIntervals, type IntervalFormEntry } from '../types'
+import {
+  transitionPricingBillingMode,
+  validateIntervals,
+  type IntervalFormEntry,
+} from '../types'
+import type { PricingFormEntry } from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -19,6 +24,76 @@ function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
 function t(key: string, params?: Record<string, unknown>): string {
   return `${key}${params ? ` ${JSON.stringify(params)}` : ''}`
 }
+
+function makePricingEntry(overrides: Partial<PricingFormEntry> = {}): PricingFormEntry {
+  return {
+    models: ['grok-imagine-video'],
+    billing_mode: 'image',
+    input_price: 1,
+    output_price: 2,
+    cache_write_price: 3,
+    cache_read_price: 4,
+    image_output_price: 5,
+    per_request_price: 2.1,
+    intervals: [makeInterval({ tier_label: '720p', per_request_price: 2.3 })],
+    ...overrides,
+  }
+}
+
+describe('transitionPricingBillingMode', () => {
+  it.each(['image', 'per_request'] as const)('历史 %s 切到 video 时清空按次默认价和层级', (mode) => {
+    const result = transitionPricingBillingMode(makePricingEntry({ billing_mode: mode }), 'video')
+
+    expect(result.billing_mode).toBe('video')
+    expect(result.per_request_price).toBeNull()
+    expect(result.intervals).toEqual([])
+  })
+
+  it('显式零价跨入 video 时仍清空，因为价格单位已经变化', () => {
+    const result = transitionPricingBillingMode(makePricingEntry({ per_request_price: 0 }), 'video')
+
+    expect(result.per_request_price).toBeNull()
+  })
+
+  it.each(['token', 'per_request', 'image'] as const)('video 切到 %s 时清空每秒默认价和层级', (mode) => {
+    const result = transitionPricingBillingMode(
+      makePricingEntry({ billing_mode: 'video', per_request_price: 0.14 }),
+      mode,
+    )
+
+    expect(result.billing_mode).toBe(mode)
+    expect(result.per_request_price).toBeNull()
+    expect(result.intervals).toEqual([])
+  })
+
+  it.each([
+    ['image', 'per_request'],
+    ['per_request', 'image'],
+  ] as const)('%s 与 %s 切换时保留同单位默认按次价', (from, to) => {
+    const result = transitionPricingBillingMode(makePricingEntry({ billing_mode: from }), to)
+
+    expect(result.per_request_price).toBe(2.1)
+    expect(result.intervals).toEqual([])
+  })
+
+  it('模式未变化时完整保留原对象和区间', () => {
+    const entry = makePricingEntry()
+
+    expect(transitionPricingBillingMode(entry, 'image')).toBe(entry)
+  })
+
+  it('切换到 video 时不清空 token 默认价格字段', () => {
+    const result = transitionPricingBillingMode(makePricingEntry(), 'video')
+
+    expect(result).toMatchObject({
+      input_price: 1,
+      output_price: 2,
+      cache_write_price: 3,
+      cache_read_price: 4,
+      image_output_price: 5,
+    })
+  })
+})
 
 describe('validateIntervals', () => {
   describe('token mode', () => {
