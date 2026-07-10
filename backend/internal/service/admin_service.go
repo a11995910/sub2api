@@ -81,6 +81,12 @@ type AdminService interface {
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	// ListAccountsForSchedulerScoreFilter 返回符合过滤条件的全部账号（不分页），
+	// 作为账号列表页计算 OpenAI 调度分数的过滤范围池。
+	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
+	// ListOpenAISchedulableAccountsForSchedulerScore 返回指定分组（nil 为未分组）内
+	// 可调度的 OpenAI 账号，用于按组计算调度分数。
+	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error)
 	ListAccountIDs(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]int64, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
@@ -215,16 +221,21 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置
-	AllowImageGeneration        bool
-	ImageSuperResolutionEnabled bool
-	Image2KEnhancementEnabled   bool
-	Image2KEnhancementGroupID   *int64
-	Image4KEnhancementEnabled   bool
-	Image4KEnhancementGroupID   *int64
-	Image4KEnhancementModel     *string
-	ImageRateIndependent        bool
-	CacheHitQuarterToInput      bool
-	ImageRateMultiplier         *float64
+	AllowImageGeneration         bool
+	AllowBatchImageGeneration    bool
+	ImageSuperResolutionEnabled  bool
+	Image2KEnhancementEnabled    bool
+	Image2KEnhancementGroupID    *int64
+	Image4KEnhancementEnabled    bool
+	Image4KEnhancementGroupID    *int64
+	Image4KEnhancementModel      *string
+	ImageRateIndependent         bool
+	CacheHitQuarterToInput       bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
+	VideoRateIndependent         bool
+	VideoRateMultiplier          *float64
 	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
 	PeakRateEnabled    bool
 	PeakStart          string
@@ -233,6 +244,9 @@ type CreateGroupInput struct {
 	ImagePrice1K       *float64
 	ImagePrice2K       *float64
 	ImagePrice4K       *float64
+	VideoPrice480P     *float64
+	VideoPrice720P     *float64
+	VideoPrice1080P    *float64
 	ClaudeCodeOnly     bool   // 仅允许 Claude Code 客户端
 	FallbackGroupID    *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
@@ -268,16 +282,21 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置
-	AllowImageGeneration        *bool
-	ImageSuperResolutionEnabled *bool
-	Image2KEnhancementEnabled   *bool
-	Image2KEnhancementGroupID   *int64
-	Image4KEnhancementEnabled   *bool
-	Image4KEnhancementGroupID   *int64
-	Image4KEnhancementModel     *string
-	ImageRateIndependent        *bool
-	CacheHitQuarterToInput      *bool
-	ImageRateMultiplier         *float64
+	AllowImageGeneration         *bool
+	AllowBatchImageGeneration    *bool
+	ImageSuperResolutionEnabled  *bool
+	Image2KEnhancementEnabled    *bool
+	Image2KEnhancementGroupID    *int64
+	Image4KEnhancementEnabled    *bool
+	Image4KEnhancementGroupID    *int64
+	Image4KEnhancementModel      *string
+	ImageRateIndependent         *bool
+	CacheHitQuarterToInput       *bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
+	VideoRateIndependent         *bool
+	VideoRateMultiplier          *float64
 	// 高峰时段倍率配置（nil 表示不修改）
 	PeakRateEnabled    *bool
 	PeakStart          *string
@@ -286,6 +305,9 @@ type UpdateGroupInput struct {
 	ImagePrice1K       *float64
 	ImagePrice2K       *float64
 	ImagePrice4K       *float64
+	VideoPrice480P     *float64
+	VideoPrice720P     *float64
+	VideoPrice1080P    *float64
 	ClaudeCodeOnly     *bool  // 仅允许 Claude Code 客户端
 	FallbackGroupID    *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
@@ -2007,6 +2029,33 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		imageRateMultiplier = *input.ImageRateMultiplier
 	}
 
+	// 批量生图折扣/冻结倍率、视频倍率：nil 时取默认值，负数非法。
+	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
+	if input.BatchImageDiscountMultiplier != nil {
+		if *input.BatchImageDiscountMultiplier < 0 {
+			return nil, errors.New("batch_image_discount_multiplier must be >= 0")
+		}
+		batchImageDiscountMultiplier = *input.BatchImageDiscountMultiplier
+	}
+	batchImageHoldMultiplier := defaultBatchImageHoldMultiplier
+	if input.BatchImageHoldMultiplier != nil {
+		if *input.BatchImageHoldMultiplier < 0 {
+			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
+		}
+		batchImageHoldMultiplier = *input.BatchImageHoldMultiplier
+	}
+	videoRateMultiplier := 1.0
+	if input.VideoRateMultiplier != nil {
+		if *input.VideoRateMultiplier < 0 {
+			return nil, errors.New("video_rate_multiplier must be >= 0")
+		}
+		videoRateMultiplier = *input.VideoRateMultiplier
+	}
+	// 视频价格：负数表示清除（使用默认价格），0 保留（表示免费）
+	videoPrice480P := normalizePrice(input.VideoPrice480P)
+	videoPrice720P := normalizePrice(input.VideoPrice720P)
+	videoPrice1080P := normalizePrice(input.VideoPrice1080P)
+
 	peakRateMultiplier := 1.0
 	if input.PeakRateMultiplier != nil {
 		peakRateMultiplier = *input.PeakRateMultiplier
@@ -2099,6 +2148,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            allowImageGeneration,
+		AllowBatchImageGeneration:       input.AllowBatchImageGeneration,
 		ImageSuperResolutionEnabled:     input.ImageSuperResolutionEnabled,
 		Image2KEnhancementEnabled:       input.Image2KEnhancementEnabled,
 		Image2KEnhancementGroupID:       image2KEnhancementGroupID,
@@ -2108,6 +2158,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImageRateIndependent:            input.ImageRateIndependent,
 		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		ImageRateMultiplier:             imageRateMultiplier,
+		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
+		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
+		VideoRateIndependent:            input.VideoRateIndependent,
+		VideoRateMultiplier:             videoRateMultiplier,
+		VideoPrice480P:                  videoPrice480P,
+		VideoPrice720P:                  videoPrice720P,
+		VideoPrice1080P:                 videoPrice1080P,
 		PeakRateEnabled:                 peakRateEnabled,
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
@@ -2385,6 +2442,41 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("image_rate_multiplier must be >= 0")
 		}
 		group.ImageRateMultiplier = *input.ImageRateMultiplier
+	}
+	// 批量生图折扣/冻结倍率、视频倍率与价格
+	if input.AllowBatchImageGeneration != nil {
+		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
+	}
+	if input.BatchImageDiscountMultiplier != nil {
+		if *input.BatchImageDiscountMultiplier < 0 {
+			return nil, errors.New("batch_image_discount_multiplier must be >= 0")
+		}
+		group.BatchImageDiscountMultiplier = *input.BatchImageDiscountMultiplier
+	}
+	if input.BatchImageHoldMultiplier != nil {
+		if *input.BatchImageHoldMultiplier < 0 {
+			return nil, errors.New("batch_image_hold_multiplier must be >= 0")
+		}
+		group.BatchImageHoldMultiplier = *input.BatchImageHoldMultiplier
+	}
+	if input.VideoRateIndependent != nil {
+		group.VideoRateIndependent = *input.VideoRateIndependent
+	}
+	if input.VideoRateMultiplier != nil {
+		if *input.VideoRateMultiplier < 0 {
+			return nil, errors.New("video_rate_multiplier must be >= 0")
+		}
+		group.VideoRateMultiplier = *input.VideoRateMultiplier
+	}
+	// 视频价格：负数表示清除（使用默认价格）
+	if input.VideoPrice480P != nil {
+		group.VideoPrice480P = normalizePrice(input.VideoPrice480P)
+	}
+	if input.VideoPrice720P != nil {
+		group.VideoPrice720P = normalizePrice(input.VideoPrice720P)
+	}
+	if input.VideoPrice1080P != nil {
+		group.VideoPrice1080P = normalizePrice(input.VideoPrice1080P)
 	}
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled
@@ -3029,6 +3121,45 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 		return nil, 0, err
 	}
 	return accounts, result.Total, nil
+}
+
+type accountAllListRepository interface {
+	ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
+}
+
+func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+	if repo, ok := s.accountRepo.(accountAllListRepository); ok {
+		return repo.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
+	}
+
+	const pageSize = 1000
+	page := 1
+	out := make([]Account, 0)
+	for {
+		accounts, result, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, platform, accountType, status, search, groupID, privacyMode)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, accounts...)
+		if result == nil || len(out) >= int(result.Total) || len(accounts) == 0 {
+			break
+		}
+		page++
+	}
+	return out, nil
+}
+
+func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+	if groupID != nil {
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+	}
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
 }
 
 type accountIDListRepository interface {

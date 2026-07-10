@@ -1538,6 +1538,143 @@ type GatewayOpenAIWSSchedulerScoreWeightsView struct {
 	QuotaHeadroom float64
 }
 
+type OpenAIAccountSchedulerScoreSnapshot struct {
+	BaseScore             float64
+	StickyScore           float64
+	StickyScoreInfinity   bool
+	StickyWeightedEnabled bool
+}
+
+func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshot(
+	_ context.Context,
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+) map[int64]OpenAIAccountSchedulerScoreSnapshot {
+	gateway := &OpenAIGatewayService{}
+	if s != nil {
+		gateway.cfg = s.cfg
+	}
+	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false)
+}
+
+func BuildOpenAIAccountSchedulerScoreSnapshot(
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+) map[int64]OpenAIAccountSchedulerScoreSnapshot {
+	gateway := &OpenAIGatewayService{}
+	return buildOpenAIAccountSchedulerScoreSnapshot(accounts, loadMap, gateway.openAIWSSchedulerWeights(), false)
+}
+
+func buildOpenAIAccountSchedulerScoreSnapshot(
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+	weights GatewayOpenAIWSSchedulerScoreWeightsView,
+	stickyWeightedEnabled bool,
+) map[int64]OpenAIAccountSchedulerScoreSnapshot {
+	if len(accounts) == 0 {
+		return nil
+	}
+	candidates := make([]openAIAccountCandidateScore, 0, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		loadInfo := loadMap[account.ID]
+		if loadInfo == nil {
+			loadInfo = &AccountLoadInfo{AccountID: account.ID}
+		}
+		candidates = append(candidates, openAIAccountCandidateScore{
+			account:   account,
+			loadInfo:  loadInfo,
+			errorRate: 0,
+			ttft:      0,
+			hasTTFT:   false,
+		})
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	minPriority, maxPriority := candidates[0].account.Priority, candidates[0].account.Priority
+	maxWaiting := 1
+	for i := range candidates {
+		candidate := &candidates[i]
+		if candidate.account.Priority < minPriority {
+			minPriority = candidate.account.Priority
+		}
+		if candidate.account.Priority > maxPriority {
+			maxPriority = candidate.account.Priority
+		}
+		if candidate.loadInfo.WaitingCount > maxWaiting {
+			maxWaiting = candidate.loadInfo.WaitingCount
+		}
+	}
+
+	minResetRemaining, maxResetRemaining := 0.0, 0.0
+	hasResetSample := false
+	now := time.Now()
+	if weights.Reset > 0 {
+		for _, candidate := range candidates {
+			end := candidate.account.SessionWindowEnd
+			if end == nil || !now.Before(*end) {
+				continue
+			}
+			remaining := end.Sub(now).Seconds()
+			if !hasResetSample {
+				minResetRemaining, maxResetRemaining = remaining, remaining
+				hasResetSample = true
+				continue
+			}
+			if remaining < minResetRemaining {
+				minResetRemaining = remaining
+			}
+			if remaining > maxResetRemaining {
+				maxResetRemaining = remaining
+			}
+		}
+	}
+
+	result := make(map[int64]OpenAIAccountSchedulerScoreSnapshot, len(candidates))
+	for _, candidate := range candidates {
+		priorityFactor := 1.0
+		if maxPriority > minPriority {
+			priorityFactor = 1 - float64(candidate.account.Priority-minPriority)/float64(maxPriority-minPriority)
+		}
+		loadFactor := 1 - clamp01(float64(candidate.loadInfo.LoadRate)/100.0)
+		queueFactor := 1 - clamp01(float64(candidate.loadInfo.WaitingCount)/float64(maxWaiting))
+		errorFactor := 1.0
+		ttftFactor := 0.5
+		resetFactor := 0.0
+		if weights.Reset > 0 && hasResetSample {
+			if end := candidate.account.SessionWindowEnd; end != nil && now.Before(*end) {
+				if maxResetRemaining > minResetRemaining {
+					resetFactor = 1 - clamp01((end.Sub(now).Seconds()-minResetRemaining)/(maxResetRemaining-minResetRemaining))
+				} else {
+					resetFactor = 1
+				}
+			}
+		}
+		quotaHeadroomFactor := 0.0
+		if weights.QuotaHeadroom > 0 {
+			quotaHeadroomFactor = openAIQuotaHeadroomFactor(candidate.account, now)
+		}
+		baseScore := weights.Priority*priorityFactor +
+			weights.Load*loadFactor +
+			weights.Queue*queueFactor +
+			weights.ErrorRate*errorFactor +
+			weights.TTFT*ttftFactor +
+			weights.Reset*resetFactor +
+			weights.QuotaHeadroom*quotaHeadroomFactor
+
+		result[candidate.account.ID] = OpenAIAccountSchedulerScoreSnapshot{
+			BaseScore:             baseScore,
+			StickyWeightedEnabled: stickyWeightedEnabled,
+			StickyScoreInfinity:   !stickyWeightedEnabled,
+		}
+	}
+	return result
+}
+
 func openAIQuotaHeadroomFactor(account *Account, now time.Time) float64 {
 	if account == nil || len(account.Extra) == 0 || openAIQuotaHeadroomSnapshotStale(account.Extra, now) {
 		return openAIQuotaHeadroomNeutralFactor

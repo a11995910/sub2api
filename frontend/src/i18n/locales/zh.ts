@@ -297,6 +297,9 @@ export default {
     disabled: '已禁用',
     total: '总计',
     balance: '余额',
+    availableBalance: '可用余额',
+    frozenBalance: '冻结金额',
+    totalBalance: '总余额',
     currencyName: '灵石',
     available: '可用',
     copiedToClipboard: '已复制到剪贴板',
@@ -2581,6 +2584,7 @@ export default {
         title: '图片生成计费',
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
         allowImageGeneration: '允许当前分组生图',
+        allowBatchImageGeneration: '允许当前分组批量生图',
         imageSuperResolution: '自动 4K 超分',
         imageSuperResolutionHint: '开启后，当前分组的生图结果会在返回前自动超分。',
         image2KEnhancement: '2K 超分',
@@ -2601,8 +2605,24 @@ export default {
         image4KEnhancementModelLoadFailed: '加载 4K 提升目标模型失败',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',
+        batchDiscountMultiplier: '批量生图折扣倍率',
+        batchHoldMultiplier: '批量冻结价格比例',
+        batchSectionHint: '批量生图仅影响批量任务：结算价格会叠加批量折扣倍率，提交时冻结金额按普通生图原价 × 批量冻结价格比例计算。参考图也会产生上游输入 token 消耗，建议批量生图折扣倍率设置大于 0.5。',
+        batchDisabledHint: '请先开启当前分组生图，才能开启批量生图。',
+        batchGeminiOnlyHint: '批量生图当前仅支持 Gemini 分组。',
         modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
         finalPricePreview: '最终单张价格预览',
+        notConfigured: '未配置'
+      },
+      videoPricing: {
+        title: '视频生成计费',
+        description:
+          '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',
+        independentMultiplier: '视频倍率独立',
+        videoMultiplier: '视频独立倍率',
+        modeHint:
+          '视频按秒计费：费用 = 每秒价格 × 时长（1-15 秒，未指定默认 8 秒）。默认叠加当前分组有效倍率；开启独立倍率后改用视频独立倍率。',
+        finalPricePreview: '最终每秒价格预览',
         notConfigured: '未配置'
       },
       peakRate: {
@@ -3617,6 +3637,7 @@ export default {
         priority: '优先级',
         billingRateMultiplier: '账号倍率',
         weight: '权重',
+        schedulerScore: '调度权值',
         status: '状态',
         schedulable: '调度',
         todayStats: '今日统计',
@@ -3627,6 +3648,12 @@ export default {
         createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
+      },
+      schedulerScore: {
+        baseShort: '普通',
+        stickyShort: '粘性',
+        ungrouped: '未分组',
+        hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
       },
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       allPrivacyModes: '全部Privacy状态',
