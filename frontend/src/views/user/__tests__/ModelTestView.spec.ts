@@ -38,6 +38,7 @@ const messages: Record<string, string> = {
   'modelTest.modes.text': '文本',
   'modelTest.modes.video': '视频',
   'modelTest.perImage': '张',
+  'modelTest.perSecond': '秒',
   'modelTest.placeholders.apiKey': '请选择 API Key',
   'modelTest.placeholders.group': '请选择分组',
   'modelTest.placeholders.imagePrompt': '描述要生成的图片',
@@ -521,7 +522,7 @@ describe('ModelTestView', () => {
       billingMode: 'video',
       defaultPrice: 0.07,
       intervalPrice: 0.14,
-      expectedPreview: '720p 1.12 灵石 / 8s',
+      expectedPreview: '720p 1.12 灵石 / 8秒',
     },
     {
       name: '分组 720p 每秒覆盖价乘独立视频倍率和时长',
@@ -533,7 +534,7 @@ describe('ModelTestView', () => {
       billingMode: 'video',
       defaultPrice: 0.07,
       intervalPrice: 0.14,
-      expectedPreview: '720p 0.48 灵石 / 8s',
+      expectedPreview: '720p 0.48 灵石 / 8秒',
     },
     {
       name: '历史图片模式渠道默认价只按次乘倍率',
@@ -574,7 +575,7 @@ describe('ModelTestView', () => {
         platform: 'grok',
         groups: [videoGroup],
         supported_models: [{
-          name: 'grok-imagine-video-1.5',
+          name: 'grok-imagine-video',
           platform: 'grok',
           kind: 'video',
           pricing: {
@@ -598,8 +599,204 @@ describe('ModelTestView', () => {
     expect(selectByLabel(wrapper, '分组').value).toBe('9')
     expect(optionTexts(selectByLabel(wrapper, '模型'))).toEqual([
       '请选择模型',
-      'grok-imagine-video-1.5 · Grok',
+      'grok-imagine-video · Grok',
     ])
     expect(summaryValue(wrapper, '价格预览')).toBe(expectedPreview)
+  })
+
+  it('视频名称模型使用 token 定价时展示文本倍率', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+      rate_multiplier: 2,
+      video_rate_independent: true,
+      video_rate_multiplier: 3,
+      video_price_720p: 0.03,
+    })
+    const videoKey = apiKeyFixture({ id: 909, group_id: 9 })
+    getUserGroupRates.mockResolvedValue({ 9: 1.25 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video-token-preview',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: 'token',
+            input_price: 0.000001,
+            output_price: 0.000002,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: null,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(summaryValue(wrapper, '当前倍率')).toBe('1.25x')
+    expect(summaryValue(wrapper, '价格预览')).toBe('-')
+  })
+
+  it('历史视频渠道未命中当前分辨率且无默认价时显示无价格', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({ id: 909, group_id: 9 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: 'per_request',
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: null,
+            intervals: [{ tier_label: '480p', per_request_price: 1.8 }],
+          },
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(summaryValue(wrapper, '价格预览')).toBe('-')
+  })
+
+  it('video-1.5 根据参考图状态使用实际计费模型的渠道价格', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({ id: 909, group_id: 9 })
+    routeState.query = {
+      kind: 'video',
+      group_id: '9',
+      model: 'grok-imagine-video-1.5',
+      platform: 'grok',
+    }
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [
+          {
+            name: 'grok-imagine-video',
+            platform: 'grok',
+            kind: 'video',
+            pricing: {
+              billing_mode: 'video',
+              input_price: null,
+              output_price: null,
+              cache_write_price: null,
+              cache_read_price: null,
+              image_output_price: null,
+              per_request_price: 0.07,
+              intervals: [],
+            },
+          },
+          {
+            name: 'grok-imagine-video-1.5',
+            platform: 'grok',
+            kind: 'video',
+            pricing: {
+              billing_mode: 'video',
+              input_price: null,
+              output_price: null,
+              cache_write_price: null,
+              cache_read_price: null,
+              image_output_price: null,
+              per_request_price: 0.14,
+              intervals: [],
+            },
+          },
+        ],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect((selectByLabel(wrapper, '模型').selectedOptions[0]?.textContent ?? '').trim()).toBe('grok-imagine-video-1.5 · Grok')
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
+
+    const fileInput = wrapper.find('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File(['reference image'], 'reference.png', { type: 'image/png' })],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.12 灵石 / 8秒')
+  })
+
+  it('video-1.5 无参考图且标准模型条目缺失时使用标准模型系统价', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({ id: 909, group_id: 9 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video-1.5',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: 'video',
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: 0.22,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
   })
 })

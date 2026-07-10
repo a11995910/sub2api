@@ -7,7 +7,10 @@ import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_VIDEO,
 } from '@/constants/channel'
-import { resolveVideoPriceQuote } from '@/utils/videoPricing'
+import {
+  normalizeVideoBillingModelName,
+  resolveVideoPriceQuote,
+} from '@/utils/videoPricing'
 
 function groupFixture(overrides: Partial<UserAvailableGroup> = {}): UserAvailableGroup {
   return {
@@ -192,6 +195,40 @@ describe('resolveVideoPriceQuote', () => {
     })).toBeNull()
   })
 
+  it('token 定价即使分组配置了视频价格也必须短路', () => {
+    expect(resolveVideoPriceQuote({
+      group: groupFixture({ video_price_720p: 0.03 }),
+      pricing: pricingFixture(BILLING_MODE_TOKEN, 2.1, 1.8),
+      modelName: 'grok-imagine-video-1.5',
+      resolution: '720p',
+    })).toBeNull()
+  })
+
+  it.each([
+    BILLING_MODE_IMAGE,
+    BILLING_MODE_PER_REQUEST,
+  ] as const)('历史 %s 未命中当前分辨率且无默认价时不回退系统每秒价', (billingMode) => {
+    expect(resolveVideoPriceQuote({
+      group: groupFixture(),
+      pricing: pricingFixture(billingMode, null, 1.8),
+      modelName: 'grok-imagine-video-1.5',
+      resolution: '480p',
+    })).toBeNull()
+  })
+
+  it('显式视频模式未命中当前分辨率且无默认价时仍回退系统每秒价', () => {
+    expect(resolveVideoPriceQuote({
+      group: groupFixture(),
+      pricing: pricingFixture(BILLING_MODE_VIDEO, null, 1.8),
+      modelName: 'grok-imagine-video',
+      resolution: '480p',
+    })).toMatchObject({
+      basePrice: 0.05,
+      billingUnit: 'second',
+      source: 'system_default',
+    })
+  })
+
   it.each([
     ['grok-imagine-video', '480p', 0.05],
     ['grok-imagine-video', '720p', 0.07],
@@ -215,5 +252,19 @@ describe('resolveVideoPriceQuote', () => {
       modelName: 'unknown-video-model',
       resolution: '720p',
     })).toBeNull()
+  })
+})
+
+describe('normalizeVideoBillingModelName', () => {
+  it('video-1.5 无参考图时按后端规则使用标准视频模型计费', () => {
+    expect(normalizeVideoBillingModelName('grok-imagine-video-1.5', false)).toBe('grok-imagine-video')
+  })
+
+  it('video-1.5 有参考图时保留原计费模型', () => {
+    expect(normalizeVideoBillingModelName('grok-imagine-video-1.5', true)).toBe('grok-imagine-video-1.5')
+  })
+
+  it('其他视频模型只清理首尾空白', () => {
+    expect(normalizeVideoBillingModelName('  grok-imagine-video  ', false)).toBe('grok-imagine-video')
   })
 })

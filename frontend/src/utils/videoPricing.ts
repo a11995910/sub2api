@@ -23,6 +23,15 @@ export interface VideoPriceQuote {
   source: VideoPriceSource
 }
 
+/** 与 Grok 视频端点保持一致：video-1.5 文生视频实际按标准视频模型路由和计费。 */
+export function normalizeVideoBillingModelName(modelName: string, hasReferenceImage: boolean): string {
+  const normalizedModel = modelName.trim()
+  if (normalizedModel === 'grok-imagine-video-1.5' && !hasReferenceImage) {
+    return 'grok-imagine-video'
+  }
+  return normalizedModel
+}
+
 function groupVideoPrice(group: UserAvailableGroup, resolution: VideoResolution): number | null | undefined {
   switch (resolution) {
     case '480p':
@@ -78,13 +87,13 @@ function grokDefaultVideoPrice(modelName: string, resolution: VideoResolution): 
  * `null` 表示价格缺失；数值 `0` 是有效的显式零价，不能继续回退。
  */
 export function resolveVideoPriceQuote(input: VideoPriceInput): VideoPriceQuote | null {
+  if (input.pricing?.billing_mode === BILLING_MODE_TOKEN) {
+    return null
+  }
+
   const groupPrice = groupVideoPrice(input.group, input.resolution)
   if (groupPrice != null) {
     return quote(input, groupPrice, 'second', 'group')
-  }
-
-  if (input.pricing?.billing_mode === BILLING_MODE_TOKEN) {
-    return null
   }
 
   const billingUnit: VideoBillingUnit = input.pricing?.billing_mode === BILLING_MODE_VIDEO
@@ -99,6 +108,10 @@ export function resolveVideoPriceQuote(input: VideoPriceInput): VideoPriceQuote 
 
   if (input.pricing?.per_request_price != null) {
     return quote(input, input.pricing.per_request_price, billingUnit, 'channel_default')
+  }
+
+  if (input.pricing && input.pricing.billing_mode !== BILLING_MODE_VIDEO) {
+    return null
   }
 
   const systemPrice = grokDefaultVideoPrice(input.modelName, input.resolution)

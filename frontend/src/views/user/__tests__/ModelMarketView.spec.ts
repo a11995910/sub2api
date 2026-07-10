@@ -17,6 +17,7 @@ const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeVideo': '视频',
   'common.error': '错误',
   'common.refresh': '刷新',
+  'modelTest.perSecond': '秒',
   'modelMarket.title': '模型广场',
   'modelMarket.description': '查看当前可调用模型、可用分组和倍率后的灵石价格',
   'modelMarket.searchPlaceholder': '搜索模型、平台或分组...',
@@ -232,7 +233,7 @@ describe('ModelMarketView', () => {
       defaultPrice: 0.07,
       intervalPrice: 0.14,
       expectedPrice: '0.06 灵石',
-      expectedUnit: '720p / s',
+      expectedUnit: '720p / 秒',
     },
     {
       name: '渠道 720p 层级价',
@@ -241,7 +242,7 @@ describe('ModelMarketView', () => {
       defaultPrice: 0.07,
       intervalPrice: 0.14,
       expectedPrice: '0.14 灵石',
-      expectedUnit: '720p / s',
+      expectedUnit: '720p / 秒',
     },
     {
       name: '历史图片模式渠道默认价',
@@ -311,5 +312,104 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain('grok-imagine-video-1.5')
     expect(wrapper.text()).toContain(expectedUnit)
     expect(wrapper.text()).toContain(expectedPrice)
+  })
+
+  it('视频名称模型使用 token 定价时展示文本倍率', async () => {
+    const videoGroup = groupFixture({
+      id: 8,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+      rate_multiplier: 2,
+      video_rate_independent: true,
+      video_rate_multiplier: 3,
+      video_price_720p: 0.03,
+    })
+    getAvailableGroups.mockResolvedValue([videoGroup])
+    getUserGroupRates.mockResolvedValue({ 8: 1.25 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video-token-preview',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: 'token',
+            input_price: 0.000001,
+            output_price: 0.000002,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: null,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('生效倍率x1.25')
+    expect(wrapper.text()).not.toContain('x3.00')
+  })
+
+  it('历史视频渠道未命中当前分辨率且无默认价时显示无价格', async () => {
+    const videoGroup = groupFixture({
+      id: 8,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    getAvailableGroups.mockResolvedValue([videoGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video',
+          platform: 'grok',
+          kind: 'video',
+          pricing: {
+            billing_mode: 'image',
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: null,
+            intervals: [{ tier_label: '480p', per_request_price: 1.8 }],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('720p / 按次当前-')
   })
 })

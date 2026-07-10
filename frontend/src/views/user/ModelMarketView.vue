@@ -199,7 +199,7 @@
 
             <div class="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400">
               <span>{{ t('modelMarket.effectiveRate') }}</span>
-              <span>{{ selectedMultiplierLabel(model.kind === 'video' ? BILLING_MODE_VIDEO : model.pricing?.billing_mode) }}</span>
+              <span>{{ selectedMultiplierLabel(multiplierModeForModel(model)) }}</span>
             </div>
           </article>
         </section>
@@ -556,10 +556,23 @@ function formatSelectedVideoTier(model: GroupMarketModel, resolution: VideoResol
 
 function formatSelectedVideoTierLabel(model: GroupMarketModel, resolution: VideoResolution): string {
   const resolved = selectedVideoQuote(model, resolution)
-  const unit = resolved?.billingUnit === 'request'
+  const usesRequestUnit = resolved?.billingUnit === 'request' || (
+    !resolved && (
+      model.pricing?.billing_mode === BILLING_MODE_IMAGE ||
+      model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST
+    )
+  )
+  const unit = usesRequestUnit
     ? t('modelMarket.columns.perRequest')
-    : 's'
+    : t('modelTest.perSecond')
   return `${resolution} / ${unit}`
+}
+
+function multiplierModeForModel(model: GroupMarketModel): BillingMode | undefined {
+  if (model.kind === 'video' && model.pricing?.billing_mode !== BILLING_MODE_TOKEN) {
+    return BILLING_MODE_VIDEO
+  }
+  return model.pricing?.billing_mode
 }
 
 function selectedMultiplierLabel(mode?: BillingMode): string {

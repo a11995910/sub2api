@@ -328,6 +328,7 @@ import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
+  normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
   type VideoBillingUnit,
   type VideoResolution,
@@ -511,12 +512,24 @@ const canRun = computed(() =>
   prompt.value.trim().length > 0,
 )
 
+const selectedVideoBillingContext = computed(() => {
+  const model = selectedModel.value
+  if (!model || model.kind !== 'video') return null
+  const modelName = normalizeVideoBillingModelName(model.name, referenceImages.value.length > 0)
+  return {
+    modelName,
+    pricing: pricingForVideoBillingModel(model, modelName),
+  }
+})
+
 const selectedRateLabel = computed(() => {
   if (!selectedGroup.value) return '-'
   const rate = selectedKind.value === 'image'
     ? effectiveImageRate(selectedGroup.value)
     : selectedKind.value === 'video'
-      ? effectiveVideoRate(selectedGroup.value)
+      ? selectedVideoBillingContext.value?.pricing?.billing_mode === BILLING_MODE_TOKEN
+        ? effectiveTextRate(selectedGroup.value)
+        : effectiveVideoRate(selectedGroup.value)
       : effectiveTextRate(selectedGroup.value)
   return `${formatMultiplier(rate)}x`
 })
@@ -536,10 +549,12 @@ const currentPricePreview = computed(() => {
       : `${tierLabel} ${formatScaled(price * effectiveImageRate(group), 1)} / ${t('modelTest.perImage')}`
   }
   if (selectedKind.value === 'video') {
+    const billingContext = selectedVideoBillingContext.value
+    if (!billingContext) return '-'
     const resolved = resolveVideoPriceQuote({
       group,
-      pricing: model.pricing,
-      modelName: model.displayName,
+      pricing: billingContext.pricing,
+      modelName: billingContext.modelName,
       resolution: videoResolution.value,
       userGroupRate: userGroupRates.value[group.id],
     })
@@ -651,7 +666,7 @@ function formatVideoQuote(
   duration: number,
 ): string {
   const unit = billingUnit === 'second'
-    ? `${duration}s`
+    ? `${duration}${t('modelTest.perSecond')}`
     : t('availableChannels.pricing.billingModePerRequest')
   return `${resolution} ${formatScaled(total, 1)} / ${unit}`
 }
@@ -672,6 +687,21 @@ function modelSupportsGroup(model: TestModelOption, groupID: number | null): boo
 
 function modelsForGroupID(groupID: number | null): TestModelOption[] {
   return allModels.value.filter((model) => modelSupportsGroup(model, groupID))
+}
+
+function pricingForVideoBillingModel(
+  selected: TestModelOption,
+  billingModelName: string,
+): UserSupportedModelPricing | null {
+  if (selected.name === billingModelName || selected.displayName === billingModelName) {
+    return selected.pricing
+  }
+  const matched = modelsInSelectedGroup.value.find((model) =>
+    model.kind === 'video' &&
+    model.platform === selected.platform &&
+    (model.name === billingModelName || model.displayName === billingModelName),
+  )
+  return matched?.pricing ?? null
 }
 
 function modelSupportsCurrentEndpoint(model: TestModelOption): boolean {
