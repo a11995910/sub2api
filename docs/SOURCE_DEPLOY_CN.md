@@ -189,7 +189,75 @@ git rev-parse --short HEAD
 
 `repo/` 是干净 Git 工作区，只负责拉取、切分支和构建镜像；`.env`、证书、数据库目录和业务数据不得写入 `repo/` 或 Git。
 
-新 VPS 的环境 compose 文件只保存 staging 或 prod 差异，不能脱离仓库基础文件单独运行。所有 `up`、`ps`、`logs` 操作都必须同时叠加 `/opt/sub2api/repo/deploy/docker-compose.yml` 和对应环境的 override 文件，并固定 `-p` 项目名与 `--env-file`，避免两个环境共享默认项目名或漏加载基础服务定义。
+新 VPS 的环境 compose 文件只保存 staging 或 prod 差异，不能脱离仓库基础文件单独运行。所有 `config`、`up`、`ps`、`logs` 操作都必须同时叠加 `/opt/sub2api/repo/deploy/docker-compose.yml` 和对应环境的 override 文件，并固定 `-p` 项目名与 `--env-file`，避免两个环境共享默认项目名或漏加载基础服务定义。
+
+### 环境 override 与镜像变量门禁
+
+仓库基础 compose 当前为本地快速启动保留了默认镜像和固定容器名。发布前必须实际检查新 VPS 上的 staging、prod override，不能假定线上文件已经覆盖这些值。两个 override 都必须：
+
+- 用 `${SUB2API_IMAGE:?SUB2API_IMAGE is required}` 覆盖 `sub2api` 服务镜像，使缺少目标镜像变量时 compose 直接失败。
+- 分别覆盖 `sub2api`、`postgres`、`redis` 的 `container_name`，保证 staging 与 prod 三个容器名互不冲突。
+- 继续通过各自 `.env` 设置独立的 `BIND_HOST`、`SERVER_PORT`、数据库、Redis 和密钥；不得复用另一环境的 `.env`。
+
+staging override `/opt/sub2api/compose/staging/docker-compose.yml` 至少包含：
+
+```yaml
+services:
+  sub2api:
+    image: ${SUB2API_IMAGE:?SUB2API_IMAGE is required}
+    container_name: sub2api-staging
+  postgres:
+    container_name: sub2api-staging-postgres
+  redis:
+    container_name: sub2api-staging-redis
+```
+
+prod override `/opt/sub2api/compose/prod/docker-compose.yml` 至少包含：
+
+```yaml
+services:
+  sub2api:
+    image: ${SUB2API_IMAGE:?SUB2API_IMAGE is required}
+    container_name: sub2api-prod
+  postgres:
+    container_name: sub2api-prod-postgres
+  redis:
+    container_name: sub2api-prod-redis
+```
+
+每个 `.env` 必须预先且仅有一行 `SUB2API_IMAGE=`。下面的 root-only 脚本先保留带权限和属主的备份，再在原文件同目录生成临时文件，核对唯一目标值后用 `mv` 原子替换。staging、prod 更新和回滚都必须调用该脚本；备份目录含敏感配置，只允许 root 读取，不得输出内容或写入 Git：
+
+```bash
+ssh sub2api-new-vps
+install -d -m 0700 /opt/sub2api/backups /opt/sub2api/scripts
+umask 077
+tee /opt/sub2api/scripts/update-sub2api-image >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$#" -eq 3
+env_file="$1"
+target_image="$2"
+backup_prefix="$3"
+timestamp="$(date +%Y%m%d-%H%M%S)"
+
+test -f "$env_file"
+test "$(grep -c '^SUB2API_IMAGE=' "$env_file")" -eq 1
+cp -a -- "$env_file" "/opt/sub2api/backups/${backup_prefix}.env.${timestamp}"
+
+umask 077
+tmp="$(mktemp "${env_file}.new.XXXXXX")"
+trap 'rm -f -- "$tmp"' EXIT
+sed "s|^SUB2API_IMAGE=.*$|SUB2API_IMAGE=${target_image}|" "$env_file" > "$tmp"
+test "$(grep -c '^SUB2API_IMAGE=' "$tmp")" -eq 1
+test "$(grep -Fxc "SUB2API_IMAGE=${target_image}" "$tmp")" -eq 1
+chmod --reference="$env_file" "$tmp"
+chown --reference="$env_file" "$tmp"
+mv -f -- "$tmp" "$env_file"
+trap - EXIT
+SCRIPT
+chmod 0700 /opt/sub2api/scripts/update-sub2api-image
+```
 
 ### staging 构建与发布
 
@@ -216,28 +284,94 @@ docker buildx build \
   --load .
 docker run --rm "sub2api:staging-$commit" --version
 
+env_file=/opt/sub2api/env/staging/.env
+target_image="sub2api:staging-$commit"
+/opt/sub2api/scripts/update-sub2api-image "$env_file" "$target_image" staging
+
 cd /opt/sub2api/repo/deploy
-docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml \
-  up -d
-docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml \
-  ps
+compose_staging() {
+  docker compose -p sub2api-staging \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/staging/docker-compose.yml "$@"
+}
+
+compose_staging config -q
+resolved_images="$(compose_staging config --images)"
+test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$target_image" || true)" -eq 1
+compose_staging up -d
+container_id="$(compose_staging ps -q sub2api)"
+test -n "$container_id"
+test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
+compose_staging ps
 curl -I http://127.0.0.1:18080/health
-docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml \
-  logs --tail=200 sub2api
+compose_staging logs --tail=200 sub2api
 ```
+
+`config -q` 只验证 compose 结构；随后对 `config --images` 的精确计数断言用于证明最终合并配置只引用一次目标应用镜像。`up` 后还必须通过 `compose ps -q sub2api` 定位真实容器，再由 `docker inspect` 证明实际运行 tag 与目标 tag 相同，三项均通过才算发布成功。
+
+staging 功能验收必须使用隔离测试账号、渠道、分组、API Key 和唯一请求 ID，开始前记录所有测试对象 ID 及余额基线。以下快照命令在上述 staging 发布的同一 SSH 会话执行；若已开启新会话，必须先按 staging 发布段重新定义 `env_file` 和 `compose_staging()`。测试前先确认 PostgreSQL 容器确实属于 `sub2api-staging` compose project，并生成可读的完整数据库快照：
+
+```bash
+postgres_id="$(compose_staging ps -q postgres)"
+test -n "$postgres_id"
+test "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$postgres_id")" = "sub2api-staging"
+
+timestamp="$(date +%Y%m%d-%H%M%S)"
+staging_snapshot="/opt/sub2api/backups/staging-before-video-test-${timestamp}.dump"
+umask 077
+compose_staging exec -T postgres sh -c \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$staging_snapshot"
+test -s "$staging_snapshot"
+chmod 0600 "$staging_snapshot"
+```
+
+验收后优先通过对应管理接口删除测试对象，并核对测试请求、余额和定价记录已清理；不能只删除渠道而保留用量或余额副作用。若接口无法完整清理，只能在确认无人并行使用 staging 后恢复上述快照：
+
+```bash
+ssh sub2api-new-vps
+cd /opt/sub2api/repo/deploy
+env_file=/opt/sub2api/env/staging/.env
+compose_staging() {
+  docker compose -p sub2api-staging \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/staging/docker-compose.yml "$@"
+}
+
+staging_snapshot='填写已验证可读的 staging-before-video-test-*.dump 绝对路径'
+test -s "$staging_snapshot"
+postgres_id="$(compose_staging ps -q postgres)"
+test -n "$postgres_id"
+test "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$postgres_id")" = "sub2api-staging"
+
+compose_staging stop sub2api
+compose_staging exec -T postgres sh -c \
+  'pg_restore --exit-on-error --clean --if-exists --no-owner -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < "$staging_snapshot"
+compose_staging exec -T redis redis-cli FLUSHDB
+compose_staging up -d sub2api
+compose_staging ps
+curl -I http://127.0.0.1:18080/health
+```
+
+快照恢复只能针对 `sub2api-staging` 项目及 staging 数据卷；不得对 prod 执行 staging 清理命令，也不得把 staging 数据复制到 prod。恢复前若 project 标签、快照文件或独占窗口任一项无法确认，停止清理并保留测试对象 ID 供人工处理。
 
 ### prod 切换与回滚
 
-prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。prod 发布前应记录当前运行镜像 tag，确保可以快速回滚：
+prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。当前生产盘点为只有历史 `image/per_request` 视频定价，没有显式 `video` 定价；发布前仍必须用真实表查询再次确认，不能把盘点结论当作永久事实：
+
+```sql
+SELECT 'channel_model_pricing' AS source, COUNT(*) AS video_count
+FROM channel_model_pricing
+WHERE billing_mode = 'video'
+UNION ALL
+SELECT 'channel_account_stats_model_pricing' AS source, COUNT(*) AS video_count
+FROM channel_account_stats_model_pricing
+WHERE billing_mode = 'video';
+```
+
+查询结果均为 `0` 时，旧镜像在观察窗口内仍能按原有 `image/per_request` 语义处理现存配置，可以作为镜像回滚目标。prod 更新前还必须记录当前运行镜像 tag、容器内 `--version` 输出、目标 Git commit，并确认数据库已有可恢复备份；同时备份当前 prod `.env`。定价恢复材料至少应覆盖 `channel_model_pricing`、`channel_pricing_intervals`、`channel_account_stats_model_pricing` 和 `channel_account_stats_pricing_intervals`，不得只保存页面截图。
 
 ```bash
 ssh sub2api-new-vps
@@ -251,30 +385,116 @@ test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 
 commit="$(git rev-parse --short=12 HEAD)"
+date="$(git show -s --format=%cI HEAD)"
 docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
-  docker buildx build -f deploy/Dockerfile -t "sub2api:prod-$commit" --load .
+  docker buildx build \
+    -f deploy/Dockerfile \
+    --build-arg COMMIT="$commit" \
+    --build-arg DATE="$date" \
+    -t "sub2api:prod-$commit" \
+    --load .
 docker run --rm "sub2api:prod-$commit" --version
 
 cd /opt/sub2api/repo/deploy
-docker compose -p sub2api-prod \
-  --env-file /opt/sub2api/env/prod/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/prod/docker-compose.yml \
-  up -d
-docker compose -p sub2api-prod \
-  --env-file /opt/sub2api/env/prod/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/prod/docker-compose.yml \
-  ps
+env_file=/opt/sub2api/env/prod/.env
+compose_prod() {
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml "$@"
+}
+
+compose_prod config -q
+current_container_id="$(compose_prod ps -q sub2api)"
+test -n "$current_container_id"
+previous_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
+test -n "$previous_image"
+previous_version="$(docker exec "$current_container_id" /app/sub2api --version)"
+test -n "$previous_version"
+
+timestamp="$(date +%Y%m%d-%H%M%S)"
+release_record="/opt/sub2api/backups/prod-release-before-${timestamp}.txt"
+pricing_backup="/opt/sub2api/backups/prod-pricing-before-${timestamp}.dump"
+umask 077
+
+video_counts="$(
+  compose_prod exec -T postgres sh -c \
+    'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F ":"' <<'SQL'
+SELECT 'channel_model_pricing', COUNT(*)
+FROM channel_model_pricing
+WHERE billing_mode = 'video'
+UNION ALL
+SELECT 'channel_account_stats_model_pricing', COUNT(*)
+FROM channel_account_stats_model_pricing
+WHERE billing_mode = 'video';
+SQL
+)"
+test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_model_pricing:0' || true)" -eq 1
+test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_account_stats_model_pricing:0' || true)" -eq 1
+test "$(printf '%s\n' "$video_counts" | wc -l)" -eq 2
+
+compose_prod exec -T postgres sh -c \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --data-only --table=channel_model_pricing --table=channel_pricing_intervals --table=channel_account_stats_model_pricing --table=channel_account_stats_pricing_intervals' \
+  > "$pricing_backup"
+test -s "$pricing_backup"
+chmod 0600 "$pricing_backup"
+
+{
+  printf 'previous_image=%s\n' "$previous_image"
+  printf 'previous_version=%s\n' "$previous_version"
+  printf 'target_commit=%s\n' "$expected_commit"
+} > "$release_record"
+chmod 0600 "$release_record"
+
+target_image="sub2api:prod-$commit"
+/opt/sub2api/scripts/update-sub2api-image "$env_file" "$target_image" prod
+compose_prod config -q
+resolved_images="$(compose_prod config --images)"
+test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$target_image" || true)" -eq 1
+compose_prod up -d
+container_id="$(compose_prod ps -q sub2api)"
+test -n "$container_id"
+test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
+compose_prod ps
 curl -I http://127.0.0.1:8080/health
-docker compose -p sub2api-prod \
-  --env-file /opt/sub2api/env/prod/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/prod/docker-compose.yml \
-  logs --tail=200 sub2api
+compose_prod logs --tail=200 sub2api
 ```
 
-回滚优先切回上一版 `sub2api:prod-<commit>` 镜像 tag，而不是重新构建或覆盖二进制。回滚后仍需验证容器状态、健康接口、管理端账号页、关键 API 和日志。
+prod 更新完成后先进入不写入显式 `video` 定价的观察窗口。只要上述两张真实定价表仍无 `billing_mode='video'`，可以把发布前记录的 `previous_image` 原子写回 `.env`，经 compose 解析断言后切回旧镜像：
+
+```bash
+ssh sub2api-new-vps
+cd /opt/sub2api/repo/deploy
+env_file=/opt/sub2api/env/prod/.env
+compose_prod() {
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml "$@"
+}
+
+# rollback_image 必须填写 prod-release-before-*.txt 中记录且本机仍存在的 previous_image。
+rollback_image='填写发布前记录的旧镜像 tag'
+docker image inspect "$rollback_image" >/dev/null
+
+/opt/sub2api/scripts/update-sub2api-image "$env_file" "$rollback_image" prod-rollback
+compose_prod config -q
+resolved_images="$(compose_prod config --images)"
+test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$rollback_image" || true)" -eq 1
+compose_prod up -d --no-deps sub2api
+container_id="$(compose_prod ps -q sub2api)"
+test -n "$container_id"
+test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$rollback_image"
+compose_prod ps
+curl -I http://127.0.0.1:8080/health
+compose_prod logs --tail=200 sub2api
+```
+
+一旦 prod 任一真实定价表写入显式 `billing_mode='video'`，其 `per_request_price` 和分辨率层级价格就表示每秒价格。此后禁止直接回滚到把 video 按请求次数解释的旧镜像，否则会错误计费且旧管理端可能无法保存该配置；应优先保持新镜像并滚前修复。
+
+如果显式 video 写入后必须紧急回滚，先停止相关视频流量或禁用受影响渠道，再根据发布前数据库备份恢复原始定价记录，并重新执行上面的两张真实表查询，确认所有 `video_count` 均为 `0` 后才能切旧镜像。不得把每秒价格直接改成 `image/per_request`，不得按固定时长猜测换算，也不得用全库回档覆盖观察窗口内的其他生产写入。无法证明原定价已准确恢复时，继续停用相关渠道并采用滚前修复。
+
+回滚后仍需验证容器状态、实际镜像 tag、健康接口、管理端账号页、关键 API 和日志。发布与回滚期间都要保留当前运行镜像和 `previous_image`，清理构建缓存时不得删除回滚 tag。
 
 Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查，不允许在容器内执行在线更新、在线回退或覆盖 `/app/sub2api`；镜像化环境必须通过本节的 Git commit 镜像 tag 完成升级与回滚，避免覆盖定制代码或在容器重建后丢失回退结果。
 
