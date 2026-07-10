@@ -29,6 +29,16 @@ export interface ImageEditTestRequest extends GatewayTestOptions {
   images: File[]
 }
 
+export interface VideoGenerationTestRequest extends GatewayTestOptions {
+  model: string
+  prompt: string
+  resolution?: string
+  duration?: number
+  imageDataUrl?: string
+  pollIntervalMs?: number
+  timeoutMs?: number
+}
+
 export class ModelTestError extends Error {
   status: number
   payload: unknown
@@ -42,7 +52,7 @@ export class ModelTestError extends Error {
 }
 
 async function postGateway<T>(
-  path: '/v1/chat/completions' | '/v1/images/generations',
+  path: '/v1/chat/completions' | '/v1/images/generations' | '/v1/videos/generations',
   apiKey: string,
   payload: Record<string, unknown>,
   signal?: AbortSignal,
@@ -58,6 +68,23 @@ async function postGateway<T>(
     signal,
   })
 
+  const text = await response.text()
+  const data = parseMaybeJSON(text)
+  if (!response.ok) {
+    throw new ModelTestError(extractGatewayErrorMessage(data, text, response.status), response.status, data)
+  }
+  return data as T
+}
+
+async function getGateway<T>(path: string, apiKey: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json',
+    },
+    signal,
+  })
   const text = await response.text()
   const data = parseMaybeJSON(text)
   if (!response.ok) {
@@ -172,8 +199,71 @@ export async function testImageEdit(req: ImageEditTestRequest): Promise<unknown>
   )
 }
 
+export async function testVideoGeneration(req: VideoGenerationTestRequest): Promise<unknown> {
+  const payload: Record<string, unknown> = {
+    model: req.model,
+    prompt: req.prompt,
+  }
+  if (req.resolution?.trim()) payload.resolution = req.resolution.trim()
+  if (Number.isFinite(req.duration)) payload.duration = Math.max(1, Math.min(15, Math.floor(Number(req.duration))))
+  if (req.imageDataUrl?.trim()) payload.image = { image_url: req.imageDataUrl.trim() }
+
+  const created = await postGateway<unknown>('/v1/videos/generations', req.apiKey, payload, req.signal)
+  if (extractVideoURL(created)) return created
+  const requestID = extractVideoRequestID(created)
+  if (!requestID) {
+    throw new ModelTestError('Video generation response did not include request_id', 502, created)
+  }
+
+  const pollIntervalMs = Math.max(0, req.pollIntervalMs ?? 2000)
+  const timeoutMs = Math.max(1000, req.timeoutMs ?? 5 * 60 * 1000)
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await waitForPoll(pollIntervalMs, req.signal)
+    const statusPayload = await getGateway<unknown>(`/v1/videos/${encodeURIComponent(requestID)}`, req.apiKey, req.signal)
+    const status = extractVideoStatus(statusPayload)
+    if (extractVideoURL(statusPayload) || ['completed', 'succeeded', 'success', 'done'].includes(status)) {
+      return statusPayload
+    }
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
+      throw new ModelTestError(extractGatewayErrorMessage(statusPayload, '', 502), 502, statusPayload)
+    }
+  }
+  throw new ModelTestError('Video generation timed out', 408, created)
+}
+
+function extractVideoRequestID(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+  const obj = payload as Record<string, any>
+  return String(obj.request_id || obj.id || obj.data?.request_id || obj.data?.id || obj.video?.request_id || obj.video?.id || '').trim()
+}
+
+export function extractVideoURL(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+  const obj = payload as Record<string, any>
+  return String(obj.url || obj.video_url || obj.data?.url || obj.data?.video_url || obj.video?.url || obj.video?.video_url || '').trim()
+}
+
+function extractVideoStatus(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+  const obj = payload as Record<string, any>
+  return String(obj.status || obj.data?.status || obj.video?.status || '').trim().toLowerCase()
+}
+
+function waitForPoll(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }, { once: true })
+  })
+}
+
 export default {
   testChatCompletion,
   testImageGeneration,
   testImageEdit,
+  testVideoGeneration,
 }

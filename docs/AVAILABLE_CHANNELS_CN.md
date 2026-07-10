@@ -66,6 +66,7 @@
 - 文本、缓存、按次模型：`原始价格 * 当前有效分组倍率`。
 - 用户存在专属分组倍率时，优先使用 `/api/v1/groups/rates` 返回的专属倍率。
 - 图片计费模型：若 `image_rate_independent=true`，使用 `image_rate_multiplier`；否则使用当前有效分组倍率。
+- 视频计费模型：若 `video_rate_independent=true`，使用 `video_rate_multiplier`；否则使用当前有效分组倍率；总价按分辨率每秒价格乘以视频时长。
 - 启用 `cache_hit_quarter_to_input_enabled` 的分组，缓存读取 token 会先按四分之一划入输入 token 后再计算费用和写入用量日志；统计、账单、余额消耗都读取调整后的用量日志，保持同一展示口径。
 
 如果同一平台下用户可访问多个分组，价格卡会按分组分别展示最终价格，避免用户误以为所有分组价格相同。

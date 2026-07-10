@@ -85,6 +85,17 @@ func TestToUserSupportedModels_MarksImagePricingKind(t *testing.T) {
 	require.Equal(t, modelKindToken, out[1].Kind)
 }
 
+func TestToUserSupportedModels_MarksVideoPricingKind(t *testing.T) {
+	models := toUserSupportedModels([]service.SupportedModel{{
+		Name:     "grok-imagine-video-1.5",
+		Platform: service.PlatformGrok,
+		Pricing:  &service.ChannelModelPricing{BillingMode: service.BillingModeVideo},
+	}}, nil)
+
+	require.Len(t, models, 1)
+	require.Equal(t, modelKindVideo, models[0].Kind)
+}
+
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	// 通过序列化 userAvailableChannel 结构体验证响应形状：
 	// 只有 name / description / platforms；不含管理端字段。

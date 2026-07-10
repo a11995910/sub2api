@@ -24,6 +24,15 @@
                 <Icon name="sparkles" size="sm" />
                 {{ t('modelTest.modes.image') }}
               </button>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+                :class="selectedKind === 'video' ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300' : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'"
+                @click="selectedKind = 'video'"
+              >
+                <Icon name="play" size="sm" />
+                {{ t('modelTest.modes.video') }}
+              </button>
             </div>
           </div>
 
@@ -148,17 +157,31 @@
                   </option>
                 </select>
               </div>
-              <div v-else>
+              <div v-else-if="selectedKind === 'token'">
                 <label class="input-label">{{ t('modelTest.fields.maxTokens') }}</label>
                 <input v-model.number="maxTokens" type="number" min="1" max="4096" class="input" />
               </div>
+              <div v-else class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="input-label">{{ t('modelTest.fields.videoResolution') }}</label>
+                  <select v-model="videoResolution" class="input">
+                    <option value="480p">480p</option>
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('modelTest.fields.videoDuration') }}</label>
+                  <input v-model.number="videoDuration" type="number" min="1" max="15" class="input" />
+                </div>
+              </div>
             </div>
 
-            <div v-if="selectedKind === 'image'" class="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/50">
+            <div v-if="selectedKind === 'image' || selectedKind === 'video'" class="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/50">
               <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <label class="input-label mb-1">{{ t('modelTest.fields.referenceImages') }}</label>
-                  <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('modelTest.referenceImagesHint') }}</p>
+                  <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ selectedKind === 'video' ? t('modelTest.videoReferenceImageHint') : t('modelTest.referenceImagesHint') }}</p>
                 </div>
                 <label
                   class="btn btn-secondary cursor-pointer"
@@ -167,7 +190,7 @@
                   <input
                     type="file"
                     accept="image/*"
-                    multiple
+                    :multiple="selectedKind === 'image'"
                     class="hidden"
                     :disabled="referenceImagesFull || running"
                     @change="handleReferenceImagesSelected"
@@ -262,6 +285,10 @@
               </figure>
             </div>
 
+            <div v-if="selectedKind === 'video' && videoOutputURL" class="overflow-hidden rounded-lg border border-gray-100 bg-black dark:border-dark-700">
+              <video :src="videoOutputURL" controls playsinline class="max-h-[640px] w-full" />
+            </div>
+
             <div v-if="selectedKind === 'token' && chatOutput" class="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-800/60 dark:text-gray-100">
               {{ chatOutput }}
             </div>
@@ -293,7 +320,7 @@ import userChannelsAPI, {
 } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import keysAPI from '@/api/keys'
-import { ModelTestError, testChatCompletion, testImageEdit, testImageGeneration } from '@/api/modelTest'
+import { extractVideoURL, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
@@ -309,6 +336,7 @@ import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
+  BILLING_MODE_VIDEO,
   type BillingMode,
 } from '@/constants/channel'
 import type { ApiKey, GroupPlatform } from '@/types'
@@ -351,6 +379,8 @@ const selectedApiKeyId = ref<number | null>(null)
 const prompt = ref('')
 const adaptiveImageSizeValue = ADAPTIVE_IMAGE_SIZE_VALUE
 const imageSize = ref(adaptiveImageSizeValue)
+const videoResolution = ref('720p')
+const videoDuration = ref(8)
 const referenceImages = ref<ReferenceImage[]>([])
 const imageUploadError = ref('')
 const maxTokens = ref(256)
@@ -452,16 +482,20 @@ const hasKeyForSelectedGroup = computed(() => {
   return activeKeyOptions.value.some((key) => groupIDFromKey(key) === selectedGroupId.value)
 })
 const selectedApiKey = computed(() => activeKeys.value.find((key) => key.id === selectedApiKeyId.value) || null)
-const referenceImagesFull = computed(() => referenceImages.value.length >= maxReferenceImages)
+const referenceImagesFull = computed(() => referenceImages.value.length >= (selectedKind.value === 'video' ? 1 : maxReferenceImages))
 const promptPlaceholder = computed(() =>
   selectedKind.value === 'image'
     ? t('modelTest.placeholders.imagePrompt')
+    : selectedKind.value === 'video'
+      ? t('modelTest.placeholders.videoPrompt')
     : t('modelTest.placeholders.textPrompt'),
 )
 
 const gatewayEndpoint = computed(() =>
   selectedKind.value === 'image'
     ? referenceImages.value.length > 0 ? '/v1/images/edits' : '/v1/images/generations'
+    : selectedKind.value === 'video'
+      ? '/v1/videos/generations'
     : '/v1/chat/completions',
 )
 
@@ -476,7 +510,9 @@ const selectedRateLabel = computed(() => {
   if (!selectedGroup.value) return '-'
   const rate = selectedKind.value === 'image'
     ? effectiveImageRate(selectedGroup.value)
-    : effectiveTextRate(selectedGroup.value)
+    : selectedKind.value === 'video'
+      ? effectiveVideoRate(selectedGroup.value)
+      : effectiveTextRate(selectedGroup.value)
   return `${formatMultiplier(rate)}x`
 })
 
@@ -494,11 +530,18 @@ const currentPricePreview = computed(() => {
       ? imageTierPrices(group)
       : `${tierLabel} ${formatScaled(price * effectiveImageRate(group), 1)} / ${t('modelTest.perImage')}`
   }
+  if (selectedKind.value === 'video') {
+    const price = videoResolutionBasePrice(group, videoResolution.value)
+    return price == null
+      ? videoResolutionPrices(group)
+      : `${videoResolution.value} ${formatScaled(price * effectiveVideoRate(group) * normalizedVideoDuration(), 1)} / ${normalizedVideoDuration()}s`
+  }
   return textPricePreview(model.pricing, group)
 })
 
 const chatOutput = computed(() => selectedKind.value === 'token' ? extractChatText(rawResponse.value) : '')
 const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImageOutputs(rawResponse.value) : [])
+const videoOutputURL = computed(() => selectedKind.value === 'video' ? extractVideoURL(rawResponse.value) : '')
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
 watch(selectedKind, (kind) => {
@@ -530,8 +573,14 @@ function effectiveImageRate(group: UserAvailableGroup): number {
   return group.image_rate_independent ? group.image_rate_multiplier : effectiveTextRate(group)
 }
 
+function effectiveVideoRate(group: UserAvailableGroup): number {
+  return group.video_rate_independent ? (group.video_rate_multiplier ?? 1) : effectiveTextRate(group)
+}
+
 function effectiveMultiplier(group: UserAvailableGroup, mode?: BillingMode): number {
-  return mode === BILLING_MODE_IMAGE ? effectiveImageRate(group) : effectiveTextRate(group)
+  if (mode === BILLING_MODE_IMAGE) return effectiveImageRate(group)
+  if (mode === BILLING_MODE_VIDEO) return effectiveVideoRate(group)
+  return effectiveTextRate(group)
 }
 
 function textPricePreview(pricing: UserSupportedModelPricing | null, group: UserAvailableGroup): string {
@@ -541,6 +590,9 @@ function textPricePreview(pricing: UserSupportedModelPricing | null, group: User
   }
   if (pricing.billing_mode === BILLING_MODE_IMAGE) {
     return imageTierPrices(group)
+  }
+  if (pricing.billing_mode === BILLING_MODE_VIDEO) {
+    return videoResolutionPrices(group)
   }
   if (pricing.billing_mode === BILLING_MODE_TOKEN) {
     const input = formatPrice(pricing.input_price, perMillionScale, group, pricing.billing_mode)
@@ -579,6 +631,22 @@ function imageTierPrices(group: UserAvailableGroup): string {
   ]
     .map(([tier, value]) => `${tier} ${typeof value === 'number' ? formatScaled(value * effectiveImageRate(group), 1) : '-'}`)
     .join(' / ')
+}
+
+function videoResolutionBasePrice(group: UserAvailableGroup, resolution: string): number | null {
+  switch (resolution.toLowerCase()) {
+    case '480p': return group.video_price_480p ?? null
+    case '1080p': return group.video_price_1080p ?? null
+    default: return group.video_price_720p ?? null
+  }
+}
+
+function videoResolutionPrices(group: UserAvailableGroup): string {
+  return [
+    ['480p', group.video_price_480p ?? null],
+    ['720p', group.video_price_720p ?? null],
+    ['1080p', group.video_price_1080p ?? null],
+  ].map(([resolution, value]) => `${resolution} ${typeof value === 'number' ? formatScaled(value * effectiveVideoRate(group), 1) : '-'}/${t('modelTest.perSecond')}`).join(' / ')
 }
 
 function imageSizeTier(size: string): string {
@@ -685,7 +753,7 @@ function applyQuerySelection() {
   selectedGroupId.value = targetKey ? groupIDFromKey(targetKey) : queryGroupID
 
   const groupModels = modelsForGroupID(selectedGroupId.value)
-  if (queryKind === 'token' || queryKind === 'image') {
+  if (queryKind === 'token' || queryKind === 'image' || queryKind === 'video') {
     selectedKind.value = queryKind
   } else {
     selectedKind.value = selectAvailableModelKind(groupModels, selectedKind.value)
@@ -779,6 +847,16 @@ async function runTest() {
           size: imageSize.value,
           signal: runController.signal,
         })
+    } else if (selectedKind.value === 'video') {
+      rawResponse.value = await testVideoGeneration({
+        apiKey: apiKey.key,
+        model: model.name,
+        prompt: cleanPrompt,
+        resolution: videoResolution.value,
+        duration: normalizedVideoDuration(),
+        imageDataUrl: referenceImages.value[0] ? await fileToDataURL(referenceImages.value[0].file) : undefined,
+        signal: runController.signal,
+      })
     } else {
       rawResponse.value = await testChatCompletion({
         apiKey: apiKey.key,
@@ -810,6 +888,21 @@ function normalizedMaxTokens(): number {
   return Math.max(1, Math.min(4096, Math.floor(parsed)))
 }
 
+function normalizedVideoDuration(): number {
+  const parsed = Number(videoDuration.value)
+  if (!Number.isFinite(parsed)) return 8
+  return Math.max(1, Math.min(15, Math.floor(parsed)))
+}
+
+function fileToDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error('Failed to read reference image'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function cancelRunning() {
   runController?.abort()
   running.value = false
@@ -821,9 +914,10 @@ function handleReferenceImagesSelected(event: Event) {
   imageUploadError.value = ''
   if (files.length === 0) return
 
-  const remainingSlots = maxReferenceImages - referenceImages.value.length
+  const activeLimit = selectedKind.value === 'video' ? 1 : maxReferenceImages
+  const remainingSlots = activeLimit - referenceImages.value.length
   if (remainingSlots <= 0) {
-    imageUploadError.value = t('modelTest.referenceImageLimit', { count: maxReferenceImages })
+    imageUploadError.value = t('modelTest.referenceImageLimit', { count: activeLimit })
     input.value = ''
     return
   }
@@ -848,7 +942,7 @@ function handleReferenceImagesSelected(event: Event) {
   }
 
   if (files.length > remainingSlots) {
-    imageUploadError.value = t('modelTest.referenceImageLimit', { count: maxReferenceImages })
+    imageUploadError.value = t('modelTest.referenceImageLimit', { count: activeLimit })
   }
   referenceImages.value = [...referenceImages.value, ...accepted]
   input.value = ''

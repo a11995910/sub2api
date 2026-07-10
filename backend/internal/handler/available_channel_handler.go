@@ -71,6 +71,11 @@ type userAvailableGroup struct {
 	ImagePrice1K                *float64 `json:"image_price_1k"`
 	ImagePrice2K                *float64 `json:"image_price_2k"`
 	ImagePrice4K                *float64 `json:"image_price_4k"`
+	VideoRateIndependent        bool     `json:"video_rate_independent"`
+	VideoRateMultiplier         float64  `json:"video_rate_multiplier"`
+	VideoPrice480P              *float64 `json:"video_price_480p"`
+	VideoPrice720P              *float64 `json:"video_price_720p"`
+	VideoPrice1080P             *float64 `json:"video_price_1080p"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
@@ -250,6 +255,11 @@ func filterUserVisibleGroups(
 			ImagePrice1K:                g.ImagePrice1K,
 			ImagePrice2K:                g.ImagePrice2K,
 			ImagePrice4K:                g.ImagePrice4K,
+			VideoRateIndependent:        g.VideoRateIndependent,
+			VideoRateMultiplier:         g.VideoRateMultiplier,
+			VideoPrice480P:              g.VideoPrice480P,
+			VideoPrice720P:              g.VideoPrice720P,
+			VideoPrice1080P:             g.VideoPrice1080P,
 		})
 	}
 	return visible
@@ -258,11 +268,17 @@ func filterUserVisibleGroups(
 const (
 	modelKindToken = "token"
 	modelKindImage = "image"
+	modelKindVideo = "video"
 )
 
 func modelKindForPricing(p *service.ChannelModelPricing) string {
-	if p != nil && p.BillingMode == service.BillingModeImage {
-		return modelKindImage
+	if p != nil {
+		switch p.BillingMode {
+		case service.BillingModeImage:
+			return modelKindImage
+		case service.BillingModeVideo:
+			return modelKindVideo
+		}
 	}
 	return modelKindToken
 }
@@ -270,7 +286,7 @@ func modelKindForPricing(p *service.ChannelModelPricing) string {
 func filterGroupsForModelKind(groups []userAvailableGroup, kind string) []userAvailableGroup {
 	out := make([]userAvailableGroup, 0, len(groups))
 	for _, g := range groups {
-		if kind == modelKindImage {
+		if kind == modelKindImage || kind == modelKindVideo {
 			if g.AllowImageGeneration {
 				out = append(out, g)
 			}

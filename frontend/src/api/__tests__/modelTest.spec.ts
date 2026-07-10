@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { testImageEdit, testImageGeneration } from '@/api/modelTest'
+import { testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
 
 describe('modelTest api', () => {
   afterEach(() => {
@@ -81,5 +81,48 @@ describe('modelTest api', () => {
     expect(uploaded?.name).toBe('source.png')
     expect(uploaded?.type).toBe('image/png')
     expect(uploaded?.size).toBe(image.size)
+  })
+
+  it('视频生成会创建任务并轮询到完成状态', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('{"request_id":"video-123"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('{"id":"video-123","status":"pending"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('{"id":"video-123","status":"completed","video":{"url":"https://cdn.test/video.mp4"}}'),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await testVideoGeneration({
+      apiKey: 'sk-test',
+      model: 'grok-imagine-video-1.5',
+      prompt: '海浪慢镜头',
+      resolution: '720p',
+      duration: 10,
+      imageDataUrl: 'data:image/png;base64,aW1n',
+      pollIntervalMs: 0,
+    })
+
+    const [createPath, createInit] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(createPath).toBe('/v1/videos/generations')
+    expect(JSON.parse(String(createInit.body))).toEqual({
+      model: 'grok-imagine-video-1.5',
+      prompt: '海浪慢镜头',
+      resolution: '720p',
+      duration: 10,
+      image: { image_url: 'data:image/png;base64,aW1n' },
+    })
+    expect(fetchMock.mock.calls[1][0]).toBe('/v1/videos/video-123')
+    expect(fetchMock.mock.calls[2][0]).toBe('/v1/videos/video-123')
+    expect(result).toMatchObject({ status: 'completed' })
   })
 })

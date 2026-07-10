@@ -151,6 +151,11 @@
                   :discount-value="formatSelectedImageTierDiscount('4k')"
                 />
               </template>
+              <template v-else-if="model.kind === 'video'">
+                <PriceTile label="480p / s" :value="formatSelectedVideoTier('480p')" />
+                <PriceTile label="720p / s" :value="formatSelectedVideoTier('720p')" />
+                <PriceTile label="1080p / s" :value="formatSelectedVideoTier('1080p')" />
+              </template>
               <template v-else-if="model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST">
                 <PriceTile
                   :label="t('modelMarket.columns.perRequest')"
@@ -217,6 +222,7 @@ import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
+  BILLING_MODE_VIDEO,
   type BillingMode,
 } from '@/constants/channel'
 import type { Group, GroupPlatform } from '@/types'
@@ -319,7 +325,8 @@ const pricingSignature = (pricing: UserSupportedModelPricing | null): string => 
 }
 
 function compareMarketModels(a: GroupMarketModel, b: GroupMarketModel): number {
-  const kindOrder = Number(a.kind === 'image') - Number(b.kind === 'image')
+  const order: Record<ModelKind, number> = { token: 0, image: 1, video: 2 }
+  const kindOrder = order[a.kind] - order[b.kind]
   if (kindOrder !== 0) return kindOrder
   return a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)
 }
@@ -427,8 +434,14 @@ function effectiveImageRate(group: UserAvailableGroup): number {
   return group.image_rate_independent ? group.image_rate_multiplier : effectiveTextRate(group)
 }
 
+function effectiveVideoRate(group: UserAvailableGroup): number {
+  return group.video_rate_independent ? (group.video_rate_multiplier ?? 1) : effectiveTextRate(group)
+}
+
 function effectiveMultiplier(group: UserAvailableGroup, mode?: BillingMode): number {
-  return mode === BILLING_MODE_IMAGE ? effectiveImageRate(group) : effectiveTextRate(group)
+  if (mode === BILLING_MODE_IMAGE) return effectiveImageRate(group)
+  if (mode === BILLING_MODE_VIDEO) return effectiveVideoRate(group)
+  return effectiveTextRate(group)
 }
 
 function formatRate(value: number): string {
@@ -506,6 +519,17 @@ function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k'): string {
   return formatImageTierDiscount(group, tier)
 }
 
+function formatSelectedVideoTier(resolution: '480p' | '720p' | '1080p'): string {
+  const group = selectedGroup.value?.group
+  if (!group) return '-'
+  const value = resolution === '480p'
+    ? group.video_price_480p
+    : resolution === '1080p'
+      ? group.video_price_1080p
+      : group.video_price_720p
+  return typeof value === 'number' ? formatScaled(value * effectiveVideoRate(group), 1) : '-'
+}
+
 function selectedMultiplierLabel(mode?: BillingMode): string {
   const group = selectedGroup.value?.group
   if (!group) return '-'
@@ -520,6 +544,8 @@ function billingModeLabel(mode?: BillingMode): string {
       return t('availableChannels.pricing.billingModePerRequest')
     case BILLING_MODE_IMAGE:
       return t('availableChannels.pricing.billingModeImage')
+    case BILLING_MODE_VIDEO:
+      return t('availableChannels.pricing.billingModeVideo')
     default:
       return t('modelMarket.noPricing')
   }

@@ -1245,7 +1245,8 @@ export default {
     description: 'Select an existing API key, review its group, and test one of the models available to that group through the real gateway',
     modes: {
       text: 'Text',
-      image: 'Image'
+      image: 'Image',
+      video: 'Video'
     },
     fields: {
       type: 'Type',
@@ -1254,6 +1255,8 @@ export default {
       apiKey: 'API Key',
       prompt: 'Prompt',
       imageSize: 'Image Size',
+      videoResolution: 'Video Resolution',
+      videoDuration: 'Video Duration (seconds)',
       referenceImages: 'Reference Images',
       maxTokens: 'Max Output'
     },
@@ -1264,12 +1267,14 @@ export default {
       prompt: 'Enter a prompt to test',
       textPrompt: 'Enter a text prompt to test',
       imagePrompt: 'Describe the image you want to generate, including size or aspect ratio if needed'
+      ,videoPrompt: 'Describe the video, camera motion, and visual style you want to generate'
     },
     imageSizeOptions: {
       adaptive: 'Adaptive'
     },
     imageSizeAdaptivePreview: 'Adaptive ({tier} estimate)',
     referenceImagesHint: 'Uploaded images use the image edit endpoint. Describe the change in the prompt.',
+    videoReferenceImageHint: 'Optionally upload one starting frame for image-to-video; omit it for text-to-video.',
     uploadReferenceImages: 'Upload Images',
     removeReferenceImage: 'Remove reference image',
     referenceImageLimit: 'Upload up to {count} reference images',
@@ -1303,6 +1308,7 @@ export default {
     runSuccess: 'Test completed',
     runFailed: 'Test failed',
     perImage: 'image'
+    ,perSecond: 'sec'
   },
 
   affiliate: {

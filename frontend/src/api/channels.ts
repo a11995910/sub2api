@@ -36,6 +36,11 @@ export interface UserAvailableGroup {
   image_price_2k: number | null
   /** 4K 图片生成单价；为空时后端计费会回退默认图片价格。 */
   image_price_4k: number | null
+  video_rate_independent?: boolean
+  video_rate_multiplier?: number
+  video_price_480p?: number | null
+  video_price_720p?: number | null
+  video_price_1080p?: number | null
 }
 
 export interface UserPricingInterval {
@@ -63,8 +68,8 @@ export interface UserSupportedModelPricing {
 export interface UserSupportedModel {
   name: string
   platform: string
-  /** token = 文本/按次模型，image = 独立图片模型。旧后端可能没有该字段，前端需兜底。 */
-  kind?: 'token' | 'image'
+  /** token = 文本/普通按次，image = 图片，video = 视频。旧后端可能没有该字段，前端需兜底。 */
+  kind?: 'token' | 'image' | 'video'
   pricing: UserSupportedModelPricing | null
 }
 

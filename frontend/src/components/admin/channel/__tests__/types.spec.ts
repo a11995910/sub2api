@@ -55,7 +55,7 @@ describe('validateIntervals', () => {
     })
   })
 
-  describe('image / per_request mode', () => {
+  describe('image / video / per_request mode', () => {
     it('allows multiple unbounded tiers identified by label', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', per_request_price: 0.04 }),
@@ -63,6 +63,7 @@ describe('validateIntervals', () => {
         makeInterval({ tier_label: '4K', per_request_price: 0.08 }),
       ]
       expect(validateIntervals(intervals, 'image', t)).toBeNull()
+      expect(validateIntervals(intervals, 'video', t)).toBeNull()
       expect(validateIntervals(intervals, 'per_request', t)).toBeNull()
     })
 

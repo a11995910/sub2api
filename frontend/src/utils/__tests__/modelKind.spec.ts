@@ -7,10 +7,12 @@ describe('selectAvailableModelKind', () => {
     const models = [
       { kind: 'token' as const },
       { kind: 'image' as const },
+      { kind: 'video' as const },
     ]
 
     expect(selectAvailableModelKind(models, 'token')).toBe('token')
     expect(selectAvailableModelKind(models, 'image')).toBe('image')
+    expect(selectAvailableModelKind(models, 'video')).toBe('video')
   })
 
   it('当前模式没有模型时自动切到另一个可用模式', () => {
@@ -23,6 +25,10 @@ describe('selectAvailableModelKind', () => {
 
   it('没有任何模型时保持原模式', () => {
     expect(selectAvailableModelKind([], 'token')).toBe('token')
+  })
+
+  it('当前模式没有模型时可切换到视频模式', () => {
+    expect(selectAvailableModelKind([{ kind: 'video' as const }], 'image')).toBe('video')
   })
 })
 
@@ -65,5 +71,13 @@ describe('filterGroupsByModelKind', () => {
     ]
 
     expect(filterGroupsByModelKind(groups, 'token').map((group) => group.id)).toEqual([2, 3])
+  })
+
+  it('视频模式只展示开启生成能力的分组', () => {
+    const groups = [
+      { ...baseGroup, id: 1, platform: 'grok', allow_image_generation: false },
+      { ...baseGroup, id: 2, platform: 'grok', allow_image_generation: true },
+    ]
+    expect(filterGroupsByModelKind(groups, 'video').map((group) => group.id)).toEqual([2])
   })
 })

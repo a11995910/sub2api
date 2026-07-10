@@ -1249,7 +1249,8 @@ export default {
     description: '选择已有 API Key，自动带出所属分组，并在该分组可用模型中发起真实网关测试',
     modes: {
       text: '文本',
-      image: '图片'
+      image: '图片',
+      video: '视频'
     },
     fields: {
       type: '类型',
@@ -1258,6 +1259,8 @@ export default {
       apiKey: 'API Key',
       prompt: '提示词',
       imageSize: '图片尺寸',
+      videoResolution: '视频分辨率',
+      videoDuration: '视频时长（秒）',
       referenceImages: '参考图片',
       maxTokens: '最大输出'
     },
@@ -1268,12 +1271,14 @@ export default {
       prompt: '输入要测试的提示词',
       textPrompt: '输入要测试的文本提示词',
       imagePrompt: '描述要生成的图片，可写入尺寸或画幅要求'
+      ,videoPrompt: '描述要生成的视频内容、镜头运动和画面风格'
     },
     imageSizeOptions: {
       adaptive: '自适应'
     },
     imageSizeAdaptivePreview: '自适应（{tier} 预估）',
     referenceImagesHint: '上传后将调用图片编辑接口，可在提示词中说明修改方式。',
+    videoReferenceImageHint: '可上传 1 张起始参考图，用于图生视频；不上传则执行文生视频。',
     uploadReferenceImages: '上传图片',
     removeReferenceImage: '移除参考图',
     referenceImageLimit: '最多上传 {count} 张参考图片',
@@ -1307,6 +1312,7 @@ export default {
     runSuccess: '测试完成',
     runFailed: '测试失败',
     perImage: '张'
+    ,perSecond: '秒'
   },
 
   affiliate: {
