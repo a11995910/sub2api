@@ -445,6 +445,16 @@ func TestValidateIntervals_ImageModeAllowsMultipleUnboundedTiers(t *testing.T) {
 	require.NoError(t, ValidateIntervals(intervals, BillingModePerRequest))
 }
 
+func TestValidateIntervals_VideoModeAllowsMultipleUnboundedResolutionTiers(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: 0, MaxTokens: nil, TierLabel: VideoBillingResolution480P, PerRequestPrice: testPtrFloat64(0.05)},
+		{MinTokens: 0, MaxTokens: nil, TierLabel: VideoBillingResolution720P, PerRequestPrice: testPtrFloat64(0.07)},
+		{MinTokens: 0, MaxTokens: nil, TierLabel: VideoBillingResolution1080P, PerRequestPrice: testPtrFloat64(0.14)},
+	}
+
+	require.NoError(t, ValidateIntervals(intervals, BillingModeVideo))
+}
+
 func TestValidateIntervals_ImageModeStillRejectsNegativePrice(t *testing.T) {
 	// image 模式只跳过区间重叠校验，单条字段自洽（价格非负）仍要校验。
 	intervals := []PricingInterval{
@@ -512,7 +522,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 		require.NotContains(t, m.Name, "*")
 	}
 }
-
 
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{

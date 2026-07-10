@@ -7282,13 +7282,21 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
-		// 渠道 per_request/image/video 定价保持“按请求次数”口径（价格由管理员按次配置），不乘视频时长。
+		// 显式 video 渠道价格按秒配置；历史 image/per_request 视频配置仍按请求次数计费。
+		// video 未配置当前分辨率且没有默认价时走系统视频价；按指针判断以保留显式 0 元配置。
+		if resolved.Mode == BillingModeVideo && !hasExplicitVideoChannelPrice(resolved, resolution) {
+			return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+		}
+		requestCount := videoCount
+		if resolved.Mode == BillingModeVideo {
+			requestCount *= durationSeconds
+		}
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
 			Ctx:            ctx,
 			Model:          billingModel,
 			GroupID:        &gid,
-			RequestCount:   videoCount,
+			RequestCount:   requestCount,
 			SizeTier:       resolution,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
@@ -7302,6 +7310,19 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 
 	return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+}
+
+func hasExplicitVideoChannelPrice(resolved *ResolvedPricing, resolution string) bool {
+	if resolved == nil {
+		return false
+	}
+	for i := range resolved.RequestTiers {
+		tier := &resolved.RequestTiers[i]
+		if tier.TierLabel == resolution && tier.PerRequestPrice != nil {
+			return true
+		}
+	}
+	return resolved.channelPricing != nil && resolved.channelPricing.PerRequestPrice != nil
 }
 
 func (s *OpenAIGatewayService) apiKeyWithFreshGroupMediaPricing(ctx context.Context, apiKey *APIKey) *APIKey {

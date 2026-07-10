@@ -2119,10 +2119,187 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelVideoBillingUsesVideoModePrice(t
 	require.Equal(t, 2, usageRepo.lastLog.ImageCount)
 	require.Equal(t, 2, usageRepo.lastLog.VideoCount)
 	require.Nil(t, usageRepo.lastLog.ImageSize)
-	require.InDelta(t, 0.142, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.142, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.071*2*5, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.071*2*5, usageRepo.lastLog.ActualCost, 1e-12)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelVideoBillingFallsBackToSystemPriceWhenResolutionTierMissing(t *testing.T) {
+	groupID := int64(130)
+	channelPrice720P := 0.071
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAIMediaChannelPricingResolverForTest(t, groupID, "grok-imagine-video", BillingModeVideo, nil, []PricingInterval{{
+		TierLabel:       VideoBillingResolution720P,
+		PerRequestPrice: &channelPrice720P,
+	}})
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:            "resp_grok_video_channel_tier_fallback",
+			Model:                "grok-imagine-video",
+			BillingModel:         "grok-imagine-video",
+			ImageCount:           2,
+			VideoCount:           2,
+			VideoResolution:      VideoBillingResolution480P,
+			VideoDurationSeconds: 5,
+			Duration:             time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10130,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				Platform:       PlatformGrok,
+				RateMultiplier: 1,
+			},
+		},
+		User:    &User{ID: 20130},
+		Account: &Account{ID: 30130, Platform: PlatformGrok},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.05*2*5, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.05*2*5, usageRepo.lastLog.ActualCost, 1e-12)
+	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelVideoBillingExplicitZeroPriceStaysFree(t *testing.T) {
+	zero := 0.0
+	tests := []struct {
+		name         string
+		defaultPrice *float64
+		intervals    []PricingInterval
+	}{
+		{name: "默认价格显式为零", defaultPrice: &zero},
+		{
+			name: "匹配分辨率层级显式为零",
+			intervals: []PricingInterval{{
+				TierLabel:       VideoBillingResolution480P,
+				PerRequestPrice: &zero,
+			}},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(131 + i)
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+			svc.resolver = newOpenAIMediaChannelPricingResolverForTest(
+				t, groupID, "grok-imagine-video", BillingModeVideo, tt.defaultPrice, tt.intervals,
+			)
+
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID:            "resp_grok_video_channel_explicit_zero_price",
+					Model:                "grok-imagine-video",
+					BillingModel:         "grok-imagine-video",
+					ImageCount:           1,
+					VideoCount:           1,
+					VideoResolution:      VideoBillingResolution480P,
+					VideoDurationSeconds: 5,
+					Duration:             time.Second,
+				},
+				APIKey: &APIKey{
+					ID:      10131 + int64(i),
+					GroupID: i64p(groupID),
+					Group: &Group{
+						ID:             groupID,
+						Platform:       PlatformGrok,
+						RateMultiplier: 1,
+					},
+				},
+				User:    &User{ID: 20131 + int64(i)},
+				Account: &Account{ID: 30131 + int64(i), Platform: PlatformGrok},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Zero(t, usageRepo.lastLog.TotalCost)
+			require.Zero(t, usageRepo.lastLog.ActualCost)
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceRecordUsage_LegacyImageVideoPriceStaysPerRequest(t *testing.T) {
+	groupID := int64(133)
+	channelPrice := 2.1
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAIImageChannelPricingResolverForTest(t, groupID, "grok-imagine-video", channelPrice)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:            "resp_grok_video_legacy_image_price",
+			Model:                "grok-imagine-video",
+			BillingModel:         "grok-imagine-video",
+			ImageCount:           2,
+			VideoCount:           2,
+			VideoResolution:      VideoBillingResolution720P,
+			VideoDurationSeconds: 5,
+			Duration:             time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10133,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				Platform:       PlatformGrok,
+				RateMultiplier: 1,
+			},
+		},
+		User:    &User{ID: 20133},
+		Account: &Account{ID: 30133, Platform: PlatformGrok},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 2, usageRepo.lastLog.VideoCount)
+	require.InDelta(t, 4.2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 4.2, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_LegacyPerRequestVideoPriceStaysPerRequest(t *testing.T) {
+	groupID := int64(134)
+	channelPrice := 2.1
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAIMediaChannelPricingResolverForTest(
+		t, groupID, "grok-imagine-video", BillingModePerRequest, &channelPrice, nil,
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:            "resp_grok_video_legacy_per_request_price",
+			Model:                "grok-imagine-video",
+			BillingModel:         "grok-imagine-video",
+			ImageCount:           2,
+			VideoCount:           2,
+			VideoResolution:      VideoBillingResolution720P,
+			VideoDurationSeconds: 5,
+			Duration:             time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10134,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				Platform:       PlatformGrok,
+				RateMultiplier: 1,
+			},
+		},
+		User:    &User{ID: 20134},
+		Account: &Account{ID: 30134, Platform: PlatformGrok},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 2, usageRepo.lastLog.VideoCount)
+	require.InDelta(t, 4.2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 4.2, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_HydratesGroupImagePriceWhenAuthSnapshotOmitsIt(t *testing.T) {
@@ -2347,25 +2524,28 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelImageBillingUsesImageCountAndInd
 
 func newOpenAIImageChannelPricingResolverForTest(t *testing.T, groupID int64, model string, price float64) *ModelPricingResolver {
 	t.Helper()
-	cache := newEmptyChannelCache()
-	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: "", model: model}] = &ChannelModelPricing{
-		BillingMode:     BillingModeImage,
-		PerRequestPrice: &price,
-	}
-	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
-	cache.groupPlatform[groupID] = ""
-	cache.loadedAt = time.Now()
-	cs := &ChannelService{}
-	cs.cache.Store(cache)
-	return NewModelPricingResolver(cs, NewBillingService(&config.Config{}, nil))
+	return newOpenAIMediaChannelPricingResolverForTest(t, groupID, model, BillingModeImage, &price, nil)
 }
 
 func newOpenAIVideoChannelPricingResolverForTest(t *testing.T, groupID int64, model string, price float64) *ModelPricingResolver {
 	t.Helper()
+	return newOpenAIMediaChannelPricingResolverForTest(t, groupID, model, BillingModeVideo, &price, nil)
+}
+
+func newOpenAIMediaChannelPricingResolverForTest(
+	t *testing.T,
+	groupID int64,
+	model string,
+	mode BillingMode,
+	defaultPrice *float64,
+	intervals []PricingInterval,
+) *ModelPricingResolver {
+	t.Helper()
 	cache := newEmptyChannelCache()
 	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: "", model: model}] = &ChannelModelPricing{
-		BillingMode:     BillingModeVideo,
-		PerRequestPrice: &price,
+		BillingMode:     mode,
+		PerRequestPrice: defaultPrice,
+		Intervals:       intervals,
 	}
 	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
 	cache.groupPlatform[groupID] = ""
