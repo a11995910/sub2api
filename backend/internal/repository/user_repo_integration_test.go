@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -327,6 +329,85 @@ func (s *UserRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", updated.Username)
 }
 
+func (s *UserRepoSuite) TestUpdateRejectsDemotingLastActiveAdminWhenAnotherAdminIsDisabled() {
+	activeAdmin := s.mustCreateUser(&service.User{
+		Email:  "active-admin@test.com",
+		Role:   service.RoleAdmin,
+		Status: service.StatusActive,
+	})
+	s.mustCreateUser(&service.User{
+		Email:  "disabled-admin@test.com",
+		Role:   service.RoleAdmin,
+		Status: service.StatusDisabled,
+	})
+
+	activeAdmin.Role = service.RoleUser
+	err := s.repo.Update(s.ctx, activeAdmin)
+	s.Require().EqualError(err, "cannot demote the last admin user")
+
+	stored, getErr := s.repo.GetByID(s.ctx, activeAdmin.ID)
+	s.Require().NoError(getErr)
+	s.Require().Equal(service.RoleAdmin, stored.Role)
+	s.Require().Equal(service.StatusActive, stored.Status)
+}
+
+func (s *UserRepoSuite) TestUpdateConcurrentActiveAdminDemotionsLeaveOneActiveAdmin() {
+	firstAdmin := s.mustCreateUser(&service.User{
+		Email:  "first-active-admin@test.com",
+		Role:   service.RoleAdmin,
+		Status: service.StatusActive,
+	})
+	secondAdmin := s.mustCreateUser(&service.User{
+		Email:  "second-active-admin@test.com",
+		Role:   service.RoleAdmin,
+		Status: service.StatusActive,
+	})
+
+	firstAdmin.Role = service.RoleUser
+	secondAdmin.Role = service.RoleUser
+
+	start := make(chan struct{})
+	errors := make(chan error, 2)
+	var waitGroup sync.WaitGroup
+	for _, admin := range []*service.User{firstAdmin, secondAdmin} {
+		admin := admin
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			errors <- s.repo.Update(context.Background(), admin)
+		}()
+	}
+
+	close(start)
+	waitGroup.Wait()
+	close(errors)
+
+	successCount := 0
+	lastAdminErrorCount := 0
+	for err := range errors {
+		switch {
+		case err == nil:
+			successCount++
+		case err.Error() == "cannot demote the last admin user":
+			lastAdminErrorCount++
+		default:
+			s.Require().NoError(err)
+		}
+	}
+	s.Require().Equal(1, successCount)
+	s.Require().Equal(1, lastAdminErrorCount)
+
+	activeAdminCount, err := s.client.User.Query().
+		Where(
+			dbuser.RoleEQ(service.RoleAdmin),
+			dbuser.StatusEQ(service.StatusActive),
+		).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(1, activeAdminCount)
+}
+
 func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpsert() {
 	user := s.mustCreateUser(&service.User{Email: "update-existing-identity@test.com", Username: "original"})
 
@@ -532,6 +613,29 @@ func (s *UserRepoSuite) TestUpdateBalance_Negative() {
 	s.Require().InDelta(7.0, got.Balance, 1e-6)
 }
 
+func (s *UserRepoSuite) TestApplyRedeemBalanceAdjustment_ConcurrentNeverNegative() {
+	user := s.mustCreateUser(&service.User{Email: "redeem-bal-concurrent@test.com", Balance: 10})
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- s.repo.ApplyRedeemBalanceAdjustment(context.Background(), user.ID, -7)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		s.Require().NoError(err)
+	}
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(0, got.Balance, 1e-6)
+}
+
 func (s *UserRepoSuite) TestDeductBalance() {
 	user := s.mustCreateUser(&service.User{Email: "deduct@test.com", Balance: 10})
 
@@ -602,6 +706,29 @@ func (s *UserRepoSuite) TestUpdateConcurrency_Negative() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	s.Require().Equal(3, got.Concurrency)
+}
+
+func (s *UserRepoSuite) TestApplyRedeemConcurrencyAdjustment_ConcurrentNeverNegative() {
+	user := s.mustCreateUser(&service.User{Email: "redeem-concurrency-concurrent@test.com", Concurrency: 10})
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- s.repo.ApplyRedeemConcurrencyAdjustment(context.Background(), user.ID, -7)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		s.Require().NoError(err)
+	}
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(0, got.Concurrency)
 }
 
 // --- ExistsByEmail ---

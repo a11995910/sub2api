@@ -22,7 +22,8 @@ import (
 func TestGeminiOAuthService_GenerateAuthURL_RedirectURIStrategy(t *testing.T) {
 	// NOTE: This test sets process env; it must not run in parallel.
 	// The built-in Gemini CLI client secret is not embedded in this repository.
-	// Tests set a dummy secret via env to simulate operator-provided configuration.
+	// Tests set dummy credentials via env to simulate operator-provided configuration.
+	t.Setenv(geminicli.GeminiCLIOAuthClientIDEnv, "test-built-in-client-id")
 	t.Setenv(geminicli.GeminiCLIOAuthClientSecretEnv, "test-built-in-secret")
 
 	type testCase struct {
@@ -46,7 +47,7 @@ func TestGeminiOAuthService_GenerateAuthURL_RedirectURIStrategy(t *testing.T) {
 				},
 			},
 			oauthType:     "google_one",
-			wantClientID:  geminicli.GeminiCLIOAuthClientID,
+			wantClientID:  "test-built-in-client-id",
 			wantRedirect:  geminicli.GeminiCLIRedirectURI,
 			wantScope:     geminicli.DefaultCodeAssistScopes,
 			wantProjectID: "",
@@ -62,7 +63,7 @@ func TestGeminiOAuthService_GenerateAuthURL_RedirectURIStrategy(t *testing.T) {
 				},
 			},
 			oauthType:     "google_one",
-			wantClientID:  geminicli.GeminiCLIOAuthClientID,
+			wantClientID:  "test-built-in-client-id",
 			wantRedirect:  geminicli.GeminiCLIRedirectURI,
 			wantScope:     geminicli.DefaultCodeAssistScopes,
 			wantProjectID: "",
@@ -79,7 +80,7 @@ func TestGeminiOAuthService_GenerateAuthURL_RedirectURIStrategy(t *testing.T) {
 			},
 			oauthType:     "code_assist",
 			projectID:     "my-gcp-project",
-			wantClientID:  geminicli.GeminiCLIOAuthClientID,
+			wantClientID:  "test-built-in-client-id",
 			wantRedirect:  geminicli.GeminiCLIRedirectURI,
 			wantScope:     geminicli.DefaultCodeAssistScopes,
 			wantProjectID: "my-gcp-project",

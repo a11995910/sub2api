@@ -31,6 +31,8 @@ export default {
     refresh: 'Refresh',
     sourceMode: 'Source Build',
     sourceModeHint: 'Source build, use git pull to update',
+    dockerModeHint:
+      'Docker deployments must pull and switch image tags; the binary cannot be replaced in-place',
     updateNow: 'Update Now',
     updating: 'Updating...',
     updateComplete: 'Update Complete',
@@ -38,7 +40,29 @@ export default {
     restartRequired: 'Please restart the service to apply the update',
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
-    retry: 'Retry'
+    retry: 'Retry',
+    rollback: 'Version Rollback',
+    rollbackSelectVersion: 'Select a version to roll back to (last 3 versions)',
+    rollbackConfirm: 'Roll back to {version}',
+    rollbackWarning:
+      'Rollback downloads the selected version and replaces the current binary. A service restart is required afterwards.',
+    rollbackDockerWarning:
+      'Docker deployments must switch the image tag through Compose; in-container rollback is disabled.',
+    rollingBack: 'Rolling back...',
+    rollbackComplete: 'Rollback Complete',
+    rollbackFailed: 'Rollback Failed',
+    manualRollbackCommand: 'Manual rollback',
+    copyCommand: 'Copy',
+    copied: 'Copied',
+    noRollbackVersions: 'No versions available for rollback',
+    loadVersionsFailed: 'Failed to load versions',
+    rollbackSourceHint: 'Online rollback is not available for source builds',
+    rollbackDockerHint:
+      'Online rollback is disabled for Docker deployments. Switch to the previous image tag using the deployment guide.',
+    deployScript: 'Script',
+    deployDocker: 'Docker',
+    dockerEditCompose: 'Edit the image tag in docker-compose.yml',
+    dockerRecreate: 'Recreate the container'
   },
 
   // Recharge / Subscription Page

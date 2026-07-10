@@ -31,6 +31,8 @@ type userRepository struct {
 	sql    sqlExecutor
 }
 
+var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
 }
@@ -217,6 +219,33 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	oldEmail := existing.Email
+	if existing.Role == service.RoleAdmin && existing.Status == service.StatusActive &&
+		(userIn.Role != service.RoleAdmin || userIn.Status != service.StatusActive) {
+		releaseAdminLock, lockErr := lockRepositoryScopedKeys(
+			txCtx,
+			txClient,
+			txAwareSQLExecutor(txCtx, r.sql, r.client),
+			"users:active-admin-role-change",
+		)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer releaseAdminLock()
+
+		otherActiveAdmins, countErr := txClient.User.Query().
+			Where(
+				dbuser.IDNEQ(userIn.ID),
+				dbuser.RoleEQ(service.RoleAdmin),
+				dbuser.StatusEQ(service.StatusActive),
+			).
+			Count(txCtx)
+		if countErr != nil {
+			return fmt.Errorf("count other active admins: %w", countErr)
+		}
+		if otherActiveAdmins == 0 {
+			return errors.New("cannot demote the last admin user")
+		}
+	}
 
 	updateOp := txClient.User.UpdateOneID(userIn.ID).
 		SetEmail(userIn.Email).
@@ -758,6 +787,27 @@ func (r *userRepository) AddBalance(ctx context.Context, id int64, amount float6
 	return nil
 }
 
+func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id int64, delta float64) error {
+	const updateSQL = `
+		UPDATE users
+		SET balance = GREATEST(balance + $1, 0), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, delta, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
 // DeductBalance 扣除用户余额
 // 透支策略：允许余额变为负数，确保当前请求能够完成
 // 中间件会阻止余额 <= 0 的用户发起后续请求
@@ -794,6 +844,27 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	if n == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error {
+	const updateSQL = `
+		UPDATE users
+		SET concurrency = GREATEST(concurrency + $1, 0), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, delta, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return service.ErrUserNotFound
 	}
 	return nil

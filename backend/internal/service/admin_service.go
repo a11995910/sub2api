@@ -149,10 +149,13 @@ type CreateUserInput struct {
 	Password      string
 	Username      string
 	Notes         string
+	Role          string // 空字符串表示使用默认角色(user);合法值 admin/user
 	Balance       *float64
 	Concurrency   int
 	RPMLimit      int
 	AllowedGroups []int64
+	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
+	ActorAdminID int64
 }
 
 type UpdateUserInput struct {
@@ -160,6 +163,7 @@ type UpdateUserInput struct {
 	Password      string
 	Username      *string
 	Notes         *string
+	Role          string   // 空字符串表示"未提供"(不修改);合法值 admin/user
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
@@ -170,6 +174,8 @@ type UpdateUserInput struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
+	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
+	ActorAdminID int64
 }
 
 type AdminBindAuthIdentityInput struct {
@@ -798,6 +804,18 @@ func (s *adminServiceImpl) GetUserIncludeDeleted(ctx context.Context, id int64) 
 	return s.userRepo.GetByIDIncludeDeleted(ctx, id)
 }
 
+// normalizeUserRole 校验并归一化角色输入。
+// 空字符串返回 fallback(未提供时的默认角色);非法值返回错误。
+func normalizeUserRole(role, fallback string) (string, error) {
+	if role == "" {
+		return fallback, nil
+	}
+	if role != RoleAdmin && role != RoleUser {
+		return "", fmt.Errorf("invalid role: %q (must be %s or %s)", role, RoleAdmin, RoleUser)
+	}
+	return role, nil
+}
+
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
 	balance := 0.0
 	if input.Balance != nil {
@@ -806,11 +824,17 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		balance = s.settingService.GetDefaultBalance(ctx)
 	}
 
+	// 角色可由管理员在创建时指定(admin/user);未提供时默认 user。
+	role, err := normalizeUserRole(input.Role, RoleUser)
+	if err != nil {
+		return nil, err
+	}
+
 	user := &User{
 		Email:         input.Email,
 		Username:      input.Username,
 		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
+		Role:          role,
 		Balance:       balance,
 		Concurrency:   input.Concurrency,
 		RPMLimit:      input.RPMLimit,
@@ -823,8 +847,30 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, err
 	}
+	// 创建管理员属权限敏感操作，落审计日志（含操作者），便于事后追溯。
+	if user.Role == RoleAdmin {
+		logger.LegacyPrintf("service.admin", "audit: admin user created actor_admin_id=%d target_user_id=%d",
+			input.ActorAdminID, user.ID)
+	}
 	s.assignDefaultSubscriptions(ctx, user.ID)
 	return user, nil
+}
+
+// ensureNotLastAdmin 降级管理员前确认系统中仍存在其他启用管理员，防止后台锁死。
+// 仓储更新会在同一事务内串行化管理员降级并再次校验，此处用于提前返回友好错误。
+func (s *adminServiceImpl) ensureNotLastAdmin(ctx context.Context) error {
+	noSubs := false
+	_, result, err := s.userRepo.ListWithFilters(ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 1},
+		UserListFilters{Role: RoleAdmin, Status: StatusActive, IncludeSubscriptions: &noSubs},
+	)
+	if err != nil {
+		return fmt.Errorf("count admin users: %w", err)
+	}
+	if result == nil || result.Total <= 1 {
+		return errors.New("cannot demote the last admin user")
+	}
+	return nil
 }
 
 func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userID int64) {
@@ -913,6 +959,22 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		user.Status = input.Status
 	}
 
+	// 角色变更(admin/user);空字符串表示不修改。
+	if input.Role != "" {
+		role, err := normalizeUserRole(input.Role, user.Role)
+		if err != nil {
+			return nil, err
+		}
+		// 防锁死保护：不允许降级系统中最后一个管理员（自我降级已在 handler 层拦截，
+		// 此处兜底覆盖跨管理员互降导致零 admin 的场景）。
+		if user.Role == RoleAdmin && role == RoleUser {
+			if err := s.ensureNotLastAdmin(ctx); err != nil {
+				return nil, err
+			}
+		}
+		user.Role = role
+	}
+
 	if input.Concurrency != nil {
 		user.Concurrency = *input.Concurrency
 	}
@@ -962,6 +1024,12 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, err
 	}
 	s.loadUserAllowedGroupAccess(ctx, user)
+
+	// 角色变更属权限敏感操作，落审计日志（含操作者），便于事后追溯。
+	if user.Role != oldRole {
+		logger.LegacyPrintf("service.admin", "audit: user role changed actor_admin_id=%d target_user_id=%d old_role=%s new_role=%s",
+			input.ActorAdminID, user.ID, oldRole, user.Role)
+	}
 
 	// 同步用户专属分组倍率
 	if input.GroupRates != nil && s.userGroupRateRepo != nil {

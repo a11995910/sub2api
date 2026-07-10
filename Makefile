@@ -26,10 +26,6 @@ build-frontend:
 # 源码部署编译：先生成前端 dist，再把前端资源嵌入后端二进制
 build-deploy: build-frontend build-backend-embed
 
-# 编译 datamanagementd（宿主机数据管理进程）
-build-datamanagementd:
-	@cd datamanagement && go build -o datamanagementd ./cmd/datamanagementd
-
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend
 

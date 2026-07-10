@@ -54,7 +54,6 @@ func TestAPIContracts(t *testing.T) {
 					"username": "alice",
 						"role": "user",
 						"balance": 12.5,
-						"frozen_balance": 0,
 						"concurrency": 5,
 					"rpm_limit": 0,
 					"status": "active",
@@ -229,6 +228,7 @@ func TestAPIContracts(t *testing.T) {
 					"user_id": 1,
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
+					"openai_fast_mode_enabled": false,
 					"group_id": null,
 					"status": "active",
 					"ip_whitelist": null,
@@ -280,6 +280,7 @@ func TestAPIContracts(t *testing.T) {
 							"user_id": 1,
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
+							"openai_fast_mode_enabled": false,
 							"group_id": null,
 							"status": "active",
 							"ip_whitelist": null,
@@ -370,8 +371,15 @@ func TestAPIContracts(t *testing.T) {
 						"allow_batch_image_generation": false,
 						"batch_image_discount_multiplier": 0,
 						"batch_image_hold_multiplier": 0,
+						"cache_hit_quarter_to_input_enabled": false,
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
+						"image_super_resolution_enabled": false,
+						"image_2k_enhancement_enabled": false,
+						"image_2k_enhancement_group_id": null,
+						"image_4k_enhancement_enabled": false,
+						"image_4k_enhancement_group_id": null,
+						"image_4k_enhancement_model": null,
 						"video_rate_independent": false,
 						"video_rate_multiplier": 0,
 						"claude_code_only": false,
@@ -861,6 +869,9 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
+					"quick_link_enabled": false,
+					"quick_link_text": "",
+					"quick_link_url": "",
 					"table_default_page_size": 20,
 						"table_page_size_options": [10, 20, 50, 100],
 					"min_claude_code_version": "",
@@ -904,6 +915,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
 					"payment_recharge_fee_rate": 0,
+					"payment_subscription_usd_to_cny_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",
@@ -1088,6 +1100,9 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
+					"quick_link_enabled": false,
+					"quick_link_text": "",
+					"quick_link_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
 					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
@@ -1161,6 +1176,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
 					"payment_recharge_fee_rate": 0,
+					"payment_subscription_usd_to_cny_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",
@@ -2104,13 +2120,16 @@ func (stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID 
 func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
+	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
 	return errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {

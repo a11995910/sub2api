@@ -250,6 +250,8 @@ docker compose --env-file /opt/sub2api/env/prod/.env logs --tail=200 sub2api
 
 回滚优先切回上一版 `sub2api:prod-<commit>` 镜像 tag，而不是重新构建或覆盖二进制。回滚后仍需验证容器状态、健康接口、管理端账号页、关键 API 和日志。
 
+Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查，不允许在容器内执行在线更新、在线回退或覆盖 `/app/sub2api`；镜像化环境必须通过本节的 Git commit 镜像 tag 完成升级与回滚，避免覆盖定制代码或在容器重建后丢失回退结果。
+
 ### 上游同步
 
 上游同步不直接进入 prod。同步流程必须先建立独立分支，例如：
