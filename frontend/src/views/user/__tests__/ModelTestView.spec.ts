@@ -688,7 +688,7 @@ describe('ModelTestView', () => {
     expect(summaryValue(wrapper, '价格预览')).toBe('-')
   })
 
-  it('video-1.5 根据参考图状态使用实际计费模型的渠道价格', async () => {
+  it('video-1.5 根据参考图状态忽略模型名大小写并使用实际计费模型的渠道价格', async () => {
     const videoGroup = groupFixture({
       id: 9,
       name: '视频分组',
@@ -710,7 +710,7 @@ describe('ModelTestView', () => {
         groups: [videoGroup],
         supported_models: [
           {
-            name: 'grok-imagine-video',
+            name: 'Grok-Imagine-Video',
             platform: 'grok',
             kind: 'video',
             pricing: {
@@ -720,7 +720,7 @@ describe('ModelTestView', () => {
               cache_write_price: null,
               cache_read_price: null,
               image_output_price: null,
-              per_request_price: 0.07,
+              per_request_price: 0.09,
               intervals: [],
             },
           },
@@ -748,7 +748,7 @@ describe('ModelTestView', () => {
     await flushPromises()
 
     expect((selectByLabel(wrapper, '模型').selectedOptions[0]?.textContent ?? '').trim()).toBe('grok-imagine-video-1.5 · Grok')
-    expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.72 灵石 / 8秒')
 
     const fileInput = wrapper.find('input[type="file"]')
     Object.defineProperty(fileInput.element, 'files', {

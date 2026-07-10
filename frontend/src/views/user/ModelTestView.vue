@@ -693,13 +693,18 @@ function pricingForVideoBillingModel(
   selected: TestModelOption,
   billingModelName: string,
 ): UserSupportedModelPricing | null {
-  if (selected.name === billingModelName || selected.displayName === billingModelName) {
+  const normalizedBillingModel = billingModelName.trim().toLowerCase()
+  const matchesBillingModel = (model: TestModelOption) =>
+    model.name.trim().toLowerCase() === normalizedBillingModel ||
+    model.displayName.trim().toLowerCase() === normalizedBillingModel
+
+  if (matchesBillingModel(selected)) {
     return selected.pricing
   }
   const matched = modelsInSelectedGroup.value.find((model) =>
     model.kind === 'video' &&
     model.platform === selected.platform &&
-    (model.name === billingModelName || model.displayName === billingModelName),
+    matchesBillingModel(model),
   )
   return matched?.pricing ?? null
 }
