@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -2284,6 +2285,7 @@ func TestValidatePricingBillingMode(t *testing.T) {
 		pricing []ChannelModelPricing
 		wantErr bool
 		errMsg  string
+		errCode string
 	}{
 		{
 			name:    "token mode - valid",
@@ -2316,6 +2318,34 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			errMsg:  "per-request price or intervals required",
 		},
 		{
+			name:    "video no price no intervals - invalid",
+			pricing: []ChannelModelPricing{{BillingMode: BillingModeVideo}},
+			wantErr: true,
+			errMsg:  "per-second price or intervals required",
+			errCode: "BILLING_MODE_MISSING_PRICE",
+		},
+		{
+			name: "video with default price - valid",
+			pricing: []ChannelModelPricing{{
+				BillingMode:     BillingModeVideo,
+				PerRequestPrice: testPtrFloat64(0.07),
+			}},
+		},
+		{
+			name: "video with resolution interval - valid",
+			pricing: []ChannelModelPricing{{
+				BillingMode: BillingModeVideo,
+				Intervals:   []PricingInterval{{TierLabel: "720p", PerRequestPrice: testPtrFloat64(0.14)}},
+			}},
+		},
+		{
+			name:    "unknown billing mode - invalid",
+			pricing: []ChannelModelPricing{{BillingMode: BillingMode("unknown")}},
+			wantErr: true,
+			errMsg:  "invalid billing mode",
+			errCode: "INVALID_BILLING_MODE",
+		},
+		{
 			name:    "empty list - valid",
 			pricing: []ChannelModelPricing{},
 		},
@@ -2346,11 +2376,27 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.errMsg)
+				if tt.errCode != "" {
+					require.Equal(t, tt.errCode, infraerrors.Reason(err))
+				}
 			} else {
 				require.NoError(t, err)
 			}
 		})
 	}
+}
+
+func TestValidatePricingEntriesRejectsUnknownBillingModeBeforeIntervals(t *testing.T) {
+	err := validatePricingEntries([]ChannelModelPricing{{
+		BillingMode: BillingMode("unknown"),
+		Intervals: []PricingInterval{{
+			MinTokens:       -1,
+			PerRequestPrice: testPtrFloat64(0.1),
+		}},
+	}})
+
+	require.Error(t, err)
+	require.Equal(t, "INVALID_BILLING_MODE", infraerrors.Reason(err))
 }
 
 // ---------------------------------------------------------------------------

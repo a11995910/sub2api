@@ -599,6 +599,11 @@ func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string]map
 // validatePricingEntries 校验定价条目（冲突检测 + 区间校验 + 计费模式校验），
 // 同时用于主渠道定价和 account_stats_pricing_rules 的内部定价。
 func validatePricingEntries(pricing []ChannelModelPricing) error {
+	for _, p := range pricing {
+		if err := checkBillingModeValid(p.BillingMode); err != nil {
+			return err
+		}
+	}
 	if err := validateNoConflictingModels(pricing); err != nil {
 		return err
 	}
@@ -608,7 +613,7 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	return validatePricingBillingMode(pricing)
 }
 
-// validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
+// validatePricingBillingMode 校验计费模式配置：按次/图片/视频模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
 func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 	for _, p := range pricing {
 		if err := checkBillingModeRequirements(p); err != nil {
@@ -625,15 +630,33 @@ func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 }
 
 func checkBillingModeRequirements(p ChannelModelPricing) error {
-	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
-		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
-			return infraerrors.BadRequest(
-				"BILLING_MODE_MISSING_PRICE",
-				"per-request price or intervals required for per_request/image billing mode",
-			)
-		}
+	if err := checkBillingModeValid(p.BillingMode); err != nil {
+		return err
+	}
+	if p.BillingMode == BillingModeVideo && p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+		return infraerrors.BadRequest(
+			"BILLING_MODE_MISSING_PRICE",
+			"per-second price or intervals required for video billing mode",
+		)
+	}
+	if (p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage) &&
+		p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+		return infraerrors.BadRequest(
+			"BILLING_MODE_MISSING_PRICE",
+			"per-request price or intervals required for per_request/image billing mode",
+		)
 	}
 	return nil
+}
+
+func checkBillingModeValid(mode BillingMode) error {
+	if mode.IsValid() {
+		return nil
+	}
+	return infraerrors.BadRequest(
+		"INVALID_BILLING_MODE",
+		fmt.Sprintf("invalid billing mode: %s", mode),
+	)
 }
 
 func checkPricesNotNegative(p ChannelModelPricing) error {

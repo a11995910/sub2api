@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,33 @@ import (
 
 func float64Ptr(v float64) *float64 { return &v }
 func intPtr(v int) *int             { return &v }
+
+func bindChannelModelPricingRequestForTest(t *testing.T, body string) error {
+	t.Helper()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/channels", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	var req channelModelPricingRequest
+	return c.ShouldBindJSON(&req)
+}
+
+func TestChannelModelPricingRequestAcceptsVideoBillingMode(t *testing.T) {
+	err := bindChannelModelPricingRequestForTest(t, `{
+		"platform":"grok",
+		"models":["grok-imagine-video"],
+		"billing_mode":"video",
+		"per_request_price":0.07
+	}`)
+	require.NoError(t, err)
+}
+
+func TestChannelModelPricingRequestRejectsUnknownBillingMode(t *testing.T) {
+	err := bindChannelModelPricingRequestForTest(t, `{
+		"models":["m"],
+		"billing_mode":"unknown"
+	}`)
+	require.Error(t, err)
+}
 
 // ---------------------------------------------------------------------------
 // 1. channelToResponse
