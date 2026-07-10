@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UserAvailableGroup, UserSupportedModelPricing } from '@/api/channels'
-import { BILLING_MODE_IMAGE } from '@/constants/channel'
+import { BILLING_MODE_IMAGE, BILLING_MODE_VIDEO } from '@/constants/channel'
 import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind } from '../modelKind'
 
 describe('resolveModelKind', () => {
@@ -10,6 +10,29 @@ describe('resolveModelKind', () => {
       kind: 'image',
       pricing: { billing_mode: BILLING_MODE_IMAGE } as UserSupportedModelPricing,
     })).toBe('video')
+  })
+
+  it('非 Grok 模型保留显式 kind=video', () => {
+    expect(resolveModelKind({
+      name: 'sora-2',
+      kind: 'video',
+      pricing: null,
+    })).toBe('video')
+  })
+
+  it('非 Grok 模型可由 billing_mode=video 兜底分类', () => {
+    expect(resolveModelKind({
+      name: 'sora-2',
+      pricing: { billing_mode: BILLING_MODE_VIDEO } as UserSupportedModelPricing,
+    })).toBe('video')
+  })
+
+  it('普通图片模型保留显式 kind=image', () => {
+    expect(resolveModelKind({
+      name: 'grok-imagine-image',
+      kind: 'image',
+      pricing: { billing_mode: BILLING_MODE_IMAGE } as UserSupportedModelPricing,
+    })).toBe('image')
   })
 })
 
