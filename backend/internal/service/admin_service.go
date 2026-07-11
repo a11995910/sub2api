@@ -228,6 +228,7 @@ type CreateGroupInput struct {
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置
 	AllowImageGeneration         bool
+	ImageResponseFormat          string
 	AllowBatchImageGeneration    bool
 	ImageSuperResolutionEnabled  bool
 	Image2KEnhancementEnabled    bool
@@ -289,6 +290,7 @@ type UpdateGroupInput struct {
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置
 	AllowImageGeneration         *bool
+	ImageResponseFormat          *string
 	AllowBatchImageGeneration    *bool
 	ImageSuperResolutionEnabled  *bool
 	Image2KEnhancementEnabled    *bool
@@ -2079,6 +2081,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
 	}
+	imageResponseFormat, err := NormalizeImageResponseFormat(input.ImageResponseFormat)
+	if err != nil {
+		return nil, err
+	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
@@ -2216,6 +2222,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            allowImageGeneration,
+		ImageResponseFormat:             imageResponseFormat,
 		AllowBatchImageGeneration:       input.AllowBatchImageGeneration,
 		ImageSuperResolutionEnabled:     input.ImageSuperResolutionEnabled,
 		Image2KEnhancementEnabled:       input.Image2KEnhancementEnabled,
@@ -2482,6 +2489,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// 分组计费配置：图片价格负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
+	}
+	if input.ImageResponseFormat != nil {
+		imageResponseFormat, err := NormalizeImageResponseFormat(*input.ImageResponseFormat)
+		if err != nil {
+			return nil, err
+		}
+		group.ImageResponseFormat = imageResponseFormat
 	}
 	if input.ImageSuperResolutionEnabled != nil {
 		group.ImageSuperResolutionEnabled = *input.ImageSuperResolutionEnabled

@@ -239,6 +239,72 @@ func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	require.Nil(t, repo.created.ImagePrice4K)
 }
 
+func TestAdminService_CreateGroup_DefaultsImageResponseFormatToBase64(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "default-image-format",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, ImageResponseFormatB64JSON, group.ImageResponseFormat)
+	require.Equal(t, ImageResponseFormatB64JSON, repo.created.ImageResponseFormat)
+}
+
+func TestAdminService_CreateGroup_AcceptsURLImageResponseFormat(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                "url-image-format",
+		Platform:            PlatformOpenAI,
+		RateMultiplier:      1,
+		ImageResponseFormat: ImageResponseFormatURL,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, ImageResponseFormatURL, group.ImageResponseFormat)
+}
+
+func TestAdminService_CreateGroup_RejectsInvalidImageResponseFormat(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                "invalid-image-format",
+		Platform:            PlatformOpenAI,
+		RateMultiplier:      1,
+		ImageResponseFormat: "base64",
+	})
+
+	require.ErrorContains(t, err, "invalid image response format")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_UpdateGroup_PreservesOrUpdatesImageResponseFormat(t *testing.T) {
+	existingGroup := &Group{
+		ID:                  1,
+		Name:                "existing-group",
+		Platform:            PlatformOpenAI,
+		Status:              StatusActive,
+		ImageResponseFormat: ImageResponseFormatB64JSON,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{})
+	require.NoError(t, err)
+	require.Equal(t, ImageResponseFormatB64JSON, repo.updated.ImageResponseFormat)
+
+	format := ImageResponseFormatURL
+	_, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{ImageResponseFormat: &format})
+	require.NoError(t, err)
+	require.Equal(t, ImageResponseFormatURL, repo.updated.ImageResponseFormat)
+}
+
 func TestAdminService_CreateGroup_DefaultsGrokMediaGenerationEnabled(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}

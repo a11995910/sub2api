@@ -93,6 +93,10 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用图片生成能力"),
+		field.String("image_response_format").
+			Default("b64_json").
+			MaxLen(16).
+			Comment("图片响应默认传输方式：b64_json 或 url；客户显式 response_format 优先"),
 		field.Bool("image_super_resolution_enabled").
 			Default(false).
 			Comment("是否对图片生成结果自动执行 4K 超分"),

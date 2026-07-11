@@ -93,6 +93,7 @@ type CreateGroupRequest struct {
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
+	ImageResponseFormat             string   `json:"image_response_format"`
 	AllowBatchImageGeneration       bool     `json:"allow_batch_image_generation"`
 	ImageSuperResolutionEnabled     bool     `json:"image_super_resolution_enabled"`
 	Image2KEnhancementEnabled       bool     `json:"image_2k_enhancement_enabled"`
@@ -153,6 +154,7 @@ type UpdateGroupRequest struct {
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
+	ImageResponseFormat             *string  `json:"image_response_format"`
 	AllowBatchImageGeneration       *bool    `json:"allow_batch_image_generation"`
 	ImageSuperResolutionEnabled     *bool    `json:"image_super_resolution_enabled"`
 	Image2KEnhancementEnabled       *bool    `json:"image_2k_enhancement_enabled"`
@@ -336,6 +338,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
+		ImageResponseFormat:             req.ImageResponseFormat,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
 		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
@@ -411,6 +414,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		AllowImageGeneration:            req.AllowImageGeneration,
+		ImageResponseFormat:             req.ImageResponseFormat,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
 		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
 		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,

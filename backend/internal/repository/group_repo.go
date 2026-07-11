@@ -50,6 +50,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetImageResponseFormat(groupIn.ImageResponseFormat).
 		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
 		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
 		SetNillableImage2kEnhancementGroupID(groupIn.Image2KEnhancementGroupID).
@@ -147,6 +148,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetImageResponseFormat(groupIn.ImageResponseFormat).
 		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
 		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
 		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).

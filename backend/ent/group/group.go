@@ -54,6 +54,8 @@ const (
 	FieldDefaultValidityDays = "default_validity_days"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
 	FieldAllowImageGeneration = "allow_image_generation"
+	// FieldImageResponseFormat holds the string denoting the image_response_format field in the database.
+	FieldImageResponseFormat = "image_response_format"
 	// FieldImageSuperResolutionEnabled holds the string denoting the image_super_resolution_enabled field in the database.
 	FieldImageSuperResolutionEnabled = "image_super_resolution_enabled"
 	// FieldImage2kEnhancementEnabled holds the string denoting the image_2k_enhancement_enabled field in the database.
@@ -218,6 +220,7 @@ var Columns = []string{
 	FieldMonthlyLimitUsd,
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
+	FieldImageResponseFormat,
 	FieldImageSuperResolutionEnabled,
 	FieldImage2kEnhancementEnabled,
 	FieldImage2kEnhancementGroupID,
@@ -322,6 +325,10 @@ var (
 	DefaultDefaultValidityDays int
 	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
 	DefaultAllowImageGeneration bool
+	// DefaultImageResponseFormat holds the default value on creation for the "image_response_format" field.
+	DefaultImageResponseFormat string
+	// ImageResponseFormatValidator is a validator for the "image_response_format" field. It is called by the builders before save.
+	ImageResponseFormatValidator func(string) error
 	// DefaultImageSuperResolutionEnabled holds the default value on creation for the "image_super_resolution_enabled" field.
 	DefaultImageSuperResolutionEnabled bool
 	// DefaultImage2kEnhancementEnabled holds the default value on creation for the "image_2k_enhancement_enabled" field.
@@ -475,6 +482,11 @@ func ByDefaultValidityDays(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowImageGeneration orders the results by the allow_image_generation field.
 func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowImageGeneration, opts...).ToFunc()
+}
+
+// ByImageResponseFormat orders the results by the image_response_format field.
+func ByImageResponseFormat(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageResponseFormat, opts...).ToFunc()
 }
 
 // ByImageSuperResolutionEnabled orders the results by the image_super_resolution_enabled field.

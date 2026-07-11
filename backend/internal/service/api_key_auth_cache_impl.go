@@ -260,6 +260,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
+			ImageResponseFormat:             apiKey.Group.ImageResponseFormat,
 			AllowBatchImageGeneration:       apiKey.Group.AllowBatchImageGeneration,
 			ImageSuperResolutionEnabled:     apiKey.Group.ImageSuperResolutionEnabled,
 			Image2KEnhancementEnabled:       apiKey.Group.Image2KEnhancementEnabled,
@@ -340,6 +341,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		},
 	}
 	if snapshot.Group != nil {
+		imageResponseFormat, _ := NormalizeImageResponseFormat(snapshot.Group.ImageResponseFormat)
 		apiKey.Group = &Group{
 			ID:                              snapshot.Group.ID,
 			Name:                            snapshot.Group.Name,
@@ -353,6 +355,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 snapshot.Group.MonthlyLimitUSD,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
+			ImageResponseFormat:             imageResponseFormat,
 			AllowBatchImageGeneration:       snapshot.Group.AllowBatchImageGeneration,
 			ImageSuperResolutionEnabled:     snapshot.Group.ImageSuperResolutionEnabled,
 			Image2KEnhancementEnabled:       snapshot.Group.Image2KEnhancementEnabled,

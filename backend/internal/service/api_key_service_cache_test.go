@@ -280,6 +280,33 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyService_SnapshotRoundTrip_PreservesImageResponseFormat(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(9)
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Key:     "k-image-format",
+		Status:  StatusActive,
+		User:    &User{ID: 2, Status: StatusActive, Role: RoleUser},
+		Group: &Group{
+			ID:                  groupID,
+			Name:                "openai-images",
+			Platform:            PlatformOpenAI,
+			Status:              StatusActive,
+			ImageResponseFormat: ImageResponseFormatURL,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.Equal(t, ImageResponseFormatURL, snapshot.Group.ImageResponseFormat)
+	require.Equal(t, ImageResponseFormatURL, svc.snapshotToAPIKey(apiKey.Key, snapshot).Group.ImageResponseFormat)
+
+	snapshot.Group.ImageResponseFormat = ""
+	require.Equal(t, ImageResponseFormatB64JSON, svc.snapshotToAPIKey(apiKey.Key, snapshot).Group.ImageResponseFormat)
+}
+
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {
 	cache := &authCacheStub{}
 	var repoCalls int32

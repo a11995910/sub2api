@@ -352,6 +352,20 @@ func (_u *GroupUpdate) SetNillableAllowImageGeneration(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetImageResponseFormat sets the "image_response_format" field.
+func (_u *GroupUpdate) SetImageResponseFormat(v string) *GroupUpdate {
+	_u.mutation.SetImageResponseFormat(v)
+	return _u
+}
+
+// SetNillableImageResponseFormat sets the "image_response_format" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageResponseFormat(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetImageResponseFormat(*v)
+	}
+	return _u
+}
+
 // SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
 func (_u *GroupUpdate) SetImageSuperResolutionEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetImageSuperResolutionEnabled(v)
@@ -1311,6 +1325,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageResponseFormat(); ok {
+		if err := group.ImageResponseFormatValidator(v); err != nil {
+			return &ValidationError{Name: "image_response_format", err: fmt.Errorf(`ent: validator failed for field "Group.image_response_format": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
 		if err := group.Image4kEnhancementModelValidator(v); err != nil {
 			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
@@ -1422,6 +1441,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageResponseFormat(); ok {
+		_spec.SetField(group.FieldImageResponseFormat, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
@@ -2243,6 +2265,20 @@ func (_u *GroupUpdateOne) SetAllowImageGeneration(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableAllowImageGeneration(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageResponseFormat sets the "image_response_format" field.
+func (_u *GroupUpdateOne) SetImageResponseFormat(v string) *GroupUpdateOne {
+	_u.mutation.SetImageResponseFormat(v)
+	return _u
+}
+
+// SetNillableImageResponseFormat sets the "image_response_format" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageResponseFormat(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageResponseFormat(*v)
 	}
 	return _u
 }
@@ -3219,6 +3255,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageResponseFormat(); ok {
+		if err := group.ImageResponseFormatValidator(v); err != nil {
+			return &ValidationError{Name: "image_response_format", err: fmt.Errorf(`ent: validator failed for field "Group.image_response_format": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
 		if err := group.Image4kEnhancementModelValidator(v); err != nil {
 			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
@@ -3347,6 +3388,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageResponseFormat(); ok {
+		_spec.SetField(group.FieldImageResponseFormat, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)

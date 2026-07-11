@@ -21828,6 +21828,7 @@ type GroupMutation struct {
 	default_validity_days                   *int
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
+	image_response_format                   *string
 	image_super_resolution_enabled          *bool
 	image_2k_enhancement_enabled            *bool
 	image_2k_enhancement_group_id           *int64
@@ -22872,6 +22873,42 @@ func (m *GroupMutation) OldAllowImageGeneration(ctx context.Context) (v bool, er
 // ResetAllowImageGeneration resets all changes to the "allow_image_generation" field.
 func (m *GroupMutation) ResetAllowImageGeneration() {
 	m.allow_image_generation = nil
+}
+
+// SetImageResponseFormat sets the "image_response_format" field.
+func (m *GroupMutation) SetImageResponseFormat(s string) {
+	m.image_response_format = &s
+}
+
+// ImageResponseFormat returns the value of the "image_response_format" field in the mutation.
+func (m *GroupMutation) ImageResponseFormat() (r string, exists bool) {
+	v := m.image_response_format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageResponseFormat returns the old "image_response_format" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImageResponseFormat(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageResponseFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageResponseFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageResponseFormat: %w", err)
+	}
+	return oldValue.ImageResponseFormat, nil
+}
+
+// ResetImageResponseFormat resets all changes to the "image_response_format" field.
+func (m *GroupMutation) ResetImageResponseFormat() {
+	m.image_response_format = nil
 }
 
 // SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
@@ -24993,7 +25030,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 54)
+	fields := make([]string, 0, 55)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25050,6 +25087,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.allow_image_generation != nil {
 		fields = append(fields, group.FieldAllowImageGeneration)
+	}
+	if m.image_response_format != nil {
+		fields = append(fields, group.FieldImageResponseFormat)
 	}
 	if m.image_super_resolution_enabled != nil {
 		fields = append(fields, group.FieldImageSuperResolutionEnabled)
@@ -25202,6 +25242,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultValidityDays()
 	case group.FieldAllowImageGeneration:
 		return m.AllowImageGeneration()
+	case group.FieldImageResponseFormat:
+		return m.ImageResponseFormat()
 	case group.FieldImageSuperResolutionEnabled:
 		return m.ImageSuperResolutionEnabled()
 	case group.FieldImage2kEnhancementEnabled:
@@ -25319,6 +25361,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDefaultValidityDays(ctx)
 	case group.FieldAllowImageGeneration:
 		return m.OldAllowImageGeneration(ctx)
+	case group.FieldImageResponseFormat:
+		return m.OldImageResponseFormat(ctx)
 	case group.FieldImageSuperResolutionEnabled:
 		return m.OldImageSuperResolutionEnabled(ctx)
 	case group.FieldImage2kEnhancementEnabled:
@@ -25530,6 +25574,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowImageGeneration(v)
+		return nil
+	case group.FieldImageResponseFormat:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageResponseFormat(v)
 		return nil
 	case group.FieldImageSuperResolutionEnabled:
 		v, ok := value.(bool)
@@ -26253,6 +26304,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowImageGeneration:
 		m.ResetAllowImageGeneration()
+		return nil
+	case group.FieldImageResponseFormat:
+		m.ResetImageResponseFormat()
 		return nil
 	case group.FieldImageSuperResolutionEnabled:
 		m.ResetImageSuperResolutionEnabled()

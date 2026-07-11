@@ -150,6 +150,11 @@ func AllowImageGeneration(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowImageGeneration, v))
 }
 
+// ImageResponseFormat applies equality check predicate on the "image_response_format" field. It's identical to ImageResponseFormatEQ.
+func ImageResponseFormat(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResponseFormat, v))
+}
+
 // ImageSuperResolutionEnabled applies equality check predicate on the "image_super_resolution_enabled" field. It's identical to ImageSuperResolutionEnabledEQ.
 func ImageSuperResolutionEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageSuperResolutionEnabled, v))
@@ -1198,6 +1203,71 @@ func AllowImageGenerationEQ(v bool) predicate.Group {
 // AllowImageGenerationNEQ applies the NEQ predicate on the "allow_image_generation" field.
 func AllowImageGenerationNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowImageGeneration, v))
+}
+
+// ImageResponseFormatEQ applies the EQ predicate on the "image_response_format" field.
+func ImageResponseFormatEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatNEQ applies the NEQ predicate on the "image_response_format" field.
+func ImageResponseFormatNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatIn applies the In predicate on the "image_response_format" field.
+func ImageResponseFormatIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImageResponseFormat, vs...))
+}
+
+// ImageResponseFormatNotIn applies the NotIn predicate on the "image_response_format" field.
+func ImageResponseFormatNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImageResponseFormat, vs...))
+}
+
+// ImageResponseFormatGT applies the GT predicate on the "image_response_format" field.
+func ImageResponseFormatGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatGTE applies the GTE predicate on the "image_response_format" field.
+func ImageResponseFormatGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatLT applies the LT predicate on the "image_response_format" field.
+func ImageResponseFormatLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatLTE applies the LTE predicate on the "image_response_format" field.
+func ImageResponseFormatLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatContains applies the Contains predicate on the "image_response_format" field.
+func ImageResponseFormatContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatHasPrefix applies the HasPrefix predicate on the "image_response_format" field.
+func ImageResponseFormatHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatHasSuffix applies the HasSuffix predicate on the "image_response_format" field.
+func ImageResponseFormatHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatEqualFold applies the EqualFold predicate on the "image_response_format" field.
+func ImageResponseFormatEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldImageResponseFormat, v))
+}
+
+// ImageResponseFormatContainsFold applies the ContainsFold predicate on the "image_response_format" field.
+func ImageResponseFormatContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldImageResponseFormat, v))
 }
 
 // ImageSuperResolutionEnabledEQ applies the EQ predicate on the "image_super_resolution_enabled" field.

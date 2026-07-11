@@ -119,6 +119,7 @@ type Group struct {
 
 	// 分组计费配置
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
+	ImageResponseFormat          string  `json:"image_response_format"`
 	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
 	ImageSuperResolutionEnabled  bool    `json:"image_super_resolution_enabled"`
 	Image2KEnhancementEnabled    bool    `json:"image_2k_enhancement_enabled"`

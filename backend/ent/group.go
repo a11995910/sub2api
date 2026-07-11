@@ -57,6 +57,8 @@ type Group struct {
 	DefaultValidityDays int `json:"default_validity_days,omitempty"`
 	// 是否允许该分组使用图片生成能力
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
+	// 图片响应默认传输方式：b64_json 或 url；客户显式 response_format 优先
+	ImageResponseFormat string `json:"image_response_format,omitempty"`
 	// 是否对图片生成结果自动执行 4K 超分
 	ImageSuperResolutionEnabled bool `json:"image_super_resolution_enabled,omitempty"`
 	// 是否在 2K 生图命中后调用指定图片分组做二段提升
@@ -241,7 +243,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImage4kEnhancementModel, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImageResponseFormat, group.FieldImage4kEnhancementModel, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -384,6 +386,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_image_generation", values[i])
 			} else if value.Valid {
 				_m.AllowImageGeneration = value.Bool
+			}
+		case group.FieldImageResponseFormat:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_response_format", values[i])
+			} else if value.Valid {
+				_m.ImageResponseFormat = value.String
 			}
 		case group.FieldImageSuperResolutionEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -756,6 +764,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_image_generation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowImageGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("image_response_format=")
+	builder.WriteString(_m.ImageResponseFormat)
 	builder.WriteString(", ")
 	builder.WriteString("image_super_resolution_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageSuperResolutionEnabled))

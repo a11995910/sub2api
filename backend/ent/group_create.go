@@ -287,6 +287,20 @@ func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetImageResponseFormat sets the "image_response_format" field.
+func (_c *GroupCreate) SetImageResponseFormat(v string) *GroupCreate {
+	_c.mutation.SetImageResponseFormat(v)
+	return _c
+}
+
+// SetNillableImageResponseFormat sets the "image_response_format" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageResponseFormat(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetImageResponseFormat(*v)
+	}
+	return _c
+}
+
 // SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
 func (_c *GroupCreate) SetImageSuperResolutionEnabled(v bool) *GroupCreate {
 	_c.mutation.SetImageSuperResolutionEnabled(v)
@@ -946,6 +960,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowImageGeneration
 		_c.mutation.SetAllowImageGeneration(v)
 	}
+	if _, ok := _c.mutation.ImageResponseFormat(); !ok {
+		v := group.DefaultImageResponseFormat
+		_c.mutation.SetImageResponseFormat(v)
+	}
 	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
 		v := group.DefaultImageSuperResolutionEnabled
 		_c.mutation.SetImageSuperResolutionEnabled(v)
@@ -1114,6 +1132,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)}
+	}
+	if _, ok := _c.mutation.ImageResponseFormat(); !ok {
+		return &ValidationError{Name: "image_response_format", err: errors.New(`ent: missing required field "Group.image_response_format"`)}
+	}
+	if v, ok := _c.mutation.ImageResponseFormat(); ok {
+		if err := group.ImageResponseFormatValidator(v); err != nil {
+			return &ValidationError{Name: "image_response_format", err: fmt.Errorf(`ent: validator failed for field "Group.image_response_format": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ImageSuperResolutionEnabled(); !ok {
 		return &ValidationError{Name: "image_super_resolution_enabled", err: errors.New(`ent: missing required field "Group.image_super_resolution_enabled"`)}
@@ -1296,6 +1322,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
 		_node.AllowImageGeneration = value
+	}
+	if value, ok := _c.mutation.ImageResponseFormat(); ok {
+		_spec.SetField(group.FieldImageResponseFormat, field.TypeString, value)
+		_node.ImageResponseFormat = value
 	}
 	if value, ok := _c.mutation.ImageSuperResolutionEnabled(); ok {
 		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
@@ -1872,6 +1902,18 @@ func (u *GroupUpsert) SetAllowImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowImageGeneration)
+	return u
+}
+
+// SetImageResponseFormat sets the "image_response_format" field.
+func (u *GroupUpsert) SetImageResponseFormat(v string) *GroupUpsert {
+	u.Set(group.FieldImageResponseFormat, v)
+	return u
+}
+
+// UpdateImageResponseFormat sets the "image_response_format" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageResponseFormat() *GroupUpsert {
+	u.SetExcluded(group.FieldImageResponseFormat)
 	return u
 }
 
@@ -2834,6 +2876,20 @@ func (u *GroupUpsertOne) SetAllowImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetImageResponseFormat sets the "image_response_format" field.
+func (u *GroupUpsertOne) SetImageResponseFormat(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResponseFormat(v)
+	})
+}
+
+// UpdateImageResponseFormat sets the "image_response_format" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageResponseFormat() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResponseFormat()
 	})
 }
 
@@ -4060,6 +4116,20 @@ func (u *GroupUpsertBulk) SetAllowImageGeneration(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowImageGeneration()
+	})
+}
+
+// SetImageResponseFormat sets the "image_response_format" field.
+func (u *GroupUpsertBulk) SetImageResponseFormat(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResponseFormat(v)
+	})
+}
+
+// UpdateImageResponseFormat sets the "image_response_format" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageResponseFormat() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResponseFormat()
 	})
 }
 

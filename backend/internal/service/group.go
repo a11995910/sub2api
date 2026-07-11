@@ -13,6 +13,25 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
 
+const (
+	ImageResponseFormatB64JSON = "b64_json"
+	ImageResponseFormatURL     = "url"
+)
+
+// NormalizeImageResponseFormat 校验图片响应格式；空值兼容旧数据并回退到 Base64。
+func NormalizeImageResponseFormat(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return ImageResponseFormatB64JSON, nil
+	}
+	switch normalized {
+	case ImageResponseFormatB64JSON, ImageResponseFormatURL:
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("invalid image response format %q", value)
+	}
+}
+
 type Group struct {
 	ID             int64
 	Name           string
@@ -37,6 +56,7 @@ type Group struct {
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
 	AllowImageGeneration         bool
+	ImageResponseFormat          string
 	AllowBatchImageGeneration    bool
 	ImageSuperResolutionEnabled  bool
 	Image2KEnhancementEnabled    bool
