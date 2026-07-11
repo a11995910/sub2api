@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: include API Key OpenAI fast mode and group batch/video pricing fields
+const apiKeyAuthSnapshotVersion = 18 // v18: include group image response format
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

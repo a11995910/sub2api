@@ -178,6 +178,41 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesImageEnhancementConfig_SQLite
 	require.Equal(t, "gpt-image-2", *got.Group.Image4KEnhancementModel)
 }
 
+func TestAPIKeyRepository_GetByKeyForAuth_PreservesImageResponseFormat_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-image-format-unit@test.com")
+
+	group, err := client.Group.Create().
+		SetName("g-auth-image-format-unit").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		SetSubscriptionType(service.SubscriptionTypeStandard).
+		SetRateMultiplier(1).
+		SetAllowImageGeneration(true).
+		SetImageResponseFormat(service.ImageResponseFormatURL).
+		Save(ctx)
+	require.NoError(t, err)
+	require.Equal(t, service.ImageResponseFormatURL, group.ImageResponseFormat)
+	reloadedGroup, err := client.Group.Get(ctx, group.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.ImageResponseFormatURL, reloadedGroup.ImageResponseFormat)
+
+	key := &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-getbykey-auth-image-format-unit",
+		Name:    "Image Format Key Unit",
+		GroupID: &group.ID,
+		Status:  service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.NotNil(t, got.Group)
+	require.Equal(t, service.ImageResponseFormatURL, got.Group.ImageResponseFormat)
+}
+
 func TestAPIKeyRepository_GetByKeyForAuth_FiltersExpiredAllowedGroups_SQLite(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()
