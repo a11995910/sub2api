@@ -160,7 +160,6 @@ export async function testImageGeneration(req: ImageGenerationTestRequest): Prom
     model: req.model,
     prompt: req.prompt,
     n: 1,
-    response_format: 'b64_json',
   }
   const size = req.size?.trim()
   if (size) {
@@ -180,7 +179,6 @@ export async function testImageEdit(req: ImageEditTestRequest): Promise<unknown>
   form.set('model', req.model)
   form.set('prompt', req.prompt)
   form.set('n', '1')
-  form.set('response_format', 'b64_json')
 
   const size = req.size?.trim()
   if (size) {

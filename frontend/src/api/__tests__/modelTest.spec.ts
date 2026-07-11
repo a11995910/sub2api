@@ -25,6 +25,7 @@ describe('modelTest api', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     const payload = JSON.parse(String(init.body)) as Record<string, unknown>
     expect(payload).not.toHaveProperty('size')
+    expect(payload).not.toHaveProperty('response_format')
   })
 
   it('固定图片尺寸会按选择值传给网关', async () => {
@@ -75,7 +76,7 @@ describe('modelTest api', () => {
     expect(form.get('prompt')).toBe('把背景改成夜景')
     expect(form.get('size')).toBe('1536x1024')
     expect(form.get('n')).toBe('1')
-    expect(form.get('response_format')).toBe('b64_json')
+    expect(form.has('response_format')).toBe(false)
     const uploaded = form.get('image') as File | null
     expect(uploaded).toBeInstanceOf(File)
     expect(uploaded?.name).toBe('source.png')
