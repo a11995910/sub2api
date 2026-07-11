@@ -2534,7 +2534,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletions(t 
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content").String(), "draw a banana")
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
 	require.Equal(t, "nano-banana-2", gjson.Get(rec.Body.String(), "model").String())
 }
 
@@ -2771,7 +2771,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditViaChatCompletionsInclu
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String(), "edit this banana")
 	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
 	require.Equal(t, "data:image/png;base64,c291cmNlLWltYWdl", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyMultipartEditViaChatCompletionsIncludesUpload(t *testing.T) {
@@ -2842,7 +2842,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyMultipartEditViaChatCompletions
 	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
 	require.Equal(t, "data:image/png;base64,c291cmNlLWltYWdl", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGeneration502RetryableOnSameAccount(t *testing.T) {
@@ -3272,7 +3272,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingSuperResolutionFor4KCo
 	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
 	require.True(t, ok)
 	require.False(t, gjson.Get(completed.Data, "b64_json").Exists())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
 	require.Equal(t, "png", gjson.Get(completed.Data, "output_format").String())
 	require.Equal(t, "image/png", gjson.Get(completed.Data, "mime_type").String())
 	require.Equal(t, "3840x2160", gjson.Get(completed.Data, "size").String())
@@ -3351,7 +3351,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreaming4KEnhancementDoesNotFa
 	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
 	require.True(t, ok)
 	require.False(t, gjson.Get(completed.Data, "b64_json").Exists())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
 	require.Equal(t, "png", gjson.Get(completed.Data, "output_format").String())
 	require.Equal(t, "3840x2160", gjson.Get(completed.Data, "size").String())
 }
@@ -3421,6 +3421,38 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONFallback4KEnhancement
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "b3JpZ2luYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.False(t, gjson.Get(rec.Body.String(), "output_format").Exists())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONFallbackURLStorageFailureReturnsError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-1","prompt":"draw a cat","stream":true,"response_format":"url"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Host = "attacker.example"
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	c.Set("api_key", &APIKey{ID: 42, Group: &Group{ID: 7, AllowImageGeneration: true}})
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{},
+		httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(`{"created":1710000009,"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString(generatedImageTestPNG(t)) + `"}]}`)),
+		}},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	account := &Account{ID: 8, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-api-key"}}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Equal(t, "error", gjson.Get(rec.Body.String(), "type").String())
+	require.False(t, gjson.Get(rec.Body.String(), "data.0.b64_json").Exists())
+	require.NotContains(t, rec.Body.String(), "attacker.example")
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONFallbackSuperResolutionFor4K(t *testing.T) {
@@ -3692,9 +3724,9 @@ func TestOpenAIGatewayServiceLocalizeOpenAIImagesJSONResponse(t *testing.T) {
 
 	require.NoError(t, err)
 	resultURL := gjson.GetBytes(localized, "data.0.url").String()
-	require.Regexp(t, `^https://api\.example\.com/generated-images/[a-f0-9]{32}\.png$`, resultURL)
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, resultURL)
 	require.False(t, gjson.GetBytes(localized, "data.0.b64_json").Exists())
-	name := strings.TrimPrefix(resultURL, "https://api.example.com/generated-images/")
+	name := strings.TrimPrefix(resultURL, "/generated-images/")
 	_, err = store.Resolve(name, time.Now().UTC())
 	require.NoError(t, err)
 }
@@ -3719,7 +3751,7 @@ func TestOpenAIImagesStreamingURLStoresOnlyCompletedImage(t *testing.T) {
 	completed := []byte(`{"type":"image_generation.completed","b64_json":"` + encoded + `","output_format":"png"}`)
 	rewritten, err := svc.rewriteOpenAIImagesStreamingCompletedPayload(context.Background(), c, completed, opts)
 	require.NoError(t, err)
-	require.Regexp(t, `^https://api\.example\.com/generated-images/[a-f0-9]{32}\.png$`, gjson.GetBytes(rewritten, "url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.GetBytes(rewritten, "url").String())
 	require.False(t, gjson.GetBytes(rewritten, "b64_json").Exists())
 }
 
@@ -3788,7 +3820,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 	require.Equal(t, "image_generation.completed", gjson.Get(completed.Data, "type").String())
 	require.Equal(t, int64(1710000001), gjson.Get(completed.Data, "created_at").Int())
 	require.False(t, gjson.Get(completed.Data, "b64_json").Exists())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
 	require.Equal(t, "gpt-image-2", gjson.Get(completed.Data, "model").String())
 	require.Equal(t, "png", gjson.Get(completed.Data, "output_format").String())
 	require.Equal(t, "high", gjson.Get(completed.Data, "quality").String())
@@ -4006,7 +4038,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	require.Equal(t, "image_edit.completed", gjson.Get(completed.Data, "type").String())
 	require.Equal(t, int64(1710000003), gjson.Get(completed.Data, "created_at").Int())
 	require.False(t, gjson.Get(completed.Data, "b64_json").Exists())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
 	require.Equal(t, "gpt-image-2", gjson.Get(completed.Data, "model").String())
 	require.Equal(t, "webp", gjson.Get(completed.Data, "output_format").String())
 	require.Equal(t, "high", gjson.Get(completed.Data, "quality").String())
@@ -4283,7 +4315,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesOutputItemDoneFa
 	require.Equal(t, "image_generation.completed", gjson.Get(completed.Data, "type").String())
 	require.Equal(t, int64(1710000005), gjson.Get(completed.Data, "created_at").Int())
 	require.False(t, gjson.Get(completed.Data, "b64_json").Exists())
-	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
+	require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(completed.Data, "url").String())
 	require.Equal(t, "gpt-image-2", gjson.Get(completed.Data, "model").String())
 	require.JSONEq(t, `{"images":1}`, gjson.Get(completed.Data, "usage").Raw)
 	require.NotContains(t, rec.Body.String(), "event: error")

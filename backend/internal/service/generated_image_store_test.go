@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -49,7 +50,8 @@ func TestGeneratedImageStoreSaveAndResolve(t *testing.T) {
 }
 
 func TestGeneratedImageStoreRejectsInvalidAndExpiredImages(t *testing.T) {
-	store := NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: t.TempDir()})
+	dir := t.TempDir()
+	store := NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: dir})
 	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
 
 	_, err := store.Save(context.Background(), []byte("not-an-image"), now)
@@ -60,6 +62,10 @@ func TestGeneratedImageStoreRejectsInvalidAndExpiredImages(t *testing.T) {
 	_, err = store.Resolve(saved.Name, now.Add(24*time.Hour))
 	require.ErrorIs(t, err, ErrGeneratedImageNotFound)
 	_, err = store.Resolve("../"+saved.Name, now)
+	require.ErrorIs(t, err, ErrGeneratedImageNotFound)
+	invalidName := "0123456789abcdef0123456789abcdef.png"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, invalidName), []byte("<html>not an image</html>"), 0o600))
+	_, err = store.Resolve(invalidName, now)
 	require.ErrorIs(t, err, ErrGeneratedImageNotFound)
 }
 

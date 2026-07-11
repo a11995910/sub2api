@@ -30,7 +30,7 @@
 
 - 运行用户对目录具有创建、写入、重命名和删除权限。
 - 磁盘空间能够承载最近 24 小时的图片量，单张图片上限为 64MB。
-- 管理端“API 端点地址”配置为客户实际访问的 HTTPS API 地址，否则回退 URL 可能使用请求 Host。
+- 管理端“API 端点地址”应配置为客户实际访问的 HTTPS API 地址；未配置时返回同域相对路径，避免信任客户端可控的 Host 或转发头。
 - 多实例部署时所有实例共享同一个 `IMAGE_STORAGE_PATH`；独立本地盘不受支持。
 - Nginx/Caddy 必须继续把 `/generated-images/*` 转发给 Sub2API，不能被前端 SPA fallback 截获。
 

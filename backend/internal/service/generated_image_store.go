@@ -157,6 +157,17 @@ func (s *GeneratedImageStore) Resolve(name string, now time.Time) (GeneratedImag
 	if mimeType == "" {
 		return GeneratedImage{}, ErrGeneratedImageNotFound
 	}
+	if info.Size() <= 0 || info.Size() > generatedImageMaxBytes {
+		return GeneratedImage{}, ErrGeneratedImageNotFound
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return GeneratedImage{}, ErrGeneratedImageNotFound
+	}
+	detectedMIME, _, err := detectGeneratedImageType(data)
+	if err != nil || detectedMIME != mimeType {
+		return GeneratedImage{}, ErrGeneratedImageNotFound
+	}
 	return GeneratedImage{
 		Name:      name,
 		Path:      path,

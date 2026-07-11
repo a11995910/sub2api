@@ -1768,16 +1768,20 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		if len(body) == 0 {
 			return
 		}
+		upstreamBody := body
+		statusCode := resp.StatusCode
 		if rewritten, err := s.rewriteOpenAIImagesStreamingJSONBody(opts.ctx, c, body, opts); err == nil {
 			body = rewritten
 		} else {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream JSON super resolution rewrite skipped: %v", err)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream JSON rewrite failed: %v", err)
+			body = buildOpenAIImagesStreamErrorBody(err.Error())
+			statusCode = http.StatusInternalServerError
 		}
-		mergeOpenAIUsage(&usage, body)
-		imageCounter.AddJSONResponse(body)
+		mergeOpenAIUsage(&usage, upstreamBody)
+		imageCounter.AddJSONResponse(upstreamBody)
 		if !clientDisconnected {
 			c.Writer.Header().Set("Content-Type", "application/json")
-			c.Writer.WriteHeader(resp.StatusCode)
+			c.Writer.WriteHeader(statusCode)
 			if _, writeErr := c.Writer.Write(body); writeErr != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream JSON client disconnected, continue draining upstream for billing")

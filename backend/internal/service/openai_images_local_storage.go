@@ -135,23 +135,6 @@ func (s *OpenAIGatewayService) generatedImagePublicOrigin(ctx context.Context, c
 	if c == nil || c.Request == nil {
 		return ""
 	}
-	scheme := strings.TrimSpace(c.Request.URL.Scheme)
-	if scheme == "" {
-		scheme = strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
-		if comma := strings.IndexByte(scheme, ','); comma >= 0 {
-			scheme = strings.TrimSpace(scheme[:comma])
-		}
-	}
-	if scheme != "http" && scheme != "https" {
-		if c.Request.TLS != nil {
-			scheme = "https"
-		} else {
-			scheme = "http"
-		}
-	}
-	host := strings.TrimSpace(c.Request.Host)
-	if host == "" {
-		return ""
-	}
-	return scheme + "://" + host
+	// 请求 Host 和转发头都可能由客户端控制；未配置公开 API 地址时返回同域相对 URL。
+	return ""
 }
