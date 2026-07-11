@@ -619,11 +619,58 @@ type ChatChoice struct {
 
 // ChatUsage holds token counts in Chat Completions format.
 type ChatUsage struct {
-	PromptTokens            int               `json:"prompt_tokens"`
-	CompletionTokens        int               `json:"completion_tokens"`
-	TotalTokens             int               `json:"total_tokens"`
-	PromptTokensDetails     *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
-	CompletionTokensDetails *ChatTokenDetails `json:"completion_tokens_details,omitempty"`
+	PromptTokens             int               `json:"prompt_tokens"`
+	CompletionTokens         int               `json:"completion_tokens"`
+	TotalTokens              int               `json:"total_tokens"`
+	PromptTokensDetails      *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails  *ChatTokenDetails `json:"completion_tokens_details,omitempty"`
+	cacheCreationInputTokens int
+	cacheCreationTokensSet   bool
+}
+
+func (u *ChatUsage) UnmarshalJSON(data []byte) error {
+	type chatUsageAlias ChatUsage
+	var decoded chatUsageAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*u = ChatUsage(decoded)
+
+	type cacheTokenPresence struct {
+		CacheCreationTokens *int `json:"cache_creation_tokens"`
+		CacheWriteTokens    *int `json:"cache_write_tokens"`
+	}
+	var presence struct {
+		CacheCreationInputTokens *int                `json:"cache_creation_input_tokens"`
+		CacheWriteInputTokens    *int                `json:"cache_write_input_tokens"`
+		CacheCreationTokens      *int                `json:"cache_creation_tokens"`
+		CacheWriteTokens         *int                `json:"cache_write_tokens"`
+		PromptTokensDetails      *cacheTokenPresence `json:"prompt_tokens_details"`
+	}
+	if err := json.Unmarshal(data, &presence); err != nil {
+		return err
+	}
+
+	var canonical *int
+	switch {
+	case presence.PromptTokensDetails != nil && presence.PromptTokensDetails.CacheWriteTokens != nil:
+		canonical = presence.PromptTokensDetails.CacheWriteTokens
+	case presence.PromptTokensDetails != nil && presence.PromptTokensDetails.CacheCreationTokens != nil:
+		canonical = presence.PromptTokensDetails.CacheCreationTokens
+	case presence.CacheCreationInputTokens != nil:
+		canonical = presence.CacheCreationInputTokens
+	case presence.CacheWriteInputTokens != nil:
+		canonical = presence.CacheWriteInputTokens
+	case presence.CacheCreationTokens != nil:
+		canonical = presence.CacheCreationTokens
+	case presence.CacheWriteTokens != nil:
+		canonical = presence.CacheWriteTokens
+	}
+	if canonical != nil {
+		u.cacheCreationInputTokens = max(*canonical, 0)
+		u.cacheCreationTokensSet = true
+	}
+	return nil
 }
 
 // ChatTokenDetails provides a breakdown of token usage. The same type is

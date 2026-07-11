@@ -35,8 +35,9 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
 	}
-	if len(req.Tools) > 0 {
-		tools, err := responsesToolsToChatTools(req.Tools)
+	allTools := AllResponsesTools(req)
+	if len(allTools) > 0 {
+		tools, err := responsesToolsToChatTools(allTools)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +53,25 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 				declared[tool.Function.Name] = true
 			}
 		}
-		if tc := responsesToolChoiceToChatToolChoice(req.ToolChoice, declared); len(tc) > 0 {
+		var choice map[string]json.RawMessage
+		_ = json.Unmarshal(req.ToolChoice, &choice)
+		if rawString(choice["type"]) == "namespace" {
+			namespace := rawString(choice["name"])
+			matched := 0
+			for _, owner := range NamespaceToolNames(allTools) {
+				if owner.Namespace == namespace {
+					matched++
+				}
+			}
+			switch {
+			case matched == 0:
+				// 指向未声明 namespace 的选择项与其他已丢弃工具一致，不转发。
+			case matched == len(out.Tools):
+				out.ToolChoice = json.RawMessage(`"required"`)
+			default:
+				return nil, fmt.Errorf("cannot preserve namespace tool_choice %q when other tools are also declared", namespace)
+			}
+		} else if tc := responsesToolChoiceToChatToolChoice(req.ToolChoice, declared); len(tc) > 0 {
 			out.ToolChoice = tc
 		}
 	}
@@ -61,6 +80,28 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	}
 
 	return out, nil
+}
+
+// AllResponsesTools 合并顶层 tools 与 Responses Lite input[].additional_tools，
+// 让请求转换和回程元数据使用同一份完整工具声明。
+func AllResponsesTools(req *ResponsesRequest) []ResponsesTool {
+	if req == nil {
+		return nil
+	}
+	out := append([]ResponsesTool(nil), req.Tools...)
+	var items []struct {
+		Type  string          `json:"type"`
+		Tools []ResponsesTool `json:"tools"`
+	}
+	if err := json.Unmarshal(req.Input, &items); err != nil {
+		return out
+	}
+	for _, item := range items {
+		if item.Type == "additional_tools" {
+			out = append(out, item.Tools...)
+		}
+	}
+	return out
 }
 
 // CustomToolNames 收集 Responses 请求中 custom/freeform 工具的名字。chat 桥回程时
@@ -967,6 +1008,9 @@ func ChatUsageToResponsesUsage(usage *ChatUsage) *ResponsesUsage {
 		InputTokens:  usage.PromptTokens,
 		OutputTokens: usage.CompletionTokens,
 		TotalTokens:  usage.TotalTokens,
+	}
+	if usage.cacheCreationTokensSet {
+		out.CacheCreationInputTokens = usage.cacheCreationInputTokens
 	}
 	if out.TotalTokens == 0 {
 		out.TotalTokens = out.InputTokens + out.OutputTokens

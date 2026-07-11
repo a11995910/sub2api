@@ -472,6 +472,40 @@ func TestSettingHandler_UpdateSettings_DoesNotPersistPartialSystemSettingsWhenAu
 	require.Equal(t, "9.5", repo.values[service.SettingKeyAuthSourceDefaultEmailBalance])
 }
 
+func TestSettingHandler_UpdateSettings_RejectsInvalidFastPolicyBeforePersistingSystemSettings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{values: map[string]string{
+		service.SettingKeyRegistrationEnabled: "false",
+	}}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"registration_enabled": true,
+		"openai_fast_policy_settings": map[string]any{
+			"rules": []map[string]any{{
+				"service_tier": "priority",
+				"action":       "filter",
+				"scope":        "all",
+				"user_ids":     []int64{0},
+			}},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyRegistrationEnabled])
+	require.NotContains(t, repo.values, service.SettingKeyOpenAIFastPolicySettings)
+}
+
 func TestDiffSettings_IncludesAuthSourceDefaultsAndForceEmail(t *testing.T) {
 	changed := diffSettings(
 		&service.SystemSettings{},

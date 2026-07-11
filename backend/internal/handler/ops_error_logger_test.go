@@ -119,6 +119,25 @@ func TestOpsCaptureWriterPool_ResetOnRelease(t *testing.T) {
 	require.Zero(t, reused.buf.Len(), "writer should be reset before reuse")
 }
 
+func TestOpsCaptureWriter_ReleasedReferenceCannotBeReboundToAnotherRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstRecorder := httptest.NewRecorder()
+	firstContext, _ := gin.CreateTestContext(firstRecorder)
+	first := acquireOpsCaptureWriter(firstContext.Writer)
+	releaseOpsCaptureWriter(first)
+
+	secondRecorder := httptest.NewRecorder()
+	secondContext, _ := gin.CreateTestContext(secondRecorder)
+	second := acquireOpsCaptureWriter(secondContext.Writer)
+	defer releaseOpsCaptureWriter(second)
+
+	require.NotSame(t, first, second, "释放后的旧引用不得被复用并绑定到另一个请求")
+	_, err := first.Write([]byte("stale write"))
+	require.Error(t, err)
+	require.Empty(t, secondRecorder.Body.String())
+}
+
 func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

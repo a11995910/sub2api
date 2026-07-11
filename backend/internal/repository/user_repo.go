@@ -49,7 +49,7 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
 	txCtx := ctx
-	txClient := r.client
+	var txClient *dbent.Client
 	var tx *dbent.Tx
 	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
 		// 外层服务已开启事务时复用同一个 tx client，避免本方法悄悄开启第二个事务。
@@ -183,7 +183,7 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 
 	// 使用 ent 事务包裹用户更新与 allowed_groups 同步，避免跨层事务不一致。
 	txCtx := ctx
-	txClient := r.client
+	var txClient *dbent.Client
 	var tx *dbent.Tx
 	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
 		// 外层服务已开启事务时复用同一个 tx client，保证用户字段与授权集合原子提交。

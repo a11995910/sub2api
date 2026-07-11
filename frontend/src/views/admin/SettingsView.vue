@@ -7731,6 +7731,7 @@ import {
   defaultFingerprintSignalRows,
   type FingerprintSignalRow,
 } from "./codexFingerprintSignals";
+import { normalizeOpenAIFastPolicyUserIDs } from "./openaiFastPolicy";
 
 const { t, locale } = useI18n();
 const appStore = useAppStore();
@@ -9715,6 +9716,16 @@ async function saveSettings() {
     form.claude_oauth_system_prompt_blocks =
       claudeOAuthSystemPromptBlocksJSON;
 
+    const normalizedFastPolicyUserIDs = openaiFastPolicyForm.rules.map((rule) =>
+      normalizeOpenAIFastPolicyUserIDs(rule.user_ids),
+    );
+    if (normalizedFastPolicyUserIDs.some((userIDs) => userIDs === null)) {
+      appStore.showError(
+        t("admin.settings.openaiFastPolicy.userIdsInvalid"),
+      );
+      return;
+    }
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -9978,19 +9989,17 @@ async function saveSettings() {
     // 否则省略整个字段，让后端保留既有规则（含默认值）。
     if (openaiFastPolicyLoaded.value) {
       payload.openai_fast_policy_settings = {
-        rules: openaiFastPolicyForm.rules.map((rule) => {
+        rules: openaiFastPolicyForm.rules.map((rule, ruleIndex) => {
           const whitelist = (rule.model_whitelist || [])
             .map((p) => p.trim())
             .filter((p) => p !== "");
           const hasWhitelist = whitelist.length > 0;
+          const userIDs = normalizedFastPolicyUserIDs[ruleIndex] || [];
           return {
             service_tier: rule.service_tier,
             action: rule.action,
             scope: rule.scope,
-            user_ids:
-              rule.user_ids && rule.user_ids.length > 0
-                ? [...rule.user_ids]
-                : undefined,
+            user_ids: userIDs.length > 0 ? userIDs : undefined,
             error_message:
               rule.action === "block" ? rule.error_message : undefined,
             model_whitelist: hasWhitelist ? whitelist : undefined,

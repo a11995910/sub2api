@@ -217,7 +217,7 @@ func (s *CreativeDrawingService) fetchPromptMarketBytes(ctx context.Context, sou
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch prompt market resource: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", infraerrors.BadRequest("CREATIVE_DRAWING_PROMPT_MARKET_FETCH_FAILED", fmt.Sprintf("fetch prompt market resource failed: %d", resp.StatusCode))
 	}
@@ -339,7 +339,7 @@ func (s *CreativeDrawingService) forwardTask(ctx context.Context, task *Creative
 	if err != nil {
 		return nil, fmt.Errorf("creative drawing gateway request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

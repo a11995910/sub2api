@@ -2001,6 +2001,17 @@ func (s *SettingService) OIDCSecurityWriteDefaults(ctx context.Context) (bool, b
 
 // UpdateSettingsWithAuthSourceDefaults persists system settings and auth-source defaults in a single write.
 func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Context, settings *SystemSettings, authDefaults *AuthSourceDefaultSettings) error {
+	return s.UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy(ctx, settings, authDefaults, nil)
+}
+
+// UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy 将系统设置、认证来源默认值和
+// OpenAI Fast/Flex 策略合并为一次仓储写入，避免后置策略校验或写入失败造成部分保存。
+func (s *SettingService) UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy(
+	ctx context.Context,
+	settings *SystemSettings,
+	authDefaults *AuthSourceDefaultSettings,
+	fastPolicy *OpenAIFastPolicySettings,
+) error {
 	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
 	if err != nil {
 		return err
@@ -2012,6 +2023,13 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 	}
 	for key, value := range authSourceUpdates {
 		updates[key] = value
+	}
+	if fastPolicy != nil {
+		value, err := normalizeAndMarshalOpenAIFastPolicySettings(fastPolicy)
+		if err != nil {
+			return err
+		}
+		updates[SettingKeyOpenAIFastPolicySettings] = value
 	}
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
@@ -5436,9 +5454,9 @@ func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*Open
 }
 
 // SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
-func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settings *OpenAIFastPolicySettings) error {
+func normalizeAndMarshalOpenAIFastPolicySettings(settings *OpenAIFastPolicySettings) (string, error) {
 	if settings == nil {
-		return fmt.Errorf("settings cannot be nil")
+		return "", fmt.Errorf("settings cannot be nil")
 	}
 
 	validActions := map[string]bool{
@@ -5459,43 +5477,56 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 			tier = OpenAIFastTierAny
 		}
 		if !validTiers[tier] {
-			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
+			return "", fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
 		}
 		settings.Rules[i].ServiceTier = tier
 		if !validActions[rule.Action] {
-			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
+			return "", fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
 		}
 		if !validScopes[rule.Scope] {
-			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
+			return "", fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
 		}
 		seenUserIDs := make(map[int64]struct{}, len(rule.UserIDs))
 		for j, userID := range rule.UserIDs {
 			if userID <= 0 {
-				return fmt.Errorf("rule[%d]: user_ids[%d] must be positive", i, j)
+				return "", fmt.Errorf("rule[%d]: user_ids[%d] must be positive", i, j)
 			}
 			if _, exists := seenUserIDs[userID]; exists {
-				return fmt.Errorf("rule[%d]: user_ids[%d] duplicates user_id %d", i, j, userID)
+				return "", fmt.Errorf("rule[%d]: user_ids[%d] duplicates user_id %d", i, j, userID)
 			}
 			seenUserIDs[userID] = struct{}{}
 		}
 		for j, pattern := range rule.ModelWhitelist {
 			trimmed := strings.TrimSpace(pattern)
 			if trimmed == "" {
-				return fmt.Errorf("rule[%d]: model_whitelist[%d] cannot be empty", i, j)
+				return "", fmt.Errorf("rule[%d]: model_whitelist[%d] cannot be empty", i, j)
 			}
 			settings.Rules[i].ModelWhitelist[j] = trimmed
 		}
 		if rule.FallbackAction != "" && !validActions[rule.FallbackAction] {
-			return fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
+			return "", fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
 		}
 	}
 
 	data, err := json.Marshal(settings)
 	if err != nil {
-		return fmt.Errorf("marshal openai fast policy settings: %w", err)
+		return "", fmt.Errorf("marshal openai fast policy settings: %w", err)
 	}
+	return string(data), nil
+}
 
-	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, string(data))
+// ValidateOpenAIFastPolicySettings 在写入任何系统设置前验证并规范化策略。
+func (s *SettingService) ValidateOpenAIFastPolicySettings(settings *OpenAIFastPolicySettings) error {
+	_, err := normalizeAndMarshalOpenAIFastPolicySettings(settings)
+	return err
+}
+
+func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settings *OpenAIFastPolicySettings) error {
+	value, err := normalizeAndMarshalOpenAIFastPolicySettings(settings)
+	if err != nil {
+		return err
+	}
+	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, value)
 }
 
 // SetStreamTimeoutSettings 设置流超时处理配置

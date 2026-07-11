@@ -392,6 +392,8 @@ curl -I http://127.0.0.1:18080/health
 
 ### prod 切换与回滚
 
+如果当前版本已保存包含 `user_ids` 的 `openai_fast_policy_settings`，旧镜像回滚前必须先恢复发布前的该设置快照，或删除所有带 `user_ids` 的规则。旧版本忽略未知字段后会把用户专属规则视为全局规则，可能导致全局 block、filter 或 force_priority；只切换镜像不构成安全回滚。
+
 prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。当前生产盘点为只有历史 `image/per_request` 视频定价，没有显式 `video` 定价；发布前仍必须用真实表查询再次确认，不能把盘点结论当作永久事实：
 
 ```sql

@@ -474,21 +474,10 @@ type opsCaptureWriter struct {
 
 const opsCaptureWriterLimit = 64 * 1024
 
-var opsCaptureWriterPool = sync.Pool{
-	New: func() any {
-		return &opsCaptureWriter{limit: opsCaptureWriterLimit}
-	},
-}
+var errOpsCaptureWriterReleased = errors.New("response writer released")
 
 func acquireOpsCaptureWriter(rw gin.ResponseWriter) *opsCaptureWriter {
-	w, ok := opsCaptureWriterPool.Get().(*opsCaptureWriter)
-	if !ok || w == nil {
-		w = &opsCaptureWriter{}
-	}
-	w.ResponseWriter = rw
-	w.limit = opsCaptureWriterLimit
-	w.buf.Reset()
-	return w
+	return &opsCaptureWriter{ResponseWriter: rw, limit: opsCaptureWriterLimit}
 }
 
 func releaseOpsCaptureWriter(w *opsCaptureWriter) {
@@ -498,7 +487,6 @@ func releaseOpsCaptureWriter(w *opsCaptureWriter) {
 	w.ResponseWriter = nil
 	w.limit = opsCaptureWriterLimit
 	w.buf.Reset()
-	opsCaptureWriterPool.Put(w)
 }
 
 func (w *opsCaptureWriter) Status() int {
@@ -552,7 +540,7 @@ func (w *opsCaptureWriter) Flush() {
 
 func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if w.ResponseWriter == nil {
-		return nil, nil, errors.New("response writer released")
+		return nil, nil, errOpsCaptureWriterReleased
 	}
 	return w.ResponseWriter.Hijack()
 }
@@ -575,7 +563,7 @@ func (w *opsCaptureWriter) Pusher() http.Pusher {
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 	if w.ResponseWriter == nil {
-		return 0, nil
+		return 0, errOpsCaptureWriterReleased
 	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
@@ -590,7 +578,7 @@ func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 
 func (w *opsCaptureWriter) WriteString(s string) (int, error) {
 	if w.ResponseWriter == nil {
-		return 0, nil
+		return 0, errOpsCaptureWriterReleased
 	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()

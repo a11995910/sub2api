@@ -35,7 +35,7 @@ func TestResponseCompression_CompressesJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gzip reader: %v", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 	body, err := io.ReadAll(gr)
 	if err != nil {
 		t.Fatalf("read gzip body: %v", err)

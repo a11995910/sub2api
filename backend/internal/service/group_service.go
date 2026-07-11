@@ -125,10 +125,10 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		// 2K 超分为纯本地放大，不再使用目标分组（字段已废弃）。
 		Image2KEnhancementGroupID: nil,
 		Image4KEnhancementEnabled: req.Image4KEnhancementEnabled,
-		Image4KEnhancementGroupID:   normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
-		Image4KEnhancementModel:     normalizeImageTierEnhancementModel(req.Image4KEnhancementEnabled, req.Image4KEnhancementModel),
-		ImageRateIndependent:        req.ImageRateIndependent,
-		ImageRateMultiplier:         imageRateMultiplier,
+		Image4KEnhancementGroupID: normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
+		Image4KEnhancementModel:   normalizeImageTierEnhancementModel(req.Image4KEnhancementEnabled, req.Image4KEnhancementModel),
+		ImageRateIndependent:      req.ImageRateIndependent,
+		ImageRateMultiplier:       imageRateMultiplier,
 	}
 
 	if err := s.groupRepo.Create(ctx, group); err != nil {

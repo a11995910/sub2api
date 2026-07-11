@@ -38,14 +38,14 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	clientStream := responsesReq.Stream
-	serviceTier := extractOpenAIServiceTierFromBody(body)
 	// custom 工具（如 codex 的 exec）降级为 function 工具转发，回程需按名字还原为
 	// custom_tool_call 项，先记下名字集合；tool_search 工具同理，回程还原为
 	// tool_search_call 项；namespace 子工具（如 MCP 工具）摊平转发，回程按映射还原
 	// 为带 namespace 字段的 function_call 项。
-	customTools := apicompat.CustomToolNames(responsesReq.Tools)
-	toolSearch := apicompat.HasToolSearchTool(responsesReq.Tools)
-	namespaceTools := apicompat.NamespaceToolNames(responsesReq.Tools)
+	allTools := apicompat.AllResponsesTools(&responsesReq)
+	customTools := apicompat.CustomToolNames(allTools)
+	toolSearch := apicompat.HasToolSearchTool(allTools)
+	namespaceTools := apicompat.NamespaceToolNames(allTools)
 
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
 	if err != nil {
@@ -79,7 +79,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		}
 		return nil, err
 	}
-	serviceTier = extractOpenAIServiceTierFromBody(chatBody)
+	serviceTier := extractOpenAIServiceTierFromBody(chatBody)
 
 	logger.L().Debug("openai responses: forwarding via raw chat completions",
 		zap.Int64("account_id", account.ID),

@@ -73,6 +73,35 @@ func TestResponsesUsageNestedCacheWritePresenceOverridesTopLevelAlias(t *testing
 	}
 }
 
+func TestChatUsagePreservesTopLevelCacheCreationAliases(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    int
+	}{
+		{
+			name:    "top-level alias",
+			payload: `{"prompt_tokens":20,"completion_tokens":2,"cache_creation_input_tokens":19}`,
+			want:    19,
+		},
+		{
+			name:    "nested explicit zero wins",
+			payload: `{"prompt_tokens":20,"completion_tokens":2,"cache_creation_input_tokens":19,"prompt_tokens_details":{"cache_write_tokens":0}}`,
+			want:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var chatUsage ChatUsage
+			require.NoError(t, json.Unmarshal([]byte(tt.payload), &chatUsage))
+			responsesUsage := ChatUsageToResponsesUsage(&chatUsage)
+			require.NotNil(t, responsesUsage)
+			require.Equal(t, tt.want, responsesUsage.CacheCreationInputTokens)
+		})
+	}
+}
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",

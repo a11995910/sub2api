@@ -1,5 +1,7 @@
 package service
 
+import "context"
+
 import "testing"
 
 func TestAPIKeyService_AuthSnapshotPreservesOpenAIFastModeEnabled(t *testing.T) {
@@ -14,7 +16,7 @@ func TestAPIKeyService_AuthSnapshotPreservesOpenAIFastModeEnabled(t *testing.T) 
 		User:                  &User{ID: 22, Status: StatusActive, Role: RoleUser, Balance: 10, Concurrency: 1},
 	}
 
-	snapshot := svc.snapshotFromAPIKey(nil, apiKey)
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	if snapshot == nil {
 		t.Fatalf("expected snapshot")
 	}

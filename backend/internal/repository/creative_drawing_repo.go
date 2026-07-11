@@ -69,7 +69,7 @@ func (r *creativeDrawingRepository) ListByUserID(ctx context.Context, userID int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCreativeDrawingTasks(rows)
 }
 
@@ -90,7 +90,7 @@ func (r *creativeDrawingRepository) ListPending(ctx context.Context, limit int, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCreativeDrawingTasks(rows)
 }
 

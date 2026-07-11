@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -732,6 +734,64 @@ func TestForwardGrokResponsesStreamingUsesXAIResponsesAndSnapshots(t *testing.T)
 	require.Contains(t, recorder.Header().Get("Content-Type"), "text/event-stream")
 	require.Contains(t, recorder.Body.String(), "response.output_text.delta")
 	require.NotNil(t, repo.updates[52][grokQuotaSnapshotExtraKey])
+}
+
+func TestForwardGrokResponsesAppliesUserScopedFastPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok","input":"hi","stream":true,"service_tier":"priority"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          53,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			"base_url":     xai.DefaultCLIBaseURL,
+		},
+	}
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{53: account},
+		},
+	}
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_grok_policy","model":"grok-4.3","usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	policyRepo := &openAIFastPolicyRepoStub{values: map[string]string{}}
+	policyJSON, err := json.Marshal(&OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+		ServiceTier: OpenAIFastTierPriority,
+		Action:      BetaPolicyActionFilter,
+		Scope:       BetaPolicyScopeAll,
+		UserIDs:     []int64{42},
+	}}})
+	require.NoError(t, err)
+	policyRepo.values[SettingKeyOpenAIFastPolicySettings] = string(policyJSON)
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+		settingService:    NewSettingService(policyRepo, &config.Config{}),
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+
+	result, err := svc.forwardGrokResponses(ctx, c, account, body, "grok", true, time.Now())
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+	require.Nil(t, result.ServiceTier)
 }
 
 func TestForwardAsChatCompletionsForGrokStreamingUsesRawXAIChatCompletions(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,6 +44,15 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if err != nil {
 		return nil, err
 	}
+	patchedBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, patchedBody)
+	if err != nil {
+		var blocked *OpenAIFastBlockedError
+		if errors.As(err, &blocked) {
+			writeOpenAIFastPolicyBlockedResponse(c, blocked)
+		}
+		return nil, err
+	}
+	serviceTier := extractOpenAIServiceTierFromBody(patchedBody)
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -130,6 +140,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		Model:           originalModel,
 		UpstreamModel:   upstreamModel,
 		ReasoningEffort: reasoningEffort,
+		ServiceTier:     serviceTier,
 		Stream:          reqStream,
 		OpenAIWSMode:    false,
 		ResponseHeaders: resp.Header.Clone(),

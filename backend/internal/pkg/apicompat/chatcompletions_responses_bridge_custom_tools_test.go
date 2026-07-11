@@ -357,6 +357,46 @@ func TestResponsesToChatCompletionsRequest_NamespaceToolFlattensChildren(t *test
 	assert.Equal(t, "Send mail", out.Tools[0].Function.Description)
 }
 
+func TestResponsesToChatCompletionsRequest_AdditionalNamespaceToolsAreForwarded(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.5",
+		Input: json.RawMessage(`[
+			{"type":"message","role":"user","content":"hello"},
+			{"type":"additional_tools","tools":[{"type":"namespace","name":"mcp","tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}]}
+		]`),
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Tools, 1)
+	require.Equal(t, "mcp__echo", out.Tools[0].Function.Name)
+
+	allTools := AllResponsesTools(req)
+	require.Equal(t, NamespacedToolName{Namespace: "mcp", Name: "echo"}, NamespaceToolNames(allTools)["mcp__echo"])
+}
+
+func TestResponsesToChatCompletionsRequest_NamespaceToolChoicePreservesSemantics(t *testing.T) {
+	namespace := ResponsesTool{Type: "namespace", Name: "mcp", Tools: []ResponsesTool{{Type: "function", Name: "echo"}}}
+
+	out, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model:      "gpt-5.5",
+		Tools:      []ResponsesTool{namespace},
+		ToolChoice: json.RawMessage(`{"type":"namespace","name":"mcp"}`),
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, `"required"`, string(out.ToolChoice))
+
+	_, err = ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "gpt-5.5",
+		Tools: []ResponsesTool{
+			namespace,
+			{Type: "function", Name: "other"},
+		},
+		ToolChoice: json.RawMessage(`{"type":"namespace","name":"mcp"}`),
+	})
+	require.ErrorContains(t, err, "cannot preserve namespace tool_choice")
+}
+
 func TestResponsesToolsParsing_StringToolBecomesCustom(t *testing.T) {
 	var req ResponsesRequest
 	require.NoError(t, json.Unmarshal([]byte(`{"model":"glm-5.2","input":"hi","tools":["exec",{"type":"function","name":"wait"}]}`), &req))

@@ -213,17 +213,17 @@ func buildOpenAIImagesChatCompletionsBody(parsed *OpenAIImagesRequest, upstreamM
 		return nil, fmt.Errorf("prompt is required")
 	}
 	var b strings.Builder
-	b.WriteString(content)
+	_, _ = b.WriteString(content)
 	if parsed.IsEdits() {
-		b.WriteString("\n\nUse the attached reference image(s) as visual input for this image edit request.")
+		_, _ = b.WriteString("\n\nUse the attached reference image(s) as visual input for this image edit request.")
 		if parsed.HasMask {
-			b.WriteString(" If a mask image is attached, treat it as the editable region mask.")
+			_, _ = b.WriteString(" If a mask image is attached, treat it as the editable region mask.")
 		}
 	}
-	b.WriteString("\n\nReturn exactly one generated image as either an image URL, a data:image/*;base64 URL, or JSON with url/image_url/b64_json. Do not include unrelated text.")
+	_, _ = b.WriteString("\n\nReturn exactly one generated image as either an image URL, a data:image/*;base64 URL, or JSON with url/image_url/b64_json. Do not include unrelated text.")
 	if strings.TrimSpace(parsed.Size) != "" {
-		b.WriteString("\nRequested image size: ")
-		b.WriteString(strings.TrimSpace(parsed.Size))
+		_, _ = b.WriteString("\nRequested image size: ")
+		_, _ = b.WriteString(strings.TrimSpace(parsed.Size))
 	}
 	messageContent, err := buildOpenAIImagesChatCompletionsMessageContent(parsed, b.String())
 	if err != nil {

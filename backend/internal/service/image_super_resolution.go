@@ -45,10 +45,6 @@ func (s *OpenAIGatewayService) imageSuperResolutionSkipReason(c *gin.Context, re
 	return ""
 }
 
-func (s *OpenAIGatewayService) shouldApplyImageSuperResolution(c *gin.Context, requestSizeTier string) bool {
-	return s.imageSuperResolutionSkipReason(c, requestSizeTier) == ""
-}
-
 func logImageSuperResolutionDecision(c *gin.Context, phase, reason, requestSizeTier string) {
 	apiKey := getAPIKeyFromContext(c)
 	apiKeyID := int64(0)
@@ -259,15 +255,6 @@ func (s *OpenAIGatewayService) imageBytesFromOpenAIImageItem(ctx context.Context
 		opts.ctx = ctx
 	}
 	return s.downloadOpenAIImagesResponseURL(opts, imageURL)
-}
-
-func (s *OpenAIGatewayService) applyOpenAIResponsesSuperResolution(
-	ctx context.Context,
-	c *gin.Context,
-	results []openAIResponsesImageResult,
-	requestSizeTier string,
-) []openAIResponsesImageResult {
-	return s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, results, requestSizeTier, nil)
 }
 
 func (s *OpenAIGatewayService) applyOpenAIResponsesSuperResolutionWithParsed(
