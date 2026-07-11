@@ -94,6 +94,11 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+	GeneratedImage          GeneratedImageConfig          `mapstructure:"generated_image"`
+}
+
+type GeneratedImageConfig struct {
+	StoragePath string `mapstructure:"storage_path"`
 }
 
 type LogConfig struct {
@@ -1458,6 +1463,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	// 环境变量支持
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	_ = viper.BindEnv("generated_image.storage_path", "IMAGE_STORAGE_PATH")
 
 	// 默认值
 	setDefaults()
@@ -1790,6 +1796,7 @@ func setDefaults() {
 
 	// Batch Image queue
 	viper.SetDefault("batch_image.enabled", false)
+	viper.SetDefault("generated_image.storage_path", "./data/generated-images")
 	viper.SetDefault("batch_image.max_items_per_job_default", 200)
 	viper.SetDefault("batch_image.max_items_per_job_trial", 50)
 	viper.SetDefault("batch_image.max_output_images_per_job", 200)

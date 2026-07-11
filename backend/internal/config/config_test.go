@@ -30,6 +30,16 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadGeneratedImageStoragePathFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("IMAGE_STORAGE_PATH", "/tmp/sub2api-generated-images")
+
+	cfg, err := Load()
+
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/sub2api-generated-images", cfg.GeneratedImage.StoragePath)
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string

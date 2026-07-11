@@ -66,6 +66,11 @@ server:
 # - simple: 隐藏 SaaS 功能，跳过计费和余额校验
 run_mode: "standard"
 
+# Generated image URL storage. Files are publicly readable for 24 hours.
+# URL 图片本地存储目录；生成文件可公开访问 24 小时。
+generated_image:
+  storage_path: "./data/generated-images"
+
 # =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置
