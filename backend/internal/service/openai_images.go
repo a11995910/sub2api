@@ -1526,8 +1526,13 @@ func rewriteOpenAIImagesStreamEventLines(lines [][]byte, dataPayloads [][]byte, 
 	}
 	out := make([][]byte, 0, len(lines))
 	replaced := false
+	isError := gjson.Get(rewritten, "type").String() == "error"
 	for _, line := range lines {
 		trimmedLine := strings.TrimRight(string(line), "\r\n")
+		if isError && strings.HasPrefix(strings.TrimSpace(trimmedLine), "event:") {
+			out = append(out, []byte("event: error\n"))
+			continue
+		}
 		if _, ok := extractOpenAISSEDataLine(trimmedLine); ok {
 			if !replaced {
 				out = append(out, []byte("data: "+rewritten+"\n"))
@@ -1552,17 +1557,19 @@ func (s *OpenAIGatewayService) rewriteOpenAIImagesStreamingJSONBody(
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return body, nil
 	}
-	if s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, openAIImagesRequestSizeTier(opts.parsed)) {
-		return body, nil
-	}
-	if reason := s.imageSuperResolutionSkipReason(c, openAIImagesRequestSizeTier(opts.parsed)); reason != "" {
-		logImageSuperResolutionDecision(c, "skip", reason, openAIImagesRequestSizeTier(opts.parsed))
-		return body, nil
-	}
+	rewritten := body
 	if ctx == nil {
 		ctx = opts.ctx
 	}
-	return s.applyOpenAIImagesSuperResolutionToJSON(ctx, c, body, opts.nonStreamingOptions()), nil
+	requestSizeTier := openAIImagesRequestSizeTier(opts.parsed)
+	if !s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, requestSizeTier) {
+		if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
+			logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
+		} else {
+			rewritten = s.applyOpenAIImagesSuperResolutionToJSON(ctx, c, rewritten, opts.nonStreamingOptions())
+		}
+	}
+	return s.localizeOpenAIImagesJSONResponse(ctx, c, rewritten, opts.nonStreamingOptions())
 }
 
 func (s *OpenAIGatewayService) rewriteOpenAIImagesStreamingCompletedPayload(
@@ -1579,41 +1586,28 @@ func (s *OpenAIGatewayService) rewriteOpenAIImagesStreamingCompletedPayload(
 		return payload, nil
 	}
 	requestSizeTier := openAIImagesRequestSizeTier(opts.parsed)
-	if s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, requestSizeTier) {
-		return payload, nil
+	rewritten := payload
+	if !s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, requestSizeTier) {
+		if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
+			logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
+		} else if imageBytes, err := s.imageBytesFromOpenAIImagesStreamingPayload(ctx, opts, rewritten); err != nil {
+			logImageSuperResolutionDecision(c, "skip", "stream_image_missing", requestSizeTier)
+		} else if upscaled, err := s.upscaleOpenAIImageBytes(ctx, imageBytes, "openai-image-stream.png"); err != nil {
+			logger.LegacyPrintf(imageSuperResolutionLogComponent, "image stream super resolution failed: err=%v", err)
+		} else {
+			encoded := base64.StdEncoding.EncodeToString(upscaled)
+			rewritten, _ = sjson.SetBytes(rewritten, "b64_json", encoded)
+			rewritten, _ = sjson.SetBytes(rewritten, "output_format", "png")
+			rewritten, _ = sjson.SetBytes(rewritten, "mime_type", "image/png")
+			logger.LegacyPrintf(
+				imageSuperResolutionLogComponent,
+				"image stream super resolution succeeded: input_bytes=%d output_bytes=%d",
+				len(imageBytes),
+				len(upscaled),
+			)
+		}
 	}
-	if reason := s.imageSuperResolutionSkipReason(c, requestSizeTier); reason != "" {
-		logImageSuperResolutionDecision(c, "skip", reason, requestSizeTier)
-		return payload, nil
-	}
-	imageBytes, err := s.imageBytesFromOpenAIImagesStreamingPayload(ctx, opts, payload)
-	if err != nil {
-		logImageSuperResolutionDecision(c, "skip", "stream_image_missing", requestSizeTier)
-		return payload, nil
-	}
-	logImageSuperResolutionDecision(c, "apply", "", requestSizeTier)
-	upscaled, err := s.upscaleOpenAIImageBytes(ctx, imageBytes, "openai-image-stream.png")
-	if err != nil {
-		logger.LegacyPrintf(imageSuperResolutionLogComponent, "image stream super resolution failed: err=%v", err)
-		return payload, nil
-	}
-	encoded := base64.StdEncoding.EncodeToString(upscaled)
-	rewritten, err := sjson.SetBytes(payload, "b64_json", encoded)
-	if err != nil {
-		return payload, fmt.Errorf("rewrite stream image b64_json: %w", err)
-	}
-	rewritten, _ = sjson.SetBytes(rewritten, "output_format", "png")
-	rewritten, _ = sjson.SetBytes(rewritten, "mime_type", "image/png")
-	if gjson.GetBytes(rewritten, "url").Exists() || strings.EqualFold(openAIImagesResponseFormat(opts.parsed), "url") {
-		rewritten, _ = sjson.SetBytes(rewritten, "url", "data:image/png;base64,"+encoded)
-	}
-	logger.LegacyPrintf(
-		imageSuperResolutionLogComponent,
-		"image stream super resolution succeeded: input_bytes=%d output_bytes=%d",
-		len(imageBytes),
-		len(upscaled),
-	)
-	return rewritten, nil
+	return s.localizeOpenAIImagesStreamingPayload(ctx, c, rewritten, opts)
 }
 
 func (s *OpenAIGatewayService) imageBytesFromOpenAIImagesStreamingPayload(ctx context.Context, opts openAIImagesStreamingResponseOptions, payload []byte) ([]byte, error) {
@@ -1717,8 +1711,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	rewriteEventPayload := func(dataBytes []byte) []byte {
 		rewritten, err := s.rewriteOpenAIImagesStreamingCompletedPayload(opts.ctx, c, dataBytes, opts)
 		if err != nil {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream super resolution rewrite skipped: %v", err)
-			return dataBytes
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream finalization failed: %v", err)
+			return buildOpenAIImagesStreamErrorBody(err.Error())
 		}
 		return rewritten
 	}

@@ -97,6 +97,33 @@ func (s *OpenAIGatewayService) localizeOpenAIImageResults(
 	return localized, nil
 }
 
+func (s *OpenAIGatewayService) localizeOpenAIImagesStreamingPayload(
+	ctx context.Context,
+	c *gin.Context,
+	payload []byte,
+	opts openAIImagesStreamingResponseOptions,
+) ([]byte, error) {
+	if opts.parsed == nil || !strings.EqualFold(opts.parsed.ResponseFormat, ImageResponseFormatURL) {
+		return payload, nil
+	}
+	if s == nil || s.generatedImageStore == nil {
+		return nil, fmt.Errorf("generated image storage is unavailable")
+	}
+	imageBytes, err := s.imageBytesFromOpenAIImagesStreamingPayload(ctx, opts, payload)
+	if err != nil {
+		return nil, err
+	}
+	saved, err := s.generatedImageStore.Save(ctx, imageBytes, time.Now().UTC())
+	if err != nil {
+		return nil, fmt.Errorf("store generated image: %w", err)
+	}
+	rewritten, _ := sjson.SetBytes(payload, "url", s.generatedImageStore.PublicURL(saved.Name, s.generatedImagePublicOrigin(ctx, c)))
+	rewritten, _ = sjson.DeleteBytes(rewritten, "b64_json")
+	rewritten, _ = sjson.DeleteBytes(rewritten, "image_url")
+	rewritten, _ = sjson.DeleteBytes(rewritten, "download_url")
+	return rewritten, nil
+}
+
 func (s *OpenAIGatewayService) generatedImagePublicOrigin(ctx context.Context, c *gin.Context) string {
 	if s != nil && s.settingService != nil {
 		if settings, err := s.settingService.GetPublicSettings(ctx); err == nil && settings != nil {

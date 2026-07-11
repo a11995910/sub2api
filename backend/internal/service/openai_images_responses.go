@@ -247,9 +247,6 @@ func buildOpenAIImagesStreamPartialPayload(
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
 	payload, _ = sjson.SetBytes(payload, "partial_image_index", partialImageIndex)
 	payload, _ = sjson.SetBytes(payload, "b64_json", b64)
-	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(meta.OutputFormat)+";base64,"+b64)
-	}
 	if meta.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", meta.Background)
 	}
@@ -1581,6 +1578,15 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				Stream:         true,
 				N:              1,
 			})
+			if format == ImageResponseFormatURL && !clientDisconnected {
+				finalResults, materializeErr = s.localizeOpenAIImageResults(ctx, c, finalResults)
+				if materializeErr != nil {
+					s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(materializeErr.Error()))
+					processDataErr = materializeErr
+					processDataDone = true
+					return
+				}
+			}
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -1646,6 +1652,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				Stream:         true,
 				N:              1,
 			})
+			if format == ImageResponseFormatURL && !clientDisconnected {
+				materializedResults, err = s.localizeOpenAIImageResults(ctx, c, materializedResults)
+				if err != nil {
+					s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
+					return err
+				}
+			}
 			for _, img := range materializedResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				key := openAIResponsesImageResultKey("", img)
