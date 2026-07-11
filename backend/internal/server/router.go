@@ -103,6 +103,9 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	if h.GeneratedImage != nil {
+		r.GET("/generated-images/:filename", h.GeneratedImage.Get)
+	}
 
 	// API v1
 	v1 := r.Group("/api/v1")

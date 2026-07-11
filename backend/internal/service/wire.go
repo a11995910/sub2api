@@ -55,6 +55,16 @@ func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo Acco
 	return svc
 }
 
+func ProvideGeneratedImageStore(cfg *config.Config) *GeneratedImageStore {
+	return NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: cfg.GeneratedImage.StoragePath})
+}
+
+func ProvideGeneratedImageCleanupService(store *GeneratedImageStore) *GeneratedImageCleanupService {
+	svc := NewGeneratedImageCleanupService(store)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -593,6 +603,8 @@ var ProviderSet = wire.NewSet(
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,
 	ProvideBatchImageCleanupService,
+	ProvideGeneratedImageStore,
+	ProvideGeneratedImageCleanupService,
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,

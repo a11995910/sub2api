@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -78,4 +79,20 @@ func TestGeneratedImageStoreCleanupRemovesOnlyExpiredImages(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(active.Path)
 	require.NoError(t, err)
+}
+
+func TestGeneratedImageCleanupServiceStartsImmediatelyAndStops(t *testing.T) {
+	store := NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: t.TempDir()})
+	now := time.Now().UTC()
+	expired, err := store.Save(context.Background(), generatedImageTestPNG(t), now.Add(-25*time.Hour))
+	require.NoError(t, err)
+	cleanup := NewGeneratedImageCleanupService(store)
+	cleanup.interval = time.Hour
+
+	cleanup.Start()
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(expired.Path)
+		return errors.Is(err, os.ErrNotExist)
+	}, time.Second, 10*time.Millisecond)
+	cleanup.Stop()
 }
