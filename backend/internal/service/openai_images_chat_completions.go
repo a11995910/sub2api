@@ -167,19 +167,23 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesViaChatCompletions(
 		})
 		return nil, err
 	}
-	if !strings.EqualFold(strings.TrimSpace(parsed.ResponseFormat), "url") {
-		imageResults, err = s.materializeOpenAIResponsesImageURLs(upstreamCtx, imageResults, upstreamReq.Header.Clone(), proxyURL, account.ID, account.Concurrency)
+	imageResults, err = s.materializeOpenAIResponsesImageURLs(upstreamCtx, imageResults, upstreamReq.Header.Clone(), proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		writeOpenAIImagesUpstreamErrorResponse(c, &OpenAIImagesUpstreamError{
+			StatusCode:        http.StatusBadGateway,
+			ErrorType:         "upstream_error",
+			Message:           "Failed to download upstream image result",
+			UpstreamRequestID: strings.TrimSpace(resp.Header.Get("x-request-id")),
+		})
+		return nil, err
+	}
+	imageResults = s.applyOpenAIResponses4KEnhancement(upstreamCtx, c, imageResults, parsed)
+	if strings.EqualFold(strings.TrimSpace(parsed.ResponseFormat), ImageResponseFormatURL) {
+		imageResults, err = s.localizeOpenAIImageResults(upstreamCtx, c, imageResults)
 		if err != nil {
-			writeOpenAIImagesUpstreamErrorResponse(c, &OpenAIImagesUpstreamError{
-				StatusCode:        http.StatusBadGateway,
-				ErrorType:         "upstream_error",
-				Message:           "Failed to download upstream image result",
-				UpstreamRequestID: strings.TrimSpace(resp.Header.Get("x-request-id")),
-			})
 			return nil, err
 		}
 	}
-	imageResults = s.applyOpenAIResponses4KEnhancement(upstreamCtx, c, imageResults, parsed)
 	responseBody, err := buildOpenAIImagesAPIResponse(imageResults, time.Now().Unix(), nil, openAIResponsesImageResult{
 		Model: requestModel,
 		Size:  parsed.Size,

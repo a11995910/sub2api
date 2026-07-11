@@ -94,6 +94,24 @@ type OpenAIImagesRequest struct {
 	bodyHash           string
 }
 
+// ApplyDefaultOpenAIImagesResponseFormat 仅在客户未显式传参时应用分组默认值。
+func ApplyDefaultOpenAIImagesResponseFormat(req *OpenAIImagesRequest, group *Group) error {
+	if req == nil {
+		return fmt.Errorf("image request is required")
+	}
+	format := strings.TrimSpace(req.ResponseFormat)
+	if format == "" && group != nil {
+		format = group.ImageResponseFormat
+	}
+	normalized, err := NormalizeImageResponseFormat(format)
+	if err != nil {
+		return err
+	}
+	req.ResponseFormat = normalized
+	req.RequiredCapability = classifyOpenAIImagesCapability(req)
+	return nil
+}
+
 func (r *OpenAIImagesRequest) ModerationBody() []byte {
 	if r == nil {
 		return nil
@@ -1289,6 +1307,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 		body = s.applyOpenAIImages4KEnhancementToJSON(opts.ctx, c, body, opts)
 	} else if !s.shouldBlockLegacyImageSuperResolutionFor4KEnhancement(c, opts.parsed, openAIImagesRequestSizeTier(opts.parsed)) {
 		body = s.applyOpenAIImagesSuperResolutionToJSON(opts.ctx, c, body, opts)
+	}
+	body, err = s.localizeOpenAIImagesJSONResponse(opts.ctx, c, body, opts)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, err
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"

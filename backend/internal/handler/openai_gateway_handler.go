@@ -123,8 +123,12 @@ func NewOpenAIGatewayHandler(
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
+	generatedImageStore *service.GeneratedImageStore,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
+	if gatewayService != nil {
+		gatewayService.SetGeneratedImageStore(generatedImageStore)
+	}
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
 	if cfg != nil {

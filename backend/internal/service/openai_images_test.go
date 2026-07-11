@@ -2470,6 +2470,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"nano-banana-2","prompt":"draw a banana","response_format":"url"}`)
+	encodedImage := base64.StdEncoding.EncodeToString(generatedImageTestPNG(t))
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -2484,16 +2485,17 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletions(t 
 				"Content-Type": []string{"application/json"},
 				"X-Request-Id": []string{"req_img_cc"},
 			},
-			Body: io.NopCloser(strings.NewReader(`{
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{
 				"id":"chatcmpl_1",
-				"choices":[{"message":{"role":"assistant","content":"![image](https://cdn.example.com/banana.png)"}}],
+				"choices":[{"message":{"role":"assistant","content":"data:image/png;base64,%s"}}],
 				"usage":{"prompt_tokens":12,"completion_tokens":3}
-			}`)),
+			}`, encodedImage))),
 		},
 	}
 	svc := &OpenAIGatewayService{
-		cfg:          &config.Config{},
-		httpUpstream: upstream,
+		cfg:                 &config.Config{},
+		httpUpstream:        upstream,
+		generatedImageStore: NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: t.TempDir()}),
 	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
@@ -2532,7 +2534,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletions(t 
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content").String(), "draw a banana")
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "https://cdn.example.com/banana.png", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
 	require.Equal(t, "nano-banana-2", gjson.Get(rec.Body.String(), "model").String())
 }
 
@@ -2708,6 +2710,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationViaChatCompletionsFor
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditViaChatCompletionsIncludesImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	encodedImage := base64.StdEncoding.EncodeToString(generatedImageTestPNG(t))
 	body := []byte(`{
 		"model":"nano-banana-2",
 		"prompt":"edit this banana",
@@ -2728,15 +2731,16 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditViaChatCompletionsInclu
 				"Content-Type": []string{"application/json"},
 				"X-Request-Id": []string{"req_img_cc_edit"},
 			},
-			Body: io.NopCloser(strings.NewReader(`{
-				"choices":[{"message":{"role":"assistant","content":"https://cdn.example.com/edited-banana.png"}}],
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{
+				"choices":[{"message":{"role":"assistant","content":"data:image/png;base64,%s"}}],
 				"usage":{"prompt_tokens":18,"completion_tokens":4}
-			}`)),
+			}`, encodedImage))),
 		},
 	}
 	svc := &OpenAIGatewayService{
-		cfg:          &config.Config{},
-		httpUpstream: upstream,
+		cfg:                 &config.Config{},
+		httpUpstream:        upstream,
+		generatedImageStore: NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: t.TempDir()}),
 	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
@@ -2767,11 +2771,12 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyJSONEditViaChatCompletionsInclu
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String(), "edit this banana")
 	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
 	require.Equal(t, "data:image/png;base64,c291cmNlLWltYWdl", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
-	require.Equal(t, "https://cdn.example.com/edited-banana.png", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyMultipartEditViaChatCompletionsIncludesUpload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	encodedImage := base64.StdEncoding.EncodeToString(generatedImageTestPNG(t))
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -2800,15 +2805,16 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyMultipartEditViaChatCompletions
 				"Content-Type": []string{"application/json"},
 				"X-Request-Id": []string{"req_img_cc_edit_multipart"},
 			},
-			Body: io.NopCloser(strings.NewReader(`{
-				"choices":[{"message":{"role":"assistant","content":"https://cdn.example.com/bright-banana.png"}}],
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{
+				"choices":[{"message":{"role":"assistant","content":"data:image/png;base64,%s"}}],
 				"usage":{"prompt_tokens":20,"completion_tokens":5}
-			}`)),
+			}`, encodedImage))),
 		},
 	}
 	svc := &OpenAIGatewayService{
-		cfg:          &config.Config{},
-		httpUpstream: upstream,
+		cfg:                 &config.Config{},
+		httpUpstream:        upstream,
+		generatedImageStore: NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: t.TempDir()}),
 	}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body.Bytes())
 	require.NoError(t, err)
@@ -2836,7 +2842,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyMultipartEditViaChatCompletions
 	require.Equal(t, "https://banana-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
 	require.Equal(t, "data:image/png;base64,c291cmNlLWltYWdl", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.image_url.url").String())
-	require.Equal(t, "https://cdn.example.com/bright-banana.png", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Regexp(t, `^http://example.com/generated-images/[a-f0-9]{32}\.png$`, gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGeneration502RetryableOnSameAccount(t *testing.T) {
@@ -3634,6 +3640,59 @@ func TestBuildOpenAIImagesMultipartEditBody_RemoteImageURLPrivateAddressReturnsI
 	require.ErrorAs(t, err, &inputErr)
 	require.Equal(t, "images[0].image_url", inputErr.Field)
 	require.Contains(t, inputErr.Error(), "image_url must point to a public address")
+}
+
+func TestApplyDefaultOpenAIImagesResponseFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		requestFormat string
+		groupFormat   string
+		want          string
+	}{
+		{name: "客户 Base64 覆盖 URL 分组", requestFormat: ImageResponseFormatB64JSON, groupFormat: ImageResponseFormatURL, want: ImageResponseFormatB64JSON},
+		{name: "客户 URL 覆盖 Base64 分组", requestFormat: ImageResponseFormatURL, groupFormat: ImageResponseFormatB64JSON, want: ImageResponseFormatURL},
+		{name: "缺省使用分组 URL", groupFormat: ImageResponseFormatURL, want: ImageResponseFormatURL},
+		{name: "旧分组空值回退 Base64", want: ImageResponseFormatB64JSON},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := &OpenAIImagesRequest{Model: "gpt-image-2", N: 1, ResponseFormat: tt.requestFormat}
+			err := ApplyDefaultOpenAIImagesResponseFormat(parsed, &Group{ImageResponseFormat: tt.groupFormat})
+			require.NoError(t, err)
+			require.Equal(t, tt.want, parsed.ResponseFormat)
+			require.Equal(t, classifyOpenAIImagesCapability(parsed), parsed.RequiredCapability)
+		})
+	}
+}
+
+func TestApplyDefaultOpenAIImagesResponseFormatRejectsInvalidExplicitValue(t *testing.T) {
+	parsed := &OpenAIImagesRequest{ResponseFormat: "base64", N: 1}
+	require.Error(t, ApplyDefaultOpenAIImagesResponseFormat(parsed, &Group{ImageResponseFormat: ImageResponseFormatURL}))
+}
+
+func TestOpenAIGatewayServiceLocalizeOpenAIImagesJSONResponse(t *testing.T) {
+	dir := t.TempDir()
+	store := NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: dir})
+	svc := &OpenAIGatewayService{generatedImageStore: store}
+	imageBytes := generatedImageTestPNG(t)
+	body := []byte(`{"created":1,"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString(imageBytes) + `"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/v1/images/generations", nil)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	localized, err := svc.localizeOpenAIImagesJSONResponse(context.Background(), c, body, openAIImagesNonStreamingResponseOptions{
+		parsed: &OpenAIImagesRequest{ResponseFormat: ImageResponseFormatURL},
+	})
+
+	require.NoError(t, err)
+	resultURL := gjson.GetBytes(localized, "data.0.url").String()
+	require.Regexp(t, `^https://api\.example\.com/generated-images/[a-f0-9]{32}\.png$`, resultURL)
+	require.False(t, gjson.GetBytes(localized, "data.0.b64_json").Exists())
+	name := strings.TrimPrefix(resultURL, "https://api.example.com/generated-images/")
+	_, err = store.Resolve(name, time.Now().UTC())
+	require.NoError(t, err)
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *testing.T) {

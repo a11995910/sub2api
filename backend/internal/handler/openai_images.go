@@ -73,6 +73,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	if err := service.ApplyDefaultOpenAIImagesResponseFormat(parsed, apiKey.Group); err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
 	requestModel := parsed.Model
 
 	reqLog = reqLog.With(

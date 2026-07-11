@@ -364,6 +364,7 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
+	generatedImageStore   *GeneratedImageStore
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 
 	openaiWSPoolOnce              sync.Once
@@ -385,6 +386,12 @@ type OpenAIGatewayService struct {
 	codexSnapshotThrottle               *accountWriteThrottle
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+}
+
+func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore) {
+	if s != nil {
+		s.generatedImageStore = store
+	}
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService

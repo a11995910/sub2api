@@ -68,6 +68,9 @@ func (s *GeneratedImageStore) Save(ctx context.Context, data []byte, now time.Ti
 	if s == nil {
 		return GeneratedImage{}, fmt.Errorf("save generated image: %w", ErrGeneratedImageInvalid)
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := ctx.Err(); err != nil {
 		return GeneratedImage{}, err
 	}
@@ -240,4 +243,11 @@ func (s *GeneratedImageStore) publicURL(name string) string {
 		return "/generated-images/" + name
 	}
 	return s.publicOrigin + "/generated-images/" + name
+}
+
+func (s *GeneratedImageStore) PublicURL(name, origin string) string {
+	if normalized := generatedImagePublicOrigin(origin); normalized != "" {
+		return normalized + "/generated-images/" + name
+	}
+	return s.publicURL(name)
 }

@@ -1413,6 +1413,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if len(results) > 0 {
 		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
 	}
+	if strings.EqualFold(strings.TrimSpace(responseFormat), ImageResponseFormatURL) {
+		results, err = s.localizeOpenAIImageResults(ctx, c, results)
+		if err != nil {
+			return OpenAIUsage{}, 0, nil, err
+		}
+	}
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
