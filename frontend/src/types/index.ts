@@ -555,6 +555,7 @@ export interface Group {
   monthly_limit_usd: number | null
   // 图片生成计费配置
   allow_image_generation: boolean
+	image_response_format: 'b64_json' | 'url'
   allow_batch_image_generation: boolean
   image_super_resolution_enabled: boolean
   image_2k_enhancement_enabled: boolean
@@ -700,6 +701,7 @@ export interface CreateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
+	image_response_format?: 'b64_json' | 'url'
   allow_batch_image_generation?: boolean
   image_super_resolution_enabled?: boolean
   image_2k_enhancement_enabled?: boolean
@@ -754,6 +756,7 @@ export interface UpdateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
+	image_response_format?: 'b64_json' | 'url'
   allow_batch_image_generation?: boolean
   image_super_resolution_enabled?: boolean
   image_2k_enhancement_enabled?: boolean

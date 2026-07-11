@@ -869,6 +869,19 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
             {{ t(imagePricingI18nKey(createForm.platform, "description")) }}
           </p>
+		  <div class="mb-4">
+			<label class="input-label">
+			  {{ t("admin.groups.imagePricing.responseFormat") }}
+			</label>
+			<Select
+			  v-model="createForm.image_response_format"
+			  data-testid="image-response-format"
+			  :options="imageResponseFormatOptions"
+			/>
+			<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+			  {{ t("admin.groups.imagePricing.responseFormatExplicitHint") }}
+			</p>
+		  </div>
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -2453,6 +2466,19 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
             {{ t(imagePricingI18nKey(editForm.platform, "description")) }}
           </p>
+		  <div class="mb-4">
+			<label class="input-label">
+			  {{ t("admin.groups.imagePricing.responseFormat") }}
+			</label>
+			<Select
+			  v-model="editForm.image_response_format"
+			  data-testid="image-response-format"
+			  :options="imageResponseFormatOptions"
+			/>
+			<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+			  {{ t("admin.groups.imagePricing.responseFormatExplicitHint") }}
+			</p>
+		  </div>
           <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -4373,6 +4399,17 @@ const canViewAuthorizedUsers = (group: AdminGroup): boolean => {
   return group.is_exclusive && group.subscription_type !== "subscription";
 };
 
+const imageResponseFormatOptions = computed(() => [
+  {
+    value: "b64_json",
+    label: t("admin.groups.imagePricing.responseFormatBase64"),
+  },
+  {
+    value: "url",
+    label: t("admin.groups.imagePricing.responseFormatURL"),
+  },
+]);
+
 const createForm = reactive({
   name: "",
   description: "",
@@ -4385,6 +4422,7 @@ const createForm = reactive({
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
   allow_image_generation: false,
+	image_response_format: "b64_json" as "b64_json" | "url",
   allow_batch_image_generation: false,
   image_super_resolution_enabled: false,
   image_2k_enhancement_enabled: false,
@@ -4736,6 +4774,7 @@ const editForm = reactive({
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
   allow_image_generation: false,
+	image_response_format: "b64_json" as "b64_json" | "url",
   allow_batch_image_generation: false,
   image_super_resolution_enabled: false,
   image_2k_enhancement_enabled: false,
@@ -5187,6 +5226,7 @@ const closeCreateModal = () => {
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
+	createForm.image_response_format = "b64_json";
   createForm.allow_batch_image_generation = false;
   createForm.image_super_resolution_enabled = false;
   createForm.image_2k_enhancement_enabled = false;
@@ -5379,6 +5419,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
+	editForm.image_response_format = group.image_response_format || "b64_json";
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
   editForm.image_super_resolution_enabled =
