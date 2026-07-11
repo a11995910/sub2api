@@ -46,7 +46,7 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	// tools 全部被丢弃（如仅含 web_search/image_generation 等服务端工具）时不再转发
 	// tool_choice：上游会拒绝 "'tool_choice' is only allowed when 'tools' are specified"。
 	// 指向被丢弃工具的选择项同理（见 responsesToolChoiceToChatToolChoice）。
-	if len(out.Tools) > 0 && len(req.ToolChoice) > 0 {
+	if len(req.ToolChoice) > 0 {
 		declared := make(map[string]bool, len(out.Tools))
 		for _, tool := range out.Tools {
 			if tool.Function != nil {
@@ -57,6 +57,29 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 		_ = json.Unmarshal(req.ToolChoice, &choice)
 		if rawString(choice["type"]) == "namespace" {
 			namespace := rawString(choice["name"])
+			namespaceDeclared := false
+			lossyNamespace := false
+			for _, tool := range allTools {
+				if tool.Type != "namespace" || tool.Name != namespace {
+					continue
+				}
+				namespaceDeclared = true
+				children := tool.Tools
+				if len(children) == 0 {
+					children = tool.Children
+				}
+				if len(children) == 0 {
+					lossyNamespace = true
+				}
+				for _, child := range children {
+					if child.Type != "function" || child.Name == "" {
+						lossyNamespace = true
+					}
+				}
+			}
+			if namespaceDeclared && lossyNamespace {
+				return nil, fmt.Errorf("cannot preserve namespace tool_choice %q because the namespace contains tools unsupported by chat completions", namespace)
+			}
 			matched := 0
 			for _, owner := range NamespaceToolNames(allTools) {
 				if owner.Namespace == namespace {
@@ -71,8 +94,10 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 			default:
 				return nil, fmt.Errorf("cannot preserve namespace tool_choice %q when other tools are also declared", namespace)
 			}
-		} else if tc := responsesToolChoiceToChatToolChoice(req.ToolChoice, declared); len(tc) > 0 {
-			out.ToolChoice = tc
+		} else if len(out.Tools) > 0 {
+			if tc := responsesToolChoiceToChatToolChoice(req.ToolChoice, declared); len(tc) > 0 {
+				out.ToolChoice = tc
+			}
 		}
 	}
 	if req.Text != nil {
@@ -89,14 +114,18 @@ func AllResponsesTools(req *ResponsesRequest) []ResponsesTool {
 		return nil
 	}
 	out := append([]ResponsesTool(nil), req.Tools...)
-	var items []struct {
-		Type  string          `json:"type"`
-		Tools []ResponsesTool `json:"tools"`
-	}
-	if err := json.Unmarshal(req.Input, &items); err != nil {
+	var rawItems []json.RawMessage
+	if err := json.Unmarshal(req.Input, &rawItems); err != nil {
 		return out
 	}
-	for _, item := range items {
+	for _, rawItem := range rawItems {
+		var item struct {
+			Type  string          `json:"type"`
+			Tools []ResponsesTool `json:"tools"`
+		}
+		if err := json.Unmarshal(rawItem, &item); err != nil {
+			continue
+		}
 		if item.Type == "additional_tools" {
 			out = append(out, item.Tools...)
 		}
@@ -1022,10 +1051,12 @@ func ChatUsageToResponsesUsage(usage *ChatUsage) *ResponsesUsage {
 			CacheCreationTokens: usage.PromptTokensDetails.CacheCreationTokens,
 			CacheWriteTokens:    usage.PromptTokensDetails.CacheWriteTokens,
 		}
-		if usage.PromptTokensDetails.CacheWriteTokens > 0 {
-			out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheWriteTokens
-		} else {
-			out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheCreationTokens
+		if !usage.cacheCreationTokensSet {
+			if usage.PromptTokensDetails.CacheWriteTokens > 0 {
+				out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheWriteTokens
+			} else if usage.PromptTokensDetails.CacheCreationTokens > 0 {
+				out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheCreationTokens
+			}
 		}
 	}
 	return out

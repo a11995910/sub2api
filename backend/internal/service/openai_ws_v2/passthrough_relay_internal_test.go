@@ -342,6 +342,13 @@ func TestOpenAICacheCreationTokensFromUsageNestedZeroWins(t *testing.T) {
 	require.Zero(t, openAICacheCreationTokensFromUsage(usage))
 }
 
+func TestOpenAICacheCreationTokensFromUsagePrefersCanonicalTopLevelAlias(t *testing.T) {
+	t.Parallel()
+
+	usage := gjson.Parse(`{"cache_creation_input_tokens":5,"cache_write_input_tokens":6,"cache_creation_tokens":7,"cache_write_tokens":8}`)
+	require.Equal(t, 5, openAICacheCreationTokensFromUsage(usage))
+}
+
 func TestEmitTurnCompleteCoverage(t *testing.T) {
 	t.Parallel()
 

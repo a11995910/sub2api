@@ -3072,6 +3072,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, blocked
 			case BetaPolicyActionFilter:
 				markPatchDelete("service_tier")
+			case OpenAIFastPolicyActionForcePriority:
+				markPatchSet("service_tier", OpenAIFastTierPriority)
 			default:
 				if normTier != rawTier {
 					markPatchSet("service_tier", normTier)
@@ -5945,7 +5947,7 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 			return max(int(nested.Int()), 0)
 		}
 	}
-	return firstPositiveGJSONInt(value.Get("cache_write_tokens"), value.Get("cache_creation_input_tokens"), value.Get("cache_write_input_tokens"), value.Get("cache_creation_tokens"))
+	return firstPositiveGJSONInt(value.Get("cache_creation_input_tokens"), value.Get("cache_write_input_tokens"), value.Get("cache_creation_tokens"), value.Get("cache_write_tokens"))
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {

@@ -375,6 +375,22 @@ func TestResponsesToChatCompletionsRequest_AdditionalNamespaceToolsAreForwarded(
 	require.Equal(t, NamespacedToolName{Namespace: "mcp", Name: "echo"}, NamespaceToolNames(allTools)["mcp__echo"])
 }
 
+func TestResponsesToChatCompletionsRequest_AdditionalToolsSurviveMixedStringInput(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.5",
+		Input: json.RawMessage(`[
+			"hello",
+			{"type":"additional_tools","tools":["exec",{"type":"function","name":"wait"}]}
+		]`),
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Tools, 2)
+	require.Equal(t, "exec", out.Tools[0].Function.Name)
+	require.Equal(t, "wait", out.Tools[1].Function.Name)
+}
+
 func TestResponsesToChatCompletionsRequest_NamespaceToolChoicePreservesSemantics(t *testing.T) {
 	namespace := ResponsesTool{Type: "namespace", Name: "mcp", Tools: []ResponsesTool{{Type: "function", Name: "echo"}}}
 
@@ -395,6 +411,40 @@ func TestResponsesToChatCompletionsRequest_NamespaceToolChoicePreservesSemantics
 		ToolChoice: json.RawMessage(`{"type":"namespace","name":"mcp"}`),
 	})
 	require.ErrorContains(t, err, "cannot preserve namespace tool_choice")
+}
+
+func TestResponsesToChatCompletionsRequest_NamespaceToolChoiceRejectsLossyChildren(t *testing.T) {
+	tests := []struct {
+		name     string
+		children []ResponsesTool
+	}{
+		{
+			name:     "only unsupported custom child",
+			children: []ResponsesTool{{Type: "custom", Name: "exec"}},
+		},
+		{
+			name: "mixed function and custom children",
+			children: []ResponsesTool{
+				{Type: "function", Name: "wait"},
+				{Type: "custom", Name: "exec"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+				Model: "gpt-5.5",
+				Tools: []ResponsesTool{{
+					Type:  "namespace",
+					Name:  "mcp",
+					Tools: tt.children,
+				}},
+				ToolChoice: json.RawMessage(`{"type":"namespace","name":"mcp"}`),
+			})
+			require.ErrorContains(t, err, "cannot preserve namespace tool_choice")
+		})
+	}
 }
 
 func TestResponsesToolsParsing_StringToolBecomesCustom(t *testing.T) {

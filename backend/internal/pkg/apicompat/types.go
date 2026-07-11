@@ -410,7 +410,8 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 	if u.OutputTokens == 0 && aux.CompletionTokens != 0 {
 		u.OutputTokens = aux.CompletionTokens
 	}
-	if u.CacheCreationInputTokens == 0 {
+	if u.CacheCreationInputTokens <= 0 {
+		u.CacheCreationInputTokens = 0
 		switch {
 		case aux.CacheWriteInputTokens > 0:
 			u.CacheCreationInputTokens = aux.CacheWriteInputTokens
@@ -650,25 +651,29 @@ func (u *ChatUsage) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &presence); err != nil {
 		return err
 	}
-
 	var canonical *int
 	switch {
 	case presence.PromptTokensDetails != nil && presence.PromptTokensDetails.CacheWriteTokens != nil:
 		canonical = presence.PromptTokensDetails.CacheWriteTokens
 	case presence.PromptTokensDetails != nil && presence.PromptTokensDetails.CacheCreationTokens != nil:
 		canonical = presence.PromptTokensDetails.CacheCreationTokens
-	case presence.CacheCreationInputTokens != nil:
-		canonical = presence.CacheCreationInputTokens
-	case presence.CacheWriteInputTokens != nil:
-		canonical = presence.CacheWriteInputTokens
-	case presence.CacheCreationTokens != nil:
-		canonical = presence.CacheCreationTokens
-	case presence.CacheWriteTokens != nil:
-		canonical = presence.CacheWriteTokens
 	}
 	if canonical != nil {
 		u.cacheCreationInputTokens = max(*canonical, 0)
 		u.cacheCreationTokensSet = true
+		return nil
+	}
+	for _, alias := range []*int{
+		presence.CacheCreationInputTokens,
+		presence.CacheWriteInputTokens,
+		presence.CacheCreationTokens,
+		presence.CacheWriteTokens,
+	} {
+		if alias != nil && *alias > 0 {
+			u.cacheCreationInputTokens = *alias
+			u.cacheCreationTokensSet = true
+			break
+		}
 	}
 	return nil
 }

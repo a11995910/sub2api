@@ -73,6 +73,33 @@ func TestResponsesUsageNestedCacheWritePresenceOverridesTopLevelAlias(t *testing
 	}
 }
 
+func TestResponsesUsageTopLevelCacheCreationAliasesRejectNegativeCanonical(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    int
+	}{
+		{
+			name:    "negative canonical falls back to positive alias",
+			payload: `{"cache_creation_input_tokens":-5,"cache_write_input_tokens":7}`,
+			want:    7,
+		},
+		{
+			name:    "negative values clamp to zero",
+			payload: `{"cache_creation_input_tokens":-5,"cache_write_input_tokens":-7}`,
+			want:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var usage ResponsesUsage
+			require.NoError(t, json.Unmarshal([]byte(tt.payload), &usage))
+			require.Equal(t, tt.want, usage.CacheCreationInputTokens)
+		})
+	}
+}
+
 func TestChatUsagePreservesTopLevelCacheCreationAliases(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -88,6 +115,21 @@ func TestChatUsagePreservesTopLevelCacheCreationAliases(t *testing.T) {
 			name:    "nested explicit zero wins",
 			payload: `{"prompt_tokens":20,"completion_tokens":2,"cache_creation_input_tokens":19,"prompt_tokens_details":{"cache_write_tokens":0}}`,
 			want:    0,
+		},
+		{
+			name:    "cached details do not erase top-level cache creation",
+			payload: `{"prompt_tokens":20,"completion_tokens":2,"cache_creation_input_tokens":19,"prompt_tokens_details":{"cached_tokens":4}}`,
+			want:    19,
+		},
+		{
+			name:    "nested explicit cache write zero wins over nested creation",
+			payload: `{"prompt_tokens":20,"completion_tokens":2,"cache_creation_input_tokens":19,"prompt_tokens_details":{"cache_write_tokens":0,"cache_creation_tokens":7}}`,
+			want:    0,
+		},
+		{
+			name:    "zero top-level canonical falls back to positive alias",
+			payload: `{"prompt_tokens":20,"completion_tokens":2,"cache_creation_input_tokens":0,"cache_write_input_tokens":5}`,
+			want:    5,
 		},
 	}
 

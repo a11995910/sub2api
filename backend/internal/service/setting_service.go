@@ -5453,6 +5453,9 @@ func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*Open
 	return &settings, nil
 }
 
+// JSON number 进入管理端后由 JavaScript number 承载，超出该范围会发生精度丢失。
+const maxJavaScriptSafeInteger = int64(1<<53 - 1)
+
 // SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
 func normalizeAndMarshalOpenAIFastPolicySettings(settings *OpenAIFastPolicySettings) (string, error) {
 	if settings == nil {
@@ -5490,6 +5493,9 @@ func normalizeAndMarshalOpenAIFastPolicySettings(settings *OpenAIFastPolicySetti
 		for j, userID := range rule.UserIDs {
 			if userID <= 0 {
 				return "", fmt.Errorf("rule[%d]: user_ids[%d] must be positive", i, j)
+			}
+			if userID > maxJavaScriptSafeInteger {
+				return "", fmt.Errorf("rule[%d]: user_ids[%d] exceeds JavaScript safe integer range", i, j)
 			}
 			if _, exists := seenUserIDs[userID]; exists {
 				return "", fmt.Errorf("rule[%d]: user_ids[%d] duplicates user_id %d", i, j, userID)

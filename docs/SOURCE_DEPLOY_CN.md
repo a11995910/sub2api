@@ -288,9 +288,145 @@ test "$(printf '%s\n' "$video_counts" | grep -Fxc 'channel_account_stats_model_p
 test "$(printf '%s\n' "$video_counts" | wc -l)" -eq 2
 SCRIPT
 chmod 0700 /opt/sub2api/scripts/assert-no-explicit-video-pricing
+
+tee /opt/sub2api/scripts/assert-no-user-scoped-openai-fast-policy >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$#" -eq 1
+env_file="$1"
+test -f "$env_file"
+
+if ! fast_policy_state="$(
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml \
+    exec -T postgres sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' <<'SQL'
+WITH rules AS (
+  SELECT jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof(value::jsonb -> 'rules') = 'array' THEN value::jsonb -> 'rules'
+      ELSE '[]'::jsonb
+    END
+  ) AS rule
+  FROM settings
+  WHERE key = 'openai_fast_policy_settings'
+)
+SELECT CASE WHEN EXISTS (
+  SELECT 1
+  FROM rules
+  WHERE CASE
+    WHEN NOT (rule ? 'user_ids') THEN false
+    WHEN rule -> 'user_ids' = 'null'::jsonb THEN false
+    WHEN jsonb_typeof(rule -> 'user_ids') = 'array'
+      THEN jsonb_array_length(rule -> 'user_ids') > 0
+    ELSE true
+  END
+) THEN 'unsafe' ELSE 'safe' END;
+SQL
+)"; then
+  exit 1
+fi
+
+case "$fast_policy_state" in
+  safe) exit 0 ;;
+  unsafe) exit 10 ;;
+  *) exit 1 ;;
+esac
+SCRIPT
+chmod 0700 /opt/sub2api/scripts/assert-no-user-scoped-openai-fast-policy
+
+tee /opt/sub2api/scripts/snapshot-openai-fast-policy >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$#" -eq 2
+env_file="$1"
+output_file="$2"
+test -f "$env_file"
+test -d "$(dirname "$output_file")"
+
+snapshot="$(
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml \
+    exec -T postgres sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' <<'SQL'
+SELECT CASE
+  WHEN value IS NULL THEN 'absent'
+  ELSE 'present:' || encode(convert_to(value, 'UTF8'), 'hex')
+END
+FROM (
+  SELECT (SELECT value FROM settings WHERE key = 'openai_fast_policy_settings') AS value
+) AS snapshot;
+SQL
+)"
+
+if [[ "$snapshot" != "absent" && ! "$snapshot" =~ ^present:([0-9a-f]{2})+$ ]]; then
+  exit 1
+fi
+umask 077
+tmp="$(mktemp "${output_file}.new.XXXXXX")"
+trap 'rm -f -- "$tmp"' EXIT
+printf '%s\n' "$snapshot" > "$tmp"
+test "$(wc -l < "$tmp")" -eq 1
+chmod 0600 "$tmp"
+mv -f -- "$tmp" "$output_file"
+trap - EXIT
+SCRIPT
+chmod 0700 /opt/sub2api/scripts/snapshot-openai-fast-policy
+
+tee /opt/sub2api/scripts/restore-openai-fast-policy >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$#" -eq 2
+env_file="$1"
+snapshot_file="$2"
+test -f "$env_file"
+test -s "$snapshot_file"
+test "$(wc -l < "$snapshot_file")" -eq 1
+IFS= read -r snapshot < "$snapshot_file"
+
+compose_prod() {
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml "$@"
+}
+
+case "$snapshot" in
+  absent)
+    compose_prod exec -T postgres sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+DELETE FROM settings WHERE key = 'openai_fast_policy_settings';
+SQL
+    ;;
+  present:*)
+    [[ "$snapshot" =~ ^present:([0-9a-f]{2})+$ ]]
+    fast_policy_hex="${snapshot#present:}"
+    compose_prod exec -T postgres sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v fast_policy_hex="$1"' sh "$fast_policy_hex" <<'SQL'
+INSERT INTO settings (key, value, updated_at)
+VALUES (
+  'openai_fast_policy_settings',
+  convert_from(decode(:'fast_policy_hex', 'hex'), 'UTF8'),
+  NOW()
+)
+ON CONFLICT (key) DO UPDATE
+SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at;
+SQL
+    ;;
+  *) exit 1 ;;
+esac
+SCRIPT
+chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 ```
 
-`assert-no-explicit-video-pricing` 是发布与旧镜像回滚共用的 fail-closed 门禁：数据库连接、SQL、输出行数或零计数任一不符合预期都会返回非零。脚本不得改成忽略错误，也不得只查询其中一张表。
+视频计费断言是发布与旧镜像回滚共用的 fail-closed 门禁；Fast/Flex 断言只在回滚目标不支持 `user_ids` 时执行。数据库连接、JSON 解析、SQL、输出内容或计数任一不符合预期都会返回非零。Fast/Flex 断言只用退出码 `10` 表示明确存在无法由旧版安全解释的 `user_ids`；其他非零值均表示检查失败，不得自动覆盖数据库。视频计费断言不得只查询其中一张表，Fast/Flex 断言不得把非法 JSON 或非法 `user_ids` 类型当成安全配置。
 
 ### staging 构建与发布
 
@@ -298,6 +434,7 @@ staging 用于承接 `dev` 或功能分支。每次构建都必须核对本地�
 
 ```bash
 ssh sub2api-new-vps
+set -Eeuo pipefail
 cd /opt/sub2api/repo
 git status --short
 git fetch origin
@@ -410,6 +547,7 @@ WHERE billing_mode = 'video';
 
 ```bash
 ssh sub2api-new-vps
+set -Eeuo pipefail
 cd /opt/sub2api/repo
 git status --short
 git fetch origin
@@ -439,17 +577,36 @@ compose_prod() {
     -f /opt/sub2api/compose/prod/docker-compose.yml "$@"
 }
 
+version_at_least() {
+  local current="$1" required="$2"
+  local current_major current_minor current_patch
+  local required_major required_minor required_patch
+  IFS=. read -r current_major current_minor current_patch <<< "$current"
+  IFS=. read -r required_major required_minor required_patch <<< "$required"
+  (( current_major > required_major )) ||
+    (( current_major == required_major && current_minor > required_minor )) ||
+    (( current_major == required_major && current_minor == required_minor && current_patch >= required_patch ))
+}
+
 compose_prod config -q
 current_container_id="$(compose_prod ps -q sub2api)"
 test -n "$current_container_id"
 previous_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
 test -n "$previous_image"
-previous_version="$(docker exec "$current_container_id" /app/sub2api --version)"
+previous_version_output="$(docker exec "$current_container_id" /app/sub2api --version)"
+test "$(printf '%s\n' "$previous_version_output" | wc -l)" -eq 1
+previous_version="$(printf '%s\n' "$previous_version_output" | sed -nE 's/.*Sub2API ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
 test -n "$previous_version"
+test "$(printf '%s\n' "$previous_version" | wc -l)" -eq 1
+previous_supports_fast_policy_user_ids=0
+if version_at_least "$previous_version" "0.1.151"; then
+  previous_supports_fast_policy_user_ids=1
+fi
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
 release_record="/opt/sub2api/backups/prod-release-before-${timestamp}.txt"
 pricing_backup="/opt/sub2api/backups/prod-pricing-before-${timestamp}.dump"
+fast_policy_backup="/opt/sub2api/backups/prod-fast-policy-before-${timestamp}.txt"
 umask 077
 
 /opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
@@ -460,10 +617,15 @@ compose_prod exec -T postgres sh -c \
 test -s "$pricing_backup"
 chmod 0600 "$pricing_backup"
 
+/opt/sub2api/scripts/snapshot-openai-fast-policy "$env_file" "$fast_policy_backup"
+
 {
   printf 'previous_image=%s\n' "$previous_image"
+  printf 'previous_version_output=%s\n' "$previous_version_output"
   printf 'previous_version=%s\n' "$previous_version"
+  printf 'previous_supports_fast_policy_user_ids=%s\n' "$previous_supports_fast_policy_user_ids"
   printf 'target_commit=%s\n' "$expected_commit"
+  printf 'fast_policy_backup=%s\n' "$fast_policy_backup"
 } > "$release_record"
 chmod 0600 "$release_record"
 
@@ -485,6 +647,7 @@ prod 更新完成后先进入不写入显式 `video` 定价的观察窗口。只
 
 ```bash
 ssh sub2api-new-vps
+set -Eeuo pipefail
 cd /opt/sub2api/repo/deploy
 env_file=/opt/sub2api/env/prod/.env
 compose_prod() {
@@ -494,26 +657,68 @@ compose_prod() {
     -f /opt/sub2api/compose/prod/docker-compose.yml "$@"
 }
 
-# rollback_image 必须填写 prod-release-before-*.txt 中记录且本机仍存在的 previous_image。
+# rollback_image 和能力位必须填写同一份 prod-release-before-*.txt 的记录值。
 rollback_image='填写发布前记录的旧镜像 tag'
+rollback_supports_fast_policy_user_ids='填写 previous_supports_fast_policy_user_ids 的 0 或 1'
+# fast_policy_backup 必须填写同一发布记录中的快照路径。
+fast_policy_backup='填写发布前记录的 prod-fast-policy-before-*.txt 绝对路径'
 docker image inspect "$rollback_image" >/dev/null
+case "$rollback_supports_fast_policy_user_ids" in
+  0|1) ;;
+  *) exit 1 ;;
+esac
+test -s "$fast_policy_backup"
+test "$(wc -l < "$fast_policy_backup")" -eq 1
 
-set -Eeuo pipefail
 current_container_id="$(compose_prod ps -q sub2api)"
 test -n "$current_container_id"
 current_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
 test -n "$current_image"
+timestamp="$(date +%Y%m%d-%H%M%S)"
+rollback_policy_backup="/opt/sub2api/backups/prod-fast-policy-before-rollback-${timestamp}.txt"
+rollback_policy_snapshot_ready=0
 
-restore_current_image() {
-  trap - ERR
-  /opt/sub2api/scripts/update-sub2api-image "$env_file" "$current_image" prod-rollback-abort
-  compose_prod up -d --no-deps sub2api
+restore_current_release_state() {
+	original_rc="${1:-$?}"
+	trap - ERR
+	set +e
+	recovery_failed=0
+	if [ "$rollback_policy_snapshot_ready" -eq 1 ]; then
+		/opt/sub2api/scripts/restore-openai-fast-policy "$env_file" "$rollback_policy_backup" || recovery_failed=1
+	fi
+	/opt/sub2api/scripts/update-sub2api-image "$env_file" "$current_image" prod-rollback-abort || recovery_failed=1
+	compose_prod up -d --no-deps sub2api || recovery_failed=1
+	if [ "$recovery_failed" -ne 0 ]; then
+		printf '回滚失败，且恢复当前发布状态未完全成功，请立即人工处理。\n' >&2
+	fi
+	exit "$original_rc"
 }
-trap restore_current_image ERR
+trap restore_current_release_state ERR
 
-# 先停止应用写入，再实时查询两张真实定价表；门禁失败会恢复当前镜像并重启。
+# 先停止应用写入并保存回滚即时设置，再执行门禁；任一步失败都会同时恢复
+# 即时设置快照和当前镜像，避免只恢复镜像却丢失观察窗口内的用户规则。
 compose_prod stop sub2api
+/opt/sub2api/scripts/snapshot-openai-fast-policy "$env_file" "$rollback_policy_backup"
+rollback_policy_snapshot_ready=1
 /opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
+
+# 只有旧版回滚目标不认识 user_ids 时才执行兼容门禁。v0.1.151 及后续
+# 兼容镜像之间回滚保留当前设置，不要求管理员删除合法的用户专属规则。
+if [ "$rollback_supports_fast_policy_user_ids" -eq 0 ]; then
+  if /opt/sub2api/scripts/assert-no-user-scoped-openai-fast-policy "$env_file"; then
+    fast_policy_rc=0
+  else
+    fast_policy_rc="$?"
+  fi
+  case "$fast_policy_rc" in
+    0) ;;
+    10)
+      /opt/sub2api/scripts/restore-openai-fast-policy "$env_file" "$fast_policy_backup"
+      /opt/sub2api/scripts/assert-no-user-scoped-openai-fast-policy "$env_file"
+      ;;
+    *) restore_current_release_state "$fast_policy_rc" ;;
+  esac
+fi
 
 /opt/sub2api/scripts/update-sub2api-image "$env_file" "$rollback_image" prod-rollback
 compose_prod config -q

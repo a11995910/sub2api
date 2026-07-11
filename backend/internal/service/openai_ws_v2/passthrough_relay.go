@@ -823,10 +823,10 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 		}
 	}
 	for _, field := range []string{
-		"cache_write_tokens",
 		"cache_creation_input_tokens",
 		"cache_write_input_tokens",
 		"cache_creation_tokens",
+		"cache_write_tokens",
 	} {
 		if tokens := int(value.Get(field).Int()); tokens > 0 {
 			return tokens

@@ -2952,6 +2952,10 @@ func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *te
 	require.True(t, ok)
 	require.Equal(t, 6, usage.CacheCreationInputTokens)
 
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":11,"output_tokens":2,"cache_creation_input_tokens":5,"cache_write_input_tokens":6,"cache_creation_tokens":7,"cache_write_tokens":8}}`))
+	require.True(t, ok)
+	require.Equal(t, 5, usage.CacheCreationInputTokens, "兼容顶层别名必须优先采用 canonical 字段")
+
 	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":20,"output_tokens":2,"cache_creation_input_tokens":19,"input_tokens_details":{"cache_write_tokens":7}}}`))
 	require.True(t, ok)
 	require.Equal(t, 7, usage.CacheCreationInputTokens, "官方嵌套字段应优先于兼容顶层别名")

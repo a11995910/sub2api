@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -99,7 +100,7 @@ func TestEnqueueOpsErrorLog_EarlyReturnBranches(t *testing.T) {
 	require.Equal(t, int64(0), OpsErrorLogEnqueuedTotal())
 }
 
-func TestOpsCaptureWriterPool_ResetOnRelease(t *testing.T) {
+func TestOpsCaptureWriter_ResetOnRelease(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -156,6 +157,30 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 		r.ServeHTTP(rec, req)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestOpsErrorLoggerMiddleware_InnerWriterReplacementRemainsReadable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	outerStatus := 0
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		outerStatus = c.Writer.Status()
+	})
+	r.GET("/v1/responses", OpsErrorLoggerMiddleware(nil), func(c *gin.Context) {
+		service.MarkOpenAICompactClientStream(c)
+		stop := service.StartOpenAICompactSSEKeepalive(c, time.Hour)
+		defer stop()
+		c.Status(http.StatusNoContent)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, http.StatusNoContent, outerStatus)
 }
 
 // setupOpsErrorLogTestQueue 阻止 enqueueOpsErrorLog 启动真实 worker，改用可检查的测试队列。

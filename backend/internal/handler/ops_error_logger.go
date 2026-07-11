@@ -601,12 +601,12 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
 		defer func() {
-			// Restore the original writer before returning so outer middlewares
-			// don't observe a pooled wrapper that has been released.
+			// 内层中间件可能继续包装 w；此时包装链仍会被外层中间件读取，不能
+			// 提前清空，只能随本次请求一起回收。
 			if c.Writer == w {
 				c.Writer = originalWriter
+				releaseOpsCaptureWriter(w)
 			}
-			releaseOpsCaptureWriter(w)
 		}()
 		c.Writer = w
 		c.Next()
