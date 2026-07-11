@@ -48,6 +48,7 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      - IMAGE_STORAGE_PATH=${IMAGE_STORAGE_PATH:-/app/data/generated-images}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

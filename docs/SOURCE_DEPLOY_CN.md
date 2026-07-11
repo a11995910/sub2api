@@ -22,6 +22,20 @@
 - 验证通过后必须清理 Docker 构建缓存、无回滚价值的旧镜像和旧二进制备份，只保留当前运行二进制和最近一份 `.bak-*` 回滚文件。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
 
+## 图片 URL 本地存储
+
+分组选择 URL 图片响应后，服务会把最终图片写入 `IMAGE_STORAGE_PATH`。Docker 默认值为 `/app/data/generated-images`，该目录位于既有 `/app/data` 持久卷内；测试、staging 和 prod 必须使用彼此独立的数据卷或宿主目录。
+
+部署前需要确认：
+
+- 运行用户对目录具有创建、写入、重命名和删除权限。
+- 磁盘空间能够承载最近 24 小时的图片量，单张图片上限为 64MB。
+- 管理端“API 端点地址”配置为客户实际访问的 HTTPS API 地址，否则回退 URL 可能使用请求 Host。
+- 多实例部署时所有实例共享同一个 `IMAGE_STORAGE_PATH`；独立本地盘不受支持。
+- Nginx/Caddy 必须继续把 `/generated-images/*` 转发给 Sub2API，不能被前端 SPA fallback 截获。
+
+升级后验证：选择 URL 默认传输方式的测试分组发起一次 `/v1/images/generations` 请求，确认 `data[0].url` 使用当前 API 域名、无需 API Key 可访问，并检查容器日志中没有 `generated_image.cleanup_failed` 或图片存储错误。回滚前无需迁移数据库数据；旧版本会忽略本地图片文件，但应保留目录至少 24 小时，避免已发放链接提前失效。
+
 ## 源码仓库
 
 - GitHub：`git@github.com:a11995910/sub2api.git`

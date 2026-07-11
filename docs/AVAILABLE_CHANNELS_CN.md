@@ -10,6 +10,7 @@
 
 - `rate_multiplier`：分组默认文本倍率。
 - `allow_image_generation`：该分组是否允许图片生成。
+- `image_response_format`：客户未显式传入 `response_format` 时采用的默认图片响应格式。`b64_json` 保持内联 Base64；`url` 将最终图片保存到本地并返回当前 API 域名下 24 小时有效的公开 URL。客户显式参数始终优先。
 - `image_super_resolution_enabled`：该分组的图片生成结果是否会在返回前自动执行 4K 超分。
 - `image_2k_enhancement_enabled`：该分组命中显式 2K 生图时，是否优先调用另一个图片分组做二段提升。
 - `image_2k_enhancement_group_id`：二段 2K 提升使用的目标图片分组 ID；仅管理端配置和内部调度使用，用户侧无需手动传参。
