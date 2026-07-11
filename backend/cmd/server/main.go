@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,6 +38,8 @@ var (
 	BuildType = "source" // "source" for manual builds, "release" for standalone binaries, "docker" for container images
 )
 
+const explicitVideoPricingCapability = "explicit_video_pricing_per_second"
+
 func init() {
 	// 如果 Version 已通过 ldflags 注入（例如 -X main.Version=...），则不要覆盖。
 	if strings.TrimSpace(Version) != "" {
@@ -62,7 +65,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		log.Printf("Sub2API %s (commit: %s, built: %s)\n", Version, Commit, Date)
+		log.Print(formatVersionInfo(Version, Commit, Date))
 		return
 	}
 
@@ -92,6 +95,16 @@ func main() {
 
 	// Normal server mode
 	runMainServer()
+}
+
+func formatVersionInfo(version, commit, date string) string {
+	return fmt.Sprintf(
+		"Sub2API %s (commit: %s, built: %s, capabilities: %s)",
+		version,
+		commit,
+		date,
+		explicitVideoPricingCapability,
+	)
 }
 
 func runSetupServer() {

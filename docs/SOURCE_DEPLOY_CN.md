@@ -289,6 +289,31 @@ test "$(printf '%s\n' "$video_counts" | wc -l)" -eq 2
 SCRIPT
 chmod 0700 /opt/sub2api/scripts/assert-no-explicit-video-pricing
 
+tee /opt/sub2api/scripts/assert-no-account-stats-video-pricing >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+test "$#" -eq 1
+env_file="$1"
+test -f "$env_file"
+
+video_count="$(
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f /opt/sub2api/repo/deploy/docker-compose.yml \
+    -f /opt/sub2api/compose/prod/docker-compose.yml \
+    exec -T postgres sh -c \
+      'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' <<'SQL'
+SELECT COUNT(*)
+FROM channel_account_stats_model_pricing
+WHERE billing_mode = 'video';
+SQL
+)"
+
+test "$video_count" = "0"
+SCRIPT
+chmod 0700 /opt/sub2api/scripts/assert-no-account-stats-video-pricing
+
 tee /opt/sub2api/scripts/assert-no-user-scoped-openai-fast-policy >/dev/null <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -426,7 +451,7 @@ SCRIPT
 chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 ```
 
-视频计费断言是发布与旧镜像回滚共用的 fail-closed 门禁；Fast/Flex 断言只在回滚目标不支持 `user_ids` 时执行。数据库连接、JSON 解析、SQL、输出内容或计数任一不符合预期都会返回非零。Fast/Flex 断言只用退出码 `10` 表示明确存在无法由旧版安全解释的 `user_ids`；其他非零值均表示检查失败，不得自动覆盖数据库。视频计费断言不得只查询其中一张表，Fast/Flex 断言不得把非法 JSON 或非法 `user_ids` 类型当成安全配置。
+账号统计定价链路不消费视频时长，因此 `assert-no-account-stats-video-pricing` 是发布与回滚都必须执行的 fail-closed 门禁。主渠道显式视频定价只有在回滚镜像不包含每秒计费能力时才执行 `assert-no-explicit-video-pricing`；已证明兼容的镜像允许保留主表中的合法 `video` 记录。Fast/Flex 断言只在回滚目标不支持 `user_ids` 时执行。数据库连接、JSON 解析、SQL、输出内容或计数任一不符合预期都会返回非零。Fast/Flex 断言只用退出码 `10` 表示明确存在无法由旧版安全解释的 `user_ids`；其他非零值均表示检查失败，不得自动覆盖数据库。Fast/Flex 断言不得把非法 JSON 或非法 `user_ids` 类型当成安全配置。
 
 ### staging 构建与发布
 
@@ -531,7 +556,7 @@ curl -I http://127.0.0.1:18080/health
 
 如果当前版本已保存包含 `user_ids` 的 `openai_fast_policy_settings`，旧镜像回滚前必须先恢复发布前的该设置快照，或删除所有带 `user_ids` 的规则。旧版本忽略未知字段后会把用户专属规则视为全局规则，可能导致全局 block、filter 或 force_priority；只切换镜像不构成安全回滚。
 
-prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。当前生产盘点为只有历史 `image/per_request` 视频定价，没有显式 `video` 定价；发布前仍必须用真实表查询再次确认，不能把盘点结论当作永久事实：
+prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。截至 2026-07-11，生产主渠道定价表已有 2 条合法的显式 `video` 每秒定价，账号统计定价表为 0 条；发布前仍必须用真实表查询再次确认，不能把盘点结论当作永久事实：
 
 ```sql
 SELECT 'channel_model_pricing' AS source, COUNT(*) AS video_count
@@ -543,7 +568,7 @@ FROM channel_account_stats_model_pricing
 WHERE billing_mode = 'video';
 ```
 
-查询结果均为 `0` 时，旧镜像在观察窗口内仍能按原有 `image/per_request` 语义处理现存配置，可以作为镜像回滚目标。prod 更新前还必须记录当前运行镜像 tag、容器内 `--version` 输出、目标 Git commit，并确认数据库已有可恢复备份；同时备份当前 prod `.env`。定价恢复材料至少应覆盖 `channel_model_pricing`、`channel_pricing_intervals`、`channel_account_stats_model_pricing` 和 `channel_account_stats_pricing_intervals`，不得只保存页面截图。
+`channel_account_stats_model_pricing` 必须始终为 `0`，因为账号统计链路不按视频时长计费。`channel_model_pricing` 是否必须为 `0` 取决于回滚镜像能力：新镜像必须在 `--version` 中显式声明 `explicit_video_pricing_per_second`；历史镜像只有精确 commit `a08a958be9a29594692ab87f74c9227504c09d27` 和 `7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6` 经过代码审查确认兼容。其他没有能力标识的镜像一律按不支持处理，不能只看版本号或祖先关系。prod 更新前还必须记录当前运行镜像 tag、镜像 ID、容器完整 `--version` 输出、真实 commit、回滚能力位和目标 Git commit，并确认数据库已有可恢复备份；同时备份当前 prod `.env`。定价恢复材料至少应覆盖 `channel_model_pricing`、`channel_pricing_intervals`、`channel_account_stats_model_pricing` 和 `channel_account_stats_pricing_intervals`，不得只保存页面截图。
 
 ```bash
 ssh sub2api-new-vps
@@ -559,14 +584,20 @@ git log -1 --oneline
 
 commit="$(git rev-parse --short=12 HEAD)"
 date="$(git show -s --format=%cI HEAD)"
-docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
+target_image="sub2api:prod-$commit"
+docker tag "sub2api:staging-$commit" "$target_image" 2>/dev/null || \
   docker buildx build \
     -f deploy/Dockerfile \
     --build-arg COMMIT="$commit" \
     --build-arg DATE="$date" \
-    -t "sub2api:prod-$commit" \
+    -t "$target_image" \
     --load .
-docker run --rm "sub2api:prod-$commit" --version
+target_version_output="$(docker run --rm "$target_image" --version)"
+test "$(printf '%s\n' "$target_version_output" | wc -l)" -eq 1
+target_commit_short="$(printf '%s\n' "$target_version_output" | sed -nE 's/.*commit: ([0-9a-f]{12}).*/\1/p')"
+test -n "$target_commit_short"
+target_commit="$(git rev-parse "$target_commit_short^{commit}")"
+test "$target_commit" = "$expected_commit"
 
 cd /opt/sub2api/repo/deploy
 env_file=/opt/sub2api/env/prod/.env
@@ -588,48 +619,100 @@ version_at_least() {
     (( current_major == required_major && current_minor == required_minor && current_patch >= required_patch ))
 }
 
+version_has_capability() {
+  local version_output="$1" capability="$2" capabilities
+  capabilities="$(printf '%s\n' "$version_output" | sed -nE 's/.*capabilities: ([^)]+)\).*/\1/p')"
+  test -n "$capabilities" || return 1
+  printf '%s\n' "$capabilities" | tr ',' '\n' | \
+    sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -Fqx "$capability"
+}
+
+explicit_video_pricing_capability='explicit_video_pricing_per_second'
+version_has_capability "$target_version_output" "$explicit_video_pricing_capability"
+
 compose_prod config -q
 current_container_id="$(compose_prod ps -q sub2api)"
 test -n "$current_container_id"
-previous_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
-test -n "$previous_image"
+previous_original_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
+test -n "$previous_original_image"
+previous_image_id="$(docker inspect --format '{{.Image}}' "$current_container_id")"
+test -n "$previous_image_id"
 previous_version_output="$(docker exec "$current_container_id" /app/sub2api --version)"
 test "$(printf '%s\n' "$previous_version_output" | wc -l)" -eq 1
 previous_version="$(printf '%s\n' "$previous_version_output" | sed -nE 's/.*Sub2API ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
+previous_commit_short="$(printf '%s\n' "$previous_version_output" | sed -nE 's/.*commit: ([0-9a-f]{12}).*/\1/p')"
 test -n "$previous_version"
 test "$(printf '%s\n' "$previous_version" | wc -l)" -eq 1
+test -n "$previous_commit_short"
+test "$(printf '%s\n' "$previous_commit_short" | wc -l)" -eq 1
+previous_commit="$(git rev-parse "$previous_commit_short^{commit}")"
+test "${previous_commit:0:12}" = "$previous_commit_short"
 previous_supports_fast_policy_user_ids=0
 if version_at_least "$previous_version" "0.1.151"; then
   previous_supports_fast_policy_user_ids=1
 fi
+previous_supports_explicit_video_pricing=0
+case "$previous_commit" in
+  a08a958be9a29594692ab87f74c9227504c09d27|7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6)
+    previous_supports_explicit_video_pricing=1
+    ;;
+  *)
+    if version_has_capability "$previous_version_output" "$explicit_video_pricing_capability"; then
+      previous_supports_explicit_video_pricing=1
+    fi
+    ;;
+esac
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
+previous_image="sub2api:rollback-${timestamp}-${previous_commit_short}"
 release_record="/opt/sub2api/backups/prod-release-before-${timestamp}.txt"
 pricing_backup="/opt/sub2api/backups/prod-pricing-before-${timestamp}.dump"
 fast_policy_backup="/opt/sub2api/backups/prod-fast-policy-before-${timestamp}.txt"
 umask 077
 
-/opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
+/opt/sub2api/scripts/assert-no-account-stats-video-pricing "$env_file"
+if [ "$previous_supports_explicit_video_pricing" -eq 0 ]; then
+  /opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
+fi
 
 compose_prod exec -T postgres sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --data-only --table=channel_model_pricing --table=channel_pricing_intervals --table=channel_account_stats_model_pricing --table=channel_account_stats_pricing_intervals' \
-  > "$pricing_backup"
+  </dev/null > "$pricing_backup"
 test -s "$pricing_backup"
 chmod 0600 "$pricing_backup"
 
 /opt/sub2api/scripts/snapshot-openai-fast-policy "$env_file" "$fast_policy_backup"
 
+rollback_tag_created=0
+cleanup_unrecorded_rollback_tag() {
+  original_rc="$?"
+  rm -f "$release_record"
+  if [ "$rollback_tag_created" -eq 1 ]; then
+    docker image rm "$previous_image" >/dev/null 2>&1 || true
+  fi
+  exit "$original_rc"
+}
+trap cleanup_unrecorded_rollback_tag EXIT
+docker tag "$previous_image_id" "$previous_image"
+rollback_tag_created=1
+test "$(docker image inspect --format '{{.Id}}' "$previous_image")" = "$previous_image_id"
+
 {
   printf 'previous_image=%s\n' "$previous_image"
+  printf 'previous_original_image=%s\n' "$previous_original_image"
+  printf 'previous_image_id=%s\n' "$previous_image_id"
   printf 'previous_version_output=%s\n' "$previous_version_output"
   printf 'previous_version=%s\n' "$previous_version"
+  printf 'previous_commit=%s\n' "$previous_commit"
   printf 'previous_supports_fast_policy_user_ids=%s\n' "$previous_supports_fast_policy_user_ids"
+  printf 'previous_supports_explicit_video_pricing=%s\n' "$previous_supports_explicit_video_pricing"
   printf 'target_commit=%s\n' "$expected_commit"
   printf 'fast_policy_backup=%s\n' "$fast_policy_backup"
+  printf 'pricing_backup=%s\n' "$pricing_backup"
 } > "$release_record"
 chmod 0600 "$release_record"
+trap - EXIT
 
-target_image="sub2api:prod-$commit"
 /opt/sub2api/scripts/update-sub2api-image "$env_file" "$target_image" prod
 compose_prod config -q
 resolved_images="$(compose_prod config --images)"
@@ -641,9 +724,20 @@ test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target
 compose_prod ps
 curl -I http://127.0.0.1:8080/health
 compose_prod logs --tail=200 sub2api
+
+# 专用回滚 tag 只保留最近两份；原有 prod tag 不受此清理影响。
+mapfile -t rollback_tags < <(
+  docker images --format '{{.Repository}}:{{.Tag}}' \
+    --filter 'reference=sub2api:rollback-*' | sort -r
+)
+test "$(printf '%s\n' "${rollback_tags[@]}" | grep -Fxc "$previous_image" || true)" -eq 1
+for ((i = 2; i < ${#rollback_tags[@]}; i++)); do
+  docker image rm "${rollback_tags[$i]}" >/dev/null 2>&1 || \
+    printf '警告：旧回滚 tag 清理失败：%s\n' "${rollback_tags[$i]}" >&2
+done
 ```
 
-prod 更新完成后先进入不写入显式 `video` 定价的观察窗口。只要上述两张真实定价表仍无 `billing_mode='video'`，可以把发布前记录的 `previous_image` 原子写回 `.env`，经 compose 解析断言后切回旧镜像：
+prod 更新完成后进入观察窗口。回滚时必须先保持账号统计定价表无 `video`；如果发布记录证明 `previous_image` 支持显式视频每秒计费，主渠道表中的合法 `video` 记录可以原样保留，否则主渠道表也必须通过零计数门禁。满足对应能力门禁后，才可以把发布前记录的 `previous_image` 原子写回 `.env`：
 
 ```bash
 ssh sub2api-new-vps
@@ -657,15 +751,58 @@ compose_prod() {
     -f /opt/sub2api/compose/prod/docker-compose.yml "$@"
 }
 
-# rollback_image 和能力位必须填写同一份 prod-release-before-*.txt 的记录值。
+version_at_least() {
+  local current="$1" required="$2"
+  local current_major current_minor current_patch
+  local required_major required_minor required_patch
+  IFS=. read -r current_major current_minor current_patch <<< "$current"
+  IFS=. read -r required_major required_minor required_patch <<< "$required"
+  (( current_major > required_major )) ||
+    (( current_major == required_major && current_minor > required_minor )) ||
+    (( current_major == required_major && current_minor == required_minor && current_patch >= required_patch ))
+}
+
+version_has_capability() {
+  local version_output="$1" capability="$2" capabilities
+  capabilities="$(printf '%s\n' "$version_output" | sed -nE 's/.*capabilities: ([^)]+)\).*/\1/p')"
+  test -n "$capabilities" || return 1
+  printf '%s\n' "$capabilities" | tr ',' '\n' | \
+    sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -Fqx "$capability"
+}
+
+# 以下值必须填写同一份 prod-release-before-*.txt 的记录值。
 rollback_image='填写发布前记录的旧镜像 tag'
-rollback_supports_fast_policy_user_ids='填写 previous_supports_fast_policy_user_ids 的 0 或 1'
+rollback_image_id='填写 previous_image_id'
+rollback_version='填写 previous_version'
+rollback_commit='填写 previous_commit'
 # fast_policy_backup 必须填写同一发布记录中的快照路径。
 fast_policy_backup='填写发布前记录的 prod-fast-policy-before-*.txt 绝对路径'
-docker image inspect "$rollback_image" >/dev/null
-case "$rollback_supports_fast_policy_user_ids" in
-  0|1) ;;
-  *) exit 1 ;;
+actual_rollback_image_id="$(docker image inspect --format '{{.Id}}' "$rollback_image")"
+test "$actual_rollback_image_id" = "$rollback_image_id"
+rollback_version_output="$(docker run --rm "$rollback_image" --version)"
+test "$(printf '%s\n' "$rollback_version_output" | wc -l)" -eq 1
+actual_rollback_version="$(printf '%s\n' "$rollback_version_output" | sed -nE 's/.*Sub2API ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
+actual_rollback_commit_short="$(printf '%s\n' "$rollback_version_output" | sed -nE 's/.*commit: ([0-9a-f]{12}).*/\1/p')"
+test "$actual_rollback_version" = "$rollback_version"
+test -n "$actual_rollback_commit_short"
+actual_rollback_commit="$(git rev-parse "$actual_rollback_commit_short^{commit}")"
+test "$actual_rollback_commit" = "$rollback_commit"
+
+rollback_supports_fast_policy_user_ids=0
+if version_at_least "$actual_rollback_version" "0.1.151"; then
+  rollback_supports_fast_policy_user_ids=1
+fi
+explicit_video_pricing_capability='explicit_video_pricing_per_second'
+rollback_supports_explicit_video_pricing=0
+case "$actual_rollback_commit" in
+  a08a958be9a29594692ab87f74c9227504c09d27|7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6)
+    rollback_supports_explicit_video_pricing=1
+    ;;
+  *)
+    if version_has_capability "$rollback_version_output" "$explicit_video_pricing_capability"; then
+      rollback_supports_explicit_video_pricing=1
+    fi
+    ;;
 esac
 test -s "$fast_policy_backup"
 test "$(wc -l < "$fast_policy_backup")" -eq 1
@@ -700,7 +837,10 @@ trap restore_current_release_state ERR
 compose_prod stop sub2api
 /opt/sub2api/scripts/snapshot-openai-fast-policy "$env_file" "$rollback_policy_backup"
 rollback_policy_snapshot_ready=1
-/opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
+/opt/sub2api/scripts/assert-no-account-stats-video-pricing "$env_file"
+if [ "$rollback_supports_explicit_video_pricing" -eq 0 ]; then
+  /opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
+fi
 
 # 只有旧版回滚目标不认识 user_ids 时才执行兼容门禁。v0.1.151 及后续
 # 兼容镜像之间回滚保留当前设置，不要求管理员删除合法的用户专属规则。
@@ -734,11 +874,11 @@ compose_prod logs --tail=200 sub2api
 trap - ERR
 ```
 
-一旦 prod 任一真实定价表写入显式 `billing_mode='video'`，其 `per_request_price` 和分辨率层级价格就表示每秒价格。此后禁止直接回滚到把 video 按请求次数解释的旧镜像，否则会错误计费且旧管理端可能无法保存该配置；应优先保持新镜像并滚前修复。
+主渠道定价表写入显式 `billing_mode='video'` 后，其 `per_request_price` 和分辨率层级价格表示每秒价格。只有发布记录明确证明回滚镜像包含相同每秒语义时，才允许原样回滚；能力未知或不支持时禁止直接切换，否则会错误计费且旧管理端可能无法保存该配置。账号统计定价表不支持视频时长语义，任何版本发布或回滚前都必须保持其显式 `video` 记录为零。
 
-如果显式 video 写入后必须紧急回滚，先停止应用写入及相关视频流量或禁用受影响渠道，再根据发布前数据库备份恢复原始定价记录，并调用同一个 `assert-no-explicit-video-pricing` 门禁。只有脚本确认两张真实表均严格为零后才能切旧镜像；脚本失败时必须保持或恢复当前新镜像。不得把每秒价格直接改成 `image/per_request`，不得按固定时长猜测换算，也不得用全库回档覆盖观察窗口内的其他生产写入。无法证明原定价已准确恢复时，继续停用相关渠道并采用滚前修复。
+如果必须回滚到不支持显式视频每秒语义的镜像，先停止应用写入及相关视频流量或禁用受影响渠道，再根据发布前数据库备份精确恢复原始定价记录，并调用 `assert-no-explicit-video-pricing`。只有脚本确认两张真实表均严格为零后才能切旧镜像；脚本失败时必须保持或恢复当前新镜像。不得把每秒价格直接改成 `image/per_request`，不得按固定时长猜测换算，也不得用全库回档覆盖观察窗口内的其他生产写入。无法证明原定价已准确恢复时，继续停用相关渠道并采用滚前修复。
 
-回滚后仍需验证容器状态、实际镜像 tag、健康接口、管理端账号页、关键 API 和日志。发布与回滚期间都要保留当前运行镜像和 `previous_image`，清理构建缓存时不得删除回滚 tag。
+回滚后仍需验证容器状态、实际镜像 tag、健康接口、管理端账号页、关键 API 和日志。发布与回滚期间都要保留当前运行镜像和 `previous_image`；成功发布后 `sub2api:rollback-*` 只保留最近两份，清理构建缓存时不得删除这两份回滚 tag。原有带业务意义的 `sub2api:prod-*` tag 另行按发布记录管理，不属于该自动清理范围。
 
 Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查，不允许在容器内执行在线更新、在线回退或覆盖 `/app/sub2api`；镜像化环境必须通过本节的 Git commit 镜像 tag 完成升级与回滚，避免覆盖定制代码或在容器重建后丢失回退结果。
 
