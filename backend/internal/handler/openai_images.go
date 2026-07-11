@@ -83,6 +83,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.String("model", requestModel),
 		zap.Bool("stream", parsed.Stream),
 		zap.Bool("multipart", parsed.Multipart),
+		zap.String("response_format", parsed.ResponseFormat),
 		zap.String("capability", string(parsed.RequiredCapability)),
 	)
 
