@@ -99,15 +99,20 @@ func (s *CheckinService) Checkin(ctx context.Context, userID int64) (*CheckinRes
 		return nil, fmt.Errorf("count monthly checkins: %w", err)
 	}
 	monthCount := countBefore + 1
-	extraReward, milestones := checkinExtraReward(settings, monthCount)
+	consecutiveCount, err := s.nextConsecutiveCheckinCount(txCtx, userID, today)
+	if err != nil {
+		return nil, fmt.Errorf("calculate consecutive checkins: %w", err)
+	}
+	extraReward, milestones := checkinExtraReward(settings, consecutiveCount)
 	record := &CheckinRecord{
-		UserID:          userID,
-		CheckinDate:     today,
-		DailyReward:     settings.DailyReward,
-		ExtraReward:     extraReward,
-		MonthCount:      monthCount,
-		ExtraMilestones: milestones,
-		CheckedInAt:     s.now().UTC(),
+		UserID:           userID,
+		CheckinDate:      today,
+		DailyReward:      settings.DailyReward,
+		ExtraReward:      extraReward,
+		MonthCount:       monthCount,
+		ConsecutiveCount: consecutiveCount,
+		ExtraMilestones:  milestones,
+		CheckedInAt:      s.now().UTC(),
 	}
 	if err := s.repo.Create(txCtx, record); err != nil {
 		if isUniqueConstraintError(err) {
@@ -168,11 +173,17 @@ func (s *CheckinService) buildMonthSummary(ctx context.Context, userID int64, to
 		return CheckinMonthSummary{}, fmt.Errorf("list monthly checkins: %w", err)
 	}
 	todayChecked := false
+	var todayRecord *CheckinRecord
 	for _, record := range records {
 		if sameDate(record.CheckinDate, today) {
 			todayChecked = true
+			todayRecord = &record
 			break
 		}
+	}
+	consecutiveCount, err := s.currentConsecutiveCheckinCount(ctx, userID, today, todayRecord)
+	if err != nil {
+		return CheckinMonthSummary{}, fmt.Errorf("calculate current consecutive checkins: %w", err)
 	}
 	monthCount := len(records)
 	return CheckinMonthSummary{
@@ -181,10 +192,49 @@ func (s *CheckinService) buildMonthSummary(ctx context.Context, userID int64, to
 		Today:              formatDate(today),
 		TodayChecked:       todayChecked,
 		MonthCount:         monthCount,
+		ConsecutiveCount:   consecutiveCount,
 		DaysInMonth:        int(monthEnd.Sub(monthStart).Hours() / 24),
 		Records:            records,
-		NextExtraMilestone: nextCheckinExtraMilestone(monthCount),
+		NextExtraMilestone: nextCheckinExtraMilestone(consecutiveCount),
 	}, nil
+}
+
+func (s *CheckinService) nextConsecutiveCheckinCount(ctx context.Context, userID int64, today time.Time) (int, error) {
+	count, err := s.consecutiveCheckinCountAt(ctx, userID, truncateDate(today).AddDate(0, 0, -1))
+	if err != nil {
+		return 0, err
+	}
+	return count + 1, nil
+}
+
+func (s *CheckinService) currentConsecutiveCheckinCount(ctx context.Context, userID int64, today time.Time, todayRecord *CheckinRecord) (int, error) {
+	if todayRecord != nil {
+		if todayRecord.ConsecutiveCount > 0 {
+			return todayRecord.ConsecutiveCount, nil
+		}
+		return s.consecutiveCheckinCountAt(ctx, userID, today)
+	}
+	return s.consecutiveCheckinCountAt(ctx, userID, truncateDate(today).AddDate(0, 0, -1))
+}
+
+func (s *CheckinService) consecutiveCheckinCountAt(ctx context.Context, userID int64, day time.Time) (int, error) {
+	record, err := s.repo.GetByUserAndDate(ctx, userID, day)
+	if err != nil {
+		return 0, err
+	}
+	if record == nil {
+		return 0, nil
+	}
+	if record.ConsecutiveCount > 0 {
+		return record.ConsecutiveCount, nil
+	}
+
+	// 历史记录的默认值为 0，需按相邻日期回溯计算，但不改写既有奖励数据。
+	count, err := s.consecutiveCheckinCountAt(ctx, userID, truncateDate(day).AddDate(0, 0, -1))
+	if err != nil {
+		return 0, err
+	}
+	return count + 1, nil
 }
 
 func (s *CheckinService) today() time.Time {
@@ -220,8 +270,8 @@ func (s *CheckinService) addRewardBalance(ctx context.Context, userID int64, amo
 	return s.userRepo.UpdateBalance(ctx, userID, amount)
 }
 
-func checkinExtraReward(settings CheckinSettings, monthCount int) (float64, []int) {
-	switch monthCount {
+func checkinExtraReward(settings CheckinSettings, consecutiveCount int) (float64, []int) {
+	switch consecutiveCount {
 	case CheckinExtraMilestoneFirstDefault:
 		if settings.ExtraReward4 > 0 {
 			return settings.ExtraReward4, []int{CheckinExtraMilestoneFirstDefault}
@@ -234,12 +284,12 @@ func checkinExtraReward(settings CheckinSettings, monthCount int) (float64, []in
 	return 0, []int{}
 }
 
-func nextCheckinExtraMilestone(monthCount int) *int {
-	if monthCount < CheckinExtraMilestoneFirstDefault {
+func nextCheckinExtraMilestone(consecutiveCount int) *int {
+	if consecutiveCount < CheckinExtraMilestoneFirstDefault {
 		v := CheckinExtraMilestoneFirstDefault
 		return &v
 	}
-	if monthCount < CheckinExtraMilestoneSecondDefault {
+	if consecutiveCount < CheckinExtraMilestoneSecondDefault {
 		v := CheckinExtraMilestoneSecondDefault
 		return &v
 	}
