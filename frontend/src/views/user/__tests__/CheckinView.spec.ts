@@ -18,18 +18,18 @@ const messages: Record<string, string> = {
   'checkin.alreadyChecked': '今日已签到',
   'checkin.checkNow': '立即签到',
   'checkin.dailyReward': '每日奖励',
-  'checkin.day4Bonus': '第 4 天奖励',
-  'checkin.day16Bonus': '第 16 天奖励',
+  'checkin.day4Bonus': '连续第 4 天奖励',
+  'checkin.day16Bonus': '连续第 16 天奖励',
   'checkin.nextBonus': '下一档额外奖励',
   'checkin.currentBalance': '当前余额：{balance}',
   'checkin.monthCalendar': '{year} 年 {month} 月签到表',
   'checkin.rulesTitle': '签到规则',
   'checkin.ruleDaily': '每日只能签到一次，签到成功后发放 {reward}。',
-  'checkin.ruleBonus4': '本月第 4 次签到时，额外发放 {reward}。',
-  'checkin.ruleBonus16': '本月第 16 次签到时，额外发放 {reward}。',
-  'checkin.ruleMonthReset': '签到次数按服务端自然月统计，每月 1 日重新计算。',
-  'checkin.daysToBonus': '还差 {days} 天到第 {milestone} 天',
-  'checkin.noMoreBonus': '本月额外奖励已全部领取',
+  'checkin.ruleBonus4': '连续第 4 天签到时，额外发放 {reward}。',
+  'checkin.ruleBonus16': '连续第 16 天签到时，额外发放 {reward}。',
+  'checkin.ruleMonthReset': '连续签到可跨自然月累计，任意一天未签到后从第 1 天重新计算。',
+  'checkin.daysToBonus': '还差 {days} 天连续签到到第 {milestone} 天',
+  'checkin.noMoreBonus': '当前连续周期的额外奖励已全部领取',
   'checkin.weekdays.sun': '日',
   'checkin.weekdays.mon': '一',
   'checkin.weekdays.tue': '二',
@@ -79,6 +79,10 @@ vi.mock('@/stores/auth', () => ({
   }),
 }))
 
+vi.mock('@/utils/format', () => ({
+  formatSpiritStones: (value: number) => `${Number(value).toFixed(2)} 灵石`,
+}))
+
 function overviewFixture() {
   return {
     settings: {
@@ -93,7 +97,8 @@ function overviewFixture() {
       month: 5,
       today: '2026-05-26',
       today_checked: false,
-      month_count: 2,
+      month_count: 12,
+      consecutive_count: 3,
       days_in_month: 31,
       records: [],
       next_extra_milestone: 4,
@@ -110,7 +115,7 @@ describe('CheckinView', () => {
     showSuccess.mockReset()
   })
 
-  it('按接口返回的当前设置展示签到规则奖励数字', async () => {
+  it('按连续签到天数展示奖励规则和下一档提示', async () => {
     getOverview.mockResolvedValue(overviewFixture())
 
     const wrapper = mount(CheckinView, {
@@ -127,7 +132,8 @@ describe('CheckinView', () => {
 
     const text = wrapper.text()
     expect(text).toContain('每日只能签到一次，签到成功后发放 2.50 灵石。')
-    expect(text).toContain('本月第 4 次签到时，额外发放 4.00 灵石。')
-    expect(text).toContain('本月第 16 次签到时，额外发放 16.00 灵石。')
+    expect(text).toContain('连续第 4 天签到时，额外发放 4.00 灵石。')
+    expect(text).toContain('连续第 16 天签到时，额外发放 16.00 灵石。')
+    expect(text).toContain('还差 1 天连续签到到第 4 天')
   })
 })

@@ -15,6 +15,7 @@ export interface CheckinRecord {
   daily_reward: number
   extra_reward: number
   month_count: number
+  consecutive_count: number
   extra_milestones: number[]
   checked_in_at: string
   created_at: string
@@ -27,6 +28,7 @@ export interface CheckinMonthSummary {
   today: string
   today_checked: boolean
   month_count: number
+  consecutive_count: number
   days_in_month: number
   records: CheckinRecord[]
   next_extra_milestone?: number

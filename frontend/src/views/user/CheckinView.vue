@@ -126,7 +126,7 @@ const primaryActionText = computed(() => {
 const nextBonusText = computed(() => {
   const next = summary.value?.next_extra_milestone
   if (!next) return t('checkin.noMoreBonus')
-  const current = summary.value?.month_count || 0
+  const current = summary.value?.consecutive_count || 0
   return t('checkin.daysToBonus', { days: Math.max(0, next - current), milestone: next })
 })
 const weekdayLabels = computed(() => [
