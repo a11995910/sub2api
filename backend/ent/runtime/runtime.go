@@ -897,8 +897,12 @@ func init() {
 	checkinrecordDescMonthCount := checkinrecordFields[4].Descriptor()
 	// checkinrecord.DefaultMonthCount holds the default value on creation for the month_count field.
 	checkinrecord.DefaultMonthCount = checkinrecordDescMonthCount.Default.(int)
+	// checkinrecordDescConsecutiveCount is the schema descriptor for consecutive_count field.
+	checkinrecordDescConsecutiveCount := checkinrecordFields[5].Descriptor()
+	// checkinrecord.DefaultConsecutiveCount holds the default value on creation for the consecutive_count field.
+	checkinrecord.DefaultConsecutiveCount = checkinrecordDescConsecutiveCount.Default.(int)
 	// checkinrecordDescCheckedInAt is the schema descriptor for checked_in_at field.
-	checkinrecordDescCheckedInAt := checkinrecordFields[6].Descriptor()
+	checkinrecordDescCheckedInAt := checkinrecordFields[7].Descriptor()
 	// checkinrecord.DefaultCheckedInAt holds the default value on creation for the checked_in_at field.
 	checkinrecord.DefaultCheckedInAt = checkinrecordDescCheckedInAt.Default.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()

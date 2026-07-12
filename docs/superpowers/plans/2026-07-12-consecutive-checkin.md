@@ -41,7 +41,7 @@
 - 修改：`backend/ent/schema/checkin_record.go`
 - 修改：`backend/internal/repository/checkin_record_repo.go`
 - 修改：`backend/migrations/130_add_checkin_records.sql`
-- 新建：`backend/migrations/131_add_checkin_consecutive_count.sql`
+- 新建：`backend/migrations/175_add_checkin_consecutive_count.sql`
 - 生成：`backend/ent/**`
 
 **接口：**

@@ -28,6 +28,8 @@ const (
 	FieldExtraReward = "extra_reward"
 	// FieldMonthCount holds the string denoting the month_count field in the database.
 	FieldMonthCount = "month_count"
+	// FieldConsecutiveCount holds the string denoting the consecutive_count field in the database.
+	FieldConsecutiveCount = "consecutive_count"
 	// FieldExtraMilestones holds the string denoting the extra_milestones field in the database.
 	FieldExtraMilestones = "extra_milestones"
 	// FieldCheckedInAt holds the string denoting the checked_in_at field in the database.
@@ -55,6 +57,7 @@ var Columns = []string{
 	FieldDailyReward,
 	FieldExtraReward,
 	FieldMonthCount,
+	FieldConsecutiveCount,
 	FieldExtraMilestones,
 	FieldCheckedInAt,
 }
@@ -82,6 +85,8 @@ var (
 	DefaultExtraReward float64
 	// DefaultMonthCount holds the default value on creation for the "month_count" field.
 	DefaultMonthCount int
+	// DefaultConsecutiveCount holds the default value on creation for the "consecutive_count" field.
+	DefaultConsecutiveCount int
 	// DefaultCheckedInAt holds the default value on creation for the "checked_in_at" field.
 	DefaultCheckedInAt func() time.Time
 )
@@ -127,6 +132,11 @@ func ByExtraReward(opts ...sql.OrderTermOption) OrderOption {
 // ByMonthCount orders the results by the month_count field.
 func ByMonthCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthCount, opts...).ToFunc()
+}
+
+// ByConsecutiveCount orders the results by the consecutive_count field.
+func ByConsecutiveCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldConsecutiveCount, opts...).ToFunc()
 }
 
 // ByCheckedInAt orders the results by the checked_in_at field.

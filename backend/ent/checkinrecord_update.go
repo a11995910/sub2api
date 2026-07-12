@@ -127,6 +127,27 @@ func (_u *CheckinRecordUpdate) AddMonthCount(v int) *CheckinRecordUpdate {
 	return _u
 }
 
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (_u *CheckinRecordUpdate) SetConsecutiveCount(v int) *CheckinRecordUpdate {
+	_u.mutation.ResetConsecutiveCount()
+	_u.mutation.SetConsecutiveCount(v)
+	return _u
+}
+
+// SetNillableConsecutiveCount sets the "consecutive_count" field if the given value is not nil.
+func (_u *CheckinRecordUpdate) SetNillableConsecutiveCount(v *int) *CheckinRecordUpdate {
+	if v != nil {
+		_u.SetConsecutiveCount(*v)
+	}
+	return _u
+}
+
+// AddConsecutiveCount adds value to the "consecutive_count" field.
+func (_u *CheckinRecordUpdate) AddConsecutiveCount(v int) *CheckinRecordUpdate {
+	_u.mutation.AddConsecutiveCount(v)
+	return _u
+}
+
 // SetExtraMilestones sets the "extra_milestones" field.
 func (_u *CheckinRecordUpdate) SetExtraMilestones(v []int) *CheckinRecordUpdate {
 	_u.mutation.SetExtraMilestones(v)
@@ -254,6 +275,12 @@ func (_u *CheckinRecordUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.AddedMonthCount(); ok {
 		_spec.AddField(checkinrecord.FieldMonthCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ConsecutiveCount(); ok {
+		_spec.SetField(checkinrecord.FieldConsecutiveCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedConsecutiveCount(); ok {
+		_spec.AddField(checkinrecord.FieldConsecutiveCount, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ExtraMilestones(); ok {
 		_spec.SetField(checkinrecord.FieldExtraMilestones, field.TypeJSON, value)
@@ -415,6 +442,27 @@ func (_u *CheckinRecordUpdateOne) AddMonthCount(v int) *CheckinRecordUpdateOne {
 	return _u
 }
 
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (_u *CheckinRecordUpdateOne) SetConsecutiveCount(v int) *CheckinRecordUpdateOne {
+	_u.mutation.ResetConsecutiveCount()
+	_u.mutation.SetConsecutiveCount(v)
+	return _u
+}
+
+// SetNillableConsecutiveCount sets the "consecutive_count" field if the given value is not nil.
+func (_u *CheckinRecordUpdateOne) SetNillableConsecutiveCount(v *int) *CheckinRecordUpdateOne {
+	if v != nil {
+		_u.SetConsecutiveCount(*v)
+	}
+	return _u
+}
+
+// AddConsecutiveCount adds value to the "consecutive_count" field.
+func (_u *CheckinRecordUpdateOne) AddConsecutiveCount(v int) *CheckinRecordUpdateOne {
+	_u.mutation.AddConsecutiveCount(v)
+	return _u
+}
+
 // SetExtraMilestones sets the "extra_milestones" field.
 func (_u *CheckinRecordUpdateOne) SetExtraMilestones(v []int) *CheckinRecordUpdateOne {
 	_u.mutation.SetExtraMilestones(v)
@@ -572,6 +620,12 @@ func (_u *CheckinRecordUpdateOne) sqlSave(ctx context.Context) (_node *CheckinRe
 	}
 	if value, ok := _u.mutation.AddedMonthCount(); ok {
 		_spec.AddField(checkinrecord.FieldMonthCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ConsecutiveCount(); ok {
+		_spec.SetField(checkinrecord.FieldConsecutiveCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedConsecutiveCount(); ok {
+		_spec.AddField(checkinrecord.FieldConsecutiveCount, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ExtraMilestones(); ok {
 		_spec.SetField(checkinrecord.FieldExtraMilestones, field.TypeJSON, value)

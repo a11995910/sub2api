@@ -26,6 +26,7 @@ func (r *checkinRepository) Create(ctx context.Context, record *service.CheckinR
 		SetDailyReward(record.DailyReward).
 		SetExtraReward(record.ExtraReward).
 		SetMonthCount(record.MonthCount).
+		SetConsecutiveCount(record.ConsecutiveCount).
 		SetExtraMilestones(record.ExtraMilestones).
 		SetCheckedInAt(record.CheckedInAt).
 		Save(ctx)
@@ -96,6 +97,7 @@ func checkinRecordEntityToService(m *dbent.CheckinRecord) service.CheckinRecord 
 		DailyReward:     m.DailyReward,
 		ExtraReward:     m.ExtraReward,
 		MonthCount:      m.MonthCount,
+		ConsecutiveCount: m.ConsecutiveCount,
 		ExtraMilestones: append([]int{}, m.ExtraMilestones...),
 		CheckedInAt:     m.CheckedInAt,
 		CreatedAt:       m.CreatedAt,

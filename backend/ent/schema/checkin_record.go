@@ -44,6 +44,9 @@ func (CheckinRecord) Fields() []ent.Field {
 			Default(0),
 		field.Int("month_count").
 			Default(0),
+		// 连续天数在签到完成时写入；旧记录保留默认值 0，由服务层按历史日期兼容补算。
+		field.Int("consecutive_count").
+			Default(0),
 		field.JSON("extra_milestones", []int{}).
 			Optional(),
 		field.Time("checked_in_at").

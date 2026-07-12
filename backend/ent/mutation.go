@@ -19539,6 +19539,8 @@ type CheckinRecordMutation struct {
 	addextra_reward        *float64
 	month_count            *int
 	addmonth_count         *int
+	consecutive_count      *int
+	addconsecutive_count   *int
 	extra_milestones       *[]int
 	appendextra_milestones []int
 	checked_in_at          *time.Time
@@ -19960,6 +19962,62 @@ func (m *CheckinRecordMutation) ResetMonthCount() {
 	m.addmonth_count = nil
 }
 
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (m *CheckinRecordMutation) SetConsecutiveCount(i int) {
+	m.consecutive_count = &i
+	m.addconsecutive_count = nil
+}
+
+// ConsecutiveCount returns the value of the "consecutive_count" field in the mutation.
+func (m *CheckinRecordMutation) ConsecutiveCount() (r int, exists bool) {
+	v := m.consecutive_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConsecutiveCount returns the old "consecutive_count" field's value of the CheckinRecord entity.
+// If the CheckinRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CheckinRecordMutation) OldConsecutiveCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConsecutiveCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConsecutiveCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConsecutiveCount: %w", err)
+	}
+	return oldValue.ConsecutiveCount, nil
+}
+
+// AddConsecutiveCount adds i to the "consecutive_count" field.
+func (m *CheckinRecordMutation) AddConsecutiveCount(i int) {
+	if m.addconsecutive_count != nil {
+		*m.addconsecutive_count += i
+	} else {
+		m.addconsecutive_count = &i
+	}
+}
+
+// AddedConsecutiveCount returns the value that was added to the "consecutive_count" field in this mutation.
+func (m *CheckinRecordMutation) AddedConsecutiveCount() (r int, exists bool) {
+	v := m.addconsecutive_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConsecutiveCount resets all changes to the "consecutive_count" field.
+func (m *CheckinRecordMutation) ResetConsecutiveCount() {
+	m.consecutive_count = nil
+	m.addconsecutive_count = nil
+}
+
 // SetExtraMilestones sets the "extra_milestones" field.
 func (m *CheckinRecordMutation) SetExtraMilestones(i []int) {
 	m.extra_milestones = &i
@@ -20122,7 +20180,7 @@ func (m *CheckinRecordMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CheckinRecordMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.created_at != nil {
 		fields = append(fields, checkinrecord.FieldCreatedAt)
 	}
@@ -20143,6 +20201,9 @@ func (m *CheckinRecordMutation) Fields() []string {
 	}
 	if m.month_count != nil {
 		fields = append(fields, checkinrecord.FieldMonthCount)
+	}
+	if m.consecutive_count != nil {
+		fields = append(fields, checkinrecord.FieldConsecutiveCount)
 	}
 	if m.extra_milestones != nil {
 		fields = append(fields, checkinrecord.FieldExtraMilestones)
@@ -20172,6 +20233,8 @@ func (m *CheckinRecordMutation) Field(name string) (ent.Value, bool) {
 		return m.ExtraReward()
 	case checkinrecord.FieldMonthCount:
 		return m.MonthCount()
+	case checkinrecord.FieldConsecutiveCount:
+		return m.ConsecutiveCount()
 	case checkinrecord.FieldExtraMilestones:
 		return m.ExtraMilestones()
 	case checkinrecord.FieldCheckedInAt:
@@ -20199,6 +20262,8 @@ func (m *CheckinRecordMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldExtraReward(ctx)
 	case checkinrecord.FieldMonthCount:
 		return m.OldMonthCount(ctx)
+	case checkinrecord.FieldConsecutiveCount:
+		return m.OldConsecutiveCount(ctx)
 	case checkinrecord.FieldExtraMilestones:
 		return m.OldExtraMilestones(ctx)
 	case checkinrecord.FieldCheckedInAt:
@@ -20261,6 +20326,13 @@ func (m *CheckinRecordMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetMonthCount(v)
 		return nil
+	case checkinrecord.FieldConsecutiveCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConsecutiveCount(v)
+		return nil
 	case checkinrecord.FieldExtraMilestones:
 		v, ok := value.([]int)
 		if !ok {
@@ -20292,6 +20364,9 @@ func (m *CheckinRecordMutation) AddedFields() []string {
 	if m.addmonth_count != nil {
 		fields = append(fields, checkinrecord.FieldMonthCount)
 	}
+	if m.addconsecutive_count != nil {
+		fields = append(fields, checkinrecord.FieldConsecutiveCount)
+	}
 	return fields
 }
 
@@ -20306,6 +20381,8 @@ func (m *CheckinRecordMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedExtraReward()
 	case checkinrecord.FieldMonthCount:
 		return m.AddedMonthCount()
+	case checkinrecord.FieldConsecutiveCount:
+		return m.AddedConsecutiveCount()
 	}
 	return nil, false
 }
@@ -20335,6 +20412,13 @@ func (m *CheckinRecordMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMonthCount(v)
+		return nil
+	case checkinrecord.FieldConsecutiveCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConsecutiveCount(v)
 		return nil
 	}
 	return fmt.Errorf("unknown CheckinRecord numeric field %s", name)
@@ -20392,6 +20476,9 @@ func (m *CheckinRecordMutation) ResetField(name string) error {
 		return nil
 	case checkinrecord.FieldMonthCount:
 		m.ResetMonthCount()
+		return nil
+	case checkinrecord.FieldConsecutiveCount:
+		m.ResetConsecutiveCount()
 		return nil
 	case checkinrecord.FieldExtraMilestones:
 		m.ResetExtraMilestones()

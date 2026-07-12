@@ -803,6 +803,7 @@ var (
 		{Name: "daily_reward", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "extra_reward", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "month_count", Type: field.TypeInt, Default: 0},
+		{Name: "consecutive_count", Type: field.TypeInt, Default: 0},
 		{Name: "extra_milestones", Type: field.TypeJSON, Nullable: true},
 		{Name: "checked_in_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "user_id", Type: field.TypeInt64},
@@ -815,7 +816,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "checkin_records_users_checkin_records",
-				Columns:    []*schema.Column{CheckinRecordsColumns[9]},
+				Columns:    []*schema.Column{CheckinRecordsColumns[10]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -824,7 +825,7 @@ var (
 			{
 				Name:    "checkinrecord_user_id_checkin_date",
 				Unique:  true,
-				Columns: []*schema.Column{CheckinRecordsColumns[9], CheckinRecordsColumns[3]},
+				Columns: []*schema.Column{CheckinRecordsColumns[10], CheckinRecordsColumns[3]},
 			},
 		},
 	}

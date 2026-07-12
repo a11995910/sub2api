@@ -105,6 +105,20 @@ func (_c *CheckinRecordCreate) SetNillableMonthCount(v *int) *CheckinRecordCreat
 	return _c
 }
 
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (_c *CheckinRecordCreate) SetConsecutiveCount(v int) *CheckinRecordCreate {
+	_c.mutation.SetConsecutiveCount(v)
+	return _c
+}
+
+// SetNillableConsecutiveCount sets the "consecutive_count" field if the given value is not nil.
+func (_c *CheckinRecordCreate) SetNillableConsecutiveCount(v *int) *CheckinRecordCreate {
+	if v != nil {
+		_c.SetConsecutiveCount(*v)
+	}
+	return _c
+}
+
 // SetExtraMilestones sets the "extra_milestones" field.
 func (_c *CheckinRecordCreate) SetExtraMilestones(v []int) *CheckinRecordCreate {
 	_c.mutation.SetExtraMilestones(v)
@@ -185,6 +199,10 @@ func (_c *CheckinRecordCreate) defaults() {
 		v := checkinrecord.DefaultMonthCount
 		_c.mutation.SetMonthCount(v)
 	}
+	if _, ok := _c.mutation.ConsecutiveCount(); !ok {
+		v := checkinrecord.DefaultConsecutiveCount
+		_c.mutation.SetConsecutiveCount(v)
+	}
 	if _, ok := _c.mutation.CheckedInAt(); !ok {
 		v := checkinrecord.DefaultCheckedInAt()
 		_c.mutation.SetCheckedInAt(v)
@@ -213,6 +231,9 @@ func (_c *CheckinRecordCreate) check() error {
 	}
 	if _, ok := _c.mutation.MonthCount(); !ok {
 		return &ValidationError{Name: "month_count", err: errors.New(`ent: missing required field "CheckinRecord.month_count"`)}
+	}
+	if _, ok := _c.mutation.ConsecutiveCount(); !ok {
+		return &ValidationError{Name: "consecutive_count", err: errors.New(`ent: missing required field "CheckinRecord.consecutive_count"`)}
 	}
 	if _, ok := _c.mutation.CheckedInAt(); !ok {
 		return &ValidationError{Name: "checked_in_at", err: errors.New(`ent: missing required field "CheckinRecord.checked_in_at"`)}
@@ -270,6 +291,10 @@ func (_c *CheckinRecordCreate) createSpec() (*CheckinRecord, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.MonthCount(); ok {
 		_spec.SetField(checkinrecord.FieldMonthCount, field.TypeInt, value)
 		_node.MonthCount = value
+	}
+	if value, ok := _c.mutation.ConsecutiveCount(); ok {
+		_spec.SetField(checkinrecord.FieldConsecutiveCount, field.TypeInt, value)
+		_node.ConsecutiveCount = value
 	}
 	if value, ok := _c.mutation.ExtraMilestones(); ok {
 		_spec.SetField(checkinrecord.FieldExtraMilestones, field.TypeJSON, value)
@@ -435,6 +460,24 @@ func (u *CheckinRecordUpsert) UpdateMonthCount() *CheckinRecordUpsert {
 // AddMonthCount adds v to the "month_count" field.
 func (u *CheckinRecordUpsert) AddMonthCount(v int) *CheckinRecordUpsert {
 	u.Add(checkinrecord.FieldMonthCount, v)
+	return u
+}
+
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (u *CheckinRecordUpsert) SetConsecutiveCount(v int) *CheckinRecordUpsert {
+	u.Set(checkinrecord.FieldConsecutiveCount, v)
+	return u
+}
+
+// UpdateConsecutiveCount sets the "consecutive_count" field to the value that was provided on create.
+func (u *CheckinRecordUpsert) UpdateConsecutiveCount() *CheckinRecordUpsert {
+	u.SetExcluded(checkinrecord.FieldConsecutiveCount)
+	return u
+}
+
+// AddConsecutiveCount adds v to the "consecutive_count" field.
+func (u *CheckinRecordUpsert) AddConsecutiveCount(v int) *CheckinRecordUpsert {
+	u.Add(checkinrecord.FieldConsecutiveCount, v)
 	return u
 }
 
@@ -615,6 +658,27 @@ func (u *CheckinRecordUpsertOne) AddMonthCount(v int) *CheckinRecordUpsertOne {
 func (u *CheckinRecordUpsertOne) UpdateMonthCount() *CheckinRecordUpsertOne {
 	return u.Update(func(s *CheckinRecordUpsert) {
 		s.UpdateMonthCount()
+	})
+}
+
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (u *CheckinRecordUpsertOne) SetConsecutiveCount(v int) *CheckinRecordUpsertOne {
+	return u.Update(func(s *CheckinRecordUpsert) {
+		s.SetConsecutiveCount(v)
+	})
+}
+
+// AddConsecutiveCount adds v to the "consecutive_count" field.
+func (u *CheckinRecordUpsertOne) AddConsecutiveCount(v int) *CheckinRecordUpsertOne {
+	return u.Update(func(s *CheckinRecordUpsert) {
+		s.AddConsecutiveCount(v)
+	})
+}
+
+// UpdateConsecutiveCount sets the "consecutive_count" field to the value that was provided on create.
+func (u *CheckinRecordUpsertOne) UpdateConsecutiveCount() *CheckinRecordUpsertOne {
+	return u.Update(func(s *CheckinRecordUpsert) {
+		s.UpdateConsecutiveCount()
 	})
 }
 
@@ -966,6 +1030,27 @@ func (u *CheckinRecordUpsertBulk) AddMonthCount(v int) *CheckinRecordUpsertBulk 
 func (u *CheckinRecordUpsertBulk) UpdateMonthCount() *CheckinRecordUpsertBulk {
 	return u.Update(func(s *CheckinRecordUpsert) {
 		s.UpdateMonthCount()
+	})
+}
+
+// SetConsecutiveCount sets the "consecutive_count" field.
+func (u *CheckinRecordUpsertBulk) SetConsecutiveCount(v int) *CheckinRecordUpsertBulk {
+	return u.Update(func(s *CheckinRecordUpsert) {
+		s.SetConsecutiveCount(v)
+	})
+}
+
+// AddConsecutiveCount adds v to the "consecutive_count" field.
+func (u *CheckinRecordUpsertBulk) AddConsecutiveCount(v int) *CheckinRecordUpsertBulk {
+	return u.Update(func(s *CheckinRecordUpsert) {
+		s.AddConsecutiveCount(v)
+	})
+}
+
+// UpdateConsecutiveCount sets the "consecutive_count" field to the value that was provided on create.
+func (u *CheckinRecordUpsertBulk) UpdateConsecutiveCount() *CheckinRecordUpsertBulk {
+	return u.Update(func(s *CheckinRecordUpsert) {
+		s.UpdateConsecutiveCount()
 	})
 }
 

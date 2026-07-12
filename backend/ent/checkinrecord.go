@@ -33,6 +33,8 @@ type CheckinRecord struct {
 	ExtraReward float64 `json:"extra_reward,omitempty"`
 	// MonthCount holds the value of the "month_count" field.
 	MonthCount int `json:"month_count,omitempty"`
+	// ConsecutiveCount holds the value of the "consecutive_count" field.
+	ConsecutiveCount int `json:"consecutive_count,omitempty"`
 	// ExtraMilestones holds the value of the "extra_milestones" field.
 	ExtraMilestones []int `json:"extra_milestones,omitempty"`
 	// CheckedInAt holds the value of the "checked_in_at" field.
@@ -72,7 +74,7 @@ func (*CheckinRecord) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case checkinrecord.FieldDailyReward, checkinrecord.FieldExtraReward:
 			values[i] = new(sql.NullFloat64)
-		case checkinrecord.FieldID, checkinrecord.FieldUserID, checkinrecord.FieldMonthCount:
+		case checkinrecord.FieldID, checkinrecord.FieldUserID, checkinrecord.FieldMonthCount, checkinrecord.FieldConsecutiveCount:
 			values[i] = new(sql.NullInt64)
 		case checkinrecord.FieldCreatedAt, checkinrecord.FieldUpdatedAt, checkinrecord.FieldCheckinDate, checkinrecord.FieldCheckedInAt:
 			values[i] = new(sql.NullTime)
@@ -138,6 +140,12 @@ func (_m *CheckinRecord) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field month_count", values[i])
 			} else if value.Valid {
 				_m.MonthCount = int(value.Int64)
+			}
+		case checkinrecord.FieldConsecutiveCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field consecutive_count", values[i])
+			} else if value.Valid {
+				_m.ConsecutiveCount = int(value.Int64)
 			}
 		case checkinrecord.FieldExtraMilestones:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -214,6 +222,9 @@ func (_m *CheckinRecord) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("month_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MonthCount))
+	builder.WriteString(", ")
+	builder.WriteString("consecutive_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ConsecutiveCount))
 	builder.WriteString(", ")
 	builder.WriteString("extra_milestones=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ExtraMilestones))

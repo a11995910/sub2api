@@ -90,6 +90,11 @@ func MonthCount(v int) predicate.CheckinRecord {
 	return predicate.CheckinRecord(sql.FieldEQ(FieldMonthCount, v))
 }
 
+// ConsecutiveCount applies equality check predicate on the "consecutive_count" field. It's identical to ConsecutiveCountEQ.
+func ConsecutiveCount(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldEQ(FieldConsecutiveCount, v))
+}
+
 // CheckedInAt applies equality check predicate on the "checked_in_at" field. It's identical to CheckedInAtEQ.
 func CheckedInAt(v time.Time) predicate.CheckinRecord {
 	return predicate.CheckinRecord(sql.FieldEQ(FieldCheckedInAt, v))
@@ -353,6 +358,46 @@ func MonthCountLT(v int) predicate.CheckinRecord {
 // MonthCountLTE applies the LTE predicate on the "month_count" field.
 func MonthCountLTE(v int) predicate.CheckinRecord {
 	return predicate.CheckinRecord(sql.FieldLTE(FieldMonthCount, v))
+}
+
+// ConsecutiveCountEQ applies the EQ predicate on the "consecutive_count" field.
+func ConsecutiveCountEQ(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldEQ(FieldConsecutiveCount, v))
+}
+
+// ConsecutiveCountNEQ applies the NEQ predicate on the "consecutive_count" field.
+func ConsecutiveCountNEQ(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldNEQ(FieldConsecutiveCount, v))
+}
+
+// ConsecutiveCountIn applies the In predicate on the "consecutive_count" field.
+func ConsecutiveCountIn(vs ...int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldIn(FieldConsecutiveCount, vs...))
+}
+
+// ConsecutiveCountNotIn applies the NotIn predicate on the "consecutive_count" field.
+func ConsecutiveCountNotIn(vs ...int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldNotIn(FieldConsecutiveCount, vs...))
+}
+
+// ConsecutiveCountGT applies the GT predicate on the "consecutive_count" field.
+func ConsecutiveCountGT(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldGT(FieldConsecutiveCount, v))
+}
+
+// ConsecutiveCountGTE applies the GTE predicate on the "consecutive_count" field.
+func ConsecutiveCountGTE(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldGTE(FieldConsecutiveCount, v))
+}
+
+// ConsecutiveCountLT applies the LT predicate on the "consecutive_count" field.
+func ConsecutiveCountLT(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldLT(FieldConsecutiveCount, v))
+}
+
+// ConsecutiveCountLTE applies the LTE predicate on the "consecutive_count" field.
+func ConsecutiveCountLTE(v int) predicate.CheckinRecord {
+	return predicate.CheckinRecord(sql.FieldLTE(FieldConsecutiveCount, v))
 }
 
 // ExtraMilestonesIsNil applies the IsNil predicate on the "extra_milestones" field.
