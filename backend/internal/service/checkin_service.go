@@ -228,13 +228,32 @@ func (s *CheckinService) consecutiveCheckinCountAt(ctx context.Context, userID i
 	if record.ConsecutiveCount > 0 {
 		return record.ConsecutiveCount, nil
 	}
+	return s.legacyConsecutiveCheckinCountAt(ctx, userID, day)
+}
 
-	// 历史记录的默认值为 0，需按相邻日期回溯计算，但不改写既有奖励数据。
-	count, err := s.consecutiveCheckinCountAt(ctx, userID, truncateDate(day).AddDate(0, 0, -1))
+func (s *CheckinService) legacyConsecutiveCheckinCountAt(ctx context.Context, userID int64, day time.Time) (int, error) {
+	day = truncateDate(day)
+	// 旧记录的连续值均为 0。一次读取截至目标日的历史记录，避免沿日期递归产生 N+1 查询。
+	records, err := s.repo.ListByUserAndDateRange(ctx, userID, time.Time{}, day.AddDate(0, 0, 1))
 	if err != nil {
 		return 0, err
 	}
-	return count + 1, nil
+	recordByDate := make(map[string]CheckinRecord, len(records))
+	for _, legacyRecord := range records {
+		recordByDate[formatDate(legacyRecord.CheckinDate)] = legacyRecord
+	}
+
+	count := 0
+	for cursor := day; ; cursor = cursor.AddDate(0, 0, -1) {
+		legacyRecord, ok := recordByDate[formatDate(cursor)]
+		if !ok {
+			return count, nil
+		}
+		count++
+		if legacyRecord.ConsecutiveCount > 0 {
+			return legacyRecord.ConsecutiveCount + count - 1, nil
+		}
+	}
 }
 
 func (s *CheckinService) today() time.Time {

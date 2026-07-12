@@ -10,7 +10,9 @@ import (
 )
 
 type checkinRepositoryStub struct {
-	records map[string]CheckinRecord
+	records   map[string]CheckinRecord
+	getCalls  int
+	listCalls int
 }
 
 func (r *checkinRepositoryStub) Create(_ context.Context, record *CheckinRecord) error {
@@ -22,6 +24,7 @@ func (r *checkinRepositoryStub) Create(_ context.Context, record *CheckinRecord)
 }
 
 func (r *checkinRepositoryStub) GetByUserAndDate(_ context.Context, _ int64, date time.Time) (*CheckinRecord, error) {
+	r.getCalls++
 	record, ok := r.records[formatDate(date)]
 	if !ok {
 		return nil, nil
@@ -30,6 +33,7 @@ func (r *checkinRepositoryStub) GetByUserAndDate(_ context.Context, _ int64, dat
 }
 
 func (r *checkinRepositoryStub) ListByUserAndDateRange(_ context.Context, _ int64, start, end time.Time) ([]CheckinRecord, error) {
+	r.listCalls++
 	records := make([]CheckinRecord, 0, len(r.records))
 	for _, record := range r.records {
 		if !record.CheckinDate.Before(start) && record.CheckinDate.Before(end) {
@@ -78,6 +82,26 @@ func TestCheckinServiceNextConsecutiveCountBackfillsLegacyRecordsAcrossMonth(t *
 	count, err := svc.nextConsecutiveCheckinCount(context.Background(), 1, today)
 	require.NoError(t, err)
 	require.Equal(t, 4, count)
+}
+
+func TestCheckinServiceLegacyStreakBackfillUsesSingleRangeQuery(t *testing.T) {
+	today := checkinTestDate(2026, time.February, 1)
+	repo := &checkinRepositoryStub{records: map[string]CheckinRecord{
+		"2026-01-26": checkinTestRecord(2026, time.January, 26, 0),
+		"2026-01-27": checkinTestRecord(2026, time.January, 27, 0),
+		"2026-01-28": checkinTestRecord(2026, time.January, 28, 0),
+		"2026-01-29": checkinTestRecord(2026, time.January, 29, 0),
+		"2026-01-30": checkinTestRecord(2026, time.January, 30, 0),
+		"2026-01-31": checkinTestRecord(2026, time.January, 31, 0),
+	}}
+	svc := &CheckinService{repo: repo}
+
+	count, err := svc.nextConsecutiveCheckinCount(context.Background(), 1, today)
+
+	require.NoError(t, err)
+	require.Equal(t, 7, count)
+	require.Equal(t, 1, repo.getCalls)
+	require.Equal(t, 1, repo.listCalls)
 }
 
 func TestCheckinServiceBuildMonthSummaryUsesCurrentConsecutiveCount(t *testing.T) {
