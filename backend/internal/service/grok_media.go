@@ -398,6 +398,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoCount:           usage.VideoCount,
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
+		VideoInputImageCount: usage.VideoInputImageCount,
 	}, nil
 }
 
@@ -629,6 +630,7 @@ type grokMediaUsageMetadata struct {
 	VideoCount           int
 	VideoResolution      string
 	VideoDurationSeconds int
+	VideoInputImageCount int
 }
 
 func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo, responseBody []byte) grokMediaUsageMetadata {
@@ -652,6 +654,7 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.VideoCount = 1
 		meta.VideoResolution = requestInfo.Resolution
 		meta.VideoDurationSeconds = requestInfo.DurationSeconds
+		meta.VideoInputImageCount = len(requestInfo.InputImageURLs) + len(requestInfo.Uploads)
 		// Keep the legacy media-unit counter populated for existing usage displays.
 		meta.ImageCount = 1
 	}

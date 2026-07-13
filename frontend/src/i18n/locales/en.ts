@@ -1220,6 +1220,7 @@ export default {
     currentPrice: 'Current',
     officialPrice: 'Official',
     discount: 'Discount',
+    referenceImageSurcharge: 'Reference image / image',
     test: 'Test',
     stats: {
       models: 'Callable Models',
@@ -1258,6 +1259,7 @@ export default {
       videoResolution: 'Video Resolution',
       videoDuration: 'Video Duration (seconds)',
       referenceImages: 'Reference Images',
+      videoReferenceImage: 'Starting reference image (optional)',
       maxTokens: 'Max Output'
     },
     placeholders: {
@@ -1274,8 +1276,9 @@ export default {
     },
     imageSizeAdaptivePreview: 'Adaptive ({tier} estimate)',
     referenceImagesHint: 'Uploaded images use the image edit endpoint. Describe the change in the prompt.',
-    videoReferenceImageHint: 'Optionally upload one starting frame for image-to-video; omit it for text-to-video.',
+    videoReferenceImageHint: 'Upload one starting image for image-to-video. Its per-image surcharge is added to the video output cost; leave it empty for text-to-video.',
     uploadReferenceImages: 'Upload Images',
+    uploadVideoReferenceImage: 'Add Reference Image',
     removeReferenceImage: 'Remove reference image',
     referenceImageLimit: 'Upload up to {count} reference images',
     referenceImageTypeError: 'Select an image file',
@@ -1307,6 +1310,7 @@ export default {
     running: 'Running...',
     runSuccess: 'Test completed',
     runFailed: 'Test failed',
+    videoPriceWithReference: '{resolution} {total} / {unit} (video {output} + reference image {reference})',
     perImage: 'image'
     ,perSecond: 'sec'
   },
@@ -2793,6 +2797,9 @@ export default {
         perRequestPriceRequired: 'Price or billing tiers required for per-request/image/video billing mode',
         perSecondPrice: 'Price per Second',
         perSecondUnit: 'credits/sec',
+        videoReferenceImagePrice: 'Reference image surcharge',
+        videoReferenceImagePricePlaceholder: 'Use the model default',
+        perImageUnit: 'credits/image',
         tierLabel: 'Tier',
         resolution: 'Resolution',
         modelMapping: 'Model Mapping',

@@ -4,6 +4,7 @@ import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
+  BILLING_MODE_VIDEO,
 } from '@/constants/channel'
 import {
   mapChannelPricingToForm,
@@ -77,6 +78,17 @@ describe('渠道视频定价兼容', () => {
         sort_order: 1,
       }],
     })
+  })
+
+  it('video 模式参考图附加价按张原样回填，不按 MTok 放大', () => {
+    const result = mapChannelPricingToForm(createPricing({
+      billing_mode: BILLING_MODE_VIDEO,
+      input_price: 0.01,
+      per_request_price: null,
+    }))
+
+    expect(result.billing_mode).toBe(BILLING_MODE_VIDEO)
+    expect(result.input_price).toBe(0.01)
   })
 
   it('账号统计价格映射保留历史 per_request 模式及层级价格', () => {

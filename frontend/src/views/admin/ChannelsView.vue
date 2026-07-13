@@ -633,7 +633,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, BillingMode } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import { mTokToPerToken, pricingInputToAPI, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -1065,7 +1065,7 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             platform: section.platform,
             models: p.models,
             billing_mode: p.billing_mode,
-            input_price: mTokToPerToken(p.input_price),
+            input_price: pricingInputToAPI(p.billing_mode, p.input_price),
             output_price: mTokToPerToken(p.output_price),
             cache_write_price: mTokToPerToken(p.cache_write_price),
             cache_read_price: mTokToPerToken(p.cache_read_price),
@@ -1105,7 +1105,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         platform: section.platform,
         models: entry.models,
         billing_mode: entry.billing_mode,
-        input_price: mTokToPerToken(entry.input_price),
+        input_price: pricingInputToAPI(entry.billing_mode, entry.input_price),
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),
         cache_read_price: mTokToPerToken(entry.cache_read_price),

@@ -932,6 +932,40 @@ func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
 }
 
+func TestAddVideoReferenceImageCostUsesOfficialRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	standard := svc.AddVideoReferenceImageCost(
+		svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 8, nil, 2),
+		"grok-imagine-video", 1, nil, 2,
+	)
+	video15 := svc.AddVideoReferenceImageCost(
+		svc.CalculateVideoCost("grok-imagine-video-1.5", "720p", 1, 8, nil, 2),
+		"grok-imagine-video-1.5", 1, nil, 2,
+	)
+
+	require.InDelta(t, 0.002, standard.InputCost, 1e-10)
+	require.InDelta(t, 0.562, standard.TotalCost, 1e-10)
+	require.InDelta(t, 1.124, standard.ActualCost, 1e-10)
+	require.InDelta(t, 0.01, video15.InputCost, 1e-10)
+	require.InDelta(t, 1.13, video15.TotalCost, 1e-10)
+	require.InDelta(t, 2.26, video15.ActualCost, 1e-10)
+}
+
+func TestAddVideoReferenceImageCostSupportsOverrideAndNoImage(t *testing.T) {
+	svc := newTestBillingService()
+	zero := 0.0
+	base := svc.CalculateVideoCost("grok-imagine-video-1.5", "480p", 1, 1, nil, 1)
+
+	withoutImage := svc.AddVideoReferenceImageCost(base, "grok-imagine-video-1.5", 0, nil, 1)
+	require.Zero(t, withoutImage.InputCost)
+	require.InDelta(t, 0.08, withoutImage.TotalCost, 1e-10)
+
+	freeReference := svc.AddVideoReferenceImageCost(base, "grok-imagine-video-1.5", 1, &zero, 1)
+	require.Zero(t, freeReference.InputCost)
+	require.InDelta(t, 0.08, freeReference.TotalCost, 1e-10)
+}
+
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 

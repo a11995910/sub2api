@@ -1224,6 +1224,7 @@ export default {
     currentPrice: '当前',
     officialPrice: '官方',
     discount: '优惠',
+    referenceImageSurcharge: '参考图附加 / 张',
     test: '去测试',
     stats: {
       models: '可调用模型',
@@ -1262,6 +1263,7 @@ export default {
       videoResolution: '视频分辨率',
       videoDuration: '视频时长（秒）',
       referenceImages: '参考图片',
+      videoReferenceImage: '起始参考图（可选）',
       maxTokens: '最大输出'
     },
     placeholders: {
@@ -1278,8 +1280,9 @@ export default {
     },
     imageSizeAdaptivePreview: '自适应（{tier} 预估）',
     referenceImagesHint: '上传后将调用图片编辑接口，可在提示词中说明修改方式。',
-    videoReferenceImageHint: '可上传 1 张起始参考图，用于图生视频；不上传则执行文生视频。',
+    videoReferenceImageHint: '上传 1 张起始参考图后执行图生视频，并按模型叠加参考图附加价；不上传则执行文生视频。',
     uploadReferenceImages: '上传图片',
+    uploadVideoReferenceImage: '添加参考图',
     removeReferenceImage: '移除参考图',
     referenceImageLimit: '最多上传 {count} 张参考图片',
     referenceImageTypeError: '请选择图片文件',
@@ -1311,6 +1314,7 @@ export default {
     running: '测试中...',
     runSuccess: '测试完成',
     runFailed: '测试失败',
+    videoPriceWithReference: '{resolution} {total} / {unit}（视频 {output} + 参考图 {reference}）',
     perImage: '张'
     ,perSecond: '秒'
   },
@@ -2869,6 +2873,9 @@ export default {
         perRequestPriceRequired: '按次/图片/视频计费模式必须设置默认价格或至少一个计费层级',
         perSecondPrice: '每秒价格',
         perSecondUnit: '灵石/秒',
+        videoReferenceImagePrice: '参考图附加价',
+        videoReferenceImagePricePlaceholder: '按模型使用官方价',
+        perImageUnit: '灵石/张',
         tierLabel: '层级',
         resolution: '分辨率',
         modelMapping: '模型映射',

@@ -130,7 +130,10 @@
               </button>
             </div>
 
-            <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div
+              class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"
+              :class="model.kind === 'video' && videoResolutionsForModel(model.name).length === 3 ? 'lg:grid-cols-4' : ''"
+            >
               <template v-if="model.kind === 'image'">
                 <PriceTile
                   label="1K"
@@ -153,16 +156,14 @@
               </template>
               <template v-else-if="model.kind === 'video'">
                 <PriceTile
-                  :label="formatSelectedVideoTierLabel(model, '480p')"
-                  :value="formatSelectedVideoTier(model, '480p')"
+                  v-for="resolution in videoResolutionsForModel(model.name)"
+                  :key="resolution"
+                  :label="formatSelectedVideoTierLabel(model, resolution)"
+                  :value="formatSelectedVideoTier(model, resolution)"
                 />
                 <PriceTile
-                  :label="formatSelectedVideoTierLabel(model, '720p')"
-                  :value="formatSelectedVideoTier(model, '720p')"
-                />
-                <PriceTile
-                  :label="formatSelectedVideoTierLabel(model, '1080p')"
-                  :value="formatSelectedVideoTier(model, '1080p')"
+                  :label="t('modelMarket.referenceImageSurcharge')"
+                  :value="formatSelectedVideoReferenceImage(model)"
                 />
               </template>
               <template v-else-if="model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST">
@@ -228,8 +229,9 @@ import { formatScaled, formatUSDScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
 import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
-  normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
+  resolveVideoReferenceImageQuote,
+  videoResolutionsForModel,
   type VideoResolution,
 } from '@/utils/videoPricing'
 import {
@@ -541,38 +543,30 @@ function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k'): string {
 function selectedVideoQuote(model: GroupMarketModel, resolution: VideoResolution) {
   const group = selectedGroup.value?.group
   if (!group) return null
-  const billingContext = videoBillingContext(model)
   return resolveVideoPriceQuote({
     group,
-    pricing: billingContext.pricing,
-    modelName: billingContext.modelName,
+    pricing: model.pricing,
+    modelName: model.name,
     resolution,
     userGroupRate: userGroupRates.value[group.id],
   })
 }
 
-function videoBillingContext(model: GroupMarketModel) {
-  const modelName = normalizeVideoBillingModelName(model.name, false)
-  const normalizedModelName = modelName.trim().toLowerCase()
-  if (normalizedModelName === model.name.trim().toLowerCase()) {
-    return { modelName, pricing: model.pricing }
-  }
-
-  const normalizedPlatform = model.platform.trim().toLowerCase()
-  const matched = selectedGroup.value?.models.find((candidate) =>
-    candidate.kind === 'video' &&
-    candidate.platform.trim().toLowerCase() === normalizedPlatform &&
-    candidate.name.trim().toLowerCase() === normalizedModelName,
-  )
-  return {
-    modelName,
-    pricing: matched?.pricing ?? null,
-  }
-}
-
 function formatSelectedVideoTier(model: GroupMarketModel, resolution: VideoResolution): string {
   const resolved = selectedVideoQuote(model, resolution)
   return resolved ? formatScaled(resolved.effectivePrice, 1) : '-'
+}
+
+function formatSelectedVideoReferenceImage(model: GroupMarketModel): string {
+  const group = selectedGroup.value?.group
+  if (!group) return '-'
+  const resolved = resolveVideoReferenceImageQuote({
+    group,
+    pricing: model.pricing,
+    modelName: model.name,
+    userGroupRate: userGroupRates.value[group.id],
+  })
+  return resolved ? `+${formatScaled(resolved.effectivePrice, 1)}` : '-'
 }
 
 function formatSelectedVideoTierLabel(model: GroupMarketModel, resolution: VideoResolution): string {

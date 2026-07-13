@@ -266,6 +266,8 @@ type OpenAIForwardResult struct {
 	VideoResolution    string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
+	// VideoInputImageCount 是视频请求实际携带的参考图数量，用于叠加按张输入费。
+	VideoInputImageCount int
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int
@@ -7334,23 +7336,37 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
+	var referenceImagePrice *float64
+	if resolved != nil && resolved.Mode == BillingModeVideo {
+		referenceImagePrice = resolved.ReferenceImagePrice
+	}
+	withReferenceImageCost := func(cost *CostBreakdown) *CostBreakdown {
+		return s.billingService.AddVideoReferenceImageCost(
+			cost,
+			billingModel,
+			result.VideoInputImageCount,
+			referenceImagePrice,
+			multiplier,
+		)
+	}
 	groupConfig := videoPriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredVideoPrice(apiKey, resolution) {
-		return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+		return withReferenceImageCost(s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier))
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		apiKey = refreshed
 		groupConfig = videoPriceConfigFromAPIKey(apiKey)
 		if apiKeyHasConfiguredVideoPrice(apiKey, resolution) {
-			return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+			return withReferenceImageCost(s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier))
 		}
 	}
-	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
+	if resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo) {
 		// 显式 video 渠道价格按秒配置；历史 image/per_request 视频配置仍按请求次数计费。
 		// video 未配置当前分辨率且没有默认价时走系统视频价；按指针判断以保留显式 0 元配置。
 		if resolved.Mode == BillingModeVideo && !hasExplicitVideoChannelPrice(resolved, resolution) {
-			return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+			return withReferenceImageCost(s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier))
 		}
 		requestCount := videoCount
 		if resolved.Mode == BillingModeVideo {
@@ -7368,12 +7384,12 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 			Resolved:       resolved,
 		})
 		if err == nil {
-			return cost
+			return withReferenceImageCost(cost)
 		}
 		logger.LegacyPrintf("service.openai_gateway", "Calculate video channel cost failed: %v", err)
 	}
 
-	return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+	return withReferenceImageCost(s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier))
 }
 
 func hasExplicitVideoChannelPrice(resolved *ResolvedPricing, resolution string) bool {
