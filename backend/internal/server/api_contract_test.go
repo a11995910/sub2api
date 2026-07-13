@@ -375,6 +375,7 @@ func TestAPIContracts(t *testing.T) {
 						"cache_hit_quarter_to_input_enabled": false,
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
+						"image_response_format": "",
 						"image_super_resolution_enabled": false,
 						"image_2k_enhancement_enabled": false,
 						"image_2k_enhancement_group_id": null,
