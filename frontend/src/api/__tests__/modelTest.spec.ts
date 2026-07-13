@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import { fetchVideoContent, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
 
 describe('modelTest api', () => {
   afterEach(() => {
@@ -124,6 +124,30 @@ describe('modelTest api', () => {
     })
     expect(fetchMock.mock.calls[1][0]).toBe('/v1/videos/video-123')
     expect(fetchMock.mock.calls[2][0]).toBe('/v1/videos/video-123')
-    expect(result).toMatchObject({ status: 'completed' })
+    expect(result).toEqual({
+      payload: expect.objectContaining({ status: 'completed' }),
+      requestID: 'video-123',
+    })
+  })
+
+  it('视频内容通过带 API Key 的受限网关接口下载', async () => {
+    const videoBlob = new Blob(['video-content'], { type: 'video/mp4' })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: () => Promise.resolve(videoBlob),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchVideoContent('video /123', 'sk-test')
+
+    expect(result).toBe(videoBlob)
+    expect(fetchMock).toHaveBeenCalledWith('/v1/videos/video%20%2F123/content', expect.objectContaining({
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer sk-test',
+        Accept: 'video/mp4,video/*',
+      },
+    }))
   })
 })

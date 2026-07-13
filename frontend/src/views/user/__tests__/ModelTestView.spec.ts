@@ -11,6 +11,8 @@ const showWarning = vi.hoisted(() => vi.fn())
 const showSuccess = vi.hoisted(() => vi.fn())
 const push = vi.hoisted(() => vi.fn())
 const routeState = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
+const testVideoGeneration = vi.hoisted(() => vi.fn())
+const fetchVideoContent = vi.hoisted(() => vi.fn())
 
 const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeToken': 'Token',
@@ -96,6 +98,9 @@ vi.mock('@/api/modelTest', () => ({
   testChatCompletion: vi.fn(),
   testImageEdit: vi.fn(),
   testImageGeneration: vi.fn(),
+  testVideoGeneration,
+  fetchVideoContent,
+  extractVideoURL: (payload: any) => String(payload?.video?.url || ''),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -273,6 +278,8 @@ describe('ModelTestView', () => {
     showWarning.mockReset()
     showSuccess.mockReset()
     push.mockReset()
+    testVideoGeneration.mockReset()
+    fetchVideoContent.mockReset()
     window.URL.createObjectURL = vi.fn(() => 'blob:model-test-reference') as typeof window.URL.createObjectURL
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
 
@@ -798,5 +805,60 @@ describe('ModelTestView', () => {
     await flushPromises()
 
     expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
+  })
+
+  it('视频生成完成后通过内容接口创建 Blob 播放地址并在卸载时释放', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({
+      id: 909,
+      key: 'sk-video-key-1234567890',
+      group_id: 9,
+    })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video',
+          platform: 'grok',
+          kind: 'video',
+          pricing: null,
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+    testVideoGeneration.mockResolvedValue({
+      payload: {
+        status: 'done',
+        video: { url: 'https://vidgen.x.ai/xai-vidgen-bucket/generated.mp4' },
+      },
+      requestID: 'video-request-123',
+    })
+    const videoBlob = new Blob(['video-content'], { type: 'video/mp4' })
+    fetchVideoContent.mockResolvedValue(videoBlob)
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('textarea').setValue('生成海浪视频')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetchVideoContent).toHaveBeenCalledWith(
+      'video-request-123',
+      'sk-video-key-1234567890',
+      expect.any(AbortSignal),
+    )
+    expect(window.URL.createObjectURL).toHaveBeenCalledWith(videoBlob)
+    expect(wrapper.find('video').attributes('src')).toBe('blob:model-test-reference')
+
+    wrapper.unmount()
+    expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:model-test-reference')
   })
 })

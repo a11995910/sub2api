@@ -320,7 +320,7 @@ import userChannelsAPI, {
 } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import keysAPI from '@/api/keys'
-import { extractVideoURL, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import { extractVideoURL, fetchVideoContent, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
@@ -391,6 +391,7 @@ const referenceImages = ref<ReferenceImage[]>([])
 const imageUploadError = ref('')
 const maxTokens = ref(256)
 const rawResponse = ref<unknown | null>(null)
+const videoBlobURL = ref('')
 const errorMessage = ref('')
 const durationMs = ref<number | null>(null)
 
@@ -570,10 +571,11 @@ const currentPricePreview = computed(() => {
 
 const chatOutput = computed(() => selectedKind.value === 'token' ? extractChatText(rawResponse.value) : '')
 const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImageOutputs(rawResponse.value) : [])
-const videoOutputURL = computed(() => selectedKind.value === 'video' ? extractVideoURL(rawResponse.value) : '')
+const videoOutputURL = computed(() => selectedKind.value === 'video' ? videoBlobURL.value || extractVideoURL(rawResponse.value) : '')
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
 watch(selectedKind, (kind) => {
+  clearVideoBlobURL()
   if (selectedModel.value?.kind !== kind) {
     selectedModelKey.value = filteredModels.value[0]?.key || ''
   }
@@ -867,6 +869,7 @@ async function runTest() {
 
   runController = new AbortController()
   running.value = true
+  clearVideoBlobURL()
   rawResponse.value = null
   errorMessage.value = ''
   durationMs.value = null
@@ -890,7 +893,7 @@ async function runTest() {
           signal: runController.signal,
         })
     } else if (selectedKind.value === 'video') {
-      rawResponse.value = await testVideoGeneration({
+      const videoResult = await testVideoGeneration({
         apiKey: apiKey.key,
         model: model.name,
         prompt: cleanPrompt,
@@ -899,6 +902,11 @@ async function runTest() {
         imageDataUrl: referenceImages.value[0] ? await fileToDataURL(referenceImages.value[0].file) : undefined,
         signal: runController.signal,
       })
+      if (videoResult.requestID) {
+        const videoBlob = await fetchVideoContent(videoResult.requestID, apiKey.key, runController.signal)
+        videoBlobURL.value = URL.createObjectURL(videoBlob)
+      }
+      rawResponse.value = videoResult.payload
     } else {
       rawResponse.value = await testChatCompletion({
         apiKey: apiKey.key,
@@ -1005,6 +1013,12 @@ function clearReferenceImages() {
   referenceImages.value = []
 }
 
+function clearVideoBlobURL() {
+  if (!videoBlobURL.value) return
+  URL.revokeObjectURL(videoBlobURL.value)
+  videoBlobURL.value = ''
+}
+
 function formatFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -1084,6 +1098,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   runController?.abort()
+  clearVideoBlobURL()
   clearReferenceImages()
 })
 </script>

@@ -39,6 +39,11 @@ export interface VideoGenerationTestRequest extends GatewayTestOptions {
   timeoutMs?: number
 }
 
+export interface VideoGenerationTestResult {
+  payload: unknown
+  requestID: string
+}
+
 export class ModelTestError extends Error {
   status: number
   payload: unknown
@@ -197,7 +202,7 @@ export async function testImageEdit(req: ImageEditTestRequest): Promise<unknown>
   )
 }
 
-export async function testVideoGeneration(req: VideoGenerationTestRequest): Promise<unknown> {
+export async function testVideoGeneration(req: VideoGenerationTestRequest): Promise<VideoGenerationTestResult> {
   const payload: Record<string, unknown> = {
     model: req.model,
     prompt: req.prompt,
@@ -207,8 +212,8 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
   if (req.imageDataUrl?.trim()) payload.image = { image_url: req.imageDataUrl.trim() }
 
   const created = await postGateway<unknown>('/v1/videos/generations', req.apiKey, payload, req.signal)
-  if (extractVideoURL(created)) return created
   const requestID = extractVideoRequestID(created)
+  if (extractVideoURL(created)) return { payload: created, requestID }
   if (!requestID) {
     throw new ModelTestError('Video generation response did not include request_id', 502, created)
   }
@@ -221,13 +226,38 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
     const statusPayload = await getGateway<unknown>(`/v1/videos/${encodeURIComponent(requestID)}`, req.apiKey, req.signal)
     const status = extractVideoStatus(statusPayload)
     if (extractVideoURL(statusPayload) || ['completed', 'succeeded', 'success', 'done'].includes(status)) {
-      return statusPayload
+      return { payload: statusPayload, requestID }
     }
     if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
       throw new ModelTestError(extractGatewayErrorMessage(statusPayload, '', 502), 502, statusPayload)
     }
   }
   throw new ModelTestError('Video generation timed out', 408, created)
+}
+
+export async function fetchVideoContent(
+  requestID: string,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await fetch(`/v1/videos/${encodeURIComponent(requestID)}/content`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'video/mp4,video/*',
+    },
+    signal,
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    const data = parseMaybeJSON(text)
+    throw new ModelTestError(extractGatewayErrorMessage(data, text, response.status), response.status, data)
+  }
+  const blob = await response.blob()
+  if (blob.size === 0) {
+    throw new ModelTestError('Generated video content is empty', 502, null)
+  }
+  return blob
 }
 
 function extractVideoRequestID(payload: unknown): string {
@@ -264,4 +294,5 @@ export default {
   testImageGeneration,
   testImageEdit,
   testVideoGeneration,
+  fetchVideoContent,
 }

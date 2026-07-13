@@ -149,7 +149,7 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 模型测试台文件：`frontend/src/views/user/ModelTestView.vue`
 
-页面复用现有用户接口，不新增后端测试接口：
+页面复用现有用户接口和 OpenAI 兼容网关：
 
 - `/api/v1/channels/available`：读取用户可见模型、可用分组及图片、视频价格。
 - `/api/v1/groups/rates`：读取用户专属分组倍率。
@@ -159,6 +159,7 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 - `/v1/images/edits`：上传参考图后的图片编辑测试端点。
 - `/v1/videos/generations`：Grok 视频生成任务创建端点。
 - `/v1/videos/{request_id}`：Grok 视频任务状态查询端点。
+- `/v1/videos/{request_id}/content`：使用任务绑定的 Grok 账号代理读取已生成的视频内容。
 
 测试台以用户已有 active API Key 为主入口。用户先选择 Key，页面自动带出该 Key 绑定的分组，并只展示此分组下可用的模型供用户选择。测试请求使用用户选中的真实 API Key 发起，因此会自然经过 API Key 鉴权、分组路由、限流、用量记录和灵石扣费。若没有 active API Key，或从模型广场跳转到某个分组但该分组没有 active API Key，页面只提示用户去 API Key 页面创建或绑定 Key，不会用其他分组的 Key 代替，避免测试流量落到错误分组。
 
@@ -168,7 +169,7 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传本地参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。远程参考图可通过 JSON `images[].image_url` 提交到网关；当上游账号为 OpenAI APIKey 类型时，网关会校验远程地址为公网 HTTP/HTTPS 图片地址，并由服务器直接下载图片内容后转成 multipart 文件上传给上游。远程地址不可访问、返回非 2xx、返回 HTML/鉴权页等非图片内容或超过大小限制时，网关返回 `400 invalid_request_error`，不会把本地输入校验失败显示为上游 `502`。开启 `features_config.openai_images_upstream.mode=chat_completions` 的渠道会把图片入口转发到上游 `/v1/chat/completions`：文生图请求发送文本消息，图生图请求发送文本加 `image_url` 多模态消息，保证参考图随请求传递给上游。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
 
-视频模式支持选择 `480p / 720p / 1080p` 和 `1-15` 秒时长。测试台先向 `/v1/videos/generations` 提交真实生成请求，再使用返回的 `request_id` 轮询 `/v1/videos/{request_id}`；任务完成后直接展示返回的视频 URL，失败、取消和超时会给出明确错误。用户可上传 1 张起始参考图执行图生视频，参考图以 data URL 写入 `image.image_url`；不上传时执行文生视频。显式 `video` 或分组覆盖价按真实分辨率、规范化时长、视频数量和有效倍率记录用量并扣费；历史 `image/per_request` 渠道价只按视频数量计费。状态查询不重复扣费。
+视频模式支持选择 `480p / 720p / 1080p` 和 `1-15` 秒时长。测试台先向 `/v1/videos/generations` 提交真实生成请求，再使用返回的 `request_id` 轮询 `/v1/videos/{request_id}`；任务完成后通过 `/v1/videos/{request_id}/content` 携带当前 API Key 获取视频 Blob 并播放，避免浏览器绕过账号代理直连 xAI 视频 CDN。内容接口只接受任务状态中由 xAI 返回的 `vidgen.x.ai` HTTPS MP4 地址，并限制允许路径、响应类型和 128MB 最大体积，不提供任意 URL 代理能力。失败、取消和超时会给出明确错误。用户可上传 1 张起始参考图执行图生视频，参考图以 data URL 写入 `image.image_url`；不上传时执行文生视频。显式 `video` 或分组覆盖价按真实分辨率、规范化时长、视频数量和有效倍率记录用量并扣费；历史 `image/per_request` 渠道价只按视频数量计费。状态查询和视频内容读取不重复扣费。
 
 渠道定价配置提供独立的 `video` 计费模式。该模式的默认价格和 `480p / 720p / 1080p` 层级价格均按美元每秒（USD/s）填写；`per_request_price` 字段名仅为复用现有存储结构。历史上仅包含视频模型但保存为 `image` 或 `per_request` 的渠道配置继续按美元每请求（USD/request）计费，管理端编辑时保留原模式且不自动迁移。管理员需要确认价格单位并重新填写每秒价格后，再主动切换为 `video`。
 

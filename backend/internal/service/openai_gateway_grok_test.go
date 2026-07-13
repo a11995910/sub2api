@@ -16,8 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -652,6 +650,90 @@ func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"id":"request-123","status":"completed"}`, recorder.Body.String())
 	require.Equal(t, "xai-video-req", result.RequestID)
+}
+
+func TestValidateGrokVideoContentURL(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateGrokVideoContentURL("https://vidgen.x.ai/xai-vidgen-bucket/generated-video.mp4"))
+	for _, rawURL := range []string{
+		"http://vidgen.x.ai/xai-vidgen-bucket/generated-video.mp4",
+		"https://example.com/xai-vidgen-bucket/generated-video.mp4",
+		"https://vidgen.x.ai:8443/xai-vidgen-bucket/generated-video.mp4",
+		"https://vidgen.x.ai/other/generated-video.mp4",
+		"https://vidgen.x.ai/xai-vidgen-bucket/generated-video.mov",
+	} {
+		require.Error(t, validateGrokVideoContentURL(rawURL), rawURL)
+	}
+}
+
+func TestForwardGrokMediaVideoContentUsesBoundAccountProxyChain(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/request-123/content", nil)
+
+	account := &Account{
+		ID: 62, Name: "grok", Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"status":"done","video":{"url":"https://vidgen.x.ai/xai-vidgen-bucket/generated-video.mp4"}}`)),
+		},
+		{
+			StatusCode:    http.StatusOK,
+			ContentLength: 13,
+			Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+			Body:          io.NopCloser(strings.NewReader("video-content")),
+		},
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideoContent, "request-123", nil, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://xai.test/v1/videos/request-123", upstream.requests[0].URL.String())
+	require.Equal(t, "Bearer api-key", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "https://vidgen.x.ai/xai-vidgen-bucket/generated-video.mp4", upstream.requests[1].URL.String())
+	require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
+	require.Equal(t, "video/mp4,video/*;q=0.9", upstream.requests[1].Header.Get("Accept"))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
+	require.Equal(t, "video-content", recorder.Body.String())
+}
+
+func TestForwardGrokMediaVideoContentRejectsUntrustedStatusURL(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/request-123/content", nil)
+	account := &Account{
+		ID: 62, Name: "grok", Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"status":"done","video":{"url":"https://attacker.test/video.mp4"}}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideoContent, "request-123", nil, "")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, http.StatusBadGateway, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "invalid video URL")
 }
 
 func TestForwardGrokMediaVideoMutationEndpoints(t *testing.T) {
