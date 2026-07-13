@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  pricingInputToAPI,
+  pricingInputToForm,
   transitionPricingBillingMode,
   validateIntervals,
   type IntervalFormEntry,
@@ -82,16 +84,28 @@ describe('transitionPricingBillingMode', () => {
     expect(transitionPricingBillingMode(entry, 'image')).toBe(entry)
   })
 
-  it('切换到 video 时不清空 token 默认价格字段', () => {
+  it('切换到 video 时清空单位冲突的输入价并保留其他 token 字段', () => {
     const result = transitionPricingBillingMode(makePricingEntry(), 'video')
 
     expect(result).toMatchObject({
-      input_price: 1,
+      input_price: null,
       output_price: 2,
       cache_write_price: 3,
       cache_read_price: 4,
       image_output_price: 5,
     })
+  })
+})
+
+describe('视频参考图价格转换', () => {
+  it('video 模式按张价格前后端保持原值', () => {
+    expect(pricingInputToForm('video', 0.01)).toBe(0.01)
+    expect(pricingInputToAPI('video', 0.01)).toBe(0.01)
+  })
+
+  it('token 模式继续执行每百万 token 换算', () => {
+    expect(pricingInputToForm('token', 0.000001)).toBe(1)
+    expect(pricingInputToAPI('token', 1)).toBe(0.000001)
   })
 })
 

@@ -165,9 +165,9 @@
                 <div>
                   <label class="input-label">{{ t('modelTest.fields.videoResolution') }}</label>
                   <select v-model="videoResolution" class="input">
-                    <option value="480p">480p</option>
-                    <option value="720p">720p</option>
-                    <option value="1080p">1080p</option>
+                    <option v-for="resolution in availableVideoResolutions" :key="resolution" :value="resolution">
+                      {{ resolution }}
+                    </option>
                   </select>
                 </div>
                 <div>
@@ -180,7 +180,9 @@
             <div v-if="selectedKind === 'image' || selectedKind === 'video'" class="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/50">
               <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <label class="input-label mb-1">{{ t('modelTest.fields.referenceImages') }}</label>
+                  <label class="input-label mb-1">
+                    {{ selectedKind === 'video' ? t('modelTest.fields.videoReferenceImage') : t('modelTest.fields.referenceImages') }}
+                  </label>
                   <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ selectedKind === 'video' ? t('modelTest.videoReferenceImageHint') : t('modelTest.referenceImagesHint') }}</p>
                 </div>
                 <label
@@ -196,7 +198,7 @@
                     @change="handleReferenceImagesSelected"
                   />
                   <Icon name="upload" size="sm" />
-                  {{ t('modelTest.uploadReferenceImages') }}
+                  {{ selectedKind === 'video' ? t('modelTest.uploadVideoReferenceImage') : t('modelTest.uploadReferenceImages') }}
                 </label>
               </div>
 
@@ -320,7 +322,7 @@ import userChannelsAPI, {
 } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import keysAPI from '@/api/keys'
-import { extractVideoURL, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import { extractVideoURL, fetchVideoContent, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
@@ -330,6 +332,8 @@ import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind, ty
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
+  resolveVideoReferenceImageQuote,
+  videoResolutionsForModel,
   type VideoBillingUnit,
   type VideoResolution,
 } from '@/utils/videoPricing'
@@ -391,6 +395,7 @@ const referenceImages = ref<ReferenceImage[]>([])
 const imageUploadError = ref('')
 const maxTokens = ref(256)
 const rawResponse = ref<unknown | null>(null)
+const videoBlobURL = ref('')
 const errorMessage = ref('')
 const durationMs = ref<number | null>(null)
 
@@ -522,6 +527,11 @@ const selectedVideoBillingContext = computed(() => {
   }
 })
 
+const availableVideoResolutions = computed(() => {
+  const modelName = selectedVideoBillingContext.value?.modelName || selectedModel.value?.name || ''
+  return videoResolutionsForModel(modelName)
+})
+
 const selectedRateLabel = computed(() => {
   if (!selectedGroup.value) return '-'
   const rate = selectedKind.value === 'image'
@@ -563,17 +573,27 @@ const currentPricePreview = computed(() => {
     const total = resolved.billingUnit === 'second'
       ? resolved.effectivePrice * duration
       : resolved.effectivePrice
-    return formatVideoQuote(total, resolved.billingUnit, videoResolution.value, duration)
+    const referenceQuote = referenceImages.value.length > 0
+      ? resolveVideoReferenceImageQuote({
+          group,
+          pricing: billingContext.pricing,
+          modelName: billingContext.modelName,
+          userGroupRate: userGroupRates.value[group.id],
+        })
+      : null
+    const referenceCost = (referenceQuote?.effectivePrice ?? 0) * referenceImages.value.length
+    return formatVideoQuote(total, resolved.billingUnit, videoResolution.value, duration, referenceCost)
   }
   return textPricePreview(model.pricing, group)
 })
 
 const chatOutput = computed(() => selectedKind.value === 'token' ? extractChatText(rawResponse.value) : '')
 const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImageOutputs(rawResponse.value) : [])
-const videoOutputURL = computed(() => selectedKind.value === 'video' ? extractVideoURL(rawResponse.value) : '')
+const videoOutputURL = computed(() => selectedKind.value === 'video' ? videoBlobURL.value || extractVideoURL(rawResponse.value) : '')
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
 watch(selectedKind, (kind) => {
+  clearVideoBlobURL()
   if (selectedModel.value?.kind !== kind) {
     selectedModelKey.value = filteredModels.value[0]?.key || ''
   }
@@ -587,6 +607,12 @@ watch(selectedApiKeyId, () => {
 watch(modelsInSelectedGroup, syncSelectedKindAndModel)
 
 watch(() => referenceImages.value.length, syncSelectedModel)
+
+watch(availableVideoResolutions, (resolutions) => {
+  if (!resolutions.includes(videoResolution.value)) {
+    videoResolution.value = resolutions.includes('720p') ? '720p' : resolutions[0]
+  }
+})
 
 watch(
   () => route.query,
@@ -660,14 +686,25 @@ function imageTierPrices(group: UserAvailableGroup): string {
 }
 
 function formatVideoQuote(
-  total: number,
+  outputCost: number,
   billingUnit: VideoBillingUnit,
   resolution: VideoResolution,
   duration: number,
+  referenceCost = 0,
 ): string {
   const unit = billingUnit === 'second'
     ? `${duration}${t('modelTest.perSecond')}`
     : t('availableChannels.pricing.billingModePerRequest')
+  const total = outputCost + referenceCost
+  if (referenceCost > 0) {
+    return t('modelTest.videoPriceWithReference', {
+      resolution,
+      total: formatScaled(total, 1),
+      unit,
+      output: formatScaled(outputCost, 1),
+      reference: formatScaled(referenceCost, 1),
+    })
+  }
   return `${resolution} ${formatScaled(total, 1)} / ${unit}`
 }
 
@@ -867,6 +904,7 @@ async function runTest() {
 
   runController = new AbortController()
   running.value = true
+  clearVideoBlobURL()
   rawResponse.value = null
   errorMessage.value = ''
   durationMs.value = null
@@ -890,7 +928,7 @@ async function runTest() {
           signal: runController.signal,
         })
     } else if (selectedKind.value === 'video') {
-      rawResponse.value = await testVideoGeneration({
+      const videoResult = await testVideoGeneration({
         apiKey: apiKey.key,
         model: model.name,
         prompt: cleanPrompt,
@@ -899,6 +937,11 @@ async function runTest() {
         imageDataUrl: referenceImages.value[0] ? await fileToDataURL(referenceImages.value[0].file) : undefined,
         signal: runController.signal,
       })
+      if (videoResult.requestID) {
+        const videoBlob = await fetchVideoContent(videoResult.requestID, apiKey.key, runController.signal)
+        videoBlobURL.value = URL.createObjectURL(videoBlob)
+      }
+      rawResponse.value = videoResult.payload
     } else {
       rawResponse.value = await testChatCompletion({
         apiKey: apiKey.key,
@@ -1005,6 +1048,12 @@ function clearReferenceImages() {
   referenceImages.value = []
 }
 
+function clearVideoBlobURL() {
+  if (!videoBlobURL.value) return
+  URL.revokeObjectURL(videoBlobURL.value)
+  videoBlobURL.value = ''
+}
+
 function formatFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -1084,6 +1133,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   runController?.abort()
+  clearVideoBlobURL()
   clearReferenceImages()
 })
 </script>

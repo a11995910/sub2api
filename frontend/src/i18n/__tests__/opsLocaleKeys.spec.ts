@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import en from '@/i18n/locales/en'
+import { mergeLocaleMessages } from '@/i18n/mergeLocaleMessages'
+import customEn from '@/i18n/locales/en.ts'
+import splitEn from '@/i18n/locales/en/index'
+import customZh from '@/i18n/locales/zh.ts'
+import splitZh from '@/i18n/locales/zh/index'
+
+const en = mergeLocaleMessages(splitEn, customEn)
+const zh = mergeLocaleMessages(splitZh, customZh)
 
 function flattenKeys(obj: Record<string, any>, prefix = ''): string[] {
   const keys: string[] = []
@@ -35,4 +42,18 @@ describe('groups locale key completeness', () => {
     const enKeys = flattenKeys(en)
     expect(enKeys).toContain('admin.groups.failedToSave')
   })
+
+  const webSearchPricingKeys = [
+    'admin.groups.webSearchPricing.title',
+    'admin.groups.webSearchPricing.pricePerCall',
+    'admin.groups.webSearchPricing.pricePerCallHint',
+    'admin.groups.webSearchPricing.finalPricePreview',
+  ]
+
+  for (const key of webSearchPricingKeys) {
+    it(`en and zh locales both have ${key}`, () => {
+      expect(flattenKeys(en)).toContain(key)
+      expect(flattenKeys(zh)).toContain(key)
+    })
+  }
 })

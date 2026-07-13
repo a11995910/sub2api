@@ -10,6 +10,8 @@ import {
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
+  resolveVideoReferenceImageQuote,
+  videoResolutionsForModel,
 } from '@/utils/videoPricing'
 
 function groupFixture(overrides: Partial<UserAvailableGroup> = {}): UserAvailableGroup {
@@ -232,7 +234,6 @@ describe('resolveVideoPriceQuote', () => {
   it.each([
     ['grok-imagine-video', '480p', 0.05],
     ['grok-imagine-video', '720p', 0.07],
-    ['grok-imagine-video', '1080p', 0.07],
     ['grok-imagine-video-1.5', '480p', 0.08],
     ['grok-imagine-video-1.5', '720p', 0.14],
     ['grok-imagine-video-1.5', '1080p', 0.25],
@@ -245,6 +246,15 @@ describe('resolveVideoPriceQuote', () => {
     })).toMatchObject({ basePrice, billingUnit: 'second', source: 'system_default' })
   })
 
+  it('标准视频模型不提供 1080p 报价', () => {
+    expect(resolveVideoPriceQuote({
+      group: groupFixture(),
+      pricing: null,
+      modelName: 'grok-imagine-video',
+      resolution: '1080p',
+    })).toBeNull()
+  })
+
   it('未知视频模型没有任何价格来源时返回空', () => {
     expect(resolveVideoPriceQuote({
       group: groupFixture(),
@@ -252,6 +262,47 @@ describe('resolveVideoPriceQuote', () => {
       modelName: 'unknown-video-model',
       resolution: '720p',
     })).toBeNull()
+  })
+})
+
+describe('resolveVideoReferenceImageQuote', () => {
+  it.each([
+    ['grok-imagine-video', 0.002],
+    ['grok-imagine-video-1.5', 0.01],
+  ] as const)('%s 使用官方参考图附加价', (modelName, basePrice) => {
+    expect(resolveVideoReferenceImageQuote({
+      group: groupFixture({ rate_multiplier: 2 }),
+      pricing: null,
+      modelName,
+    })).toMatchObject({ basePrice, effectivePrice: basePrice * 2, source: 'system_default' })
+  })
+
+  it('video 渠道 input_price 覆盖参考图附加价并保留显式零价', () => {
+    const pricing = pricingFixture(BILLING_MODE_VIDEO, 0.14)
+    pricing.input_price = 0
+    expect(resolveVideoReferenceImageQuote({
+      group: groupFixture(),
+      pricing,
+      modelName: 'grok-imagine-video-1.5',
+    })).toMatchObject({ basePrice: 0, effectivePrice: 0, source: 'channel_default' })
+  })
+
+  it('token 视频条目不提供参考图附加价', () => {
+    expect(resolveVideoReferenceImageQuote({
+      group: groupFixture(),
+      pricing: pricingFixture(BILLING_MODE_TOKEN, null),
+      modelName: 'grok-imagine-video-1.5',
+    })).toBeNull()
+  })
+})
+
+describe('videoResolutionsForModel', () => {
+  it('标准版仅包含官方支持的 480p 和 720p', () => {
+    expect(videoResolutionsForModel('grok-imagine-video')).toEqual(['480p', '720p'])
+  })
+
+  it('1.5 包含 1080p', () => {
+    expect(videoResolutionsForModel('grok-imagine-video-1.5')).toEqual(['480p', '720p', '1080p'])
   })
 })
 

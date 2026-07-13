@@ -42,7 +42,7 @@ export function transitionPricingBillingMode(
     ...entry,
     billing_mode: nextMode,
     intervals: [],
-    ...(crossesVideoUnitBoundary ? { per_request_price: null } : {}),
+    ...(crossesVideoUnitBoundary ? { input_price: null, per_request_price: null } : {}),
   }
 }
 
@@ -66,6 +66,18 @@ export function perTokenToMTok(val: number | null | undefined): number | null {
   if (val === null || val === undefined) return null
   // toPrecision(10) 消除 IEEE 754 浮点乘法精度误差，如 5e-8 * 1e6 = 0.04999...96 → 0.05
   return parseFloat((val * MTOK).toPrecision(10))
+}
+
+/** video 模式的 input_price 表示参考图按张附加价，其余模式仍按 token 单价换算。 */
+export function pricingInputToForm(mode: BillingMode, val: number | null | undefined): number | null {
+  return mode === 'video' ? (val ?? null) : perTokenToMTok(val)
+}
+
+export function pricingInputToAPI(
+  mode: BillingMode,
+  val: number | string | null | undefined,
+): number | null {
+  return mode === 'video' ? toNullableNumber(val) : mTokToPerToken(val)
 }
 
 export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEntry[] {

@@ -8,6 +8,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts
 
+NODE_MAX_OLD_SPACE_SIZE ?= 2048
+
 # 一键编译前后端
 build: build-backend build-frontend
 
@@ -21,7 +23,7 @@ build-backend-embed:
 
 # 编译前端（需要已安装依赖）
 build-frontend:
-	@cd frontend && NODE_OPTIONS=--max-old-space-size=1536 pnpm run build
+	@cd frontend && NODE_OPTIONS=--max-old-space-size=$(NODE_MAX_OLD_SPACE_SIZE) pnpm run build
 
 # 源码部署编译：先生成前端 dist，再把前端资源嵌入后端二进制
 build-deploy: build-frontend build-backend-embed

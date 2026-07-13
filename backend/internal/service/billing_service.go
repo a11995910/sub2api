@@ -164,7 +164,7 @@ type CostBreakdown struct {
 	CacheReadCost     float64
 	TotalCost         float64
 	ActualCost        float64 // 应用倍率后的实际费用
-	BillingMode       string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
+	BillingMode       string  // 计费模式（"token"/"per_request"/"image"/"video"）
 }
 
 // ErrModelPricingUnavailable indicates that none of the configured pricing
@@ -567,15 +567,19 @@ func (s *BillingService) initFallbackPricing() {
 	s.fallbackPrices["grok-4.3"] = &ModelPricing{
 		InputPricePerToken:         1.25e-6,
 		OutputPricePerToken:        2.5e-6,
-		CacheReadPricePerToken:     0,
+		CacheReadPricePerToken:     0.2e-6,
 		SupportsCacheBreakdown:     false,
 		LongContextInputThreshold:  1000000,
 		LongContextInputMultiplier: 1,
 	}
-	// xAI Grok Build 0.1 (official docs: $1 input / $2 output per MTok)
+	// xAI Grok Build 0.1 (official docs: $1 input / $0.20 cached input /
+	// $2 output per MTok). Composer is available only through Grok Build and
+	// has no standalone public API rate card, so its aliases use this coding
+	// model rate instead of silently billing at zero.
 	s.fallbackPrices["grok-build-0.1"] = &ModelPricing{
 		InputPricePerToken:     1e-6,
 		OutputPricePerToken:    2e-6,
+		CacheReadPricePerToken: 0.2e-6,
 		SupportsCacheBreakdown: false,
 	}
 }
@@ -749,9 +753,14 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	switch modelLower {
 	case "grok", "grok-latest", "grok-4.5", "grok-4.5-latest", "grok-build-latest":
 		return s.fallbackPrices["grok-4.5"]
-	case "grok-4.3":
+	case "grok-4.3",
+		"grok-4.20-0309-reasoning",
+		"grok-4.20-0309-non-reasoning",
+		"grok-4.20-multi-agent-0309",
+		"grok-4.20-reasoning",
+		"grok-4.20-non-reasoning":
 		return s.fallbackPrices["grok-4.3"]
-	case "grok-build", "grok-build-0.1":
+	case "grok-build", "grok-build-0.1", "grok-composer", "grok-composer-2.5-fast", "composer-2.5":
 		return s.fallbackPrices["grok-build-0.1"]
 	}
 
@@ -1327,7 +1336,39 @@ const (
 	defaultGrokImagineVideo15Price480P  = 0.08
 	defaultGrokImagineVideo15Price720P  = 0.14
 	defaultGrokImagineVideo15Price1080P = 0.25
+
+	// xAI 对图生视频的参考图输入独立收费，单位为 USD/张。
+	defaultGrokImagineVideoReferenceImagePrice   = 0.002
+	defaultGrokImagineVideo15ReferenceImagePrice = 0.01
+
+	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
+	defaultWebSearchPricePerCall = 0.01
 )
+
+// CalculateWebSearchCost 计算 Codex alpha/search 网页搜索按次费用。
+// callCount: 搜索调用次数（每次请求为 1）
+// groupPrice: 分组配置的单次价格（nil 表示使用默认价 0.01；0 表示免费）
+// rateMultiplier: 分组费率倍数
+func (s *BillingService) CalculateWebSearchCost(callCount int, groupPrice *float64, rateMultiplier float64) *CostBreakdown {
+	if callCount <= 0 {
+		return &CostBreakdown{}
+	}
+	unitPrice := defaultWebSearchPricePerCall
+	if groupPrice != nil && *groupPrice >= 0 {
+		unitPrice = *groupPrice
+	}
+	totalCost := unitPrice * float64(callCount)
+
+	// 应用倍率（保存时强制 > 0；负数按 0 处理避免按 1x 误扣）
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
+	}
+	return &CostBreakdown{
+		TotalCost:   totalCost,
+		ActualCost:  totalCost * rateMultiplier,
+		BillingMode: string(BillingModePerRequest),
+	}
+}
 
 // CalculateImageCost 计算图片生成费用
 // model: 请求的模型名称（用于获取 LiteLLM 默认价格）
@@ -1383,10 +1424,50 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 	actualCost := totalCost * rateMultiplier
 
 	return &CostBreakdown{
+		OutputCost:  totalCost,
 		TotalCost:   totalCost,
 		ActualCost:  actualCost,
 		BillingMode: string(BillingModeVideo),
 	}
+}
+
+// AddVideoReferenceImageCost 把图生视频参考图输入费合并进既有视频输出费用。
+// override 为 nil 时使用模型官方默认价；显式 0 表示参考图免费。
+func (s *BillingService) AddVideoReferenceImageCost(
+	cost *CostBreakdown,
+	model string,
+	referenceImageCount int,
+	override *float64,
+	rateMultiplier float64,
+) *CostBreakdown {
+	if cost == nil {
+		cost = &CostBreakdown{BillingMode: string(BillingModeVideo)}
+	}
+	if referenceImageCount <= 0 {
+		return cost
+	}
+	// 统一按次计算返回的媒体费用只有总额；视频路径在叠加输入费前补齐输出费用分类。
+	if cost.OutputCost == 0 && cost.InputCost == 0 && cost.ImageOutputCost == 0 &&
+		cost.CacheCreationCost == 0 && cost.CacheReadCost == 0 {
+		cost.OutputCost = cost.TotalCost
+	}
+
+	unitPrice := getDefaultGrokImagineVideoReferenceImagePrice(model)
+	if override != nil && *override >= 0 {
+		unitPrice = *override
+	}
+	inputCost := unitPrice * float64(referenceImageCount)
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
+	}
+
+	cost.InputCost += inputCost
+	cost.TotalCost += inputCost
+	cost.ActualCost += inputCost * rateMultiplier
+	if cost.BillingMode == "" {
+		cost.BillingMode = string(BillingModeVideo)
+	}
+	return cost
 }
 
 // getImageUnitPrice 获取图片单价
@@ -1535,4 +1616,15 @@ func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, 
 	default:
 		return 0, false
 	}
+}
+
+func getDefaultGrokImagineVideoReferenceImagePrice(model string) float64 {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if strings.HasPrefix(model, "grok-imagine-video-1.5") {
+		return defaultGrokImagineVideo15ReferenceImagePrice
+	}
+	if strings.HasPrefix(model, "grok-imagine-video") {
+		return defaultGrokImagineVideoReferenceImagePrice
+	}
+	return 0
 }

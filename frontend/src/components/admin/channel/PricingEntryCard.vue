@@ -223,13 +223,23 @@
         </div>
 
         <div v-else-if="entry.billing_mode === 'video'">
-          <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            {{ t('admin.channels.form.defaultVideoPrice') }}
-            <span class="ml-1 font-normal text-gray-400">{{ t('admin.channels.form.perSecondUnit') }}</span>
-          </label>
-          <div class="mt-1 w-48">
-            <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
-              type="number" step="any" min="0" class="input text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
+          <div class="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                {{ t('admin.channels.form.defaultVideoPrice') }}
+                <span class="ml-1 font-normal text-gray-400">{{ t('admin.channels.form.perSecondUnit') }}</span>
+              </label>
+              <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
+                type="number" step="any" min="0" class="input mt-1 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                {{ t('admin.channels.form.videoReferenceImagePrice') }}
+                <span class="ml-1 font-normal text-gray-400">{{ t('admin.channels.form.perImageUnit') }}</span>
+              </label>
+              <input :value="entry.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
+                type="number" step="any" min="0" class="input mt-1 text-sm" :placeholder="t('admin.channels.form.videoReferenceImagePricePlaceholder')" />
+            </div>
           </div>
 
           <div class="mt-3 flex items-center justify-between">
@@ -264,7 +274,7 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
-import { perTokenToMTok, getPlatformTagClass, transitionPricingBillingMode } from './types'
+import { getPlatformTagClass, perTokenToMTok, pricingInputToForm, transitionPricingBillingMode } from './types'
 import type { BillingMode } from '@/api/admin/channels'
 import channelsAPI from '@/api/admin/channels'
 
@@ -387,7 +397,7 @@ async function onModelsUpdate(newModels: string[]) {
       emit('update', {
         ...props.entry,
         models: newModels,
-        input_price: perTokenToMTok(result.input_price ?? null),
+        input_price: pricingInputToForm(props.entry.billing_mode, result.input_price ?? null),
         output_price: perTokenToMTok(result.output_price ?? null),
         cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
         cache_read_price: perTokenToMTok(result.cache_read_price ?? null),

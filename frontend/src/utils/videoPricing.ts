@@ -23,6 +23,12 @@ export interface VideoPriceQuote {
   source: VideoPriceSource
 }
 
+export interface VideoReferenceImageQuote {
+  basePrice: number
+  effectivePrice: number
+  source: 'channel_default' | 'system_default'
+}
+
 /** 与 Grok 视频端点保持一致：video-1.5 文生视频实际按标准视频模型路由和计费。 */
 export function normalizeVideoBillingModelName(modelName: string, hasReferenceImage: boolean): string {
   const normalizedModel = modelName.trim()
@@ -77,9 +83,25 @@ function grokDefaultVideoPrice(modelName: string, resolution: VideoResolution): 
     }
   }
   if (normalizedModel.startsWith('grok-imagine-video')) {
-    return resolution === '480p' ? 0.05 : 0.07
+    if (resolution === '480p') return 0.05
+    if (resolution === '720p') return 0.07
   }
   return null
+}
+
+function grokDefaultVideoReferenceImagePrice(modelName: string): number | null {
+  const normalizedModel = modelName.trim().toLowerCase()
+  if (normalizedModel.startsWith('grok-imagine-video-1.5')) return 0.01
+  if (normalizedModel.startsWith('grok-imagine-video')) return 0.002
+  return null
+}
+
+export function videoResolutionsForModel(modelName: string): VideoResolution[] {
+  const normalizedModel = modelName.trim().toLowerCase()
+  if (normalizedModel.startsWith('grok-imagine-video-1.5')) {
+    return ['480p', '720p', '1080p']
+  }
+  return ['480p', '720p']
 }
 
 /**
@@ -118,4 +140,27 @@ export function resolveVideoPriceQuote(input: VideoPriceInput): VideoPriceQuote 
   return systemPrice == null
     ? null
     : quote(input, systemPrice, 'second', 'system_default')
+}
+
+/** 解析视频参考图按张附加价；仅 video 渠道会把 input_price 解释为该单位。 */
+export function resolveVideoReferenceImageQuote(input: Omit<VideoPriceInput, 'resolution'>): VideoReferenceImageQuote | null {
+  if (input.pricing?.billing_mode === BILLING_MODE_TOKEN) return null
+
+  if (input.pricing?.billing_mode === BILLING_MODE_VIDEO && input.pricing.input_price != null) {
+    const basePrice = input.pricing.input_price
+    return {
+      basePrice,
+      effectivePrice: basePrice * effectiveVideoRate(input as VideoPriceInput),
+      source: 'channel_default',
+    }
+  }
+
+  const basePrice = grokDefaultVideoReferenceImagePrice(input.modelName)
+  return basePrice == null
+    ? null
+    : {
+        basePrice,
+        effectivePrice: basePrice * effectiveVideoRate(input as VideoPriceInput),
+        source: 'system_default',
+      }
 }

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -26,16 +28,21 @@ const (
 	GrokMediaEndpointImagesGenerations GrokMediaEndpoint = "images_generations"
 	GrokMediaEndpointImagesEdits       GrokMediaEndpoint = "images_edits"
 	GrokMediaEndpointVideosGenerations GrokMediaEndpoint = "videos_generations"
+	GrokMediaEndpointVideosEdits       GrokMediaEndpoint = "videos_edits"
+	GrokMediaEndpointVideosExtensions  GrokMediaEndpoint = "videos_extensions"
 	GrokMediaEndpointVideoStatus       GrokMediaEndpoint = "video_status"
+	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 )
 
+const grokVideoContentMaxBytes int64 = 128 << 20
+
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {
-	return e != GrokMediaEndpointVideoStatus
+	return e != GrokMediaEndpointVideoStatus && e != GrokMediaEndpointVideoContent
 }
 
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 	switch e {
-	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits, GrokMediaEndpointVideosGenerations:
+	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits, GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
 		return true
 	default:
 		return false
@@ -95,7 +102,7 @@ func (r GrokMediaRequestInfo) ModerationBody() []byte {
 }
 
 func (e GrokMediaEndpoint) httpMethod() string {
-	if e == GrokMediaEndpointVideoStatus {
+	if e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent {
 		return http.MethodGet
 	}
 	return http.MethodPost
@@ -274,7 +281,11 @@ func (e GrokMediaEndpoint) upstreamURL(baseURL, requestID string) (string, error
 		return xai.BuildImagesEditsURL(baseURL)
 	case GrokMediaEndpointVideosGenerations:
 		return xai.BuildVideosGenerationsURL(baseURL)
-	case GrokMediaEndpointVideoStatus:
+	case GrokMediaEndpointVideosEdits:
+		return xai.BuildVideosEditsURL(baseURL)
+	case GrokMediaEndpointVideosExtensions:
+		return xai.BuildVideosExtensionsURL(baseURL)
+	case GrokMediaEndpointVideoStatus, GrokMediaEndpointVideoContent:
 		return xai.BuildVideoURL(baseURL, requestID)
 	default:
 		return "", fmt.Errorf("unsupported grok media endpoint: %s", e)
@@ -333,7 +344,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	upstreamReq.Header.Set("Authorization", "Bearer "+token)
 	upstreamReq.Header.Set("Accept", "application/json")
-	upstreamReq.Header.Set("User-Agent", "sub2api-grok/1.0")
+	applyGrokCLIHeaders(upstreamReq.Header)
 	if endpoint.RequiresRequestBody() {
 		contentType = strings.TrimSpace(contentType)
 		if contentType == "" {
@@ -357,14 +368,17 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	requestIDHeader := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))
 	requestModel := requestInfo.Model
 	if resp.StatusCode >= 400 {
-		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 		return s.handleGrokMediaErrorResponse(ctx, resp, c, account, requestIDHeader, requestModel)
 	}
 
-	s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
+	}
+	if endpoint == GrokMediaEndpointVideoContent {
+		_ = resp.Body.Close()
+		return s.forwardGrokVideoContent(upstreamCtx, c, account, proxyURL, respBody, startTime)
 	}
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
@@ -384,7 +398,109 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoCount:           usage.VideoCount,
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
+		VideoInputImageCount: usage.VideoInputImageCount,
 	}, nil
+}
+
+func (s *OpenAIGatewayService) forwardGrokVideoContent(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	proxyURL string,
+	statusBody []byte,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	videoURL := extractGrokVideoContentURL(statusBody)
+	if videoURL == "" {
+		writeGrokMediaErrorResponse(c, http.StatusConflict, "video_not_ready", "Video content is not available yet")
+		return nil, errors.New("grok video content URL is missing from status response")
+	}
+	if err := validateGrokVideoContentURL(videoURL); err != nil {
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream returned an invalid video URL")
+		return nil, fmt.Errorf("validate grok video content URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, videoURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "video/mp4,video/*;q=0.9")
+
+	upstreamStart := time.Now()
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	if err != nil {
+		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		setOpsUpstreamError(c, resp.StatusCode, "video content download failed", "")
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Failed to download generated video")
+		return nil, fmt.Errorf("grok video content returned status %d", resp.StatusCode)
+	}
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if !isAllowedGrokVideoContentType(contentType) {
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream returned invalid video content")
+		return nil, fmt.Errorf("unsupported grok video content type: %q", contentType)
+	}
+	if resp.ContentLength > grokVideoContentMaxBytes {
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Generated video is too large")
+		return nil, fmt.Errorf("%w: limit=%d", ErrUpstreamResponseBodyTooLarge, grokVideoContentMaxBytes)
+	}
+	body, err := readUpstreamResponseBodyLimited(resp.Body, grokVideoContentMaxBytes)
+	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Generated video is too large")
+		}
+		return nil, err
+	}
+
+	c.Header("Cache-Control", "private, max-age=300")
+	c.Header("Content-Disposition", `inline; filename="generated-video.mp4"`)
+	c.Data(http.StatusOK, contentType, body)
+	return &OpenAIForwardResult{
+		Duration:        time.Since(startTime),
+		ResponseHeaders: resp.Header.Clone(),
+	}, nil
+}
+
+func extractGrokVideoContentURL(body []byte) string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return ""
+	}
+	for _, field := range []string{"video.url", "video.video_url", "data.video.url", "data.url", "url", "video_url"} {
+		if value := strings.TrimSpace(gjson.GetBytes(body, field).String()); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func validateGrokVideoContentURL(rawURL string) error {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "https" || parsed.User != nil || !strings.EqualFold(parsed.Hostname(), "vidgen.x.ai") {
+		return errors.New("video URL must use the allowed xAI HTTPS host")
+	}
+	if parsed.Port() != "" {
+		return errors.New("video URL must not specify a custom port")
+	}
+	path := strings.ToLower(parsed.EscapedPath())
+	if !strings.HasPrefix(path, "/xai-vidgen-bucket/") || !strings.HasSuffix(path, ".mp4") {
+		return errors.New("video URL path is not allowed")
+	}
+	return nil
+}
+
+func isAllowedGrokVideoContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(mediaType, "video/mp4") || strings.EqualFold(mediaType, "application/octet-stream")
 }
 
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
@@ -514,6 +630,7 @@ type grokMediaUsageMetadata struct {
 	VideoCount           int
 	VideoResolution      string
 	VideoDurationSeconds int
+	VideoInputImageCount int
 }
 
 func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMediaRequestInfo, responseBody []byte) grokMediaUsageMetadata {
@@ -532,11 +649,12 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.ImageSize = requestInfo.SizeTier
 		meta.ImageInputSize = requestInfo.Size
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)
-	case GrokMediaEndpointVideosGenerations:
+	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
 		meta.ResponseID = extractGrokMediaVideoRequestID(responseBody)
 		meta.VideoCount = 1
 		meta.VideoResolution = requestInfo.Resolution
 		meta.VideoDurationSeconds = requestInfo.DurationSeconds
+		meta.VideoInputImageCount = len(requestInfo.InputImageURLs) + len(requestInfo.Uploads)
 		// Keep the legacy media-unit counter populated for existing usage displays.
 		meta.ImageCount = 1
 	}
@@ -564,6 +682,9 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	requestedModel string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	// Reconcile readiness before configurable passthrough branches can return;
+	// otherwise a Grok 429 can remain schedulable.
+	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
@@ -609,7 +730,6 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
-	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	kind := "http_error"
 	if s.shouldFailoverUpstreamError(resp.StatusCode) {
 		kind = "failover"

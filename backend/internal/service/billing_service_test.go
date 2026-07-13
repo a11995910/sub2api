@@ -932,6 +932,40 @@ func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
 }
 
+func TestAddVideoReferenceImageCostUsesOfficialRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	standard := svc.AddVideoReferenceImageCost(
+		svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 8, nil, 2),
+		"grok-imagine-video", 1, nil, 2,
+	)
+	video15 := svc.AddVideoReferenceImageCost(
+		svc.CalculateVideoCost("grok-imagine-video-1.5", "720p", 1, 8, nil, 2),
+		"grok-imagine-video-1.5", 1, nil, 2,
+	)
+
+	require.InDelta(t, 0.002, standard.InputCost, 1e-10)
+	require.InDelta(t, 0.562, standard.TotalCost, 1e-10)
+	require.InDelta(t, 1.124, standard.ActualCost, 1e-10)
+	require.InDelta(t, 0.01, video15.InputCost, 1e-10)
+	require.InDelta(t, 1.13, video15.TotalCost, 1e-10)
+	require.InDelta(t, 2.26, video15.ActualCost, 1e-10)
+}
+
+func TestAddVideoReferenceImageCostSupportsOverrideAndNoImage(t *testing.T) {
+	svc := newTestBillingService()
+	zero := 0.0
+	base := svc.CalculateVideoCost("grok-imagine-video-1.5", "480p", 1, 1, nil, 1)
+
+	withoutImage := svc.AddVideoReferenceImageCost(base, "grok-imagine-video-1.5", 0, nil, 1)
+	require.Zero(t, withoutImage.InputCost)
+	require.InDelta(t, 0.08, withoutImage.TotalCost, 1e-10)
+
+	freeReference := svc.AddVideoReferenceImageCost(base, "grok-imagine-video-1.5", 1, &zero, 1)
+	require.Zero(t, freeReference.InputCost)
+	require.InDelta(t, 0.08, freeReference.TotalCost, 1e-10)
+}
+
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -1035,6 +1069,58 @@ func TestGetModelPricing_Grok45OfficialFallback(t *testing.T) {
 			require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
 			require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
 			require.False(t, pricing.SupportsCacheBreakdown)
+		})
+	}
+}
+
+func TestGetModelPricing_GrokCatalogFallbacks(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		name      string
+		models    []string
+		input     float64
+		cacheRead float64
+		output    float64
+	}{
+		{
+			name: "Grok 4.3 family",
+			models: []string{
+				"grok-4.3",
+				"grok-4.20-0309-reasoning",
+				"grok-4.20-0309-non-reasoning",
+				"grok-4.20-multi-agent-0309",
+				"grok-4.20-reasoning",
+				"grok-4.20-non-reasoning",
+			},
+			input:     1.25e-6,
+			cacheRead: 0.2e-6,
+			output:    2.5e-6,
+		},
+		{
+			name: "Grok coding and Composer family",
+			models: []string{
+				"grok-build",
+				"grok-build-0.1",
+				"grok-composer",
+				"grok-composer-2.5-fast",
+				"composer-2.5",
+			},
+			input:     1e-6,
+			cacheRead: 0.2e-6,
+			output:    2e-6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, model := range tt.models {
+				pricing, err := svc.GetModelPricing(model)
+				require.NoError(t, err, "model %s", model)
+				require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12, "model %s input", model)
+				require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-12, "model %s cached input", model)
+				require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-12, "model %s output", model)
+			}
 		})
 	}
 }

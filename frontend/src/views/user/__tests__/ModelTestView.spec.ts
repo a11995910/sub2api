@@ -11,6 +11,8 @@ const showWarning = vi.hoisted(() => vi.fn())
 const showSuccess = vi.hoisted(() => vi.fn())
 const push = vi.hoisted(() => vi.fn())
 const routeState = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
+const testVideoGeneration = vi.hoisted(() => vi.fn())
+const fetchVideoContent = vi.hoisted(() => vi.fn())
 
 const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeToken': 'Token',
@@ -27,6 +29,7 @@ const messages: Record<string, string> = {
   'modelTest.fields.model': '模型',
   'modelTest.fields.prompt': '提示词',
   'modelTest.fields.referenceImages': '参考图片',
+  'modelTest.fields.videoReferenceImage': '起始参考图（可选）',
   'modelTest.fields.videoDuration': '视频时长（秒）',
   'modelTest.fields.videoResolution': '视频分辨率',
   'modelTest.fields.type': '类型',
@@ -66,6 +69,8 @@ const messages: Record<string, string> = {
   'modelTest.summary.output': '输出',
   'modelTest.summary.price': '价格预览',
   'modelTest.uploadReferenceImages': '上传图片',
+  'modelTest.uploadVideoReferenceImage': '添加参考图',
+  'modelTest.videoPriceWithReference': '{resolution} {total} / {unit}（视频 {output} + 参考图 {reference}）',
   'modelTest.validation.missingSelection': '请先选择模型、分组和 API Key',
   'modelTest.validation.promptRequired': '请输入提示词',
 }
@@ -96,6 +101,9 @@ vi.mock('@/api/modelTest', () => ({
   testChatCompletion: vi.fn(),
   testImageEdit: vi.fn(),
   testImageGeneration: vi.fn(),
+  testVideoGeneration,
+  fetchVideoContent,
+  extractVideoURL: (payload: any) => String(payload?.video?.url || ''),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -273,6 +281,8 @@ describe('ModelTestView', () => {
     showWarning.mockReset()
     showSuccess.mockReset()
     push.mockReset()
+    testVideoGeneration.mockReset()
+    fetchVideoContent.mockReset()
     window.URL.createObjectURL = vi.fn(() => 'blob:model-test-reference') as typeof window.URL.createObjectURL
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
 
@@ -758,7 +768,7 @@ describe('ModelTestView', () => {
     await fileInput.trigger('change')
     await flushPromises()
 
-    expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.12 灵石 / 8秒')
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.13 灵石 / 8秒（视频 1.12 灵石 + 参考图 0.01 灵石）')
   })
 
   it('video-1.5 无参考图且标准模型条目缺失时使用标准模型系统价', async () => {
@@ -798,5 +808,60 @@ describe('ModelTestView', () => {
     await flushPromises()
 
     expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
+  })
+
+  it('视频生成完成后通过内容接口创建 Blob 播放地址并在卸载时释放', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({
+      id: 909,
+      key: 'sk-video-key-1234567890',
+      group_id: 9,
+    })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video',
+          platform: 'grok',
+          kind: 'video',
+          pricing: null,
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+    testVideoGeneration.mockResolvedValue({
+      payload: {
+        status: 'done',
+        video: { url: 'https://vidgen.x.ai/xai-vidgen-bucket/generated.mp4' },
+      },
+      requestID: 'video-request-123',
+    })
+    const videoBlob = new Blob(['video-content'], { type: 'video/mp4' })
+    fetchVideoContent.mockResolvedValue(videoBlob)
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('textarea').setValue('生成海浪视频')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetchVideoContent).toHaveBeenCalledWith(
+      'video-request-123',
+      'sk-video-key-1234567890',
+      expect.any(AbortSignal),
+    )
+    expect(window.URL.createObjectURL).toHaveBeenCalledWith(videoBlob)
+    expect(wrapper.find('video').attributes('src')).toBe('blob:model-test-reference')
+
+    wrapper.unmount()
+    expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:model-test-reference')
   })
 })
