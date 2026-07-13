@@ -128,6 +128,8 @@ timeout 5 backend/bin/server --version
 
 `sub2api` 后端是 Go 编译型服务，前端是 Vite/Vue 应用。后端不能像解释型脚本一样在 Git 提交后不经过编译直接生效；`go run ./cmd/server` 本质上也会先编译，再启动临时二进制。生产形态还要求前端 `dist` 通过 `embed` 标签打入后端二进制，因此完整功能验证仍应使用 `make build-deploy` 生成可追溯产物。
 
+前端构建默认使用 2048 MB Node 堆上限。若构建主机需要更高上限，源码构建可通过 `NODE_MAX_OLD_SPACE_SIZE=3072 make build-deploy` 覆盖，Docker 构建可传入 `--build-arg NODE_MAX_OLD_SPACE_SIZE=3072`；调整前应先核对主机可用内存，避免与线上请求争抢资源。
+
 测试 VPS `192.220.36.75` 当前内存较小，不适合作为常驻源码热编译机器。实测后端首次编译会卡在 `backend/ent` 大包编译阶段并触发明显 swap，容易影响 PostgreSQL、Redis 和现有测试服务稳定性。因此测试 VPS 不默认启用“提交后自动源码编译并接管 8080”的模式。
 
 测试环境需要更快自动生效时，优先采用以下低风险方案：

@@ -91,17 +91,17 @@ func checkinRecordEntityToService(m *dbent.CheckinRecord) service.CheckinRecord 
 		return service.CheckinRecord{}
 	}
 	return service.CheckinRecord{
-		ID:              m.ID,
-		UserID:          m.UserID,
-		CheckinDate:     normalizeCheckinDate(m.CheckinDate),
-		DailyReward:     m.DailyReward,
-		ExtraReward:     m.ExtraReward,
-		MonthCount:      m.MonthCount,
+		ID:               m.ID,
+		UserID:           m.UserID,
+		CheckinDate:      normalizeCheckinDate(m.CheckinDate),
+		DailyReward:      m.DailyReward,
+		ExtraReward:      m.ExtraReward,
+		MonthCount:       m.MonthCount,
 		ConsecutiveCount: m.ConsecutiveCount,
-		ExtraMilestones: append([]int{}, m.ExtraMilestones...),
-		CheckedInAt:     m.CheckedInAt,
-		CreatedAt:       m.CreatedAt,
-		UpdatedAt:       m.UpdatedAt,
+		ExtraMilestones:  append([]int{}, m.ExtraMilestones...),
+		CheckedInAt:      m.CheckedInAt,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
 	}
 }
 

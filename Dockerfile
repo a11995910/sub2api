@@ -20,6 +20,7 @@ ARG NPM_CONFIG_REGISTRY=
 # -----------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS frontend-builder
 ARG NPM_CONFIG_REGISTRY
+ARG NODE_MAX_OLD_SPACE_SIZE=2048
 
 WORKDIR /app/frontend
 
@@ -39,8 +40,8 @@ RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/stor
 # Copy only that subtree to keep the build dependency minimal.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
-# VPS 构建环境内存较小，显式提升 Node 构建堆上限避免 vue-tsc OOM
-RUN NODE_OPTIONS=--max-old-space-size=1536 pnpm run build
+# 显式设置 Node 构建堆上限，避免 vue-tsc 随项目增长触发默认堆限制
+RUN NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE} pnpm run build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
