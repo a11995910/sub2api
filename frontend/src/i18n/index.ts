@@ -1,15 +1,26 @@
 import { createI18n } from 'vue-i18n'
+import { mergeLocaleMessages, type LocaleMessages } from './mergeLocaleMessages'
 
 type LocaleCode = 'en' | 'zh'
-
-type LocaleMessages = Record<string, any>
 
 const LOCALE_KEY = 'sub2api_locale'
 const DEFAULT_LOCALE: LocaleCode = 'en'
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
-  en: () => import('./locales/en'),
-  zh: () => import('./locales/zh')
+  en: async () => {
+    const [base, custom] = await Promise.all([
+      import('./locales/en/index'),
+      import('./locales/en.ts')
+    ])
+    return { default: mergeLocaleMessages(base.default, custom.default) }
+  },
+  zh: async () => {
+    const [base, custom] = await Promise.all([
+      import('./locales/zh/index'),
+      import('./locales/zh.ts')
+    ])
+    return { default: mergeLocaleMessages(base.default, custom.default) }
+  }
 }
 
 function isLocaleCode(value: string): value is LocaleCode {

@@ -35,9 +35,12 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
 	}
-	allTools := AllResponsesTools(req)
-	if len(allTools) > 0 {
-		tools, err := responsesToolsToChatTools(allTools)
+	effectiveTools, err := EffectiveResponsesTools(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(effectiveTools) > 0 {
+		tools, err := responsesToolsToChatTools(effectiveTools)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +62,7 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 			namespace := rawString(choice["name"])
 			namespaceDeclared := false
 			lossyNamespace := false
-			for _, tool := range allTools {
+			for _, tool := range effectiveTools {
 				if tool.Type != "namespace" || tool.Name != namespace {
 					continue
 				}
@@ -81,7 +84,7 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 				return nil, fmt.Errorf("cannot preserve namespace tool_choice %q because the namespace contains tools unsupported by chat completions", namespace)
 			}
 			matched := 0
-			for _, owner := range NamespaceToolNames(allTools) {
+			for _, owner := range NamespaceToolNames(effectiveTools) {
 				if owner.Namespace == namespace {
 					matched++
 				}
@@ -107,30 +110,42 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	return out, nil
 }
 
-// AllResponsesTools 合并顶层 tools 与 Responses Lite input[].additional_tools，
-// 让请求转换和回程元数据使用同一份完整工具声明。
-func AllResponsesTools(req *ResponsesRequest) []ResponsesTool {
+// EffectiveResponsesTools returns every client-executable tool declared by a
+// Responses request. Newer Codex clients place their runtime tools in an
+// input item shaped as {"type":"additional_tools","tools":[...]} instead of
+// the top-level tools field. Chat-only upstreams must receive both forms.
+func EffectiveResponsesTools(req *ResponsesRequest) ([]ResponsesTool, error) {
 	if req == nil {
-		return nil
+		return nil, nil
 	}
-	out := append([]ResponsesTool(nil), req.Tools...)
-	var rawItems []json.RawMessage
-	if err := json.Unmarshal(req.Input, &rawItems); err != nil {
-		return out
+
+	tools := append([]ResponsesTool(nil), req.Tools...)
+	inputRaw := bytesTrimSpace(req.Input)
+	if len(inputRaw) == 0 || string(inputRaw) == "null" || inputRaw[0] != '[' {
+		return tools, nil
 	}
-	for _, rawItem := range rawItems {
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(inputRaw, &items); err != nil {
+		return nil, fmt.Errorf("parse responses input for additional tools: %w", err)
+	}
+	for _, raw := range items {
+		raw = bytesTrimSpace(raw)
+		if len(raw) == 0 || raw[0] != '{' {
+			continue
+		}
 		var item struct {
 			Type  string          `json:"type"`
 			Tools []ResponsesTool `json:"tools"`
 		}
-		if err := json.Unmarshal(rawItem, &item); err != nil {
-			continue
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, fmt.Errorf("parse responses additional tools item: %w", err)
 		}
 		if item.Type == "additional_tools" {
-			out = append(out, item.Tools...)
+			tools = append(tools, item.Tools...)
 		}
 	}
-	return out
+	return tools, nil
 }
 
 // CustomToolNames 收集 Responses 请求中 custom/freeform 工具的名字。chat 桥回程时

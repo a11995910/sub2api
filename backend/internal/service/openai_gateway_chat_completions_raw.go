@@ -76,6 +76,12 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	grokCacheIdentity := ""
+	if account.Platform == PlatformGrok {
+		// Resolve before image bridging or other body rewrites so the fallback is
+		// anchored to the client's stable conversation prefix.
+		grokCacheIdentity = resolveGrokCacheIdentity(c, body, "", upstreamModel)
+	}
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
@@ -139,6 +145,12 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 			return nil, fmt.Errorf("enable stream usage: %w", usageErr)
 		}
 	}
+	if account.Platform == PlatformGrok {
+		upstreamBody, err = stripGrokChatPromptCacheKey(upstreamBody)
+		if err != nil {
+			return nil, fmt.Errorf("remove Responses-only Grok prompt cache key: %w", err)
+		}
+	}
 
 	logger.L().Debug("openai chat_completions raw: forwarding without protocol conversion",
 		zap.Int64("account_id", account.ID),
@@ -153,47 +165,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, fmt.Errorf("build upstream request: %w", err)
-	}
-	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
-	upstreamReq.Header.Set("Content-Type", "application/json")
-	upstreamReq.Header.Set("Authorization", "Bearer "+token)
-	if clientStream {
-		upstreamReq.Header.Set("Accept", "text/event-stream")
-	} else {
-		upstreamReq.Header.Set("Accept", "application/json")
-	}
-
-	// 透传白名单中的客户端 header。详见 openaiCCRawAllowedHeaders 的设计说明。
-	for key, values := range c.Request.Header {
-		lowerKey := strings.ToLower(key)
-		if openaiCCRawAllowedHeaders[lowerKey] {
-			for _, v := range values {
-				upstreamReq.Header.Add(key, v)
-			}
-		}
-	}
+	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
 	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
-		upstreamReq.Header.Set("user-agent", customUA)
-	} else if account.Platform == PlatformGrok {
-		upstreamReq.Header.Set("user-agent", "sub2api-grok/1.0")
+	if customUA == "" && account.Platform == PlatformGrok {
+		customUA = "sub2api-grok/1.0"
 	}
-
-	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
-	account.ApplyHeaderOverrides(upstreamReq.Header)
 
 	// 6. Send request
-	proxyURL := ""
-	if account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA, grokCacheIdentity)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
@@ -204,10 +183,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
-		if account.Platform == PlatformGrok {
-			s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
-		}
-
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		if account.Platform == PlatformGrok {
@@ -260,7 +235,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 
 	if account.Platform == PlatformGrok {
-		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+		s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 	}
 
 	// 8. Forward response
@@ -273,6 +248,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
+		result.UpstreamEndpoint = grokChatRawEndpoint
 	}
 	return result, forwardErr
 }

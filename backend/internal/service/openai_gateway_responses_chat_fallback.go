@@ -42,10 +42,14 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// custom_tool_call 项，先记下名字集合；tool_search 工具同理，回程还原为
 	// tool_search_call 项；namespace 子工具（如 MCP 工具）摊平转发，回程按映射还原
 	// 为带 namespace 字段的 function_call 项。
-	allTools := apicompat.AllResponsesTools(&responsesReq)
-	customTools := apicompat.CustomToolNames(allTools)
-	toolSearch := apicompat.HasToolSearchTool(allTools)
-	namespaceTools := apicompat.NamespaceToolNames(allTools)
+	effectiveTools, err := apicompat.EffectiveResponsesTools(&responsesReq)
+	if err != nil {
+		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, fmt.Errorf("resolve responses tools: %w", err)
+	}
+	customTools := apicompat.CustomToolNames(effectiveTools)
+	toolSearch := apicompat.HasToolSearchTool(effectiveTools)
+	namespaceTools := apicompat.NamespaceToolNames(effectiveTools)
 
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
 	if err != nil {
@@ -94,7 +98,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent())
+	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
 		return nil, err
 	}
