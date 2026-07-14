@@ -36,6 +36,23 @@
 
 升级后验证：选择 URL 默认传输方式的测试分组发起一次 `/v1/images/generations` 请求，确认 `data[0].url` 使用当前 API 域名、无需 API Key 可访问，并检查容器日志中没有 `generated_image.cleanup_failed` 或图片存储错误。回滚前无需迁移数据库数据；旧版本会忽略本地图片文件，但应保留目录至少 24 小时，避免已发放链接提前失效。
 
+## 管理端 Server-Timing
+
+`server.enable_server_timing` 控制管理端请求的 `Server-Timing` 响应头，环境变量名为 `ENABLE_SERVER_TIMING`，默认关闭。Docker Compose 已透传该变量；staging 和 prod 应分别在各自 `.env` 中配置，不能依赖另一环境的值。
+
+开启后只采集 `/api/v1/admin`、`/api/v1/admin/*` 或显式携带 `X-Admin-UI: 1` 的管理端 Web 请求，并且只有已认证的 `admin` 角色会收到响应头。普通用户、未认证请求和一般网关请求不会暴露内部耗时。WebSocket 升级响应沿用同一鉴权判断。上线验证应分别使用管理员会话和普通用户会话请求管理接口，确认管理员响应包含 `Server-Timing`，普通用户响应不包含该头。
+
+## 数据库迁移与回滚边界
+
+服务启动时通过内置迁移器按文件名执行迁移，普通 `*.sql` 在事务中运行，`*_notx.sql` 只用于 `CREATE INDEX CONCURRENTLY` 等非事务并发索引语句。当前数据库结构包含以下约束和字段：
+
+- `usage_logs.long_context_billing_applied BOOLEAN NOT NULL DEFAULT FALSE` 保存每笔请求是否实际应用 OpenAI 长上下文价格。
+- OpenAI 账号在 `accounts.extra.openai_long_context_billing_enabled` 保存布尔开关；数据库触发器为缺失或非法历史值补 `false`，并将父账号值同步到 Spark 影子账号。
+- `ops_system_logs.host VARCHAR(255)` 保存产生日志的应用主机，`idx_ops_system_logs_host_created_at` 支持按主机和时间倒序查询。
+- `channel_monitors.provider` 与 `channel_monitor_request_templates.provider` 的检查约束允许 `grok`。
+
+这些迁移是前向迁移，不执行自动降级。发布前必须备份数据库并记录 `schema_migrations`；迁移失败时不得手工伪造成功记录。回滚应用镜像时保留新增列、索引、触发器和约束，旧程序会忽略新增列，而数据库默认值和触发器继续保证旧写入可兼容；如确需删除结构，必须另建经过 staging 验证的反向迁移，并先评估 `accounts` 回填、`scheduler_outbox` 事件和历史用量解释能力的影响。
+
 ## 源码仓库
 
 - GitHub：`git@github.com:a11995910/sub2api.git`

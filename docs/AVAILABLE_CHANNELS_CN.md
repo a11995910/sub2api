@@ -49,6 +49,22 @@
 
 该默认分组只处理“删除分组时的兜底迁移”，不会自动改变新建 Key 的分组选择，也不会影响订阅默认分组配置。
 
+## OpenAI 账号长上下文计费
+
+管理员可在“账号管理”创建或编辑 OpenAI 账号时设置“API 长上下文计费”。该开关对应账号 `extra.openai_long_context_billing_enabled`，默认值为 `false`；只有确认该账号的真实上游会按 OpenAI API 长上下文阈值加价时才应开启。非 OpenAI 账号不会消费该字段，字符串、数字等非布尔值会以 `OPENAI_LONG_CONTEXT_BILLING_INVALID` 拒绝保存。
+
+账号通过 `POST /api/v1/admin/accounts` 创建、通过 `PUT /api/v1/admin/accounts/:id` 编辑，批量编辑继续使用 `POST /api/v1/admin/accounts/bulk-update`。编辑请求没有携带该字段时保留账号当前值；Spark 影子账号继承父账号的有效值，父账号变更后数据库触发器同步影子账号并写入调度事件，避免父子账号采用不同计费口径。
+
+网关只在 OpenAI token 计费路径中应用该开关。达到模型长上下文阈值并实际采用对应价格时，用量记录 `usage_logs.long_context_billing_applied` 为 `true`，管理端用量列表会在实际费用旁显示 `x2` 标记；未命中阈值、非 token 计费和历史记录保持 `false`。用量接口返回同名字段，前端不根据金额反推是否发生长上下文计费。
+
+## Grok 账号导入与渠道监控
+
+管理员在“账号管理”创建 Grok OAuth 账号时，可以粘贴一行一个的 Grok Web SSO key。前端调用 `POST /api/v1/admin/grok/sso-to-oauth`，服务端通过 xAI Device Flow 转换为 Grok Build OAuth 凭据并创建账号；批量任务以 3 路并发执行，返回 `created` 与 `failed` 两组逐项结果。导入成功后系统会主动探测账号，探测失败不会伪造配额数据，管理员可在账号列表继续查看错误并手动重试。SSO key、OAuth Token 和转换过程中的凭据只允许出现在请求和运行时日志脱敏链路中，不得写入文档或仓库。
+
+“渠道监控”支持 `provider=grok`，管理接口为 `/api/v1/admin/channel-monitors` 及其 `/:id/run`、`/:id/history` 子接口。Grok 监控固定使用 `chat_completions` 模式，默认端点为 `https://api.x.ai`，未填写主模型时使用 `grok-4.5`；`responses` 模式会被拒绝。监控请求使用 Bearer API Key，记录主模型和附加模型的状态、延迟与历史结果；上游错误会保留 HTTP 状态用于排障，同时对返回内容中的 xAI key 做脱敏。数据库约束允许 `channel_monitors.provider` 和 `channel_monitor_request_templates.provider` 使用 `grok`。
+
+自动化覆盖包括账号 SSO 导入接口与批量结果、Grok 主动探测、Grok 监控默认模型与请求格式、错误脱敏、长上下文账号校验与继承、计费结果和用量字段契约。上线验收仍需使用隔离账号分别验证一次 SSO 导入、手动监控运行和一笔可明确判断是否命中长上下文阈值的请求。
+
 ## 管理端专属分组授权用户
 
 管理端“分组管理”页中，标准计费且开启 `is_exclusive=true` 的专属分组会显示用户查看入口。管理员可以查看当前仍享受该分组的用户列表，并按邮箱、用户名、用户备注或授权备注搜索。
