@@ -20,18 +20,18 @@
 
 - 修改前后都要查看 `git status --short`，确认工作区状态。
 - 提交前必须检查 diff，确保只包含本次任务相关内容。
-- 日常新功能开发默认在 `dev` 分支完成并推送到 `origin/dev`，测试 VPS 验证通过后，必须等待用户口头确认再合并到 `main` 并上线正式 VPS。
+- 日常新功能开发默认在 `dev` 分支完成并推送到 `origin/dev`，部署到正式 VPS 的隔离 staging 验证通过后，必须等待用户口头确认再合并到 `main` 并切换 prod。
 - 提交说明使用中文，格式保持简洁，例如 `docs: 规范源码定制上线流程`。
-- `AGENTS.md` 被 `.gitignore` 忽略，首次加入仓库时必须使用 `git add -f AGENTS.md`。
+- `AGENTS.md` 必须纳入版本控制，部署拓扑或发布门禁变化时同步更新。
 - 任何生产构建前，本地相关改动必须先完成 Git 提交并推送到远端；严禁用未提交工作区直接构建生产产物。
 - 正式 VPS 上线前必须在 `/opt/sub2api/repo` 执行 `git fetch`、切换目标分支、`git pull --ff-only`，并核对镜像构建 commit 与本次待发布 commit 一致。
 
-## 测试 VPS 与正式 VPS 操作
+## 正式 VPS staging 与 prod 操作
 
-- 测试 VPS：`192.220.36.75`，用途为新功能预发布验证，默认源码目录、部署目录和构建方式应尽量与正式 VPS 保持一致。
-- 测试 VPS 默认拉取 `origin/dev` 分支；新功能完成后必须先部署到测试 VPS 验证。
-- 测试 VPS 验证通过后，只能报告验证结果和风险点；必须等用户明确口头命令后，才允许合并 `dev` 到 `main` 并上线正式 VPS。
-- 正式 VPS：`207.57.145.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`。服务器资源空间充足，构建默认不需要使用低资源管控参数；仍需在构建前核对磁盘、内存、CPU 余量和当前运行服务，避免与线上请求争抢资源。
+- 项目只使用一台正式 VPS：`207.57.145.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`；不存在独立测试 VPS。
+- 预发布验证在正式 VPS 的隔离 staging 中完成。staging 默认拉取 `origin/dev` 或明确的功能分支，使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
+- staging 验证通过后，只能报告验证结果和风险点；必须等待用户明确口头命令，才允许合并 `dev` 到 `main` 并把 prod 切换到同一已验证 commit。
+- 正式 VPS 资源空间充足，构建默认不需要使用低资源管控参数；仍需在构建前核对磁盘、内存、CPU 余量和当前运行服务，避免与线上请求争抢资源。
 - 正式 VPS 的 root 密码不得写入本文件、仓库、文档、提交记录或日志；如需密码登录，应使用运行时凭据或本机 Keychain 凭据引用，例如 `sub2api-new-vps-root`，并优先使用 SSH Key 免密登录。
 - 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
 - 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 等敏感信息不得写入仓库、文档、提交记录或日志；如需使用，只能通过运行时凭据或环境变量临时注入。
@@ -102,11 +102,19 @@ docker run --rm "sub2api:staging-$commit" --version
 staging 发布后必须验证：
 
 ```bash
-cd /opt/sub2api/compose/staging
-docker compose --env-file /opt/sub2api/env/staging/.env up -d
-docker compose --env-file /opt/sub2api/env/staging/.env ps
+docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml up -d
+docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml ps
 curl -I http://127.0.0.1:18080/health
-docker compose --env-file /opt/sub2api/env/staging/.env logs --tail=200 sub2api
+docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml logs --tail=200 sub2api
 ```
 
 prod 发布必须在用户明确确认后执行，并使用同一 commit 构建 prod 镜像或复用已验证镜像：
@@ -123,9 +131,14 @@ commit="$(git rev-parse --short=12 HEAD)"
 docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
   docker buildx build -f deploy/Dockerfile -t "sub2api:prod-$commit" --load .
 docker run --rm "sub2api:prod-$commit" --version
-cd /opt/sub2api/compose/prod
-docker compose --env-file /opt/sub2api/env/prod/.env up -d
-docker compose --env-file /opt/sub2api/env/prod/.env ps
+docker compose -p sub2api-prod \
+  --env-file /opt/sub2api/env/prod/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/prod/docker-compose.yml up -d
+docker compose -p sub2api-prod \
+  --env-file /opt/sub2api/env/prod/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/prod/docker-compose.yml ps
 curl -I http://127.0.0.1:8080/health
 ```
 

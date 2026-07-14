@@ -1,67 +1,64 @@
-# VPS 迁移说明
+# VPS 运行架构说明
 
-本文档描述当前从老正式 VPS `192.220.24.46` 迁移到新正式 VPS `207.57.145.15` 的项目盘点、迁移顺序、前置条件和验证要求。文档只记录服务器、目录、服务和凭据引用方式，不记录任何明文密码、Token、私钥或 Cookie。
+本文档描述 Sub2API 当前正式 VPS 的运行拓扑、目录、发布顺序和回滚边界。项目只有一台正式 VPS，不存在独立测试 VPS 或旧正式 VPS。
 
-## 迁移目标
+## 正式 VPS
 
-| 环境 | 地址 | 登录账户 | 当前定位 | 凭据要求 |
-| --- | --- | --- | --- | --- |
-| 老正式 VPS | `192.220.24.46` | `root` | 当前正式生产环境，DNS 切换前继续承载线上流量 | 已有 SSH Key，可使用 `canvas-vps` |
-| 新正式 VPS | `207.57.145.15` | `root` | 迁移目标机器，资源空间充足，适合承接完整构建和运行 | 不记录明文密码；建议保存到本机 Keychain 服务 `sub2api-new-vps-root`，并尽快配置 SSH Key |
+| 项目 | 当前值 |
+| --- | --- |
+| 地址 | `207.57.145.15` |
+| 登录账户 | `root` |
+| 本机 SSH 别名 | `sub2api-new-vps` |
+| 源码目录 | `/opt/sub2api/repo` |
+| 部署方式 | VPS 拉取 Git、VPS 本机构建 Docker 镜像 |
+| 预发布入口 | staging，宿主机端口 `18080` |
+| 正式入口 | prod，宿主机端口 `8080` |
 
-新正式 VPS 资源空间充足，迁移完成后不默认使用旧 VPS 的低资源构建参数。`sub2api` 采用 Git 拉取源码、本机构建 Docker 镜像、staging 验证后切换 prod 的部署方式。构建前仍需核对 `df -h`、`free -h`、CPU 负载、Docker 状态和当前运行服务。
+服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 不得写入仓库、文档、镜像 tag 或日志。登录优先使用 SSH Key；运行配置只保存在服务器 root-only 文件中。
 
-## 老 VPS 当前项目盘点
+## 环境隔离
 
-以下盘点来自 `2026-07-08` 对老正式 VPS 的只读核实。
+staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 
-| 项目 | 当前运行形态 | 关键路径或数据目录 | 当前入口 | 迁移优先级 |
-| --- | --- | --- | --- | --- |
-| `sub2api` | Docker 容器 `sub2api`，镜像 `weishaw/sub2api:latest`，容器健康 | 源码 `/opt/sub2api-src`；部署 `/opt/sub2api-deploy`；应用数据 `/opt/sub2api-deploy/data`；PostgreSQL `/opt/sub2api-deploy/postgres_data`；Redis `/opt/sub2api-deploy/redis_data`；挂载二进制 `/opt/sub2api-deploy/custom/sub2api-pool-overview` | Nginx `fast.youkeduo.xyz`、`fast.youkeduo.shop`、`img.hctoken.top` 代理到 `127.0.0.1:8080`，部分路径代理到 `127.0.0.1:8091` | 最高 |
-| `chatgpt2api` | Docker 容器 `chatgpt2api`，镜像 `chatgpt2api:account-tags-3582047`，容器健康 | 运行配置 `/opt/chatgpt2api/.env`；数据 `/opt/chatgpt2api/data`；发布目录 `/opt/chatgpt2api-release-3582047` | 端口 `3000` 对外暴露 | 高 |
-| `CLIProxyAPI` | Docker 容器 `cli-proxy-api`，镜像 `cli-proxy-api:v7.2.50-image-quota-local-20260706` | 配置 `/opt/CLIProxyAPI/config.yaml`；认证 `/opt/CLIProxyAPI/auths`；插件 `/opt/CLIProxyAPI/plugins`；日志 `/opt/CLIProxyAPI/logs` | 端口 `8317` 对外暴露 | 高 |
-| `infinite-canvas` | Docker 容器 `infinite-canvas`，镜像 `infinite-canvas:local` | 源码与数据 `/opt/infinite-canvas-src`，数据挂载 `/opt/infinite-canvas-src/data` | Nginx `canvas.youkeduo.xyz`、`canvas.youkeduo.shop` 代理到 `127.0.0.1:13000` | 中 |
-| 图像相关服务目录 | 当前未在 `docker ps` 中看到直接运行容器 | `/opt/fsrcnn-api`、`/opt/image2_source_20260608` | 是否仍被 `127.0.0.1:8091` 入口依赖需要继续核实 | 待确认 |
-| VPN / Shadowsocks | `shadowsocks-libev.service` 当前为 disabled | systemd 模板服务仍存在 | 未监听 `8388` | 低，默认不迁移，除非用户确认还需要 |
+- compose project 分别为 `sub2api-staging` 和 `sub2api-prod`。
+- 环境文件分别为 `/opt/sub2api/env/staging/.env` 和 `/opt/sub2api/env/prod/.env`。
+- compose override 分别为 `/opt/sub2api/compose/staging/docker-compose.yml` 和 `/opt/sub2api/compose/prod/docker-compose.yml`。
+- 数据目录分别位于 `/opt/sub2api/data/staging` 和 `/opt/sub2api/data/prod`。
+- PostgreSQL、Redis、应用容器、宿主机端口和业务测试数据不得跨环境复用。
 
-老 VPS 根分区约 `39G`，已用约 `28G`，剩余约 `12G`。主要数据体量包括：`/opt/sub2api-deploy/postgres_data` 约 `5.5G`、`/opt/chatgpt2api/data` 约 `5.7G`、`/opt/sub2api-deploy/data` 约 `751M`。老 VPS 空余空间不适合在本机一次性打全量压缩包，迁移应优先采用数据库流式备份、`rsync` 到新 VPS 或先分项目备份。
+仓库基础 compose `/opt/sub2api/repo/deploy/docker-compose.yml` 必须与环境 override 同时加载，不能单独执行 override。两个环境都通过各自 `.env` 中唯一的 `SUB2API_IMAGE` 选择镜像。
 
-## 新 VPS 前置准备
+## 发布顺序
 
-新 VPS 目前应先完成以下准备，完成前不切换 DNS：
+1. 本地在 `dev` 完成修改、自动化测试、提交和推送。
+2. 正式 VPS 的 `/opt/sub2api/repo` 拉取已推送 commit，并使用 `deploy/Dockerfile` 构建 `sub2api:staging-<commit>`。
+3. 备份 staging 数据后，在隔离 staging 启动镜像并验证版本、健康接口、关键页面、API、数据库迁移和日志。
+4. staging 验证通过后报告结果，等待用户明确口头确认。
+5. 将同一代码合并到 `main` 并推送；正式 VPS 切换到 `main`，核对 commit 与 staging 已验证 commit 完全一致。
+6. 记录 prod 当前镜像，备份 prod PostgreSQL、Redis 关键状态和 prod `.env`，再把已验证镜像标记为 `sub2api:prod-<commit>`。
+7. 原子更新 prod 的 `SUB2API_IMAGE`，只重建 Sub2API 应用容器；PostgreSQL 和 Redis 不得因应用发布被重建或清空。
+8. 完成容器、健康接口、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/models`、数据库连接和日志回归。
 
-- 配置本机 SSH Key 到 `root@207.57.145.15`，并在本机 `~/.ssh/config` 中增加稳定别名，例如 `sub2api-new-vps`。
-- 安装基础运行环境：Docker、Docker Compose 插件、Nginx 或 Caddy、Certbot、Git、rsync、tar、curl、jq、make。
-- 安装 `sub2api` 构建环境：Go 版本以 `backend/go.mod` 为准，Node.js / pnpm 版本以当前项目构建要求为准。
-- 准备 `sub2api` 新目录：`/opt/sub2api/repo`、`/opt/sub2api/env/{staging,prod}`、`/opt/sub2api/compose/{staging,prod}`、`/opt/sub2api/data/{staging,prod}`、`/opt/sub2api/backups`、`/opt/sub2api/scripts`。
-- 其他项目按需准备目录：`/opt/chatgpt2api`、`/opt/CLIProxyAPI`、`/opt/infinite-canvas-src` 和备份目录。
-- 迁移前先在新 VPS 上跑只读环境核对：`hostnamectl`、`df -hT /`、`free -h`、`docker version`、`docker compose version`、`nginx -v`。
+## 构建与版本追溯
 
-## 推荐迁移顺序
+镜像构建必须传入：
 
-1. 先迁移静态配置和可回滚材料：Nginx 站点配置、证书目录清单、Docker compose 文件、项目 `.env` 或 `config.yaml` 的安全备份。
-2. 迁移 `sub2api`：先在 `/opt/sub2api/repo` 克隆源码，使用 `deploy/Dockerfile` 构建带 commit tag 的镜像，先部署 staging 并验证；再迁移 PostgreSQL、Redis、`/opt/sub2api-deploy/data` 到新 VPS 的 prod 数据目录，最后切换 prod 并在新 VPS 本机验证 `127.0.0.1:8080`。
-3. 迁移 `chatgpt2api`：同步 `/opt/chatgpt2api/data`、`.env`、发布目录和镜像构建方式，验证 `127.0.0.1:3000/health`。
-4. 迁移 `CLIProxyAPI`：同步配置、认证目录、插件目录和当前镜像或源码构建链路，验证 `127.0.0.1:8317`。
-5. 迁移 `infinite-canvas`：同步源码、数据和 Nginx 域名入口，验证 `127.0.0.1:13000`。
-6. 复核 `127.0.0.1:8091` 的实际服务来源；若对应图像服务仍在业务链路中，再迁移 `/opt/fsrcnn-api` 或 `/opt/image2_source_20260608`。
-7. 新 VPS 全部本机健康检查通过后，再逐个域名切 DNS；DNS 切换完成并观察稳定后，老 VPS 保留一段回滚窗口。
+- `COMMIT=$(git rev-parse --short=12 HEAD)`
+- `DATE=$(git show -s --format=%cI HEAD)`
 
-## 可以先行处理的事项
+构建后执行镜像内 `/app/sub2api --version`，输出 commit 必须与待发布 Git commit 一致。prod 只能运行 `main` 上已推送且经过 staging 验证的 commit。
 
-- 给新 VPS 配置 SSH Key 免密登录，并固定 SSH 别名。
-- 在新 VPS 安装 Docker、Nginx/Caddy、Certbot、Git、rsync、Go、Node.js、pnpm 和 make。
-- 从老 VPS 拉取 Nginx 站点文件、Docker compose 文件和项目目录清单到本地安全备份；备份文件不得包含明文密钥输出。
-- 为 `sub2api` 准备新 VPS 的 `/opt/sub2api/repo`，拉取 GitHub 仓库并构建一次当前 `dev` 或 `main` commit 镜像，先在 staging 验证。
-- 设计数据库迁移窗口：`sub2api` PostgreSQL 和 Redis 迁移应安排短暂停写或维护窗口，避免数据不一致。
-- 梳理 DNS：`fast.youkeduo.xyz`、`fast.youkeduo.shop`、`img.hctoken.top`、`canvas.youkeduo.xyz`、`canvas.youkeduo.shop` 切换前必须确认新 VPS 证书和反代都已正常。
+## 备份与回滚
 
-## 验证与回滚
+prod 切换前必须：
 
-每个项目迁移后必须至少完成：
+- 记录当前运行镜像 tag、镜像 ID、容器健康状态和目标 commit。
+- 使用 `pg_dump -Fc` 生成 prod PostgreSQL 备份并校验文件非空。
+- 通过 root-only 原子更新脚本备份并修改 prod `.env`。
+- 保留当前 prod 镜像和至少一个最近的可回滚镜像。
 
-- 新 VPS 本机容器状态检查：`docker compose ps` 或 `docker ps`。
-- 本机端口健康检查：`curl -I http://127.0.0.1:端口/health`，无健康接口时检查首页、关键 API 或日志。
-- Nginx/Caddy 配置检查：`nginx -t` 或对应反代配置校验。
-- 业务入口检查：域名切换前使用 Host 头或临时域名验证；域名切换后再验证 HTTPS、页面和关键接口。
-- 回滚准备：DNS TTL、老 VPS 容器、老 VPS 数据目录和旧证书在观察窗口内保持不删除。
+应用异常时优先把 prod `SUB2API_IMAGE` 切回发布前镜像，再通过 compose 只重建应用容器。数据库迁移为前向迁移，默认保留新增列、索引和约束；只有确认旧镜像不兼容且已有经过验证的反向迁移时，才允许修改数据库结构。
+
+## 资源与其他服务
+
+构建前必须检查磁盘、内存、CPU 和当前容器负载。正式 VPS 同时运行的其他服务不得因 Sub2API 构建或清理被停止、重建或删除。Docker 清理必须保护所有运行中镜像、Sub2API 当前/回滚镜像以及全部业务数据卷。

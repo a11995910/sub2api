@@ -63,7 +63,7 @@
 
 ## 上线注意事项
 
-线上仍按 `docs/SOURCE_DEPLOY_CN.md` 的源码构建和挂载二进制替换流程执行，不能把本地构建产物直接上传覆盖生产。
+线上按 `docs/SOURCE_DEPLOY_CN.md` 的单正式 VPS 镜像化流程执行：VPS 从 GitHub 拉取已推送 commit，在隔离 staging 构建并验证镜像，用户确认后再将同一 commit 切换到 prod；不能把本地构建产物或临时二进制直接上传覆盖生产。
 
 上线后必须重点回归：
 

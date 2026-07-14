@@ -523,7 +523,7 @@ cd sub2api/deploy
 
 从源码编译安装，适合开发或定制需求。
 
-> **生产定制上线必须先阅读 [Sub2API 源码定制上线说明](docs/SOURCE_DEPLOY_CN.md)。当前 VPS 的 `sub2api` 使用自定义二进制挂载运行，默认不重建 Docker 镜像；每次上线必须先提交并推送 Git，再让 VPS `/opt/sub2api-src` 拉取同一 commit 并在线上完整构建 Linux amd64 前后端嵌入产物，最后备份并替换线上挂载文件。严禁用未提交工作区、只打包本地 `backend` 目录、把本地构建产物作为默认生产产物上传，或只执行临时 `go build -tags embed` 覆盖线上。**
+> **生产定制上线必须先阅读 [Sub2API 源码定制上线说明](docs/SOURCE_DEPLOY_CN.md)。项目只使用正式 VPS `207.57.145.15`，按 `dev -> 隔离 staging -> 用户确认 -> main -> prod` 发布；每次上线必须先提交并推送 Git，再让 VPS `/opt/sub2api/repo` 拉取同一 commit，并使用 `deploy/Dockerfile` 构建包含完整前后端资源的可追溯镜像。prod 切换前必须备份数据库和运行配置、保留旧镜像；严禁用未提交工作区、本地产物或临时二进制直接覆盖线上。**
 
 #### 前置条件
 
