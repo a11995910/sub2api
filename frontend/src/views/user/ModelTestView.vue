@@ -183,26 +183,27 @@
                   <label class="input-label mb-1">
                     {{ selectedKind === 'video' ? t('modelTest.fields.videoReferenceImage') : t('modelTest.fields.referenceImages') }}
                   </label>
-                  <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ selectedKind === 'video' ? t('modelTest.videoReferenceImageHint') : t('modelTest.referenceImagesHint') }}</p>
+                  <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ referenceImageHint }}</p>
                 </div>
                 <label
                   class="btn btn-secondary cursor-pointer"
-                  :class="referenceImagesFull ? 'pointer-events-none opacity-60' : ''"
+                  :class="referenceImagesFull || compressingReferenceImage ? 'pointer-events-none opacity-60' : ''"
                 >
                   <input
                     type="file"
                     accept="image/*"
                     :multiple="selectedKind === 'image'"
                     class="hidden"
-                    :disabled="referenceImagesFull || running"
+                    :disabled="referenceImagesFull || running || compressingReferenceImage"
                     @change="handleReferenceImagesSelected"
                   />
                   <Icon name="upload" size="sm" />
-                  {{ selectedKind === 'video' ? t('modelTest.uploadVideoReferenceImage') : t('modelTest.uploadReferenceImages') }}
+                  {{ referenceImageUploadLabel }}
                 </label>
               </div>
 
               <p v-if="imageUploadError" class="mt-2 text-xs text-red-500">{{ imageUploadError }}</p>
+              <p v-else-if="imageUploadNotice" class="mt-2 text-xs text-amber-700 dark:text-amber-300">{{ imageUploadNotice }}</p>
 
               <div v-if="referenceImages.length > 0" class="mt-3 grid gap-3 sm:grid-cols-2">
                 <figure
@@ -213,7 +214,11 @@
                   <img :src="item.previewUrl" :alt="item.file.name" class="h-16 w-16 flex-shrink-0 rounded-md object-cover" />
                   <figcaption class="min-w-0 flex-1 self-center pr-8">
                     <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.file.name }}</p>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatFileSize(item.file.size) }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{ item.originalSize > item.file.size
+                        ? t('modelTest.videoReferenceImageCompressedSize', { original: formatFileSize(item.originalSize), compressed: formatFileSize(item.file.size) })
+                        : formatFileSize(item.file.size) }}
+                    </p>
                   </figcaption>
                   <button
                     type="button"
@@ -343,6 +348,11 @@ import {
   getImageBillingTier,
 } from '@/utils/imageOptions'
 import {
+  VIDEO_REFERENCE_IMAGE_MAX_BYTES,
+  compressVideoReferenceImage,
+  supportsVideoStartingImage,
+} from '@/utils/videoReferenceImage'
+import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
@@ -370,6 +380,7 @@ interface ReferenceImage {
   id: string
   file: File
   previewUrl: string
+  originalSize: number
 }
 
 const { t } = useI18n()
@@ -393,6 +404,8 @@ const videoResolution = ref<VideoResolution>('720p')
 const videoDuration = ref(8)
 const referenceImages = ref<ReferenceImage[]>([])
 const imageUploadError = ref('')
+const imageUploadNotice = ref('')
+const compressingReferenceImage = ref(false)
 const maxTokens = ref(256)
 const rawResponse = ref<unknown | null>(null)
 const videoBlobURL = ref('')
@@ -493,7 +506,28 @@ const hasKeyForSelectedGroup = computed(() => {
   return activeKeyOptions.value.some((key) => groupIDFromKey(key) === selectedGroupId.value)
 })
 const selectedApiKey = computed(() => activeKeys.value.find((key) => key.id === selectedApiKeyId.value) || null)
-const referenceImagesFull = computed(() => referenceImages.value.length >= (selectedKind.value === 'video' ? 1 : maxReferenceImages))
+const videoStartingImageSupported = computed(() =>
+  selectedKind.value === 'video' && supportsVideoStartingImage(selectedModel.value?.name || ''),
+)
+const referenceImagesFull = computed(() =>
+  (selectedKind.value === 'video' && !videoStartingImageSupported.value) ||
+  referenceImages.value.length >= (selectedKind.value === 'video' ? 1 : maxReferenceImages),
+)
+const referenceImageHint = computed(() => {
+  if (selectedKind.value !== 'video') return t('modelTest.referenceImagesHint')
+  if (videoStartingImageSupported.value) {
+    return t('modelTest.videoReferenceImageHint', { size: formatFileSize(VIDEO_REFERENCE_IMAGE_MAX_BYTES) })
+  }
+  return t('modelTest.videoReferenceImageUnsupported', {
+    model: selectedModel.value?.displayName || selectedModel.value?.name || '-',
+  })
+})
+const referenceImageUploadLabel = computed(() => {
+  if (selectedKind.value !== 'video') return t('modelTest.uploadReferenceImages')
+  return compressingReferenceImage.value
+    ? t('modelTest.compressingVideoReferenceImage')
+    : t('modelTest.uploadVideoReferenceImage')
+})
 const promptPlaceholder = computed(() =>
   selectedKind.value === 'image'
     ? t('modelTest.placeholders.imagePrompt')
@@ -514,6 +548,7 @@ const canRun = computed(() =>
   !!selectedModel.value &&
   !!selectedGroup.value &&
   !!selectedApiKey.value &&
+  !compressingReferenceImage.value &&
   prompt.value.trim().length > 0,
 )
 
@@ -607,6 +642,17 @@ watch(selectedApiKeyId, () => {
 watch(modelsInSelectedGroup, syncSelectedKindAndModel)
 
 watch(() => referenceImages.value.length, syncSelectedModel)
+
+watch(() => selectedModel.value?.name, () => {
+  imageUploadError.value = ''
+  imageUploadNotice.value = ''
+  if (selectedKind.value === 'video' && referenceImages.value.length > 0 && !videoStartingImageSupported.value) {
+    clearReferenceImages()
+    imageUploadError.value = t('modelTest.videoReferenceImageUnsupported', {
+      model: selectedModel.value?.displayName || selectedModel.value?.name || '-',
+    })
+  }
+})
 
 watch(availableVideoResolutions, (resolutions) => {
   if (!resolutions.includes(videoResolution.value)) {
@@ -901,6 +947,10 @@ async function runTest() {
     appStore.showWarning(t('modelTest.validation.promptRequired'))
     return
   }
+  if (selectedKind.value === 'video' && referenceImages.value.length > 0 && !videoStartingImageSupported.value) {
+    appStore.showWarning(t('modelTest.validation.videoReferenceImageUnsupported'))
+    return
+  }
 
   runController = new AbortController()
   running.value = true
@@ -993,11 +1043,20 @@ function cancelRunning() {
   running.value = false
 }
 
-function handleReferenceImagesSelected(event: Event) {
+async function handleReferenceImagesSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files || [])
   imageUploadError.value = ''
+  imageUploadNotice.value = ''
   if (files.length === 0) return
+
+  if (selectedKind.value === 'video' && !videoStartingImageSupported.value) {
+    imageUploadError.value = t('modelTest.videoReferenceImageUnsupported', {
+      model: selectedModel.value?.displayName || selectedModel.value?.name || '-',
+    })
+    input.value = ''
+    return
+  }
 
   const activeLimit = selectedKind.value === 'video' ? 1 : maxReferenceImages
   const remainingSlots = activeLimit - referenceImages.value.length
@@ -1008,7 +1067,8 @@ function handleReferenceImagesSelected(event: Event) {
   }
 
   const accepted: ReferenceImage[] = []
-  for (const file of files.slice(0, remainingSlots)) {
+  for (const sourceFile of files.slice(0, remainingSlots)) {
+    let file = sourceFile
     if (!file.type.startsWith('image/')) {
       imageUploadError.value = t('modelTest.referenceImageTypeError')
       continue
@@ -1019,10 +1079,35 @@ function handleReferenceImagesSelected(event: Event) {
       })
       continue
     }
+    if (selectedKind.value === 'video' && file.size > VIDEO_REFERENCE_IMAGE_MAX_BYTES) {
+      imageUploadNotice.value = t('modelTest.videoReferenceImageCompressing', {
+        original: formatFileSize(file.size),
+        target: formatFileSize(VIDEO_REFERENCE_IMAGE_MAX_BYTES),
+      })
+      compressingReferenceImage.value = true
+      try {
+        const result = await compressVideoReferenceImage(file)
+        file = result.file
+        imageUploadNotice.value = t('modelTest.videoReferenceImageCompressed', {
+          original: formatFileSize(result.originalSize),
+          compressed: formatFileSize(result.file.size),
+        })
+      } catch (err) {
+        console.error('压缩视频起始参考图失败:', err)
+        imageUploadError.value = t('modelTest.videoReferenceImageCompressFailed', {
+          size: formatFileSize(VIDEO_REFERENCE_IMAGE_MAX_BYTES),
+        })
+        imageUploadNotice.value = ''
+        continue
+      } finally {
+        compressingReferenceImage.value = false
+      }
+    }
     accepted.push({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       file,
       previewUrl: URL.createObjectURL(file),
+      originalSize: sourceFile.size,
     })
   }
 
@@ -1039,6 +1124,9 @@ function removeReferenceImage(id: string) {
     URL.revokeObjectURL(target.previewUrl)
   }
   referenceImages.value = referenceImages.value.filter((item) => item.id !== id)
+  if (referenceImages.value.length === 0) {
+    imageUploadNotice.value = ''
+  }
 }
 
 function clearReferenceImages() {

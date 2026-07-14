@@ -169,13 +169,17 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传本地参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。远程参考图可通过 JSON `images[].image_url` 提交到网关；当上游账号为 OpenAI APIKey 类型时，网关会校验远程地址为公网 HTTP/HTTPS 图片地址，并由服务器直接下载图片内容后转成 multipart 文件上传给上游。远程地址不可访问、返回非 2xx、返回 HTML/鉴权页等非图片内容或超过大小限制时，网关返回 `400 invalid_request_error`，不会把本地输入校验失败显示为上游 `502`。开启 `features_config.openai_images_upstream.mode=chat_completions` 的渠道会把图片入口转发到上游 `/v1/chat/completions`：文生图请求发送文本消息，图生图请求发送文本加 `image_url` 多模态消息，保证参考图随请求传递给上游。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
 
-视频模式支持选择实际计费模型允许的分辨率和 `1-15` 秒时长：标准模型允许 `480p / 720p`，1.5 图生视频允许 `480p / 720p / 1080p`。测试台先向 `/v1/videos/generations` 提交真实生成请求，再使用返回的 `request_id` 轮询 `/v1/videos/{request_id}`；任务完成后通过 `/v1/videos/{request_id}/content` 携带当前 API Key 获取视频 Blob 并播放，避免浏览器绕过账号代理直连 xAI 视频 CDN。内容接口只接受任务状态中由 xAI 返回的 `vidgen.x.ai` HTTPS MP4 地址，并限制允许路径、响应类型和 128MB 最大体积，不提供任意 URL 代理能力。失败、取消和超时会给出明确错误。用户可上传 1 张起始参考图执行图生视频，参考图以 data URL 写入 `image.image_url`；不上传时执行文生视频。价格预览会拆分视频输出费和参考图附加费，实际扣费从服务端解析后的请求体统计参考图数量，不信任前端声明。显式 `video` 或分组覆盖价按真实分辨率、规范化时长、视频数量、参考图数量和有效倍率记录用量并扣费；历史 `image/per_request` 渠道价只按视频数量计费，但已知 Grok 模型仍叠加官方参考图附加价。状态查询和视频内容读取不重复扣费。
+视频模式支持选择实际计费模型允许的分辨率和 `1-15` 秒时长：标准模型允许 `480p / 720p`，1.5 图生视频允许 `480p / 720p / 1080p`。测试台先向 `/v1/videos/generations` 提交真实生成请求，再使用返回的 `request_id` 轮询 `/v1/videos/{request_id}`；任务完成后通过 `/v1/videos/{request_id}/content` 携带当前 API Key 获取视频 Blob 并播放，避免浏览器绕过账号代理直连 xAI 视频 CDN。内容接口只接受任务状态中由 xAI 返回的 `vidgen.x.ai` HTTPS MP4 地址，并限制允许路径、响应类型和 128MB 最大体积，不提供任意 URL 代理能力。失败、取消和超时会给出明确错误。
+
+测试台的“起始参考图”属于 image-to-video 工作流，只对 `grok-imagine-video-1.5` 及其版本别名开放；标准版和未知视频模型会禁用上传入口，并提示选择 1.5。图片以官方 `image.url` 结构提交，旧客户端使用的 `image.image_url` 会由网关兼容转换。起始图原文件不超过图片上传总限制 20MB；超过 1MB 的图片会在浏览器中提示并自动缩放、转换为 JPEG，压缩到 1MB 以内后再上传。压缩失败时不会提交生成请求。非测试台客户端提交超过 1MB 的内联 data URL 时，网关在账号调度和计费前返回 `413 invalid_request_error`，避免把上游请求体限制显示成 `502`。
+
+标准版 `grok-imagine-video` 的官方参考图引导工作流与起始图不同：API 客户端使用 `reference_images[].url` 提交，图片只影响人物、物品或风格，不固定为视频首帧；`grok-imagine-video-1.5` 不接受 `reference_images`。网关拒绝同一请求同时携带 `image` 和 `reference_images`，模型与图片模式不匹配时返回 `400 invalid_request_error`。价格预览会拆分视频输出费和参考图附加费，实际扣费从服务端规范化后的请求体统计参考图数量，不信任前端声明。显式 `video` 或分组覆盖价按真实分辨率、规范化时长、视频数量、参考图数量和有效倍率记录用量并扣费；历史 `image/per_request` 渠道价只按视频数量计费，但已知 Grok 模型仍叠加官方参考图附加价。状态查询和视频内容读取不重复扣费。
 
 渠道定价配置提供独立的 `video` 计费模式。该模式的默认价格和 `480p / 720p / 1080p` 层级价格均按美元每秒（USD/s）填写；`per_request_price` 字段名仅为复用现有存储结构。`input_price` 在该模式下表示参考图附加价（USD/张），不再执行每百万 token 的界面换算；留空使用模型官方默认价，填写 `0` 表示参考图免费。历史上仅包含视频模型但保存为 `image` 或 `per_request` 的渠道配置继续按美元每请求（USD/request）计费，管理端编辑时保留原模式且不自动迁移。管理员需要确认价格单位并重新填写每秒价格后，再主动切换为 `video`。
 
 视频报价的完整优先级为：当前分组对应分辨率覆盖价、渠道对应分辨率层级价、渠道默认价、已知 Grok 模型系统默认价。分组覆盖价按秒；渠道层级价和默认价的单位由渠道 `billing_mode` 决定。显式 `video` 缺少当前层级价和默认价时可以回退系统每秒价；历史 `image/per_request` 缺价时不跨单位回退；`token` 模式直接视为无视频报价。最终报价使用视频独立倍率，或按“用户专属分组倍率优先、分组通用倍率兜底”的规则计算。
 
-`grok-imagine-video-1.5` 未上传参考图时，网关会按标准模型 `grok-imagine-video` 路由和计费，测试台预览也使用标准模型价格；上传参考图执行图生视频时才保留 `grok-imagine-video-1.5` 的路由和价格，并叠加每张参考图附加价。模型广场不模拟某一次无参考图请求，而是独立展示 1.5 的完整图生视频价目和参考图附加价。
+`grok-imagine-video-1.5` 未上传起始图时，网关会按标准模型 `grok-imagine-video` 路由和计费，测试台预览也使用标准模型价格；上传起始图执行图生视频时才保留 `grok-imagine-video-1.5` 的路由和价格，并叠加每张参考图附加价。模型广场不模拟某一次无参考图请求，而是独立展示 1.5 的完整图生视频价目和参考图附加价。
 
 ## 货币单位
 

@@ -309,6 +309,7 @@ describe('videoResolutionsForModel', () => {
 describe('normalizeVideoBillingModelName', () => {
   it('video-1.5 无参考图时按后端规则使用标准视频模型计费', () => {
     expect(normalizeVideoBillingModelName('grok-imagine-video-1.5', false)).toBe('grok-imagine-video')
+    expect(normalizeVideoBillingModelName('Grok-Imagine-Video-1.5-Preview', false)).toBe('grok-imagine-video')
   })
 
   it('video-1.5 有参考图时保留原计费模型', () => {

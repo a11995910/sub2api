@@ -120,7 +120,7 @@ describe('modelTest api', () => {
       prompt: '海浪慢镜头',
       resolution: '720p',
       duration: 10,
-      image: { image_url: 'data:image/png;base64,aW1n' },
+      image: { url: 'data:image/png;base64,aW1n' },
     })
     expect(fetchMock.mock.calls[1][0]).toBe('/v1/videos/video-123')
     expect(fetchMock.mock.calls[2][0]).toBe('/v1/videos/video-123')

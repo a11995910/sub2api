@@ -209,7 +209,7 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
   }
   if (req.resolution?.trim()) payload.resolution = req.resolution.trim()
   if (Number.isFinite(req.duration)) payload.duration = Math.max(1, Math.min(15, Math.floor(Number(req.duration))))
-  if (req.imageDataUrl?.trim()) payload.image = { image_url: req.imageDataUrl.trim() }
+  if (req.imageDataUrl?.trim()) payload.image = { url: req.imageDataUrl.trim() }
 
   const created = await postGateway<unknown>('/v1/videos/generations', req.apiKey, payload, req.signal)
   const requestID = extractVideoRequestID(created)

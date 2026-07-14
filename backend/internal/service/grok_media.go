@@ -34,7 +34,10 @@ const (
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 )
 
-const grokVideoContentMaxBytes int64 = 128 << 20
+const (
+	grokVideoContentMaxBytes            int64 = 128 << 20
+	grokVideoInlineImageMaxDecodedBytes int64 = 1 << 20
+)
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 	return e != GrokMediaEndpointVideoStatus && e != GrokMediaEndpointVideoContent
@@ -50,17 +53,18 @@ func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 }
 
 type GrokMediaRequestInfo struct {
-	Model           string
-	Prompt          string
-	N               int
-	Size            string
-	SizeTier        string
-	Resolution      string
-	DurationSeconds int
-	InputImageURLs  []string
-	MaskImageURL    string
-	Uploads         []OpenAIImagesUpload
-	MaskUpload      *OpenAIImagesUpload
+	Model              string
+	Prompt             string
+	N                  int
+	Size               string
+	SizeTier           string
+	Resolution         string
+	DurationSeconds    int
+	InputImageURLs     []string
+	ReferenceImageURLs []string
+	MaskImageURL       string
+	Uploads            []OpenAIImagesUpload
+	MaskUpload         *OpenAIImagesUpload
 }
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -69,8 +73,13 @@ func (r GrokMediaRequestInfo) ModerationBody() []byte {
 		payload["prompt"] = prompt
 	}
 
-	images := make([]map[string]string, 0, len(r.InputImageURLs)+len(r.Uploads)+1)
+	images := make([]map[string]string, 0, len(r.InputImageURLs)+len(r.ReferenceImageURLs)+len(r.Uploads)+1)
 	for _, imageURL := range r.InputImageURLs {
+		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
+			images = append(images, map[string]string{"image_url": imageURL})
+		}
+	}
+	for _, imageURL := range r.ReferenceImageURLs {
 		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
 			images = append(images, map[string]string{"image_url": imageURL})
 		}
@@ -145,42 +154,118 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
 	}
-	appendJSONImageURLs := func(value gjson.Result) {
+	appendJSONImageURLs := func(value gjson.Result, target *[]string) {
 		if !value.Exists() {
 			return
+		}
+		appendURL := func(item gjson.Result) {
+			for _, field := range []string{"url", "image_url"} {
+				if imageURL := strings.TrimSpace(item.Get(field).String()); imageURL != "" {
+					*target = append(*target, imageURL)
+					return
+				}
+			}
+			if item.Type == gjson.String {
+				if imageURL := strings.TrimSpace(item.String()); imageURL != "" {
+					*target = append(*target, imageURL)
+				}
+			}
 		}
 		switch {
 		case value.IsArray():
 			for _, item := range value.Array() {
-				if imageURL := strings.TrimSpace(item.Get("image_url").String()); imageURL != "" {
-					info.InputImageURLs = append(info.InputImageURLs, imageURL)
-					continue
-				}
-				if item.Type == gjson.String {
-					imageURL := strings.TrimSpace(item.String())
-					if imageURL == "" {
-						continue
-					}
-					info.InputImageURLs = append(info.InputImageURLs, imageURL)
-				}
+				appendURL(item)
 			}
 		default:
-			if imageURL := strings.TrimSpace(value.Get("image_url").String()); imageURL != "" {
-				info.InputImageURLs = append(info.InputImageURLs, imageURL)
-				return
-			}
-			if value.Type == gjson.String {
-				imageURL := strings.TrimSpace(value.String())
-				if imageURL == "" {
-					return
-				}
-				info.InputImageURLs = append(info.InputImageURLs, imageURL)
+			appendURL(value)
+		}
+	}
+	appendJSONImageURLs(gjson.GetBytes(body, "image"), &info.InputImageURLs)
+	appendJSONImageURLs(gjson.GetBytes(body, "images"), &info.InputImageURLs)
+	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"), &info.ReferenceImageURLs)
+	info.MaskImageURL = firstNonEmpty(
+		strings.TrimSpace(gjson.GetBytes(body, "mask.url").String()),
+		strings.TrimSpace(gjson.GetBytes(body, "mask.image_url").String()),
+	)
+}
+
+// GrokMediaRequestValidationError 表示无需请求上游即可确认的媒体参数错误。
+type GrokMediaRequestValidationError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *GrokMediaRequestValidationError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
+// ValidateGrokMediaRequest 在账号调度和计费前校验视频图片模式与内联体积。
+func ValidateGrokMediaRequest(endpoint GrokMediaEndpoint, info GrokMediaRequestInfo) *GrokMediaRequestValidationError {
+	if endpoint != GrokMediaEndpointVideosGenerations {
+		return nil
+	}
+
+	hasStartingImage := len(info.InputImageURLs) > 0 || len(info.Uploads) > 0
+	hasReferenceImages := len(info.ReferenceImageURLs) > 0
+	if hasStartingImage && hasReferenceImages {
+		return &GrokMediaRequestValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "image and reference_images cannot be used together",
+		}
+	}
+
+	model := strings.ToLower(strings.TrimSpace(info.Model))
+	isVideo15 := strings.HasPrefix(model, "grok-imagine-video-1.5")
+	isStandardVideo := strings.HasPrefix(model, "grok-imagine-video") && !isVideo15
+	if hasStartingImage && isStandardVideo {
+		return &GrokMediaRequestValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "grok-imagine-video does not support a starting image; use grok-imagine-video-1.5",
+		}
+	}
+	if hasReferenceImages && isVideo15 {
+		return &GrokMediaRequestValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "grok-imagine-video-1.5 does not support reference_images; use grok-imagine-video",
+		}
+	}
+
+	for _, imageURL := range append(append([]string{}, info.InputImageURLs...), info.ReferenceImageURLs...) {
+		if decodedSize, ok := inlineImageDecodedSize(imageURL); ok && decodedSize > grokVideoInlineImageMaxDecodedBytes {
+			return &GrokMediaRequestValidationError{
+				StatusCode: http.StatusRequestEntityTooLarge,
+				Message:    "video reference image exceeds the 1 MB inline upload limit; compress the image before uploading",
 			}
 		}
 	}
-	appendJSONImageURLs(gjson.GetBytes(body, "image"))
-	appendJSONImageURLs(gjson.GetBytes(body, "images"))
-	info.MaskImageURL = strings.TrimSpace(gjson.GetBytes(body, "mask.image_url").String())
+	return nil
+}
+
+func inlineImageDecodedSize(raw string) (int64, bool) {
+	raw = strings.TrimSpace(raw)
+	comma := strings.IndexByte(raw, ',')
+	if comma <= 0 {
+		return 0, false
+	}
+	metadata := strings.ToLower(raw[:comma])
+	if !strings.HasPrefix(metadata, "data:image/") || !strings.Contains(metadata, ";base64") {
+		return 0, false
+	}
+	encoded := strings.TrimSpace(raw[comma+1:])
+	padding := int64(0)
+	if strings.HasSuffix(encoded, "==") {
+		padding = 2
+	} else if strings.HasSuffix(encoded, "=") {
+		padding = 1
+	}
+	decodedSize := int64(len(encoded))*3/4 - padding
+	if decodedSize < 0 {
+		decodedSize = 0
+	}
+	return decodedSize, true
 }
 
 func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokMediaRequestInfo) {
@@ -571,13 +656,39 @@ func normalizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, cont
 		return body, contentType, nil
 	}
 	info := ParseGrokMediaRequest(contentType, body)
-	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasInputImage())
-	if upstreamModel == "" || upstreamModel == info.Model {
-		return body, contentType, nil
+	out := body
+	upstreamModel := normalizeGrokMediaModelForEndpoint(endpoint, info.Model, info.HasStartingImage())
+	if upstreamModel != "" && upstreamModel != info.Model {
+		var err error
+		out, err = sjson.SetBytes(out, "model", upstreamModel)
+		if err != nil {
+			return nil, "", fmt.Errorf("rewrite grok media model: %w", err)
+		}
 	}
-	out, err := sjson.SetBytes(body, "model", upstreamModel)
-	if err != nil {
-		return nil, "", fmt.Errorf("rewrite grok media model: %w", err)
+
+	if endpoint == GrokMediaEndpointVideosGenerations {
+		if len(info.InputImageURLs) > 0 {
+			var err error
+			out, err = sjson.SetBytes(out, "image", map[string]string{"url": info.InputImageURLs[0]})
+			if err != nil {
+				return nil, "", fmt.Errorf("normalize grok video starting image: %w", err)
+			}
+			out, err = sjson.DeleteBytes(out, "images")
+			if err != nil {
+				return nil, "", fmt.Errorf("remove legacy grok video images field: %w", err)
+			}
+		}
+		if len(info.ReferenceImageURLs) > 0 {
+			references := make([]map[string]string, 0, len(info.ReferenceImageURLs))
+			for _, imageURL := range info.ReferenceImageURLs {
+				references = append(references, map[string]string{"url": imageURL})
+			}
+			var err error
+			out, err = sjson.SetBytes(out, "reference_images", references)
+			if err != nil {
+				return nil, "", fmt.Errorf("normalize grok video reference images: %w", err)
+			}
+		}
 	}
 	return out, contentType, nil
 }
@@ -601,8 +712,12 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	}
 }
 
-func (r GrokMediaRequestInfo) HasInputImage() bool {
+func (r GrokMediaRequestInfo) HasStartingImage() bool {
 	return len(r.InputImageURLs) > 0 || len(r.Uploads) > 0
+}
+
+func (r GrokMediaRequestInfo) HasInputImage() bool {
+	return r.HasStartingImage() || len(r.ReferenceImageURLs) > 0
 }
 
 func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
@@ -613,7 +728,7 @@ func normalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string
 			return "grok-imagine-image-quality"
 		}
 	case GrokMediaEndpointVideosGenerations:
-		if model == "grok-imagine-video-1.5" && !hasInputImage {
+		if strings.HasPrefix(strings.ToLower(model), "grok-imagine-video-1.5") && !hasInputImage {
 			return "grok-imagine-video"
 		}
 	}
@@ -654,7 +769,7 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.VideoCount = 1
 		meta.VideoResolution = requestInfo.Resolution
 		meta.VideoDurationSeconds = requestInfo.DurationSeconds
-		meta.VideoInputImageCount = len(requestInfo.InputImageURLs) + len(requestInfo.Uploads)
+		meta.VideoInputImageCount = len(requestInfo.InputImageURLs) + len(requestInfo.ReferenceImageURLs) + len(requestInfo.Uploads)
 		// Keep the legacy media-unit counter populated for existing usage displays.
 		meta.ImageCount = 1
 	}

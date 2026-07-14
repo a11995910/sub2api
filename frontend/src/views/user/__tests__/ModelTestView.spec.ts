@@ -54,6 +54,12 @@ const messages: Record<string, string> = {
   'modelTest.referenceImageTypeError': '请选择图片文件',
   'modelTest.referenceImagesHint': '上传后将调用图片编辑接口',
   'modelTest.videoReferenceImageHint': '可上传 1 张起始参考图',
+  'modelTest.videoReferenceImageUnsupported': '当前模型 {model} 不支持起始参考图，请选择 grok-imagine-video-1.5。',
+  'modelTest.videoReferenceImageCompressing': '图片大小为 {original}，正在压缩到 {target}',
+  'modelTest.videoReferenceImageCompressed': '图片已从 {original} 压缩到 {compressed}',
+  'modelTest.videoReferenceImageCompressedSize': '{original} -> {compressed}',
+  'modelTest.videoReferenceImageCompressFailed': '图片无法压缩到 {size}',
+  'modelTest.compressingVideoReferenceImage': '正在压缩',
   'modelTest.removeReferenceImage': '移除参考图',
   'modelTest.result.empty': '运行一次测试后，这里会显示返回结果',
   'modelTest.result.raw': '原始响应',
@@ -73,6 +79,7 @@ const messages: Record<string, string> = {
   'modelTest.videoPriceWithReference': '{resolution} {total} / {unit}（视频 {output} + 参考图 {reference}）',
   'modelTest.validation.missingSelection': '请先选择模型、分组和 API Key',
   'modelTest.validation.promptRequired': '请输入提示词',
+  'modelTest.validation.videoReferenceImageUnsupported': '当前模型不支持起始参考图',
 }
 
 vi.mock('@/api/channels', () => ({
@@ -808,6 +815,37 @@ describe('ModelTestView', () => {
     await flushPromises()
 
     expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
+  })
+
+  it('标准视频模型禁用起始参考图并显示可操作提示', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({ id: 909, group_id: 9 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video',
+          platform: 'grok',
+          kind: 'video',
+          pricing: null,
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('input[type="file"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('当前模型 grok-imagine-video 不支持起始参考图，请选择 grok-imagine-video-1.5。')
   })
 
   it('视频生成完成后通过内容接口创建 Blob 播放地址并在卸载时释放', async () => {

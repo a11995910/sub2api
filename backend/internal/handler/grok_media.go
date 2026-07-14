@@ -108,6 +108,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_id is required")
 		return
 	}
+	if validationErr := service.ValidateGrokMediaRequest(endpoint, requestInfo); validationErr != nil {
+		h.errorResponse(c, validationErr.StatusCode, "invalid_request_error", validationErr.Message)
+		return
+	}
 
 	reqLog = reqLog.With(zap.String("model", requestModel))
 	setOpsRequestContext(c, requestModel, false)

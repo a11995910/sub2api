@@ -32,7 +32,7 @@ export interface VideoReferenceImageQuote {
 /** 与 Grok 视频端点保持一致：video-1.5 文生视频实际按标准视频模型路由和计费。 */
 export function normalizeVideoBillingModelName(modelName: string, hasReferenceImage: boolean): string {
   const normalizedModel = modelName.trim()
-  if (normalizedModel === 'grok-imagine-video-1.5' && !hasReferenceImage) {
+  if (normalizedModel.toLowerCase().startsWith('grok-imagine-video-1.5') && !hasReferenceImage) {
     return 'grok-imagine-video'
   }
   return normalizedModel

@@ -364,6 +364,100 @@ func TestParseGrokMediaVideoRequestResolution(t *testing.T) {
 	require.Equal(t, "720p", info.Resolution)
 }
 
+func TestParseGrokMediaVideoRequestRecognizesOfficialImageFields(t *testing.T) {
+	info := ParseGrokMediaRequest("application/json", []byte(`{
+		"model":"grok-imagine-video-1.5",
+		"image":{"url":"data:image/png;base64,aW1n"},
+		"reference_images":[{"url":"https://example.com/one.png"},{"image_url":"https://example.com/two.png"}]
+	}`))
+
+	require.Equal(t, []string{"data:image/png;base64,aW1n"}, info.InputImageURLs)
+	require.Equal(t, []string{"https://example.com/one.png", "https://example.com/two.png"}, info.ReferenceImageURLs)
+	require.True(t, info.HasStartingImage())
+	require.True(t, info.HasInputImage())
+}
+
+func TestValidateGrokMediaVideoRequestCapabilitiesAndInlineSize(t *testing.T) {
+	oversizedDataURL := "data:image/jpeg;base64," + strings.Repeat("A", 1400004)
+	tests := []struct {
+		name       string
+		info       GrokMediaRequestInfo
+		wantStatus int
+		wantText   string
+	}{
+		{
+			name:       "standard model rejects starting image",
+			info:       GrokMediaRequestInfo{Model: "grok-imagine-video", InputImageURLs: []string{"data:image/png;base64,aW1n"}},
+			wantStatus: http.StatusBadRequest,
+			wantText:   "grok-imagine-video-1.5",
+		},
+		{
+			name:       "video 1.5 rejects reference mode",
+			info:       GrokMediaRequestInfo{Model: "grok-imagine-video-1.5", ReferenceImageURLs: []string{"https://example.com/ref.png"}},
+			wantStatus: http.StatusBadRequest,
+			wantText:   "reference_images",
+		},
+		{
+			name:       "starting and reference modes are mutually exclusive",
+			info:       GrokMediaRequestInfo{Model: "custom-video", InputImageURLs: []string{"https://example.com/start.png"}, ReferenceImageURLs: []string{"https://example.com/ref.png"}},
+			wantStatus: http.StatusBadRequest,
+			wantText:   "cannot be used together",
+		},
+		{
+			name:       "oversized inline image is rejected locally",
+			info:       GrokMediaRequestInfo{Model: "grok-imagine-video-1.5", InputImageURLs: []string{oversizedDataURL}},
+			wantStatus: http.StatusRequestEntityTooLarge,
+			wantText:   "1 MB",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGrokMediaRequest(GrokMediaEndpointVideosGenerations, tt.info)
+			require.NotNil(t, err)
+			require.Equal(t, tt.wantStatus, err.StatusCode)
+			require.Contains(t, err.Message, tt.wantText)
+		})
+	}
+
+	require.Nil(t, ValidateGrokMediaRequest(GrokMediaEndpointVideosGenerations, GrokMediaRequestInfo{
+		Model:          "grok-imagine-video-1.5",
+		InputImageURLs: []string{"data:image/png;base64,aW1n"},
+	}))
+	require.Nil(t, ValidateGrokMediaRequest(GrokMediaEndpointVideosGenerations, GrokMediaRequestInfo{
+		Model:              "grok-imagine-video",
+		ReferenceImageURLs: []string{"https://example.com/ref.png"},
+	}))
+}
+
+func TestNormalizeGrokMediaVideoForwardBodyUsesOfficialFields(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-video-1.5",
+		"prompt":"waves",
+		"image":{"image_url":"data:image/png;base64,aW1n"}
+	}`)
+	normalized, contentType, err := normalizeGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
+
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.JSONEq(t, `{
+		"model":"grok-imagine-video-1.5",
+		"prompt":"waves",
+		"image":{"url":"data:image/png;base64,aW1n"}
+	}`, string(normalized))
+
+	referenceBody := []byte(`{
+		"model":"grok-imagine-video",
+		"reference_images":[{"image_url":"https://example.com/ref.png"}]
+	}`)
+	normalized, _, err = normalizeGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, referenceBody, "application/json")
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model":"grok-imagine-video",
+		"reference_images":[{"url":"https://example.com/ref.png"}]
+	}`, string(normalized))
+}
+
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -378,6 +472,7 @@ func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 		{name: "image fast passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image", want: "grok-imagine-image"},
 		{name: "video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video", want: "grok-imagine-video"},
 		{name: "video 1.5 text-only fallback", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", want: "grok-imagine-video"},
+		{name: "video 1.5 alias text-only fallback", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5-preview", want: "grok-imagine-video"},
 		{name: "video 1.5 image-to-video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", hasInputImage: true, want: "grok-imagine-video-1.5"},
 	}
 
@@ -605,7 +700,7 @@ func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T)
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"}}`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"url":"data:image/png;base64,aW1n"}}`, string(upstream.lastBody))
 	require.Equal(t, "video-request-456", result.ResponseID)
 	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
 	require.Equal(t, 1, result.VideoInputImageCount)

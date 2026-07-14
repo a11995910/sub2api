@@ -1280,7 +1280,13 @@ export default {
     },
     imageSizeAdaptivePreview: '自适应（{tier} 预估）',
     referenceImagesHint: '上传后将调用图片编辑接口，可在提示词中说明修改方式。',
-    videoReferenceImageHint: '上传 1 张起始参考图后执行图生视频，并按模型叠加参考图附加价；不上传则执行文生视频。',
+    videoReferenceImageHint: '支持上传 1 张起始图；超过 {size} 时会先自动压缩，再执行图生视频。',
+    videoReferenceImageUnsupported: '当前模型 {model} 不支持起始参考图，请选择 grok-imagine-video-1.5。',
+    videoReferenceImageCompressing: '图片大小为 {original}，超过安全上传限制，正在自动压缩到 {target} 以内。',
+    videoReferenceImageCompressed: '图片已从 {original} 压缩到 {compressed}，将使用压缩后的图片生成视频。',
+    videoReferenceImageCompressedSize: '{original} -> {compressed}',
+    videoReferenceImageCompressFailed: '图片无法压缩到 {size} 以内，请选择尺寸或体积更小的图片。',
+    compressingVideoReferenceImage: '正在压缩',
     uploadReferenceImages: '上传图片',
     uploadVideoReferenceImage: '添加参考图',
     removeReferenceImage: '移除参考图',
@@ -1302,7 +1308,8 @@ export default {
     },
     validation: {
       missingSelection: '请先选择模型、分组和 API Key',
-      promptRequired: '请输入提示词'
+      promptRequired: '请输入提示词',
+      videoReferenceImageUnsupported: '当前模型不支持起始参考图，请移除参考图或选择 grok-imagine-video-1.5。'
     },
     noActiveKey: '当前没有可用的 active API Key，请先创建或启用一个 Key。',
     noGroupKey: '当前分组“{group}”没有可用的 active API Key，请先创建或绑定该分组的 Key。',

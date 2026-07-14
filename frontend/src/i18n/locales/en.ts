@@ -1276,7 +1276,13 @@ export default {
     },
     imageSizeAdaptivePreview: 'Adaptive ({tier} estimate)',
     referenceImagesHint: 'Uploaded images use the image edit endpoint. Describe the change in the prompt.',
-    videoReferenceImageHint: 'Upload one starting image for image-to-video. Its per-image surcharge is added to the video output cost; leave it empty for text-to-video.',
+    videoReferenceImageHint: 'Upload one starting image. Images over {size} are compressed automatically before image-to-video generation.',
+    videoReferenceImageUnsupported: '{model} does not support a starting image. Select grok-imagine-video-1.5 instead.',
+    videoReferenceImageCompressing: 'This image is {original}, so it is being compressed below the safe upload limit of {target}.',
+    videoReferenceImageCompressed: 'The image was compressed from {original} to {compressed}. The compressed image will be used.',
+    videoReferenceImageCompressedSize: '{original} -> {compressed}',
+    videoReferenceImageCompressFailed: 'The image could not be compressed below {size}. Select a smaller image.',
+    compressingVideoReferenceImage: 'Compressing',
     uploadReferenceImages: 'Upload Images',
     uploadVideoReferenceImage: 'Add Reference Image',
     removeReferenceImage: 'Remove reference image',
@@ -1298,7 +1304,8 @@ export default {
     },
     validation: {
       missingSelection: 'Select a model, group, and API key first',
-      promptRequired: 'Enter a prompt'
+      promptRequired: 'Enter a prompt',
+      videoReferenceImageUnsupported: 'This model does not support a starting image. Remove it or select grok-imagine-video-1.5.'
     },
     noActiveKey: 'No active API key is available. Create or enable a key first.',
     noGroupKey: 'Group "{group}" has no active API key. Create or bind a key for this group first.',
