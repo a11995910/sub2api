@@ -291,11 +291,16 @@ func extractUpstreamErrorMessage(body []byte) string {
 		inner := strings.TrimSpace(m)
 		// 有些上游会把完整 JSON 作为字符串塞进 message
 		if strings.HasPrefix(inner, "{") {
-			if innerMsg := gjson.Get(inner, "error.message").String(); strings.TrimSpace(innerMsg) != "" {
+			if innerMsg := extractUpstreamErrorMessageFromJSONString(inner); innerMsg != "" {
 				return innerMsg
 			}
 		}
 		return m
+	}
+
+	// 部分图片上游直接返回顶层错误字符串：{"error":"..."}
+	if e := gjson.GetBytes(body, "error"); e.Type == gjson.String && strings.TrimSpace(e.String()) != "" {
+		return e.String()
 	}
 
 	// ChatGPT 内部 API 风格：{"detail":"..."}
