@@ -433,6 +433,7 @@ export default {
     buySubscription: '灵石充值',
     onlineRecharge: '在线充值',
     docs: '文档',
+    developerDocs: '开发文档',
     beginnerGuide: '小白攻略',
     myOrders: '我的订单',
     orderManagement: '订单管理',
@@ -442,7 +443,6 @@ export default {
     channelManagement: '渠道管理',
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
-    upstreamRateMonitor: '上游倍率',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
   },
@@ -1242,6 +1242,11 @@ export default {
       perRequest: '按次',
       actions: '操作'
     }
+  },
+
+  developerDocs: {
+    title: '开发文档',
+    description: '通过 HTTP 接入文本、图片与视频 API'
   },
 
   // Model Test
@@ -3341,92 +3346,6 @@ export default {
           namePlaceholder: '例：Claude Code 伪装',
           description: '说明',
           descriptionPlaceholder: '可选：说明这个模板的用途和来源（抓包日期等）'
-        }
-      }
-    },
-
-    // Upstream Rate Monitor
-    upstreamRateMonitor: {
-      title: '上游倍率监控',
-      description: '集中监控同类 Sub2API 上游账号可用分组数量与有效倍率快照',
-      searchPlaceholder: '搜索名称、URL 或账号...',
-      allEnabled: '全部状态',
-      onlyEnabled: '仅启用',
-      onlyDisabled: '仅禁用',
-      createButton: '添加上游',
-      createTitle: '添加上游站点',
-      editTitle: '编辑上游站点',
-      refreshVisible: '刷新当前页',
-      refreshNow: '立即刷新',
-      viewSnapshot: '查看倍率',
-      refreshSuccess: '上游倍率已刷新',
-      refreshFailed: '刷新上游倍率失败',
-      batchRefreshSuccess: '已刷新 {count} 个上游',
-      batchRefreshPartial: '刷新完成：成功 {success} 个，失败 {failed} 个',
-      noEnabledRows: '当前页没有可刷新的启用上游',
-      createSuccess: '上游已添加',
-      updateSuccess: '上游已更新',
-      saveFailed: '保存上游失败',
-      loadFailed: '加载上游倍率监控失败',
-      deleteSuccess: '上游已删除',
-      deleteFailed: '删除上游失败',
-      deleteConfirm: '确定要删除上游「{name}」吗？已有快照也会一并删除，此操作不可撤销。',
-      passwordDecryptFailed: '密码解密失败，请重新编辑该上游并填入新的密码',
-      groupCount: '{count} 个分组',
-      emptyTitle: '暂无上游倍率监控',
-      emptyDescription: '添加同类 Sub2API 上游后，可一键读取其分组数量和倍率快照。',
-      status: {
-        unknown: '未刷新',
-        success: '成功',
-        failed: '失败'
-      },
-      columns: {
-        name: '上游站点',
-        status: '刷新状态',
-        groupCount: '分组数量',
-        lastCheckedAt: '最后刷新',
-        enabled: '启用',
-        actions: '操作'
-      },
-      form: {
-        name: '名称',
-        namePlaceholder: '例：CPA 主站',
-        baseUrl: '上游 URL',
-        baseUrlPlaceholder: 'https://example.com',
-        username: '账号',
-        usernamePlaceholder: '上游登录邮箱或账号',
-        password: '密码',
-        passwordPlaceholder: '请输入上游登录密码',
-        passwordEditPlaceholder: '留空表示不修改',
-        enabled: '启用监控',
-        enabledHint: '关闭后仍保留配置与快照，但不会参与当前页批量刷新。'
-      },
-      validation: {
-        nameRequired: '请输入名称',
-        baseUrlRequired: '请输入上游 URL',
-        usernameRequired: '请输入账号',
-        passwordRequired: '请输入密码'
-      },
-      snapshot: {
-        title: '倍率快照：{name}',
-        site: '上游地址',
-        status: '刷新状态',
-        groups: '分组数',
-        checkedAt: '刷新时间',
-        imageIndependent: '图片独立倍率',
-        exclusive: '专属',
-        image: '图片',
-        superResolution: '超分',
-        emptyTitle: '暂无倍率快照',
-        emptyDescription: '点击立即刷新后，系统会登录上游并读取该账号可用分组及有效倍率。',
-        columns: {
-          group: '分组',
-          platform: '平台',
-          rate: '文字倍率',
-          imageRate: '图片倍率',
-          subscriptionType: '订阅类型',
-          rpmLimit: 'RPM',
-          flags: '标记'
         }
       }
     },

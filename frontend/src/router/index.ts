@@ -312,6 +312,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/developer-docs',
+    name: 'DeveloperDocs',
+    component: () => import('@/views/user/DeveloperDocsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Developer Docs',
+      titleKey: 'developerDocs.title',
+      descriptionKey: 'developerDocs.description'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -550,18 +562,6 @@ const routes: RouteRecordRaw[] = [
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'
-    }
-  },
-  {
-    path: '/admin/upstream-rate-monitors',
-    name: 'AdminUpstreamRateMonitors',
-    component: () => import('@/views/admin/UpstreamRateMonitorView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Upstream Rate Monitor',
-      titleKey: 'admin.upstreamRateMonitor.title',
-      descriptionKey: 'admin.upstreamRateMonitor.description'
     }
   },
   {

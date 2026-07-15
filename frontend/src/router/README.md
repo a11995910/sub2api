@@ -38,9 +38,14 @@ This directory contains the Vue Router configuration for the Sub2API frontend ap
 | `/admin/users`     | AdminUsersView     | User management                 |
 | `/admin/groups`    | AdminGroupsView    | Group management                |
 | `/admin/accounts`  | AdminAccountsView  | Account management              |
-| `/admin/upstream-rate-monitors` | AdminUpstreamRateMonitors | 上游分组倍率监控 |
 | `/admin/proxies`   | AdminProxiesView   | Proxy management                |
 | `/admin/redeem`    | AdminRedeemView    | Redeem code management          |
+
+### Developer Documentation
+
+| Path | Component | Description |
+| --- | --- | --- |
+| `/developer-docs` | DeveloperDocsView | 文本、图片与视频 HTTP API 接入文档 |
 
 ### Special Routes
 

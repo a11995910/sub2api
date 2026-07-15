@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
+      <!-- Right: Developer Docs + Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex min-w-0 items-center gap-3">
         <!-- Quick Link -->
         <a
@@ -35,6 +35,16 @@
           <span class="min-w-0 truncate">{{ quickLinkText }}</span>
           <Icon name="externalLink" size="sm" class="shrink-0" />
         </a>
+
+        <!-- Developer Docs -->
+        <router-link
+          to="/developer-docs"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
+          :title="t('nav.developerDocs')"
+        >
+          <Icon name="book" size="sm" />
+          <span class="hidden lg:inline">{{ t('nav.developerDocs') }}</span>
+        </router-link>
 
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
@@ -173,6 +183,11 @@
                 <router-link to="/keys" @click="closeDropdown" class="dropdown-item">
                   <Icon name="key" size="sm" />
                   {{ t('nav.apiKeys') }}
+                </router-link>
+
+                <router-link to="/developer-docs" @click="closeDropdown" class="dropdown-item lg:hidden">
+                  <Icon name="book" size="sm" />
+                  {{ t('nav.developerDocs') }}
                 </router-link>
 
                 <a
