@@ -71,7 +71,7 @@ func setupAccountAdminRouterForTest() (*gin.Engine, *stubAdminService) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	adminSvc := newStubAdminService()
-	accountHandler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	accountHandler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts", accountHandler.Create)
 	return router, adminSvc
 }

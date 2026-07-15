@@ -682,12 +682,14 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 		return nil, 0, nil, openAIResponsesImageResult{}, false, collectErr
 	}
 	if len(finalResults) > 0 {
+		reconcileOpenAIResponsesImageResultSizes(finalResults, &finalMeta)
 		return finalResults, createdAt, usageRaw, finalMeta, true, nil
 	}
 
 	if len(fallbackResults) > 0 {
 		firstMeta := fallbackResults[0]
 		mergeOpenAIResponsesImageMeta(&firstMeta, responseMeta)
+		reconcileOpenAIResponsesImageResultSizes(fallbackResults, &firstMeta)
 		return fallbackResults, createdAt, usageRaw, firstMeta, foundFinal, nil
 	}
 	return nil, createdAt, usageRaw, openAIResponsesImageResult{}, foundFinal, nil
@@ -1556,6 +1558,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
 			}
+			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			if len(finalResults) == 0 {
 				outputErr := fmt.Errorf("upstream did not return image output")
 				// 软失败：response.completed 事件里没有图片。记录上游诊断摘要到 ops，
@@ -1665,6 +1668,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			}
 			for _, img := range materializedResults {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
+			}
+			reconcileOpenAIResponsesImageResultSizes(materializedResults, nil)
+			for _, img := range materializedResults {
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {
 					continue
@@ -1903,6 +1909,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
+		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
+		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
+			expectedTaskID := account.GetCredential("task_id")
+			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
+				return nil, fmt.Errorf("agent identity task recovery failed: %w", err)
+			}
+			return s.forwardOpenAIImagesOAuth(markAgentIdentityTaskRecoveryTried(ctx), c, account, parsed, channelMappedModel)
+		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
