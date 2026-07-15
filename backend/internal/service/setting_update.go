@@ -70,6 +70,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err != nil {
 		return nil, err
 	}
+	if err := normalizeCheckinSettings(settings); err != nil {
+		return nil, err
+	}
 	if err := s.normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
 		return nil, err
 	}
@@ -297,6 +300,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		settings.AffiliateRebatePerInviteeCap = AffiliateRebatePerInviteeCapDefault
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
+	updates[SettingKeyCheckinEnabled] = strconv.FormatBool(settings.CheckinEnabled)
+	updates[SettingKeyCheckinContent] = settings.CheckinContent
+	updates[SettingKeyCheckinDailyReward] = strconv.FormatFloat(settings.CheckinDailyReward, 'f', 8, 64)
+	updates[SettingKeyCheckinExtraReward4] = strconv.FormatFloat(settings.CheckinExtraReward4, 'f', 8, 64)
+	updates[SettingKeyCheckinExtraReward16] = strconv.FormatFloat(settings.CheckinExtraReward16, 'f', 8, 64)
 	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {

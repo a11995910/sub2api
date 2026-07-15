@@ -183,6 +183,15 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
+		// 每日签到配置（默认关闭；每日奖励为 0 表示未配置发奖能力）
+		SettingKeyCheckinEnabled:       "false",
+		SettingKeyCheckinContent:       CheckinContentDefault,
+		SettingKeyCheckinDailyReward:   "0",
+		SettingKeyCheckinExtraReward4:  "0",
+		SettingKeyCheckinExtraReward16: "0",
+		SettingKeyCheckinRewardMin:     "0",
+		SettingKeyCheckinRewardMax:     "0",
+
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 
@@ -332,6 +341,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if perInviteeCap, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebatePerInviteeCap], 64); err == nil && perInviteeCap >= 0 {
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
 	}
+	checkinSettings := parseCheckinSettings(settings)
+	result.CheckinEnabled = checkinSettings.Enabled
+	result.CheckinContent = checkinSettings.Content
+	result.CheckinDailyReward = checkinSettings.DailyReward
+	result.CheckinExtraReward4 = checkinSettings.ExtraReward4
+	result.CheckinExtraReward16 = checkinSettings.ExtraReward16
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
 
 	// 敏感信息直接返回，方便测试连接时使用

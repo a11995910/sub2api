@@ -221,6 +221,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
+		SettingKeyCheckinEnabled,
+		SettingKeyCheckinContent,
+		SettingKeyCheckinDailyReward,
+		SettingKeyCheckinExtraReward4,
+		SettingKeyCheckinExtraReward16,
+		SettingKeyCheckinRewardMin,
+		SettingKeyCheckinRewardMax,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
 	}
@@ -279,6 +286,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
 	}
+	checkinSettings := parseCheckinSettings(settings)
 
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -333,6 +341,12 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
+
+		CheckinEnabled:       checkinSettings.Enabled,
+		CheckinContent:       checkinSettings.Content,
+		CheckinDailyReward:   checkinSettings.DailyReward,
+		CheckinExtraReward4:  checkinSettings.ExtraReward4,
+		CheckinExtraReward16: checkinSettings.ExtraReward16,
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 

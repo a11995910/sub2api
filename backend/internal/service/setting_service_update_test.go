@@ -461,6 +461,42 @@ func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfig
 	require.True(t, got.APIKeyACLTrustForwardedIP)
 }
 
+func TestSettingService_UpdateAndParseCheckinSettings(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		CheckinEnabled:       true,
+		CheckinContent:       "  每日签到领灵石  ",
+		CheckinDailyReward:   0.25,
+		CheckinExtraReward4:  1,
+		CheckinExtraReward16: 5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyCheckinEnabled])
+	require.Equal(t, "每日签到领灵石", repo.updates[SettingKeyCheckinContent])
+	require.Equal(t, "0.25000000", repo.updates[SettingKeyCheckinDailyReward])
+	require.Equal(t, "1.00000000", repo.updates[SettingKeyCheckinExtraReward4])
+	require.Equal(t, "5.00000000", repo.updates[SettingKeyCheckinExtraReward16])
+
+	got := svc.parseSettings(repo.updates)
+	require.True(t, got.CheckinEnabled)
+	require.Equal(t, "每日签到领灵石", got.CheckinContent)
+	require.InDelta(t, 0.25, got.CheckinDailyReward, 0.0001)
+	require.InDelta(t, 1, got.CheckinExtraReward4, 0.0001)
+	require.InDelta(t, 5, got.CheckinExtraReward16, 0.0001)
+}
+
+func TestSettingService_UpdateSettings_RejectsEnabledCheckinWithoutReward(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{CheckinEnabled: true})
+	require.Error(t, err)
+	require.Equal(t, "INVALID_CHECKIN_REWARD", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}
+
 func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) {
 	t.Run("后台设置优先", func(t *testing.T) {
 		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
