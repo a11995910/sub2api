@@ -80,7 +80,7 @@ describe('渠道视频定价兼容', () => {
     })
   })
 
-  it('video 模式参考图附加价按张原样回填，不按 MTok 放大', () => {
+  it('video 模式历史参考图价格不再回填', () => {
     const result = mapChannelPricingToForm(createPricing({
       billing_mode: BILLING_MODE_VIDEO,
       input_price: 0.01,
@@ -88,7 +88,7 @@ describe('渠道视频定价兼容', () => {
     }))
 
     expect(result.billing_mode).toBe(BILLING_MODE_VIDEO)
-    expect(result.input_price).toBe(0.01)
+    expect(result.input_price).toBeNull()
   })
 
   it('账号统计价格映射保留历史 per_request 模式及层级价格', () => {

@@ -1378,10 +1378,6 @@ const (
 	defaultGrokImagineVideo15Price720P  = 0.14
 	defaultGrokImagineVideo15Price1080P = 0.25
 
-	// xAI 对图生视频的参考图输入独立收费，单位为 USD/张。
-	defaultGrokImagineVideoReferenceImagePrice   = 0.002
-	defaultGrokImagineVideo15ReferenceImagePrice = 0.01
-
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
 )
@@ -1470,45 +1466,6 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 		ActualCost:  actualCost,
 		BillingMode: string(BillingModeVideo),
 	}
-}
-
-// AddVideoReferenceImageCost 把图生视频参考图输入费合并进既有视频输出费用。
-// override 为 nil 时使用模型官方默认价；显式 0 表示参考图免费。
-func (s *BillingService) AddVideoReferenceImageCost(
-	cost *CostBreakdown,
-	model string,
-	referenceImageCount int,
-	override *float64,
-	rateMultiplier float64,
-) *CostBreakdown {
-	if cost == nil {
-		cost = &CostBreakdown{BillingMode: string(BillingModeVideo)}
-	}
-	if referenceImageCount <= 0 {
-		return cost
-	}
-	// 统一按次计算返回的媒体费用只有总额；视频路径在叠加输入费前补齐输出费用分类。
-	if cost.OutputCost == 0 && cost.InputCost == 0 && cost.ImageOutputCost == 0 &&
-		cost.CacheCreationCost == 0 && cost.CacheReadCost == 0 {
-		cost.OutputCost = cost.TotalCost
-	}
-
-	unitPrice := getDefaultGrokImagineVideoReferenceImagePrice(model)
-	if override != nil && *override >= 0 {
-		unitPrice = *override
-	}
-	inputCost := unitPrice * float64(referenceImageCount)
-	if rateMultiplier < 0 {
-		rateMultiplier = 0
-	}
-
-	cost.InputCost += inputCost
-	cost.TotalCost += inputCost
-	cost.ActualCost += inputCost * rateMultiplier
-	if cost.BillingMode == "" {
-		cost.BillingMode = string(BillingModeVideo)
-	}
-	return cost
 }
 
 // getImageUnitPrice 获取图片单价
@@ -1657,15 +1614,4 @@ func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, 
 	default:
 		return 0, false
 	}
-}
-
-func getDefaultGrokImagineVideoReferenceImagePrice(model string) float64 {
-	model = strings.ToLower(strings.TrimSpace(model))
-	if strings.HasPrefix(model, "grok-imagine-video-1.5") {
-		return defaultGrokImagineVideo15ReferenceImagePrice
-	}
-	if strings.HasPrefix(model, "grok-imagine-video") {
-		return defaultGrokImagineVideoReferenceImagePrice
-	}
-	return 0
 }

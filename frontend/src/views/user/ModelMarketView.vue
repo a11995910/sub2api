@@ -132,7 +132,6 @@
 
             <div
               class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"
-              :class="model.kind === 'video' && videoResolutionsForModel(model.name).length === 3 ? 'lg:grid-cols-4' : ''"
             >
               <template v-if="model.kind === 'image'">
                 <PriceTile
@@ -160,10 +159,6 @@
                   :key="resolution"
                   :label="formatSelectedVideoTierLabel(model, resolution)"
                   :value="formatSelectedVideoTier(model, resolution)"
-                />
-                <PriceTile
-                  :label="t('modelMarket.referenceImageSurcharge')"
-                  :value="formatSelectedVideoReferenceImage(model)"
                 />
               </template>
               <template v-else-if="model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST">
@@ -230,7 +225,6 @@ import { formatMultiplier } from '@/utils/formatters'
 import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   resolveVideoPriceQuote,
-  resolveVideoReferenceImageQuote,
   videoResolutionsForModel,
   type VideoResolution,
 } from '@/utils/videoPricing'
@@ -335,7 +329,7 @@ const pricingSignature = (pricing: UserSupportedModelPricing | null): string => 
   if (!pricing) return 'no-pricing'
   return JSON.stringify({
     billing_mode: pricing.billing_mode,
-    input_price: pricing.input_price,
+    input_price: pricing.billing_mode === BILLING_MODE_VIDEO ? null : pricing.input_price,
     output_price: pricing.output_price,
     cache_write_price: pricing.cache_write_price,
     cache_read_price: pricing.cache_read_price,
@@ -555,18 +549,6 @@ function selectedVideoQuote(model: GroupMarketModel, resolution: VideoResolution
 function formatSelectedVideoTier(model: GroupMarketModel, resolution: VideoResolution): string {
   const resolved = selectedVideoQuote(model, resolution)
   return resolved ? formatScaled(resolved.effectivePrice, 1) : '-'
-}
-
-function formatSelectedVideoReferenceImage(model: GroupMarketModel): string {
-  const group = selectedGroup.value?.group
-  if (!group) return '-'
-  const resolved = resolveVideoReferenceImageQuote({
-    group,
-    pricing: model.pricing,
-    modelName: model.name,
-    userGroupRate: userGroupRates.value[group.id],
-  })
-  return resolved ? `+${formatScaled(resolved.effectivePrice, 1)}` : '-'
 }
 
 function formatSelectedVideoTierLabel(model: GroupMarketModel, resolution: VideoResolution): string {

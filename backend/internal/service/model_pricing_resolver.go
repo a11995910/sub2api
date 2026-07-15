@@ -29,9 +29,6 @@ type ResolvedPricing struct {
 	// 按次/图片/视频模式：默认价格（未命中层级时使用；视频单位为每秒）
 	DefaultPerRequestPrice float64
 
-	// 视频模式：每张参考图附加价。复用渠道 input_price 存储，但单位是 USD/张而非 USD/token。
-	ReferenceImagePrice *float64
-
 	// 来源标识
 	Source string // "channel", "litellm", "fallback"
 
@@ -205,14 +202,10 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 }
 
 // applyRequestTierOverrides 应用按次/图片/视频模式的渠道覆盖。
-// video 模式额外复用 input_price 保存参考图按张附加价。
 func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModelPricing, resolved *ResolvedPricing) {
 	resolved.RequestTiers = filterValidIntervals(chPricing.Intervals)
 	if chPricing.PerRequestPrice != nil {
 		resolved.DefaultPerRequestPrice = *chPricing.PerRequestPrice
-	}
-	if resolved.Mode == BillingModeVideo {
-		resolved.ReferenceImagePrice = chPricing.InputPrice
 	}
 }
 

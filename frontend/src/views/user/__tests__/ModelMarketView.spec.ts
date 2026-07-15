@@ -438,7 +438,7 @@ describe('ModelMarketView', () => {
     expect(cardText).toContain('1080p / 秒当前0.14 灵石')
   })
 
-  it('video-1.5 模型广场独立展示自身渠道价和参考图附加价', async () => {
+  it('video-1.5 模型广场独立展示自身渠道价且不展示参考图费用', async () => {
     const videoGroup = groupFixture({
       id: 8,
       name: '视频分组',
@@ -475,7 +475,8 @@ describe('ModelMarketView', () => {
 
     const cardText = modelCard(wrapper, 'grok-imagine-video-1.5').text()
     expect(cardText).toContain('720p / 秒当前0.22 灵石')
-    expect(cardText).toContain('+0.01 灵石')
+    expect(cardText).toContain('1080p / 秒')
+    expect(cardText).not.toContain('+0.01 灵石')
   })
 
   it('视频名称模型使用 token 定价时展示文本倍率', async () => {

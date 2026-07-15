@@ -1225,7 +1225,6 @@ export default {
     currentPrice: '当前',
     officialPrice: '官方',
     discount: '优惠',
-    referenceImageSurcharge: '参考图附加 / 张',
     test: '去测试',
     stats: {
       models: '可调用模型',
@@ -1322,7 +1321,6 @@ export default {
     running: '测试中...',
     runSuccess: '测试完成',
     runFailed: '测试失败',
-    videoPriceWithReference: '{resolution} {total} / {unit}（视频 {output} + 参考图 {reference}）',
     perImage: '张'
     ,perSecond: '秒'
   },
@@ -2881,9 +2879,6 @@ export default {
         perRequestPriceRequired: '按次/图片/视频计费模式必须设置默认价格或至少一个计费层级',
         perSecondPrice: '每秒价格',
         perSecondUnit: '灵石/秒',
-        videoReferenceImagePrice: '参考图附加价',
-        videoReferenceImagePricePlaceholder: '按模型使用官方价',
-        perImageUnit: '灵石/张',
         tierLabel: '层级',
         resolution: '分辨率',
         modelMapping: '模型映射',

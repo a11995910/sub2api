@@ -223,7 +223,7 @@
         </div>
 
         <div v-else-if="entry.billing_mode === 'video'">
-          <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <div class="mt-3">
             <div>
               <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('admin.channels.form.defaultVideoPrice') }}
@@ -231,14 +231,6 @@
               </label>
               <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
                 type="number" step="any" min="0" class="input mt-1 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">
-                {{ t('admin.channels.form.videoReferenceImagePrice') }}
-                <span class="ml-1 font-normal text-gray-400">{{ t('admin.channels.form.perImageUnit') }}</span>
-              </label>
-              <input :value="entry.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
-                type="number" step="any" min="0" class="input mt-1 text-sm" :placeholder="t('admin.channels.form.videoReferenceImagePricePlaceholder')" />
             </div>
           </div>
 

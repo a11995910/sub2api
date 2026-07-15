@@ -68,16 +68,16 @@ export function perTokenToMTok(val: number | null | undefined): number | null {
   return parseFloat((val * MTOK).toPrecision(10))
 }
 
-/** video 模式的 input_price 表示参考图按张附加价，其余模式仍按 token 单价换算。 */
+/** video 模式保留 input_price 以兼容历史配置，但参考图不再收费，读写时统一清空。 */
 export function pricingInputToForm(mode: BillingMode, val: number | null | undefined): number | null {
-  return mode === 'video' ? (val ?? null) : perTokenToMTok(val)
+  return mode === 'video' ? null : perTokenToMTok(val)
 }
 
 export function pricingInputToAPI(
   mode: BillingMode,
   val: number | string | null | undefined,
 ): number | null {
-  return mode === 'video' ? toNullableNumber(val) : mTokToPerToken(val)
+  return mode === 'video' ? null : mTokToPerToken(val)
 }
 
 export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEntry[] {

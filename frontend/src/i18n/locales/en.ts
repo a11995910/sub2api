@@ -1221,7 +1221,6 @@ export default {
     currentPrice: 'Current',
     officialPrice: 'Official',
     discount: 'Discount',
-    referenceImageSurcharge: 'Reference image / image',
     test: 'Test',
     stats: {
       models: 'Callable Models',
@@ -1318,7 +1317,6 @@ export default {
     running: 'Running...',
     runSuccess: 'Test completed',
     runFailed: 'Test failed',
-    videoPriceWithReference: '{resolution} {total} / {unit} (video {output} + reference image {reference})',
     perImage: 'image'
     ,perSecond: 'sec'
   },
@@ -2805,9 +2803,6 @@ export default {
         perRequestPriceRequired: 'Price or billing tiers required for per-request/image/video billing mode',
         perSecondPrice: 'Price per Second',
         perSecondUnit: 'credits/sec',
-        videoReferenceImagePrice: 'Reference image surcharge',
-        videoReferenceImagePricePlaceholder: 'Use the model default',
-        perImageUnit: 'credits/image',
         tierLabel: 'Tier',
         resolution: 'Resolution',
         modelMapping: 'Model Mapping',

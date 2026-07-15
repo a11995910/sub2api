@@ -10,7 +10,6 @@ import {
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
-  resolveVideoReferenceImageQuote,
   videoResolutionsForModel,
 } from '@/utils/videoPricing'
 
@@ -261,37 +260,6 @@ describe('resolveVideoPriceQuote', () => {
       pricing: null,
       modelName: 'unknown-video-model',
       resolution: '720p',
-    })).toBeNull()
-  })
-})
-
-describe('resolveVideoReferenceImageQuote', () => {
-  it.each([
-    ['grok-imagine-video', 0.002],
-    ['grok-imagine-video-1.5', 0.01],
-  ] as const)('%s 使用官方参考图附加价', (modelName, basePrice) => {
-    expect(resolveVideoReferenceImageQuote({
-      group: groupFixture({ rate_multiplier: 2 }),
-      pricing: null,
-      modelName,
-    })).toMatchObject({ basePrice, effectivePrice: basePrice * 2, source: 'system_default' })
-  })
-
-  it('video 渠道 input_price 覆盖参考图附加价并保留显式零价', () => {
-    const pricing = pricingFixture(BILLING_MODE_VIDEO, 0.14)
-    pricing.input_price = 0
-    expect(resolveVideoReferenceImageQuote({
-      group: groupFixture(),
-      pricing,
-      modelName: 'grok-imagine-video-1.5',
-    })).toMatchObject({ basePrice: 0, effectivePrice: 0, source: 'channel_default' })
-  })
-
-  it('token 视频条目不提供参考图附加价', () => {
-    expect(resolveVideoReferenceImageQuote({
-      group: groupFixture(),
-      pricing: pricingFixture(BILLING_MODE_TOKEN, null),
-      modelName: 'grok-imagine-video-1.5',
     })).toBeNull()
   })
 })

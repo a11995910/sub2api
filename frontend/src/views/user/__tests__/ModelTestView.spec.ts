@@ -76,7 +76,6 @@ const messages: Record<string, string> = {
   'modelTest.summary.price': '价格预览',
   'modelTest.uploadReferenceImages': '上传图片',
   'modelTest.uploadVideoReferenceImage': '添加参考图',
-  'modelTest.videoPriceWithReference': '{resolution} {total} / {unit}（视频 {output} + 参考图 {reference}）',
   'modelTest.validation.missingSelection': '请先选择模型、分组和 API Key',
   'modelTest.validation.promptRequired': '请输入提示词',
   'modelTest.validation.videoReferenceImageUnsupported': '当前模型不支持起始参考图',
@@ -775,7 +774,7 @@ describe('ModelTestView', () => {
     await fileInput.trigger('change')
     await flushPromises()
 
-    expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.13 灵石 / 8秒（视频 1.12 灵石 + 参考图 0.01 灵石）')
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.12 灵石 / 8秒')
   })
 
   it('video-1.5 无参考图且标准模型条目缺失时使用标准模型系统价', async () => {

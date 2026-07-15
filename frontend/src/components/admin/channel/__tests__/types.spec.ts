@@ -97,10 +97,10 @@ describe('transitionPricingBillingMode', () => {
   })
 })
 
-describe('视频参考图价格转换', () => {
-  it('video 模式按张价格前后端保持原值', () => {
-    expect(pricingInputToForm('video', 0.01)).toBe(0.01)
-    expect(pricingInputToAPI('video', 0.01)).toBe(0.01)
+describe('视频历史参考图价格兼容', () => {
+  it('video 模式历史输入价在表单和保存时统一清空', () => {
+    expect(pricingInputToForm('video', 0.01)).toBeNull()
+    expect(pricingInputToAPI('video', 0.01)).toBeNull()
   })
 
   it('token 模式继续执行每百万 token 换算', () => {

@@ -337,7 +337,6 @@ import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind, ty
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
-  resolveVideoReferenceImageQuote,
   videoResolutionsForModel,
   type VideoBillingUnit,
   type VideoResolution,
@@ -432,7 +431,7 @@ const pricingSignature = (pricing: UserSupportedModelPricing | null): string => 
   if (!pricing) return 'no-pricing'
   return JSON.stringify({
     billing_mode: pricing.billing_mode,
-    input_price: pricing.input_price,
+    input_price: pricing.billing_mode === BILLING_MODE_VIDEO ? null : pricing.input_price,
     output_price: pricing.output_price,
     cache_write_price: pricing.cache_write_price,
     cache_read_price: pricing.cache_read_price,
@@ -608,16 +607,7 @@ const currentPricePreview = computed(() => {
     const total = resolved.billingUnit === 'second'
       ? resolved.effectivePrice * duration
       : resolved.effectivePrice
-    const referenceQuote = referenceImages.value.length > 0
-      ? resolveVideoReferenceImageQuote({
-          group,
-          pricing: billingContext.pricing,
-          modelName: billingContext.modelName,
-          userGroupRate: userGroupRates.value[group.id],
-        })
-      : null
-    const referenceCost = (referenceQuote?.effectivePrice ?? 0) * referenceImages.value.length
-    return formatVideoQuote(total, resolved.billingUnit, videoResolution.value, duration, referenceCost)
+    return formatVideoQuote(total, resolved.billingUnit, videoResolution.value, duration)
   }
   return textPricePreview(model.pricing, group)
 })
@@ -736,22 +726,11 @@ function formatVideoQuote(
   billingUnit: VideoBillingUnit,
   resolution: VideoResolution,
   duration: number,
-  referenceCost = 0,
 ): string {
   const unit = billingUnit === 'second'
     ? `${duration}${t('modelTest.perSecond')}`
     : t('availableChannels.pricing.billingModePerRequest')
-  const total = outputCost + referenceCost
-  if (referenceCost > 0) {
-    return t('modelTest.videoPriceWithReference', {
-      resolution,
-      total: formatScaled(total, 1),
-      unit,
-      output: formatScaled(outputCost, 1),
-      reference: formatScaled(referenceCost, 1),
-    })
-  }
-  return `${resolution} ${formatScaled(total, 1)} / ${unit}`
+  return `${resolution} ${formatScaled(outputCost, 1)} / ${unit}`
 }
 
 function imageSizeTier(size: string): string {
