@@ -30,6 +30,7 @@ const messages: Record<string, string> = {
   'modelTest.fields.prompt': '提示词',
   'modelTest.fields.referenceImages': '参考图片',
   'modelTest.fields.videoReferenceImage': '起始参考图（可选）',
+  'modelTest.fields.videoReferenceImages': '视频参考图（可选）',
   'modelTest.fields.videoDuration': '视频时长（秒）',
   'modelTest.fields.videoResolution': '视频分辨率',
   'modelTest.fields.type': '类型',
@@ -54,7 +55,8 @@ const messages: Record<string, string> = {
   'modelTest.referenceImageTypeError': '请选择图片文件',
   'modelTest.referenceImagesHint': '上传后将调用图片编辑接口',
   'modelTest.videoReferenceImageHint': '可上传 1 张起始参考图',
-  'modelTest.videoReferenceImageUnsupported': '当前模型 {model} 不支持起始参考图，请选择 grok-imagine-video-1.5。',
+  'modelTest.videoReferenceImagesHint': '支持上传最多 {count} 张参考图；超过 {size} 时会自动压缩',
+  'modelTest.videoReferenceImageUnsupported': '当前模型 {model} 不支持视频参考图，请选择支持参考图的视频模型。',
   'modelTest.videoReferenceImageCompressing': '图片大小为 {original}，正在压缩到 {target}',
   'modelTest.videoReferenceImageCompressed': '图片已从 {original} 压缩到 {compressed}',
   'modelTest.videoReferenceImageCompressedSize': '{original} -> {compressed}',
@@ -76,6 +78,7 @@ const messages: Record<string, string> = {
   'modelTest.summary.price': '价格预览',
   'modelTest.uploadReferenceImages': '上传图片',
   'modelTest.uploadVideoReferenceImage': '添加参考图',
+  'modelTest.uploadVideoReferenceImages': '上传参考图',
   'modelTest.validation.missingSelection': '请先选择模型、分组和 API Key',
   'modelTest.validation.promptRequired': '请输入提示词',
   'modelTest.validation.videoReferenceImageUnsupported': '当前模型不支持起始参考图',
@@ -816,7 +819,7 @@ describe('ModelTestView', () => {
     expect(summaryValue(wrapper, '价格预览')).toBe('720p 0.56 灵石 / 8秒')
   })
 
-  it('标准视频模型禁用起始参考图并显示可操作提示', async () => {
+  it('标准视频模型支持多张参考图并显示对应提示', async () => {
     const videoGroup = groupFixture({
       id: 9,
       name: '视频分组',
@@ -843,8 +846,68 @@ describe('ModelTestView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.find('input[type="file"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('当前模型 grok-imagine-video 不支持起始参考图，请选择 grok-imagine-video-1.5。')
+    expect(wrapper.find('input[type="file"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('input[type="file"]').attributes('multiple')).toBeDefined()
+    expect(wrapper.text()).toContain('支持上传最多 4 张参考图；超过 1.0 MB 时会自动压缩')
+  })
+
+  it('标准视频模型提交时会保留全部参考图', async () => {
+    const videoGroup = groupFixture({
+      id: 9,
+      name: '视频分组',
+      platform: 'grok',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({
+      id: 909,
+      key: 'sk-video-key-1234567890',
+      group_id: 9,
+    })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [videoGroup],
+        supported_models: [{
+          name: 'grok-imagine-video',
+          platform: 'grok',
+          kind: 'video',
+          pricing: null,
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+    testVideoGeneration.mockResolvedValue({
+      payload: { status: 'done' },
+      requestID: 'video-request-multiple-images',
+    })
+    fetchVideoContent.mockResolvedValue(new Blob(['video-content'], { type: 'video/mp4' }))
+
+    const wrapper = mountView()
+    await flushPromises()
+    const fileInput = wrapper.find('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [
+        new File(['reference image one'], 'one.png', { type: 'image/png' }),
+        new File(['reference image two'], 'two.jpg', { type: 'image/jpeg' }),
+      ],
+      configurable: true,
+    })
+    await fileInput.trigger('change')
+    await flushPromises()
+    await wrapper.find('textarea').setValue('展示产品细节')
+    await wrapper.find('form').trigger('submit')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
+
+    expect(testVideoGeneration).toHaveBeenCalledTimes(1)
+    const request = testVideoGeneration.mock.calls[0][0] as Record<string, unknown>
+    expect(request.startingImageDataUrl).toBeUndefined()
+    expect(request.referenceImageDataUrls).toEqual([
+      'data:image/png;base64,cmVmZXJlbmNlIGltYWdlIG9uZQ==',
+      'data:image/jpeg;base64,cmVmZXJlbmNlIGltYWdlIHR3bw==',
+    ])
   })
 
   it('视频生成完成后通过内容接口创建 Blob 播放地址并在卸载时释放', async () => {

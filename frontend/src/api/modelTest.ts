@@ -34,7 +34,11 @@ export interface VideoGenerationTestRequest extends GatewayTestOptions {
   prompt: string
   resolution?: string
   duration?: number
+  /** 兼容旧调用方的单张起始图字段。 */
   imageDataUrl?: string
+  /** video-1.5 使用单张起始图，标准视频模型使用多张参考图。 */
+  startingImageDataUrl?: string
+  referenceImageDataUrls?: string[]
   pollIntervalMs?: number
   timeoutMs?: number
 }
@@ -209,7 +213,14 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
   }
   if (req.resolution?.trim()) payload.resolution = req.resolution.trim()
   if (Number.isFinite(req.duration)) payload.duration = Math.max(1, Math.min(15, Math.floor(Number(req.duration))))
-  if (req.imageDataUrl?.trim()) payload.image = { url: req.imageDataUrl.trim() }
+  const startingImageDataUrl = req.startingImageDataUrl?.trim() || req.imageDataUrl?.trim()
+  if (startingImageDataUrl) payload.image = { url: startingImageDataUrl }
+  const referenceImageDataUrls = (req.referenceImageDataUrls || [])
+    .map((url) => url.trim())
+    .filter(Boolean)
+  if (referenceImageDataUrls.length > 0) {
+    payload.reference_images = referenceImageDataUrls.map((url) => ({ url }))
+  }
 
   const created = await postGateway<unknown>('/v1/videos/generations', req.apiKey, payload, req.signal)
   const requestID = extractVideoRequestID(created)

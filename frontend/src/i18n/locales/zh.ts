@@ -1264,6 +1264,7 @@ export default {
       videoDuration: '视频时长（秒）',
       referenceImages: '参考图片',
       videoReferenceImage: '起始参考图（可选）',
+      videoReferenceImages: '视频参考图（可选）',
       maxTokens: '最大输出'
     },
     placeholders: {
@@ -1281,7 +1282,8 @@ export default {
     imageSizeAdaptivePreview: '自适应（{tier} 预估）',
     referenceImagesHint: '上传后将调用图片编辑接口，可在提示词中说明修改方式。',
     videoReferenceImageHint: '支持上传 1 张起始图；超过 {size} 时会先自动压缩，再执行图生视频。',
-    videoReferenceImageUnsupported: '当前模型 {model} 不支持起始参考图，请选择 grok-imagine-video-1.5。',
+    videoReferenceImagesHint: '支持上传最多 {count} 张参考图；超过 {size} 时会先自动压缩，再执行参考图生视频。',
+    videoReferenceImageUnsupported: '当前模型 {model} 不支持视频参考图，请选择支持参考图的视频模型。',
     videoReferenceImageCompressing: '图片大小为 {original}，超过安全上传限制，正在自动压缩到 {target} 以内。',
     videoReferenceImageCompressed: '图片已从 {original} 压缩到 {compressed}，将使用压缩后的图片生成视频。',
     videoReferenceImageCompressedSize: '{original} -> {compressed}',
@@ -1289,6 +1291,7 @@ export default {
     compressingVideoReferenceImage: '正在压缩',
     uploadReferenceImages: '上传图片',
     uploadVideoReferenceImage: '添加参考图',
+    uploadVideoReferenceImages: '上传参考图',
     removeReferenceImage: '移除参考图',
     referenceImageLimit: '最多上传 {count} 张参考图片',
     referenceImageTypeError: '请选择图片文件',
@@ -1309,7 +1312,7 @@ export default {
     validation: {
       missingSelection: '请先选择模型、分组和 API Key',
       promptRequired: '请输入提示词',
-      videoReferenceImageUnsupported: '当前模型不支持起始参考图，请移除参考图或选择 grok-imagine-video-1.5。'
+      videoReferenceImageUnsupported: '当前模型不支持视频参考图，请移除参考图或选择支持参考图的视频模型。'
     },
     noActiveKey: '当前没有可用的 active API Key，请先创建或启用一个 Key。',
     noGroupKey: '当前分组“{group}”没有可用的 active API Key，请先创建或绑定该分组的 Key。',

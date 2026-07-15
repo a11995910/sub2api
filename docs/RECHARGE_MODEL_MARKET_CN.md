@@ -171,7 +171,7 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 视频模式支持选择实际计费模型允许的分辨率和 `1-15` 秒时长：标准模型允许 `480p / 720p`，1.5 图生视频允许 `480p / 720p / 1080p`。测试台先向 `/v1/videos/generations` 提交真实生成请求，再使用返回的 `request_id` 轮询 `/v1/videos/{request_id}`；任务完成后通过 `/v1/videos/{request_id}/content` 携带当前 API Key 获取视频 Blob 并播放，避免浏览器绕过账号代理直连 xAI 视频 CDN。内容接口只接受任务状态中由 xAI 返回的 `vidgen.x.ai` HTTPS MP4 地址，并限制允许路径、响应类型和 128MB 最大体积，不提供任意 URL 代理能力。失败、取消和超时会给出明确错误。
 
-测试台的“起始参考图”属于 image-to-video 工作流，只对 `grok-imagine-video-1.5` 及其版本别名开放；标准版和未知视频模型会禁用上传入口，并提示选择 1.5。图片以官方 `image.url` 结构提交，旧客户端使用的 `image.image_url` 会由网关兼容转换。起始图原文件不超过图片上传总限制 20MB；超过 1MB 的图片会在浏览器中提示并自动缩放、转换为 JPEG，压缩到 1MB 以内后再上传。压缩失败时不会提交生成请求。非测试台客户端提交超过 1MB 的内联 data URL 时，网关在账号调度和计费前返回 `413 invalid_request_error`，避免把上游请求体限制显示成 `502`。
+测试台按视频模型能力提供两类图片入口：`grok-imagine-video-1.5` 及其版本别名使用 image-to-video 工作流，最多上传 1 张起始图，并以官方 `image.url` 结构提交；标准 `grok-imagine-video` 使用 reference-to-video 工作流，测试台最多上传 4 张参考图，并以 `reference_images[].url` 结构提交，图片用于人物、物品或风格参考，不固定为视频首帧；未知视频模型会禁用图片上传入口。旧客户端使用的 `image.image_url` 会由网关兼容转换。视频图片单张原文件不超过图片上传总限制 20MB；超过 1MB 的图片会在浏览器中提示并自动缩放、转换为 JPEG，压缩到 1MB 以内后再上传。压缩失败时不会提交生成请求。非测试台客户端提交超过 1MB 的内联 data URL 时，网关在账号调度和计费前返回 `413 invalid_request_error`，避免把上游请求体限制显示成 `502`。
 
 标准版 `grok-imagine-video` 的官方参考图引导工作流与起始图不同：API 客户端使用 `reference_images[].url` 提交，图片只影响人物、物品或风格，不固定为视频首帧；`grok-imagine-video-1.5` 不接受 `reference_images`。网关拒绝同一请求同时携带 `image` 和 `reference_images`，模型与图片模式不匹配时返回 `400 invalid_request_error`。参考图不产生额外费用，视频实际扣费仅按服务端规范化后的分辨率、时长、视频数量和有效倍率计算；状态查询和视频内容读取不重复扣费。
 

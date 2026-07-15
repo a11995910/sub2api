@@ -109,7 +109,7 @@ describe('modelTest api', () => {
       prompt: '海浪慢镜头',
       resolution: '720p',
       duration: 10,
-      imageDataUrl: 'data:image/png;base64,aW1n',
+      startingImageDataUrl: 'data:image/png;base64,aW1n',
       pollIntervalMs: 0,
     })
 
@@ -127,6 +127,35 @@ describe('modelTest api', () => {
     expect(result).toEqual({
       payload: expect.objectContaining({ status: 'completed' }),
       requestID: 'video-123',
+    })
+  })
+
+  it('标准视频模型会把多张参考图传给 reference_images', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"id":"video-456","video":{"url":"https://cdn.test/video.mp4"}}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await testVideoGeneration({
+      apiKey: 'sk-test',
+      model: 'grok-imagine-video',
+      prompt: '展示产品细节',
+      referenceImageDataUrls: [
+        'data:image/jpeg;base64,one',
+        'data:image/jpeg;base64,two',
+      ],
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      model: 'grok-imagine-video',
+      prompt: '展示产品细节',
+      reference_images: [
+        { url: 'data:image/jpeg;base64,one' },
+        { url: 'data:image/jpeg;base64,two' },
+      ],
     })
   })
 

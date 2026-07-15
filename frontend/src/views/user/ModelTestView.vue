@@ -181,7 +181,9 @@
               <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <label class="input-label mb-1">
-                    {{ selectedKind === 'video' ? t('modelTest.fields.videoReferenceImage') : t('modelTest.fields.referenceImages') }}
+                    {{ selectedKind === 'video'
+                      ? (videoStartingImageSupported ? t('modelTest.fields.videoReferenceImage') : t('modelTest.fields.videoReferenceImages'))
+                      : t('modelTest.fields.referenceImages') }}
                   </label>
                   <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ referenceImageHint }}</p>
                 </div>
@@ -192,7 +194,7 @@
                   <input
                     type="file"
                     accept="image/*"
-                    :multiple="selectedKind === 'image'"
+                    :multiple="selectedKind === 'image' || videoReferenceImagesSupported"
                     class="hidden"
                     :disabled="referenceImagesFull || running || compressingReferenceImage"
                     @change="handleReferenceImagesSelected"
@@ -508,14 +510,31 @@ const selectedApiKey = computed(() => activeKeys.value.find((key) => key.id === 
 const videoStartingImageSupported = computed(() =>
   selectedKind.value === 'video' && supportsVideoStartingImage(selectedModel.value?.name || ''),
 )
+const videoReferenceImagesSupported = computed(() => {
+  if (selectedKind.value !== 'video' || videoStartingImageSupported.value) return false
+  const modelName = selectedModel.value?.name.trim().toLowerCase() || ''
+  return modelName.startsWith('grok-imagine-video')
+})
+const videoReferenceInputSupported = computed(() =>
+  videoStartingImageSupported.value || videoReferenceImagesSupported.value,
+)
+const activeReferenceImageLimit = computed(() =>
+  selectedKind.value === 'video' && videoStartingImageSupported.value ? 1 : maxReferenceImages,
+)
 const referenceImagesFull = computed(() =>
-  (selectedKind.value === 'video' && !videoStartingImageSupported.value) ||
-  referenceImages.value.length >= (selectedKind.value === 'video' ? 1 : maxReferenceImages),
+  (selectedKind.value === 'video' && !videoReferenceInputSupported.value) ||
+  referenceImages.value.length >= activeReferenceImageLimit.value,
 )
 const referenceImageHint = computed(() => {
   if (selectedKind.value !== 'video') return t('modelTest.referenceImagesHint')
   if (videoStartingImageSupported.value) {
     return t('modelTest.videoReferenceImageHint', { size: formatFileSize(VIDEO_REFERENCE_IMAGE_MAX_BYTES) })
+  }
+  if (videoReferenceImagesSupported.value) {
+    return t('modelTest.videoReferenceImagesHint', {
+      count: maxReferenceImages,
+      size: formatFileSize(VIDEO_REFERENCE_IMAGE_MAX_BYTES),
+    })
   }
   return t('modelTest.videoReferenceImageUnsupported', {
     model: selectedModel.value?.displayName || selectedModel.value?.name || '-',
@@ -523,6 +542,11 @@ const referenceImageHint = computed(() => {
 })
 const referenceImageUploadLabel = computed(() => {
   if (selectedKind.value !== 'video') return t('modelTest.uploadReferenceImages')
+  if (videoReferenceImagesSupported.value) {
+    return compressingReferenceImage.value
+      ? t('modelTest.compressingVideoReferenceImage')
+      : t('modelTest.uploadVideoReferenceImages')
+  }
   return compressingReferenceImage.value
     ? t('modelTest.compressingVideoReferenceImage')
     : t('modelTest.uploadVideoReferenceImage')
@@ -636,11 +660,22 @@ watch(() => referenceImages.value.length, syncSelectedModel)
 watch(() => selectedModel.value?.name, () => {
   imageUploadError.value = ''
   imageUploadNotice.value = ''
-  if (selectedKind.value === 'video' && referenceImages.value.length > 0 && !videoStartingImageSupported.value) {
+  if (selectedKind.value !== 'video' || !selectedModel.value || referenceImages.value.length === 0) {
+    return
+  }
+  if (!videoReferenceInputSupported.value) {
     clearReferenceImages()
     imageUploadError.value = t('modelTest.videoReferenceImageUnsupported', {
       model: selectedModel.value?.displayName || selectedModel.value?.name || '-',
     })
+    return
+  }
+  if (videoStartingImageSupported.value && referenceImages.value.length > 1) {
+    for (const item of referenceImages.value.slice(1)) {
+      URL.revokeObjectURL(item.previewUrl)
+    }
+    referenceImages.value = referenceImages.value.slice(0, 1)
+    imageUploadError.value = t('modelTest.referenceImageLimit', { count: 1 })
   }
 })
 
@@ -926,7 +961,7 @@ async function runTest() {
     appStore.showWarning(t('modelTest.validation.promptRequired'))
     return
   }
-  if (selectedKind.value === 'video' && referenceImages.value.length > 0 && !videoStartingImageSupported.value) {
+  if (selectedKind.value === 'video' && referenceImages.value.length > 0 && !videoReferenceInputSupported.value) {
     appStore.showWarning(t('modelTest.validation.videoReferenceImageUnsupported'))
     return
   }
@@ -963,7 +998,12 @@ async function runTest() {
         prompt: cleanPrompt,
         resolution: videoResolution.value,
         duration: normalizedVideoDuration(),
-        imageDataUrl: referenceImages.value[0] ? await fileToDataURL(referenceImages.value[0].file) : undefined,
+        startingImageDataUrl: videoStartingImageSupported.value && referenceImages.value[0]
+          ? await fileToDataURL(referenceImages.value[0].file)
+          : undefined,
+        referenceImageDataUrls: videoReferenceImagesSupported.value
+          ? await Promise.all(referenceImages.value.map((item) => fileToDataURL(item.file)))
+          : undefined,
         signal: runController.signal,
       })
       if (videoResult.requestID) {
@@ -1029,7 +1069,7 @@ async function handleReferenceImagesSelected(event: Event) {
   imageUploadNotice.value = ''
   if (files.length === 0) return
 
-  if (selectedKind.value === 'video' && !videoStartingImageSupported.value) {
+  if (selectedKind.value === 'video' && !videoReferenceInputSupported.value) {
     imageUploadError.value = t('modelTest.videoReferenceImageUnsupported', {
       model: selectedModel.value?.displayName || selectedModel.value?.name || '-',
     })
@@ -1037,7 +1077,7 @@ async function handleReferenceImagesSelected(event: Event) {
     return
   }
 
-  const activeLimit = selectedKind.value === 'video' ? 1 : maxReferenceImages
+  const activeLimit = activeReferenceImageLimit.value
   const remainingSlots = activeLimit - referenceImages.value.length
   if (remainingSlots <= 0) {
     imageUploadError.value = t('modelTest.referenceImageLimit', { count: activeLimit })
