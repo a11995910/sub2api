@@ -11,10 +11,19 @@ const sidebarSource = readFileSync(resolve(testDir, '../../components/layout/App
 const adminApiSource = readFileSync(resolve(testDir, '../../api/admin/index.ts'), 'utf8')
 
 describe('开发文档入口', () => {
-  it('注册所有登录用户可访问的独立路由', () => {
+  it('注册无需登录即可访问的独立路由', () => {
     expect(routerSource).toContain("path: '/developer-docs'")
     expect(routerSource).toContain("name: 'DeveloperDocs'")
     expect(routerSource).toContain("component: () => import('@/views/user/DeveloperDocsView.vue')")
+    const routeStart = routerSource.indexOf("path: '/developer-docs'")
+    const routeEnd = routerSource.indexOf("path: '/profile'", routeStart)
+    const routeBlock = routerSource.slice(routeStart, routeEnd)
+    const backendAllowedPathsStart = routerSource.indexOf('const BACKEND_MODE_ALLOWED_PATHS')
+    const backendAllowedPathsEnd = routerSource.indexOf('const BACKEND_MODE_CALLBACK_PATHS', backendAllowedPathsStart)
+    const backendAllowedPathsBlock = routerSource.slice(backendAllowedPathsStart, backendAllowedPathsEnd)
+
+    expect(routeBlock).toContain('requiresAuth: false')
+    expect(backendAllowedPathsBlock).toContain("'/developer-docs'")
   })
 
   it('将入口放在公告按钮左侧，并提供窄屏菜单入口', () => {

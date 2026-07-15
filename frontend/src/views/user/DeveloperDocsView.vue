@@ -1,11 +1,62 @@
 <template>
-  <AppLayout>
-    <div class="mx-auto max-w-7xl">
+  <div class="isolate min-h-dvh bg-gray-50 text-gray-900 antialiased dark:bg-dark-950 dark:text-white">
+    <header class="sticky top-0 z-30 border-b border-gray-200/70 bg-white/95 px-4 py-3 backdrop-blur dark:border-dark-800 dark:bg-dark-950/95 md:px-6">
+      <nav class="mx-auto flex max-w-7xl items-center justify-between gap-4" aria-label="开发文档导航">
+        <a href="/" aria-label="Homepage" class="flex min-w-0 items-center gap-3">
+          <img
+            :src="siteLogo || '/logo.png'"
+            alt=""
+            class="size-9 shrink-0 rounded-lg border border-gray-200 bg-white object-contain shadow-sm dark:border-dark-700 dark:bg-dark-900 dark:shadow-none"
+          >
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ siteName }}</p>
+            <p class="hidden text-xs text-gray-500 dark:text-dark-400 sm:block">开放 API 开发文档</p>
+          </div>
+        </a>
+
+        <div class="flex shrink-0 items-center gap-2">
+          <a
+            :href="markdownUrl"
+            class="btn btn-secondary"
+            title="打开适合 AI 直接读取的 Markdown 文档"
+          >
+            <Icon name="book" size="sm" />
+            <span class="hidden sm:inline">Markdown</span>
+          </a>
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="btn btn-primary">
+            {{ isAuthenticated ? '进入控制台' : '登录' }}
+          </router-link>
+        </div>
+      </nav>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-6 md:px-6 lg:px-8 lg:py-8">
+      <section class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-100">可直接把本页 URL 投喂给 AI 进行开发</p>
+            <p class="mt-1 text-sm leading-6 text-emerald-800 dark:text-emerald-200">
+              AI 可以根据本页生成接入代码；如果使用的 AI 不执行网页 JavaScript，请改用公开的 Markdown 地址。
+            </p>
+          </div>
+          <div class="flex shrink-0 flex-wrap gap-2">
+            <button type="button" class="btn btn-secondary" @click="copyPageUrl">
+              <Icon name="copy" size="sm" />
+              复制本页 URL
+            </button>
+            <a :href="markdownUrl" class="btn btn-primary">
+              <Icon name="book" size="sm" />
+              AI 纯文本版
+            </a>
+          </div>
+        </div>
+      </section>
+
       <div class="border-b border-gray-200 pb-6 dark:border-dark-700">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div class="min-w-0">
             <p class="text-sm font-medium text-primary-600 dark:text-primary-400">API 开发文档</p>
-            <h2 class="mt-2 text-3xl font-semibold text-gray-950 dark:text-white">直接通过 HTTP 接入文本、图片与视频</h2>
+            <h1 class="mt-2 text-3xl font-semibold text-gray-950 dark:text-white">直接通过 HTTP 接入文本、图片与视频</h1>
             <p class="mt-3 max-w-3xl text-sm leading-6 text-gray-600 dark:text-dark-300">
               适合不使用 Codex、Claude Code 或专用客户端的开发者。所有示例都使用标准 HTTP 请求，可在服务端、脚本或自动化平台中调用。
             </p>
@@ -221,16 +272,17 @@
           </section>
         </article>
       </div>
-    </div>
-  </AppLayout>
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
-import AppLayout from '@/components/layout/AppLayout.vue'
 import CodeSnippet from '@/components/docs/CodeSnippet.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 
 const DocHeading = defineComponent({
   props: {
@@ -248,8 +300,17 @@ const DocHeading = defineComponent({
 })
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
+const { copyToClipboard } = useClipboard()
 const activeSection = ref('quick-start')
 let observer: IntersectionObserver | null = null
+
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+const dashboardPath = computed(() => authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+const pageUrl = computed(() => typeof window === 'undefined' ? '/developer-docs' : window.location.href)
+const markdownUrl = computed(() => typeof window === 'undefined' ? '/developer-docs.md' : `${window.location.origin}/developer-docs.md`)
 
 const sections = [
   { id: 'quick-start', label: '快速开始', shortLabel: '开始' },
@@ -430,7 +491,12 @@ function scrollToSection(id: string) {
   activeSection.value = id
 }
 
+function copyPageUrl() {
+  copyToClipboard(pageUrl.value, '开发文档地址已复制')
+}
+
 onMounted(() => {
+  authStore.checkAuth()
   if (!appStore.publicSettingsLoaded) appStore.fetchPublicSettings()
   observer = new IntersectionObserver((entries) => {
     const visible = entries

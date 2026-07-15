@@ -12,6 +12,20 @@ import (
 // immutable caching without relying on a reverse proxy to classify paths.
 const staticAssetsCacheControl = "public, max-age=31536000, immutable"
 
+const markdownContentType = "text/markdown; charset=utf-8"
+
+// applyEmbeddedStaticHeaders sets response metadata that cannot be inferred
+// reliably by net/http for embedded public files.
+func applyEmbeddedStaticHeaders(header http.Header, cleanPath string) {
+	if header == nil {
+		return
+	}
+	if strings.EqualFold(path.Ext(cleanPath), ".md") {
+		header.Set("Content-Type", markdownContentType)
+	}
+	applyStaticAssetCacheHeaders(header, cleanPath)
+}
+
 // isFingerprintedEmbeddedAssetPath reports whether a cleaned URL path refers to
 // a Vite asset whose filename contains the default eight-character build hash.
 func isFingerprintedEmbeddedAssetPath(cleanPath string) bool {

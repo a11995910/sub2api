@@ -45,7 +45,8 @@ This directory contains the Vue Router configuration for the Sub2API frontend ap
 
 | Path | Component | Description |
 | --- | --- | --- |
-| `/developer-docs` | DeveloperDocsView | 文本、图片与视频 HTTP API 接入文档 |
+| `/developer-docs` | DeveloperDocsView | 无需登录的文本、图片与视频 HTTP API 接入文档 |
+| `/developer-docs.md` | Static Markdown | 供 AI 和不执行 JavaScript 的抓取器直接读取 |
 
 ### Special Routes
 

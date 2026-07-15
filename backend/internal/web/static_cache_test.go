@@ -69,3 +69,42 @@ func TestApplyStaticAssetCacheHeaders(t *testing.T) {
 		})
 	})
 }
+
+func TestApplyEmbeddedStaticHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sets_utf8_content_type_for_markdown", func(t *testing.T) {
+		t.Parallel()
+		header := make(http.Header)
+		applyEmbeddedStaticHeaders(header, "developer-docs.md")
+		assert.Equal(t, markdownContentType, header.Get("Content-Type"))
+	})
+
+	t.Run("matches_markdown_extension_case_insensitively", func(t *testing.T) {
+		t.Parallel()
+		header := make(http.Header)
+		applyEmbeddedStaticHeaders(header, "GUIDE.MD")
+		assert.Equal(t, markdownContentType, header.Get("Content-Type"))
+	})
+
+	t.Run("preserves_other_content_type_inference", func(t *testing.T) {
+		t.Parallel()
+		header := make(http.Header)
+		applyEmbeddedStaticHeaders(header, "logo.png")
+		assert.Empty(t, header.Get("Content-Type"))
+	})
+
+	t.Run("keeps_immutable_cache_for_fingerprinted_assets", func(t *testing.T) {
+		t.Parallel()
+		header := make(http.Header)
+		applyEmbeddedStaticHeaders(header, "assets/index-AbCd1234.js")
+		assert.Equal(t, staticAssetsCacheControl, header.Get("Cache-Control"))
+	})
+
+	t.Run("nil_header_is_noop", func(t *testing.T) {
+		t.Parallel()
+		assert.NotPanics(t, func() {
+			applyEmbeddedStaticHeaders(nil, "developer-docs.md")
+		})
+	})
+}

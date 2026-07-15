@@ -623,6 +623,14 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
 		assert.Empty(t, w.Header().Get("Cache-Control"))
 
+		markdownWriter := httptest.NewRecorder()
+		markdownRequest := httptest.NewRequest(http.MethodGet, "/developer-docs.md", nil)
+		router.ServeHTTP(markdownWriter, markdownRequest)
+
+		assert.Equal(t, http.StatusOK, markdownWriter.Code)
+		assert.Equal(t, markdownContentType, markdownWriter.Header().Get("Content-Type"))
+		assert.Contains(t, markdownWriter.Body.String(), "给 AI 的实现要求")
+
 		entries, err := fs.ReadDir(server.distFS, "assets")
 		require.NoError(t, err)
 		fingerprintedPath := ""
@@ -789,6 +797,21 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+	})
+
+	t.Run("serves_markdown_as_utf8", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/developer-docs.md", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, markdownContentType, w.Header().Get("Content-Type"))
+		assert.Contains(t, w.Body.String(), "给 AI 的实现要求")
 	})
 
 	t.Run("serves_index_html_for_root", func(t *testing.T) {

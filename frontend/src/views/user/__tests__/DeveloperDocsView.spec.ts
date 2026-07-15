@@ -8,8 +8,19 @@ const source = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), '../DeveloperDocsView.vue'),
   'utf8'
 )
+const markdownSource = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), '../../../../public/developer-docs.md'),
+  'utf8'
+)
 
 describe('DeveloperDocsView 开发文档契约', () => {
+  it('作为独立公共页面提供 AI 投喂入口', () => {
+    expect(source).not.toContain('<AppLayout>')
+    expect(source).toContain('可直接把本页 URL 投喂给 AI 进行开发')
+    expect(source).toContain('/developer-docs.md')
+    expect(markdownSource).toContain('给 AI 的实现要求')
+  })
+
   it('同时说明图片 Base64 与 URL 两种传输方式', () => {
     expect(source).toContain('response_format: b64_json')
     expect(source).toContain('response_format: url')
@@ -31,5 +42,13 @@ describe('DeveloperDocsView 开发文档契约', () => {
     expect(source).toContain('/v1/videos/{request_id}/content')
     expect(source).toContain('reference_images[].url')
     expect(source).toContain('image.url')
+  })
+
+  it('纯文本版同步覆盖图片格式和视频三步流程', () => {
+    expect(markdownSource).toContain('response_format')
+    expect(markdownSource).toContain('b64_json')
+    expect(markdownSource).toContain('data[].url')
+    expect(markdownSource).toContain('/v1/videos/generations')
+    expect(markdownSource).toContain('/v1/videos/{request_id}/content')
   })
 })
