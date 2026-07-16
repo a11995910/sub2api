@@ -116,6 +116,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const settings = ref<CheckinSettings | null>(null)
 const summary = ref<CheckinMonthSummary | null>(null)
+const checkinRewardCycleDays = 16
 
 const canCheckin = computed(() => Boolean(settings.value?.enabled && !summary.value?.today_checked && (settings.value.daily_reward || 0) > 0))
 const primaryActionText = computed(() => {
@@ -126,8 +127,12 @@ const primaryActionText = computed(() => {
 const nextBonusText = computed(() => {
   const next = summary.value?.next_extra_milestone
   if (!next) return t('checkin.noMoreBonus')
-  const current = summary.value?.consecutive_count || 0
-  return t('checkin.daysToBonus', { days: Math.max(0, next - current), milestone: next })
+  const consecutiveCount = summary.value?.consecutive_count || 0
+  const current = summary.value?.consecutive_cycle_day ?? (consecutiveCount > 0
+    ? (consecutiveCount - 1) % checkinRewardCycleDays + 1
+    : 0)
+  const days = next >= current ? next - current : checkinRewardCycleDays - current + next
+  return t('checkin.daysToBonus', { days: Math.max(0, days), milestone: next })
 })
 const weekdayLabels = computed(() => [
   t('checkin.weekdays.sun'),

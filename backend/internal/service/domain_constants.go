@@ -39,6 +39,7 @@ const (
 	CheckinContentDefault                   = "每日签到"
 	CheckinExtraMilestoneFirstDefault       = 4
 	CheckinExtraMilestoneSecondDefault      = 16
+	CheckinRewardCycleDays                  = CheckinExtraMilestoneSecondDefault
 )
 
 // Platform constants

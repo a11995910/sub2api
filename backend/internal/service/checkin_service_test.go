@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -58,6 +59,45 @@ func TestCheckinExtraRewardUsesConsecutiveCount(t *testing.T) {
 	reward, milestones = checkinExtraReward(settings, 16)
 	require.InDelta(t, 16, reward, 0.0001)
 	require.Equal(t, []int{CheckinExtraMilestoneSecondDefault}, milestones)
+
+	reward, milestones = checkinExtraReward(settings, 20)
+	require.InDelta(t, 4, reward, 0.0001)
+	require.Equal(t, []int{CheckinExtraMilestoneFirstDefault}, milestones)
+
+	reward, milestones = checkinExtraReward(settings, 32)
+	require.InDelta(t, 16, reward, 0.0001)
+	require.Equal(t, []int{CheckinExtraMilestoneSecondDefault}, milestones)
+
+	reward, milestones = checkinExtraReward(settings, 17)
+	require.InDelta(t, 0, reward, 0.0001)
+	require.Empty(t, milestones)
+}
+
+func TestCheckinCycleDayAndNextMilestoneRepeatEveryCycle(t *testing.T) {
+	tests := []struct {
+		consecutiveCount int
+		cycleDay         int
+		nextMilestone    int
+	}{
+		{consecutiveCount: 0, cycleDay: 0, nextMilestone: 4},
+		{consecutiveCount: 3, cycleDay: 3, nextMilestone: 4},
+		{consecutiveCount: 4, cycleDay: 4, nextMilestone: 16},
+		{consecutiveCount: 15, cycleDay: 15, nextMilestone: 16},
+		{consecutiveCount: 16, cycleDay: 16, nextMilestone: 4},
+		{consecutiveCount: 19, cycleDay: 3, nextMilestone: 4},
+		{consecutiveCount: 20, cycleDay: 4, nextMilestone: 16},
+		{consecutiveCount: 31, cycleDay: 15, nextMilestone: 16},
+		{consecutiveCount: 32, cycleDay: 16, nextMilestone: 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("consecutive_%d", tt.consecutiveCount), func(t *testing.T) {
+			require.Equal(t, tt.cycleDay, checkinCycleDay(tt.consecutiveCount))
+			next := nextCheckinExtraMilestone(tt.consecutiveCount)
+			require.NotNil(t, next)
+			require.Equal(t, tt.nextMilestone, *next)
+		})
+	}
 }
 
 func TestCheckinServiceNextConsecutiveCountResetsAfterMissedDay(t *testing.T) {
@@ -104,6 +144,38 @@ func TestCheckinServiceLegacyStreakBackfillUsesSingleRangeQuery(t *testing.T) {
 	require.Equal(t, 1, repo.listCalls)
 }
 
+func TestCheckinServiceBackfillsMissingSixteenDayReward(t *testing.T) {
+	today := checkinTestDate(2026, time.February, 17)
+	repo := &checkinRepositoryStub{records: make(map[string]CheckinRecord)}
+	for day := 1; day <= 16; day++ {
+		repo.records[formatDate(checkinTestDate(2026, time.February, day))] = checkinTestRecord(2026, time.February, day, day)
+	}
+	svc := &CheckinService{repo: repo}
+
+	backfill, err := svc.shouldBackfillSixteenDayReward(context.Background(), 1, today, 16)
+	require.NoError(t, err)
+	require.True(t, backfill)
+	require.Equal(t, 16, checkinConsecutiveCountForReward(32, backfill))
+}
+
+func TestCheckinServiceDoesNotBackfillSixteenDayRewardTwice(t *testing.T) {
+	today := checkinTestDate(2026, time.February, 17)
+	repo := &checkinRepositoryStub{records: make(map[string]CheckinRecord)}
+	for day := 1; day <= 16; day++ {
+		record := checkinTestRecord(2026, time.February, day, day)
+		if day == 16 {
+			record.ExtraMilestones = []int{CheckinExtraMilestoneSecondDefault}
+		}
+		repo.records[formatDate(checkinTestDate(2026, time.February, day))] = record
+	}
+	svc := &CheckinService{repo: repo}
+
+	backfill, err := svc.shouldBackfillSixteenDayReward(context.Background(), 1, today, 16)
+	require.NoError(t, err)
+	require.False(t, backfill)
+	require.Equal(t, 32, checkinConsecutiveCountForReward(32, backfill))
+}
+
 func TestCheckinServiceBuildMonthSummaryUsesCurrentConsecutiveCount(t *testing.T) {
 	today := checkinTestDate(2026, time.February, 21)
 	repo := &checkinRepositoryStub{records: make(map[string]CheckinRecord)}
@@ -133,6 +205,7 @@ func TestCheckinServiceBuildMonthSummaryKeepsYesterdayStreakBeforeTodayCheckin(t
 	require.NoError(t, err)
 	require.False(t, summary.TodayChecked)
 	require.Equal(t, 3, summary.ConsecutiveCount)
+	require.Equal(t, 3, summary.ConsecutiveCycleDay)
 }
 
 func TestCheckinServiceBuildMonthSummaryResetsWhenTodayAndYesterdayAreMissing(t *testing.T) {

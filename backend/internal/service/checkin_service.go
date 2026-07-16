@@ -103,14 +103,22 @@ func (s *CheckinService) Checkin(ctx context.Context, userID int64) (*CheckinRes
 	if err != nil {
 		return nil, fmt.Errorf("calculate consecutive checkins: %w", err)
 	}
-	extraReward, milestones := checkinExtraReward(settings, consecutiveCount)
+	backfillSixteenReward := false
+	if settings.ExtraReward16 > 0 && consecutiveCount >= CheckinExtraMilestoneSecondDefault {
+		backfillSixteenReward, err = s.shouldBackfillSixteenDayReward(txCtx, userID, today, consecutiveCount)
+		if err != nil {
+			return nil, fmt.Errorf("check historical sixteen-day reward: %w", err)
+		}
+	}
+	rewardConsecutiveCount := checkinConsecutiveCountForReward(consecutiveCount, backfillSixteenReward)
+	extraReward, milestones := checkinExtraReward(settings, rewardConsecutiveCount)
 	record := &CheckinRecord{
 		UserID:           userID,
 		CheckinDate:      today,
 		DailyReward:      settings.DailyReward,
 		ExtraReward:      extraReward,
 		MonthCount:       monthCount,
-		ConsecutiveCount: consecutiveCount,
+		ConsecutiveCount: rewardConsecutiveCount,
 		ExtraMilestones:  milestones,
 		CheckedInAt:      s.now().UTC(),
 	}
@@ -187,15 +195,16 @@ func (s *CheckinService) buildMonthSummary(ctx context.Context, userID int64, to
 	}
 	monthCount := len(records)
 	return CheckinMonthSummary{
-		Year:               monthStart.Year(),
-		Month:              int(monthStart.Month()),
-		Today:              formatDate(today),
-		TodayChecked:       todayChecked,
-		MonthCount:         monthCount,
-		ConsecutiveCount:   consecutiveCount,
-		DaysInMonth:        int(monthEnd.Sub(monthStart).Hours() / 24),
-		Records:            records,
-		NextExtraMilestone: nextCheckinExtraMilestone(consecutiveCount),
+		Year:                monthStart.Year(),
+		Month:               int(monthStart.Month()),
+		Today:               formatDate(today),
+		TodayChecked:        todayChecked,
+		MonthCount:          monthCount,
+		ConsecutiveCount:    consecutiveCount,
+		ConsecutiveCycleDay: checkinCycleDay(consecutiveCount),
+		DaysInMonth:         int(monthEnd.Sub(monthStart).Hours() / 24),
+		Records:             records,
+		NextExtraMilestone:  nextCheckinExtraMilestone(consecutiveCount),
 	}, nil
 }
 
@@ -256,6 +265,40 @@ func (s *CheckinService) legacyConsecutiveCheckinCountAt(ctx context.Context, us
 	}
 }
 
+func (s *CheckinService) shouldBackfillSixteenDayReward(ctx context.Context, userID int64, today time.Time, consecutiveCount int) (bool, error) {
+	if consecutiveCount < CheckinExtraMilestoneSecondDefault {
+		return false, nil
+	}
+	// 兼容周期奖励上线前的历史记录：连续链已达 16 天但从未留下第 16 天里程碑时，下一次签到补发一次。
+	start := truncateDate(today).AddDate(0, 0, -consecutiveCount)
+	records, err := s.repo.ListByUserAndDateRange(ctx, userID, start, truncateDate(today))
+	if err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		if hasCheckinMilestone(record, CheckinExtraMilestoneSecondDefault) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func checkinConsecutiveCountForReward(consecutiveCount int, backfillSixteenReward bool) int {
+	if backfillSixteenReward && consecutiveCount >= CheckinExtraMilestoneSecondDefault {
+		return CheckinExtraMilestoneSecondDefault
+	}
+	return consecutiveCount
+}
+
+func hasCheckinMilestone(record CheckinRecord, milestone int) bool {
+	for _, value := range record.ExtraMilestones {
+		if value == milestone {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *CheckinService) today() time.Time {
 	now := time.Now
 	if s != nil && s.now != nil {
@@ -290,7 +333,7 @@ func (s *CheckinService) addRewardBalance(ctx context.Context, userID int64, amo
 }
 
 func checkinExtraReward(settings CheckinSettings, consecutiveCount int) (float64, []int) {
-	switch consecutiveCount {
+	switch checkinCycleDay(consecutiveCount) {
 	case CheckinExtraMilestoneFirstDefault:
 		if settings.ExtraReward4 > 0 {
 			return settings.ExtraReward4, []int{CheckinExtraMilestoneFirstDefault}
@@ -304,15 +347,25 @@ func checkinExtraReward(settings CheckinSettings, consecutiveCount int) (float64
 }
 
 func nextCheckinExtraMilestone(consecutiveCount int) *int {
-	if consecutiveCount < CheckinExtraMilestoneFirstDefault {
+	cycleDay := checkinCycleDay(consecutiveCount)
+	if cycleDay < CheckinExtraMilestoneFirstDefault {
 		v := CheckinExtraMilestoneFirstDefault
 		return &v
 	}
-	if consecutiveCount < CheckinExtraMilestoneSecondDefault {
+	if cycleDay < CheckinExtraMilestoneSecondDefault {
 		v := CheckinExtraMilestoneSecondDefault
 		return &v
 	}
-	return nil
+	v := CheckinExtraMilestoneFirstDefault
+	return &v
+}
+
+func checkinCycleDay(consecutiveCount int) int {
+	if consecutiveCount <= 0 {
+		return 0
+	}
+	// 连续总天数继续跨月累计，奖励档位按固定 16 天周期映射，避免受月份边界影响。
+	return (consecutiveCount-1)%CheckinRewardCycleDays + 1
 }
 
 func monthBounds(day time.Time) (time.Time, time.Time) {

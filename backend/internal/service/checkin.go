@@ -27,15 +27,16 @@ type CheckinRecord struct {
 }
 
 type CheckinMonthSummary struct {
-	Year               int             `json:"year"`
-	Month              int             `json:"month"`
-	Today              string          `json:"today"`
-	TodayChecked       bool            `json:"today_checked"`
-	MonthCount         int             `json:"month_count"`
-	ConsecutiveCount   int             `json:"consecutive_count"`
-	DaysInMonth        int             `json:"days_in_month"`
-	Records            []CheckinRecord `json:"records"`
-	NextExtraMilestone *int            `json:"next_extra_milestone,omitempty"`
+	Year                int             `json:"year"`
+	Month               int             `json:"month"`
+	Today               string          `json:"today"`
+	TodayChecked        bool            `json:"today_checked"`
+	MonthCount          int             `json:"month_count"`
+	ConsecutiveCount    int             `json:"consecutive_count"`
+	ConsecutiveCycleDay int             `json:"consecutive_cycle_day"`
+	DaysInMonth         int             `json:"days_in_month"`
+	Records             []CheckinRecord `json:"records"`
+	NextExtraMilestone  *int            `json:"next_extra_milestone,omitempty"`
 }
 
 type CheckinOverview struct {

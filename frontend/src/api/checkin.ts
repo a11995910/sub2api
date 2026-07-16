@@ -29,6 +29,7 @@ export interface CheckinMonthSummary {
   today_checked: boolean
   month_count: number
   consecutive_count: number
+  consecutive_cycle_day: number
   days_in_month: number
   records: CheckinRecord[]
   next_extra_milestone?: number

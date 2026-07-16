@@ -25,10 +25,10 @@ const messages: Record<string, string> = {
   'checkin.monthCalendar': '{year} 年 {month} 月签到表',
   'checkin.rulesTitle': '签到规则',
   'checkin.ruleDaily': '每日只能签到一次，签到成功后发放 {reward}。',
-  'checkin.ruleBonus4': '连续第 4 天签到时，额外发放 {reward}。',
-  'checkin.ruleBonus16': '连续第 16 天签到时，额外发放 {reward}。',
-  'checkin.ruleMonthReset': '连续签到可跨自然月累计，任意一天未签到后从第 1 天重新计算。',
-  'checkin.daysToBonus': '还差 {days} 天连续签到到第 {milestone} 天',
+  'checkin.ruleBonus4': '每个连续签到周期第 4 天签到时，额外发放 {reward}。',
+  'checkin.ruleBonus16': '每个连续签到周期第 16 天签到时，额外发放 {reward}。',
+  'checkin.ruleMonthReset': '连续签到可跨自然月累计，每 16 天完成一轮后从第 1 天重新计算；任意一天未签到也从第 1 天重新计算。',
+  'checkin.daysToBonus': '还差 {days} 天到下一档（周期第 {milestone} 天）',
   'checkin.noMoreBonus': '当前连续周期的额外奖励已全部领取',
   'checkin.weekdays.sun': '日',
   'checkin.weekdays.mon': '一',
@@ -99,6 +99,7 @@ function overviewFixture() {
       today_checked: false,
       month_count: 12,
       consecutive_count: 3,
+      consecutive_cycle_day: 3,
       days_in_month: 31,
       records: [],
       next_extra_milestone: 4,
@@ -132,8 +133,30 @@ describe('CheckinView', () => {
 
     const text = wrapper.text()
     expect(text).toContain('每日只能签到一次，签到成功后发放 2.50 灵石。')
-    expect(text).toContain('连续第 4 天签到时，额外发放 4.00 灵石。')
-    expect(text).toContain('连续第 16 天签到时，额外发放 16.00 灵石。')
-    expect(text).toContain('还差 1 天连续签到到第 4 天')
+    expect(text).toContain('每个连续签到周期第 4 天签到时，额外发放 4.00 灵石。')
+    expect(text).toContain('每个连续签到周期第 16 天签到时，额外发放 16.00 灵石。')
+    expect(text).toContain('还差 1 天到下一档（周期第 4 天）')
+  })
+
+  it('第 16 天完成后提示下一周期的第 4 天奖励', async () => {
+    const overview = overviewFixture()
+    overview.summary.consecutive_count = 16
+    overview.summary.consecutive_cycle_day = 16
+    overview.summary.next_extra_milestone = 4
+    getOverview.mockResolvedValue(overview)
+
+    const wrapper = mount(CheckinView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('还差 4 天到下一档（周期第 4 天）')
   })
 })
