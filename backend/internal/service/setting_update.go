@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -52,6 +53,12 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
+		return nil, err
+	}
+	if err := s.validateAffiliateSubscriptionRewardGroup(ctx, settings.AffiliateSubscriptionRewardGroupID); err != nil {
+		return nil, err
+	}
+	if err := s.validateAPIKeyDefaultGroup(ctx, settings.APIKeyDefaultGroupID); err != nil {
 		return nil, err
 	}
 	normalizedWhitelist, err := NormalizeRegistrationEmailSuffixWhitelist(settings.RegistrationEmailSuffixWhitelist)
@@ -150,6 +157,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	settings.SMTPFallbacks = NormalizeSMTPFallbacks(settings.SMTPFallbacks)
+	smtpFallbacksJSON, err := json.Marshal(settings.SMTPFallbacks)
+	if err != nil {
+		return nil, fmt.Errorf("marshal smtp fallbacks: %w", err)
+	}
+	updates[SettingKeySMTPFallbacks] = string(smtpFallbacksJSON)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
@@ -262,6 +275,19 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
+	settings.QuickLinkText = strings.TrimSpace(settings.QuickLinkText)
+	settings.QuickLinkURL = strings.TrimSpace(settings.QuickLinkURL)
+	if settings.QuickLinkEnabled {
+		if settings.QuickLinkText == "" {
+			return nil, infraerrors.BadRequest("INVALID_QUICK_LINK_TEXT", "quick link text is required when enabled")
+		}
+		if err := config.ValidateAbsoluteHTTPURL(settings.QuickLinkURL); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_QUICK_LINK_URL", "quick link URL must be an absolute http(s) URL")
+		}
+	}
+	updates[SettingKeyQuickLinkEnabled] = strconv.FormatBool(settings.QuickLinkEnabled)
+	updates[SettingKeyQuickLinkText] = settings.QuickLinkText
+	updates[SettingKeyQuickLinkURL] = settings.QuickLinkURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
@@ -303,6 +329,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyAffiliateRebatePerInviteeCap] = strconv.FormatFloat(settings.AffiliateRebatePerInviteeCap, 'f', 8, 64)
 	updates[SettingKeyAffiliateAdminRechargeEnabled] = strconv.FormatBool(settings.AdminRechargeRebateEnabled)
+	if settings.AffiliateSubscriptionRewardGroupID < 0 {
+		settings.AffiliateSubscriptionRewardGroupID = AffiliateSubscriptionRewardGroupDefault
+	}
+	updates[SettingKeyAffiliateSubscriptionRewardGroup] = strconv.FormatInt(settings.AffiliateSubscriptionRewardGroupID, 10)
+	if settings.AffiliateSubscriptionRewardDays < 0 {
+		settings.AffiliateSubscriptionRewardDays = AffiliateSubscriptionRewardDaysDefault
+	}
+	if settings.AffiliateSubscriptionRewardDays > AffiliateSubscriptionRewardDaysMax {
+		settings.AffiliateSubscriptionRewardDays = AffiliateSubscriptionRewardDaysMax
+	}
+	updates[SettingKeyAffiliateSubscriptionRewardDays] = strconv.Itoa(settings.AffiliateSubscriptionRewardDays)
+	updates[SettingKeyAPIKeyDefaultGroupID] = strconv.FormatInt(settings.APIKeyDefaultGroupID, 10)
 	updates[SettingKeyCheckinEnabled] = strconv.FormatBool(settings.CheckinEnabled)
 	updates[SettingKeyCheckinContent] = settings.CheckinContent
 	updates[SettingKeyCheckinDailyReward] = strconv.FormatFloat(settings.CheckinDailyReward, 'f', 8, 64)

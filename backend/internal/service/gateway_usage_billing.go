@@ -660,6 +660,17 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
+	cacheBillingTokens := UsageTokens{
+		InputTokens:     result.Usage.InputTokens,
+		CacheReadTokens: result.Usage.CacheReadInputTokens,
+	}
+	if shifted := applyCacheHitQuarterToInput(&cacheBillingTokens, groupCacheHitQuarterToInputEnabled(apiKey)); shifted > 0 {
+		result.Usage.InputTokens = cacheBillingTokens.InputTokens
+		result.Usage.CacheReadInputTokens = cacheBillingTokens.CacheReadTokens
+		logger.LegacyPrintf("service.gateway", "cache_hit_quarter_to_input: %d cache_read_input_tokens -> input_tokens (group=%d account=%d)",
+			shifted, valueOrZero(apiKey.GroupID), account.ID)
+	}
+
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := 1.0
 	if s.cfg != nil {

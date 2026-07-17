@@ -1195,11 +1195,6 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 
 // openaiStreamingResult streaming response result
 
-func isJSONResponse(header http.Header) bool {
-	contentType := strings.ToLower(header.Get("Content-Type"))
-	return strings.Contains(contentType, "application/json") || strings.Contains(contentType, "+json")
-}
-
 // OpenAIRecordUsageInput input for recording usage
 
 // 请求的 User-Agent

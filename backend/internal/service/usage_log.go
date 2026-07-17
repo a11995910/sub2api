@@ -228,19 +228,6 @@ func applyCacheHitQuarterToInput(tokens *UsageTokens, enabled bool) int {
 	return shift
 }
 
-func applyClaudeUsageCacheHitQuarterToInput(usage *ClaudeUsage, enabled bool) int {
-	if usage == nil || !enabled || usage.CacheReadInputTokens <= 0 {
-		return 0
-	}
-	shift := usage.CacheReadInputTokens / 4
-	if shift <= 0 {
-		return 0
-	}
-	usage.CacheReadInputTokens -= shift
-	usage.InputTokens += shift
-	return shift
-}
-
 func groupCacheHitQuarterToInputEnabled(apiKey *APIKey) bool {
 	return apiKey != nil && apiKey.Group != nil && apiKey.Group.CacheHitQuarterToInput
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -76,22 +77,27 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
+	accountCandidates := make([]string, 0)
 	for _, acc := range accounts {
-		if acc.Platform != platform {
+		if !accountPlatformMatchesModelCandidatePlatform(acc.Platform, platform) {
 			continue
 		}
-		for model := range acc.GetModelMapping() {
-			model = strings.TrimSpace(model)
-			if model == "" {
-				continue
+		for model, mapped := range acc.GetModelMapping() {
+			for _, candidate := range []string{model, mapped} {
+				candidate = strings.TrimSpace(candidate)
+				if candidate == "" || strings.Contains(candidate, "*") {
+					continue
+				}
+				if _, ok := seen[candidate]; ok {
+					continue
+				}
+				seen[candidate] = struct{}{}
+				accountCandidates = append(accountCandidates, candidate)
 			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-			candidates = append(candidates, model)
 		}
 	}
+	sort.Strings(accountCandidates)
+	candidates = append(candidates, accountCandidates...)
 	return candidates, nil
 }
 
@@ -142,6 +148,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	subscriptionType := input.SubscriptionType
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
+	}
+	imageResponseFormat, err := NormalizeImageResponseFormat(input.ImageResponseFormat)
+	if err != nil {
+		return nil, err
 	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
@@ -226,6 +236,18 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
+	var image2KEnhancementGroupID *int64
+	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, allowImageGeneration, input.Image2KEnhancementEnabled, image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
+		return nil, err
+	}
+	image4KEnhancementGroupID := normalizeImageTierEnhancementGroupID(input.Image4KEnhancementEnabled, input.Image4KEnhancementGroupID)
+	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, allowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
+		return nil, err
+	}
+	image4KEnhancementModel := normalizeImageTierEnhancementModel(input.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
+	if input.Image4KEnhancementEnabled && image4KEnhancementModel == nil {
+		return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
+	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -271,8 +293,15 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowImageGeneration:            allowImageGeneration,
+		ImageResponseFormat:             imageResponseFormat,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
+		Image2KEnhancementEnabled:       input.Image2KEnhancementEnabled,
+		Image2KEnhancementGroupID:       image2KEnhancementGroupID,
+		Image4KEnhancementEnabled:       input.Image4KEnhancementEnabled,
+		Image4KEnhancementGroupID:       image4KEnhancementGroupID,
+		Image4KEnhancementModel:         image4KEnhancementModel,
 		ImageRateIndependent:            input.ImageRateIndependent,
+		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
@@ -466,14 +495,37 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
 	}
+	if input.ImageResponseFormat != nil {
+		imageResponseFormat, err := NormalizeImageResponseFormat(*input.ImageResponseFormat)
+		if err != nil {
+			return nil, err
+		}
+		group.ImageResponseFormat = imageResponseFormat
+	}
 	if input.AllowBatchImageGeneration != nil {
 		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
 	}
 	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false
 	}
+	if input.Image2KEnhancementEnabled != nil {
+		group.Image2KEnhancementEnabled = *input.Image2KEnhancementEnabled
+	}
+	group.Image2KEnhancementGroupID = nil
+	if input.Image4KEnhancementEnabled != nil {
+		group.Image4KEnhancementEnabled = *input.Image4KEnhancementEnabled
+	}
+	if input.Image4KEnhancementGroupID != nil {
+		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
+	}
+	if input.Image4KEnhancementModel != nil {
+		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(group.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
+	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
+	}
+	if input.CacheHitQuarterToInput != nil {
+		group.CacheHitQuarterToInput = *input.CacheHitQuarterToInput
 	}
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {
@@ -619,6 +671,22 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if !group.Image4KEnhancementEnabled {
+		group.Image4KEnhancementGroupID = nil
+		group.Image4KEnhancementModel = nil
+	}
+	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image2KEnhancementEnabled, group.Image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
+		return nil, err
+	}
+	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
+		return nil, err
+	}
+	if group.Image4KEnhancementEnabled {
+		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(true, group.Image4KEnhancementModel)
+		if group.Image4KEnhancementModel == nil {
+			return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
+		}
+	}
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

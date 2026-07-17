@@ -57,6 +57,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "false",
 		SettingKeySiteName:                                  "Sub2API",
 		SettingKeySiteLogo:                                  "",
+		SettingKeyQuickLinkEnabled:                          "false",
+		SettingKeyQuickLinkText:                             "",
+		SettingKeyQuickLinkURL:                              "",
 		SettingKeyPurchaseSubscriptionEnabled:               "false",
 		SettingKeyPurchaseSubscriptionURL:                   "",
 		SettingKeyTableDefaultPageSize:                      "20",
@@ -157,6 +160,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyForceEmailOnThirdPartySignup:              "false",
 		SettingKeySMTPPort:                                  "587",
 		SettingKeySMTPUseTLS:                                "false",
+		SettingKeySMTPFallbacks:                             "[]",
+		SettingKeyAffiliateSubscriptionRewardGroup:          strconv.FormatInt(AffiliateSubscriptionRewardGroupDefault, 10),
+		SettingKeyAffiliateSubscriptionRewardDays:           strconv.Itoa(AffiliateSubscriptionRewardDaysDefault),
+		SettingKeyAPIKeyDefaultGroupID:                      "0",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -281,6 +288,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFromName:                     settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                       settings[SettingKeySMTPUseTLS] == "true",
 		SMTPPasswordConfigured:           settings[SettingKeySMTPPassword] != "",
+		SMTPFallbacks:                    NormalizeSMTPFallbacks(mustParseSMTPFallbacks(settings[SettingKeySMTPFallbacks])),
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
@@ -291,6 +299,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
+		QuickLinkEnabled:                 settings[SettingKeyQuickLinkEnabled] == "true",
+		QuickLinkText:                    strings.TrimSpace(settings[SettingKeyQuickLinkText]),
+		QuickLinkURL:                     strings.TrimSpace(settings[SettingKeyQuickLinkURL]),
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
@@ -346,6 +357,18 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if perInviteeCap, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebatePerInviteeCap], 64); err == nil && perInviteeCap >= 0 {
 		result.AffiliateRebatePerInviteeCap = perInviteeCap
+	}
+	if rewardGroupID, err := strconv.ParseInt(strings.TrimSpace(settings[SettingKeyAffiliateSubscriptionRewardGroup]), 10, 64); err == nil && rewardGroupID > 0 {
+		result.AffiliateSubscriptionRewardGroupID = rewardGroupID
+	}
+	if rewardDays, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyAffiliateSubscriptionRewardDays])); err == nil && rewardDays >= 0 {
+		if rewardDays > AffiliateSubscriptionRewardDaysMax {
+			rewardDays = AffiliateSubscriptionRewardDaysMax
+		}
+		result.AffiliateSubscriptionRewardDays = rewardDays
+	}
+	if defaultGroupID, err := strconv.ParseInt(strings.TrimSpace(settings[SettingKeyAPIKeyDefaultGroupID]), 10, 64); err == nil && defaultGroupID > 0 {
+		result.APIKeyDefaultGroupID = defaultGroupID
 	}
 	result.AdminRechargeRebateEnabled = settings[SettingKeyAffiliateAdminRechargeEnabled] == "true"
 	checkinSettings := parseCheckinSettings(settings)
