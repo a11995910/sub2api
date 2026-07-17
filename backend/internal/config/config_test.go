@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,37 @@ func TestLoadGeneratedImageStoragePathFromEnv(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "/tmp/sub2api-generated-images", cfg.GeneratedImage.StoragePath)
+}
+
+func TestLoadImageStorageConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("IMAGE_STORAGE_ENABLED", "true")
+	t.Setenv("IMAGE_STORAGE_ENDPOINT", "https://storage.example.test")
+	t.Setenv("IMAGE_STORAGE_REGION", "test-region")
+	t.Setenv("IMAGE_STORAGE_BUCKET", "staging-images")
+	t.Setenv("IMAGE_STORAGE_ACCESS_KEY_ID", "test-access-key")
+	t.Setenv("IMAGE_STORAGE_SECRET_ACCESS_KEY", "test-secret-key")
+	t.Setenv("IMAGE_STORAGE_PREFIX", "async-images/")
+	t.Setenv("IMAGE_STORAGE_FORCE_PATH_STYLE", "true")
+	t.Setenv("IMAGE_STORAGE_PUBLIC_BASE_URL", "https://cdn.example.test/images")
+	t.Setenv("IMAGE_STORAGE_PRESIGN_EXPIRY_HOURS", "48")
+	t.Setenv("IMAGE_STORAGE_MAX_DOWNLOAD_BYTES", "1048576")
+
+	cfg, err := Load()
+
+	require.NoError(t, err)
+	require.True(t, cfg.ImageStorage.Enabled)
+	require.Equal(t, "https://storage.example.test", cfg.ImageStorage.Endpoint)
+	require.Equal(t, "test-region", cfg.ImageStorage.Region)
+	require.Equal(t, "staging-images", cfg.ImageStorage.Bucket)
+	require.Equal(t, "test-access-key", cfg.ImageStorage.AccessKeyID)
+	require.Equal(t, "test-secret-key", cfg.ImageStorage.SecretAccessKey)
+	require.Equal(t, "async-images/", cfg.ImageStorage.Prefix)
+	require.True(t, cfg.ImageStorage.ForcePathStyle)
+	require.Equal(t, "https://cdn.example.test/images", cfg.ImageStorage.PublicBaseURL)
+	require.Equal(t, 48, cfg.ImageStorage.PresignExpiry)
+	require.EqualValues(t, 1048576, cfg.ImageStorage.MaxDownloadByte)
+	require.True(t, cfg.ImageStorage.Active())
 }
 
 func TestNormalizeRunMode(t *testing.T) {
@@ -224,6 +256,9 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	}
 	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom != 0 {
 		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom)
+	}
+	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost != 0 {
+		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost)
 	}
 	if !cfg.Gateway.OpenAIWS.StoreDisabledForceNewConn {
 		t.Fatalf("Gateway.OpenAIWS.StoreDisabledForceNewConn = false, want true")
@@ -1877,6 +1912,42 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
 		},
 		{
+			name:    "scheduler_score_weights upstream_cost 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = -0.1 },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+		},
+		{
+			name:    "scheduler_score_weights reset 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = -0.1 },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+		},
+		{
+			name:    "scheduler_score_weights 不能为 NaN",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse = math.NaN() },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
+		},
+		{
+			name:    "scheduler_score_weights 不能为 Inf",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = math.Inf(1) },
+			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
+		},
+		{
+			name: "scheduler_score_weights 总和不能溢出",
+			mutate: func(c *Config) {
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = math.MaxFloat64
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Load = math.MaxFloat64
+			},
+			wantErr: "gateway.openai_ws.scheduler_score_weights base-weight sum must be finite",
+		},
+		{
+			name: "scheduler_score_weights 含 sticky 总和不能溢出",
+			mutate: func(c *Config) {
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = math.MaxFloat64
+				c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse = math.MaxFloat64
+			},
+			wantErr: "gateway.openai_ws.scheduler_score_weights total-weight sum must be finite",
+		},
+		{
 			name: "scheduler_score_weights 不能全为 0",
 			mutate: func(c *Config) {
 				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
@@ -1924,6 +1995,30 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
 		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
 		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = 0.1
+
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("upstream_cost 可作为唯一有效调度权重", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = 0.1
+
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("reset 可作为唯一有效调度权重", func(t *testing.T) {
+		cfg := buildValid(t)
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 0.1
 
 		require.NoError(t, cfg.Validate())
 	})

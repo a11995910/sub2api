@@ -1341,6 +1341,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	if err != nil {
 		return nil, err
 	}
+	body, sseUsage, convertedSSE := normalizeAnthropicNonStreamingResponseBody(body)
 
 	// 解析usage
 	var response struct {
@@ -1351,6 +1352,12 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 			return nil, s.invalidNonStreamingJSONFailoverError(ctx, resp, account, body, err, mappedModel)
 		}
 		return nil, fmt.Errorf("parse response: %w", err)
+	}
+	if sseUsage != nil {
+		response.Usage = *sseUsage
+	} else if parsedUsage := parseClaudeUsageFromResponseBody(body); parsedUsage != nil {
+		// 嵌套 cache_creation 明细是部分 Anthropic 兼容上游唯一返回的缓存计费字段。
+		response.Usage = *parsedUsage
 	}
 
 	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
@@ -1398,6 +1405,10 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
 			contentType = upstreamType
 		}
+	}
+	if convertedSSE {
+		contentType = "application/json"
+		c.Header("Content-Type", contentType)
 	}
 
 	body = reverseToolNamesIfPresent(c, body)

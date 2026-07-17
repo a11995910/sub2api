@@ -48,8 +48,13 @@
 - OpenAI 账号在 `accounts.extra.openai_long_context_billing_enabled` 保存布尔开关；数据库触发器为缺失或非法历史值补 `false`，并将父账号值同步到 Spark 影子账号。
 - `ops_system_logs.host VARCHAR(255)` 保存产生日志的应用主机，`idx_ops_system_logs_host_created_at` 支持按主机和时间倒序查询。
 - `channel_monitors.provider` 与 `channel_monitor_request_templates.provider` 的检查约束允许 `grok`。
+- `subscription_plans.currency VARCHAR(3) NOT NULL DEFAULT ''` 保存订阅套餐的展示币种；空值保持既有套餐的展示兼容。
+- `channel_model_pricing.image_input_price NUMERIC(20,12)` 支持图片输入 token 使用独立单价；未设置时服务按文本输入单价回退。
+- `usage_logs.image_input_tokens INTEGER NOT NULL DEFAULT 0` 与 `usage_logs.image_input_cost DECIMAL(20,10) NOT NULL DEFAULT 0` 分别保存图片输入 token 与费用，`total_cost` 的既有口径不变。
+- `audit_logs` 是管理面操作审计表，包含按创建时间、操作者和操作类型查询的索引；该表只追加记录，清理行为受审计日志保留设置和二次验证保护。
+- `groups.duplicate_operation_id VARCHAR(64)` 配合仅针对未删除分组的唯一索引，用于在网络响应不确定时恢复同一次分组复制操作。
 
-这些迁移是前向迁移，不执行自动降级。发布前必须备份数据库并记录 `schema_migrations`；迁移失败时不得手工伪造成功记录。回滚应用镜像时保留新增列、索引、触发器和约束，旧程序会忽略新增列，而数据库默认值和触发器继续保证旧写入可兼容；如确需删除结构，必须另建经过 staging 验证的反向迁移，并先评估 `accounts` 回填、`scheduler_outbox` 事件和历史用量解释能力的影响。
+这些迁移是前向迁移，不执行自动降级。staging 和 prod 切换前都必须备份各自数据库并记录 `schema_migrations`；迁移失败时不得手工伪造成功记录。回滚应用镜像时保留新增列、索引、触发器和约束，旧程序会忽略新增列，而数据库默认值和触发器继续保证旧写入可兼容；如确需删除结构，必须另建经过 staging 验证的反向迁移，并先评估 `accounts` 回填、`scheduler_outbox` 事件和历史用量解释能力的影响。
 
 ## 源码仓库
 

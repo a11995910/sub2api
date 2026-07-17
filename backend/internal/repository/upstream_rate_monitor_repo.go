@@ -293,10 +293,3 @@ func nullableTimeArg(t *time.Time) any {
 	}
 	return t.UTC()
 }
-
-func truncateString(value string, max int) string {
-	if len(value) <= max {
-		return value
-	}
-	return value[:max]
-}

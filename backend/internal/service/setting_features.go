@@ -77,6 +77,16 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsAffiliateAdminRechargeEnabled reports whether admin balance
+// deposits should participate in the affiliate rebate program.
+func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateAdminRechargeEnabled)
+	if err != nil {
+		return AdminRechargeRebateEnabledDefault
+	}
+	return value == "true"
+}
+
 // GetAffiliateRebateRatePercent 读取并 clamp 全局返利比例。
 // 解析失败、缺失或越界都回退到 AffiliateRebateRateDefault — 该比例从不抛错，
 // 调用方只关心一个可用的数值。
@@ -167,6 +177,44 @@ func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
 // 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
 func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 	return s.cfg.Totp.EncryptionKeyConfigured
+}
+
+// IsSessionBindingEnabled 检查会话 IP/UA 绑定是否启用（默认开启）。
+// 开启时会话与登录时的 IP/User-Agent 绑定，任一变化立即失效并撤销该会话。
+func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySessionBindingEnabled)
+	if err != nil {
+		return true // 默认开启
+	}
+	return value != "false"
+}
+
+// defaultAuditLogRetentionDays 审计日志默认保留天数。
+const defaultAuditLogRetentionDays = 180
+
+// GetAuditLogRetentionDays 审计日志保留天数（<=0 表示永久保留，仅支持手动清空）。
+func (s *SettingService) GetAuditLogRetentionDays(ctx context.Context) int {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAuditLogRetentionDays)
+	if err != nil {
+		return defaultAuditLogRetentionDays
+	}
+	return parseAuditLogRetentionDays(value)
+}
+
+// parseAuditLogRetentionDays 解析保留天数配置，空/非法值回退默认值。
+func parseAuditLogRetentionDays(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultAuditLogRetentionDays
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultAuditLogRetentionDays
+	}
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 // GetSiteName 获取网站名称
@@ -771,64 +819,12 @@ func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*Open
 
 // SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
 func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settings *OpenAIFastPolicySettings) error {
-	if settings == nil {
-		return fmt.Errorf("settings cannot be nil")
-	}
-
-	validActions := map[string]bool{
-		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
-		OpenAIFastPolicyActionForcePriority: true,
-	}
-	validScopes := map[string]bool{
-		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
-	}
-	validTiers := map[string]bool{
-		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierFlex: true,
-	}
-
-	for i, rule := range settings.Rules {
-		tier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
-		if tier == "" {
-			tier = OpenAIFastTierAny
-		}
-		if !validTiers[tier] {
-			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
-		}
-		settings.Rules[i].ServiceTier = tier
-		if !validActions[rule.Action] {
-			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
-		}
-		if !validScopes[rule.Scope] {
-			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
-		}
-		seenUserIDs := make(map[int64]struct{}, len(rule.UserIDs))
-		for j, userID := range rule.UserIDs {
-			if userID <= 0 {
-				return fmt.Errorf("rule[%d]: user_ids[%d] must be positive", i, j)
-			}
-			if _, exists := seenUserIDs[userID]; exists {
-				return fmt.Errorf("rule[%d]: user_ids[%d] duplicates user_id %d", i, j, userID)
-			}
-			seenUserIDs[userID] = struct{}{}
-		}
-		for j, pattern := range rule.ModelWhitelist {
-			trimmed := strings.TrimSpace(pattern)
-			if trimmed == "" {
-				return fmt.Errorf("rule[%d]: model_whitelist[%d] cannot be empty", i, j)
-			}
-			settings.Rules[i].ModelWhitelist[j] = trimmed
-		}
-		if rule.FallbackAction != "" && !validActions[rule.FallbackAction] {
-			return fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
-		}
-	}
-
-	data, err := json.Marshal(settings)
+	data, err := normalizeAndMarshalOpenAIFastPolicySettings(settings)
 	if err != nil {
-		return fmt.Errorf("marshal openai fast policy settings: %w", err)
+		return err
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, string(data))
+	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, data)
 }
 
 // SetStreamTimeoutSettings 设置流超时处理配置

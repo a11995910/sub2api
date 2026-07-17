@@ -25,6 +25,9 @@ func TestPromptMarketRoutesArePublicReadOnly(t *testing.T) {
 		servermiddleware.JWTAuthMiddleware(func(c *gin.Context) {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}),
+		servermiddleware.AuditLogMiddleware(func(c *gin.Context) {
+			c.Next()
+		}),
 		nil,
 	)
 

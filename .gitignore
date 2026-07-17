@@ -146,6 +146,8 @@ docs/*
 !docs/SOURCE_DEPLOY_CN.md
 !docs/THIRD_PARTY_NOTICES_CN.md
 !docs/VPS_MIGRATION_CN.md
+!docs/ASYNC_IMAGE_TASKS.md
+!docs/ASYNC_IMAGE_TASKS_CN.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

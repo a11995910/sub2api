@@ -30,6 +30,7 @@
         <template #cell-price="{ value, row }">
           <div class="text-sm">
             <span class="font-medium text-gray-900 dark:text-white">{{ formatSpiritStones(value ?? 0) }}</span>
+            <span v-if="row.currency" class="ml-1 text-xs text-gray-400">{{ row.currency }}</span>
             <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">{{ formatSpiritStones(row.original_price) }}</span>
           </div>
         </template>

@@ -97,6 +97,51 @@ func shouldStripCodexAdvertisedImageGenerationTool(endpoint string, requestedMod
 	return !openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(body, "tool_choice"))
 }
 
+// IsImageGenerationIntentForPlatform 根据上游平台采用对应的生图意图规则。
+// Codex 的普通 Responses 请求会声明 image_gen 命名空间；Grok 在转发前会移除
+// 命名空间和 Responses Lite additional_tools，因此这些声明本身不能将普通文本
+// 请求误判为生图请求。原生 image_generation、显式选择和图片模型仍视为生图意图。
+func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
+	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
+		return IsImageGenerationIntent(endpoint, requestedModel, body)
+	}
+	return isExplicitGrokImageGenerationIntent(endpoint, requestedModel, body)
+}
+
+func isExplicitGrokImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
+	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
+		return true
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+
+	var modelSeen, toolsSeen, toolChoiceSeen bool
+	imageIntent := false
+	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "model":
+			if !modelSeen {
+				modelSeen = true
+				imageIntent = isOpenAIImageGenerationModel(strings.TrimSpace(value.String()))
+			}
+		case "tools":
+			if !toolsSeen {
+				toolsSeen = true
+				// Grok 转发前会移除命名空间目录，原生 image_generation 仍是显式能力请求。
+				imageIntent = openAIJSONToolsContainNativeImageGeneration(value)
+			}
+		case "tool_choice":
+			if !toolChoiceSeen {
+				toolChoiceSeen = true
+				imageIntent = openAIJSONToolChoiceSelectsExplicitImageGeneration(value)
+			}
+		}
+		return !imageIntent && (!modelSeen || !toolsSeen || !toolChoiceSeen)
+	})
+	return imageIntent
+}
+
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.
 func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody map[string]any) bool {
 	if IsImageGenerationEndpoint(endpoint) {
@@ -158,6 +203,18 @@ func openAIJSONToolsContainImageGeneration(tools gjson.Result) bool {
 	return found
 }
 
+func openAIJSONToolsContainNativeImageGeneration(tools gjson.Result) bool {
+	if !tools.IsArray() {
+		return false
+	}
+	found := false
+	tools.ForEach(func(_, item gjson.Result) bool {
+		found = isOpenAIImageGenerationType(openAIJSONString(item.Get("type")))
+		return !found
+	})
+	return found
+}
+
 func isOpenAIImageGenerationType(value string) bool {
 	return strings.TrimSpace(value) == "image_generation"
 }
@@ -166,9 +223,8 @@ func isOpenAIImageGenNamespaceName(value string) bool {
 	return strings.TrimSpace(value) == "image_gen"
 }
 
-// isImageGenNamespaceTool detects the Codex namespace-style image generation
-// tool declaration: { "type": "namespace", "name": "image_gen", ... }.
-// Codex /image uses this instead of the flat { "type": "image_generation" }.
+// isImageGenNamespaceTool detects the namespace advertised by Codex's built-in
+// image-generation extension instead of a hosted image_generation tool.
 func isImageGenNamespaceTool(tool gjson.Result) bool {
 	return openAIJSONString(tool.Get("type")) == "namespace" &&
 		isOpenAIImageGenNamespaceName(openAIJSONString(tool.Get("name")))
@@ -251,6 +307,45 @@ func openAIJSONToolChoiceSelectsImageGeneration(choice gjson.Result) bool {
 		return true
 	}
 	return false
+}
+
+func openAIJSONToolChoiceSelectsExplicitImageGeneration(choice gjson.Result) bool {
+	if openAIJSONToolChoiceSelectsImageGeneration(choice) {
+		return true
+	}
+	if !choice.IsObject() {
+		return false
+	}
+	if tool := choice.Get("tool"); tool.IsObject() && openAIJSONToolChoiceSelectsExplicitImageGeneration(tool) {
+		return true
+	}
+	if isOpenAIImageGenFunctionReference(
+		openAIJSONString(choice.Get("namespace")),
+		openAIJSONString(choice.Get("name")),
+	) {
+		return true
+	}
+	if fn := choice.Get("function"); fn.IsObject() {
+		return isOpenAIImageGenFunctionReference(
+			openAIJSONString(fn.Get("namespace")),
+			openAIJSONString(fn.Get("name")),
+		)
+	}
+	return false
+}
+
+func isOpenAIImageGenFunctionReference(namespace string, name string) bool {
+	namespace = strings.TrimSpace(namespace)
+	name = strings.TrimSpace(name)
+	if namespace == "image_gen" && name == "imagegen" {
+		return true
+	}
+	switch name {
+	case "image_gen.imagegen", "image_gen__imagegen":
+		return true
+	default:
+		return false
+	}
 }
 
 func openAIAnyToolChoiceSelectsImageGeneration(choice any) bool {

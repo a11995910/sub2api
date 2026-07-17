@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type nonJSONTempUnschedAccountRepo struct {
@@ -129,6 +131,76 @@ func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ValidJSONUnchanged
 	require.Equal(t, 5, usage.InputTokens)
 	require.Equal(t, 3, usage.OutputTokens)
 	require.JSONEq(t, string(body), rec.Body.String())
+}
+
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_NormalizesCompatibilityBodies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name              string
+		contentType       string
+		body              []byte
+		wantID            string
+		wantInputTokens   int
+		wantOutputTokens  int
+		wantCacheCreation int
+		wantCacheRead     int
+	}{
+		{
+			name:              "括号 JSON",
+			contentType:       "application/json",
+			body:              []byte(`({"id":"msg_parenthesized","type":"message","usage":{"input_tokens":106,"output_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":1200},"cached_tokens":69000}})`),
+			wantID:            "msg_parenthesized",
+			wantInputTokens:   106,
+			wantOutputTokens:  7,
+			wantCacheCreation: 1200,
+			wantCacheRead:     69000,
+		},
+		{
+			name:        "SSE 终态消息",
+			contentType: "text/event-stream",
+			body: []byte(strings.Join([]string{
+				`event: message_start`,
+				`data: {"type":"message_start","message":{"usage":{"input_tokens":2,"cached_tokens":71000,"cache_creation":{"ephemeral_5m_input_tokens":104}}}}`,
+				``,
+				`event: message_delta`,
+				`data: {"type":"message_delta","usage":{"output_tokens":7}}`,
+				``,
+				`event: message_stop`,
+				`data: {"type":"message","id":"msg_sse","usage":{"input_tokens":2,"output_tokens":7,"cached_tokens":71000,"cache_creation":{"ephemeral_5m_input_tokens":104}}}`,
+				``,
+			}, "\n")),
+			wantID:            "msg_sse",
+			wantInputTokens:   2,
+			wantOutputTokens:  7,
+			wantCacheCreation: 104,
+			wantCacheRead:     71000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{tt.contentType}},
+				Body:       io.NopCloser(bytes.NewReader(tt.body)),
+			}
+
+			usage, err := (&GatewayService{cfg: &config.Config{}}).handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
+			require.NoError(t, err)
+			require.NotNil(t, usage)
+			require.Equal(t, tt.wantInputTokens, usage.InputTokens)
+			require.Equal(t, tt.wantOutputTokens, usage.OutputTokens)
+			require.Equal(t, tt.wantCacheCreation, usage.CacheCreationInputTokens)
+			require.Equal(t, tt.wantCacheRead, usage.CacheReadInputTokens)
+			require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+			require.True(t, gjson.Valid(rec.Body.String()))
+			require.Equal(t, tt.wantID, gjson.Get(rec.Body.String(), "id").String())
+		})
+	}
 }
 
 func TestHandleNonStreamingResponse_NonJSON2xxMatchesTempUnschedulableRule(t *testing.T) {

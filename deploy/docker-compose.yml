@@ -51,6 +51,19 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
       - IMAGE_STORAGE_PATH=${IMAGE_STORAGE_PATH:-/app/data/generated-images}
 
+      # 异步图片任务的 S3 兼容对象存储；未启用或凭据不完整时接口保持 404。
+      - IMAGE_STORAGE_ENABLED=${IMAGE_STORAGE_ENABLED:-false}
+      - IMAGE_STORAGE_ENDPOINT=${IMAGE_STORAGE_ENDPOINT:-}
+      - IMAGE_STORAGE_REGION=${IMAGE_STORAGE_REGION:-auto}
+      - IMAGE_STORAGE_BUCKET=${IMAGE_STORAGE_BUCKET:-}
+      - IMAGE_STORAGE_ACCESS_KEY_ID=${IMAGE_STORAGE_ACCESS_KEY_ID:-}
+      - IMAGE_STORAGE_SECRET_ACCESS_KEY=${IMAGE_STORAGE_SECRET_ACCESS_KEY:-}
+      - IMAGE_STORAGE_PREFIX=${IMAGE_STORAGE_PREFIX:-images/}
+      - IMAGE_STORAGE_FORCE_PATH_STYLE=${IMAGE_STORAGE_FORCE_PATH_STYLE:-false}
+      - IMAGE_STORAGE_PUBLIC_BASE_URL=${IMAGE_STORAGE_PUBLIC_BASE_URL:-}
+      - IMAGE_STORAGE_PRESIGN_EXPIRY_HOURS=${IMAGE_STORAGE_PRESIGN_EXPIRY_HOURS:-24}
+      - IMAGE_STORAGE_MAX_DOWNLOAD_BYTES=${IMAGE_STORAGE_MAX_DOWNLOAD_BYTES:-33554432}
+
       # =======================================================================
       # Database Configuration (PostgreSQL)
       # =======================================================================

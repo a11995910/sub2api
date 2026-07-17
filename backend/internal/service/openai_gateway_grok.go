@@ -70,6 +70,12 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		return nil, err
 	}
+	// Free OAuth 账号携带客户端函数工具时复用 Messages 的混合工具缓存路由，
+	// 追加 web_search/x_search，避免 xAI 强制切换到不可缓存的 build-free。
+	patchedBody, err = applyGrokFreeMessagesFunctionToolCacheRoute(patchedBody, body, account, cacheIdentity)
+	if err != nil {
+		return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
+	}
 	serviceTier := extractOpenAIServiceTierFromBody(patchedBody)
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
@@ -780,6 +786,9 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 			req.Header.Set("OpenAI-Beta", v)
 		}
 	}
+	// 账号级请求头覆写最后应用，使配置值优先于上面的内置默认头；
+	// 打到官方 CLI 网关时身份头仍由共享传输层最终强制。
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 }
 

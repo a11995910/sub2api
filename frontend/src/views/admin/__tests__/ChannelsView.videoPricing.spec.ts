@@ -64,6 +64,7 @@ describe('渠道视频定价兼容', () => {
       output_price: 2,
       cache_write_price: 3,
       cache_read_price: 4,
+      image_input_price: null,
       image_output_price: 5,
       per_request_price: 2.1,
       intervals: [{

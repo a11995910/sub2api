@@ -1327,6 +1327,24 @@ func unwrapParenthesizedJSONBody(body []byte) ([]byte, bool) {
 	return inner, true
 }
 
+// normalizeAnthropicNonStreamingResponseBody 兼容少数上游把同步结果包装为
+// "({...})" 或错误返回 SSE 的情况。只有提取到完整 message JSON 时才转换，
+// 其余非 JSON 内容仍由调用方按原有 failover 逻辑处理。
+func normalizeAnthropicNonStreamingResponseBody(body []byte) ([]byte, *ClaudeUsage, bool) {
+	if unwrapped, ok := unwrapParenthesizedJSONBody(body); ok {
+		body = unwrapped
+	}
+	if gjson.ValidBytes(body) {
+		return body, nil, false
+	}
+
+	messageBody, usage, sawSSE := parseAnthropicNonStreamingSSEBody(body)
+	if !sawSSE || len(messageBody) == 0 || !gjson.ValidBytes(messageBody) {
+		return body, nil, false
+	}
+	return messageBody, usage, true
+}
+
 // vertexSupportedBetaTokens 是 Vertex AI 的 Anthropic 端点接受的 anthropic-beta
 // 白名单。Vertex 对任何未知 token 直接 HTTP 400，故采用白名单（与 Bedrock 的
 // bedrockSupportedBetaTokens 同思路）而非黑名单：未来 Claude Code 新增的、Vertex 尚未
