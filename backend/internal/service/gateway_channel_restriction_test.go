@@ -216,6 +216,24 @@ func TestCheckChannelPricingRestriction_RestrictModelsDisabled(t *testing.T) {
 		"RestrictModels=false → always allowed")
 }
 
+func TestCheckChannelPricingRestriction_EmptyPricingAllowsModel(t *testing.T) {
+	t.Parallel()
+	ch := Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceChannelMapped,
+		ModelPricing:       nil,
+	}
+	channelSvc := newTestChannelService(makeStandardRepo(ch, map[int64]string{10: PlatformOpenAI}))
+	svc := &GatewayService{channelService: channelSvc}
+
+	gid := int64(10)
+	require.False(t, svc.checkChannelPricingRestriction(context.Background(), &gid, "gpt-4o"),
+		"empty pricing should leave model unrestricted and use default pricing")
+}
+
 func TestCheckChannelPricingRestriction_NoChannel(t *testing.T) {
 	t.Parallel()
 	// 分组没有关联渠道

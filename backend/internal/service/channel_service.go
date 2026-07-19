@@ -552,12 +552,30 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	if !lk.channel.RestrictModels {
 		return false
 	}
+	// 没有任何渠道定价时，RestrictModels 不能把所有模型误判为不允许。
+	// 这类渠道应继续使用全局 LiteLLM/fallback 定价；只有存在至少一条
+	// 当前分组和平台的定价（含通配符）时，定价列表才作为模型白名单。
+	if !hasPricingForGroupPlatform(lk.channel, lk.platform) {
+		return false
+	}
 	modelLower := strings.ToLower(model)
 	// 使用与查找定价相同的跨平台逻辑
 	if lookupPricingAcrossPlatforms(lk.cache, groupID, lk.platform, modelLower) != nil {
 		return false
 	}
 	return true
+}
+
+func hasPricingForGroupPlatform(channel *Channel, groupPlatform string) bool {
+	if channel == nil {
+		return false
+	}
+	for _, pricing := range channel.ModelPricing {
+		if isPlatformPricingMatch(groupPlatform, pricing.Platform) && len(pricing.Models) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ReplaceModelInBody 替换请求体 JSON 中的 model 字段。
