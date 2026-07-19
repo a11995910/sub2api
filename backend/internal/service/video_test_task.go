@@ -256,7 +256,7 @@ func normalizeVideoTestTaskStatus(status string) string {
 		return VideoTestTaskStatusQueued
 	case "running", "processing", "in_progress", "in-progress":
 		return VideoTestTaskStatusInProgress
-	case "succeeded", "success", "completed", "complete":
+	case "succeeded", "success", "completed", "complete", "done":
 		return VideoTestTaskStatusCompleted
 	case "failed", "error", "cancelled", "canceled":
 		return VideoTestTaskStatusFailed

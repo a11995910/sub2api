@@ -603,7 +603,14 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 			}
 		}
 	}
-	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
+	if endpoint != GrokMediaEndpointVideoStatus || shouldWriteOpenAIVideoResponse(c) {
+		writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
+	}
+	var videoProgress *float64
+	if value := gjson.GetBytes(respBody, "progress"); value.Exists() && value.Type == gjson.Number {
+		parsed := value.Float()
+		videoProgress = &parsed
+	}
 	return &OpenAIForwardResult{
 		RequestID:            requestIDHeader,
 		ResponseID:           usage.ResponseID,
@@ -621,6 +628,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
 		VideoInputImageCount: usage.VideoInputImageCount,
+		VideoStatus:          gjson.GetBytes(respBody, "status").String(),
+		VideoProgress:        videoProgress,
+		VideoErrorMessage:    firstNonEmpty(gjson.GetBytes(respBody, "error.message").String(), gjson.GetBytes(respBody, "error").String()),
+		VideoResponseJSON:    append(json.RawMessage(nil), respBody...),
 	}, nil
 }
 

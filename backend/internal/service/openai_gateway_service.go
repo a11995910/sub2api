@@ -261,6 +261,10 @@ type OpenAIForwardResult struct {
 	VideoDurationSeconds int
 	// VideoInputImageCount 是视频请求实际携带的参考图数量，仅作为请求元数据保留，不参与计费。
 	VideoInputImageCount int
+	VideoStatus          string
+	VideoProgress        *float64
+	VideoErrorMessage    string
+	VideoResponseJSON    json.RawMessage
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int

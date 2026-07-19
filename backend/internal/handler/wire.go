@@ -190,9 +190,11 @@ func ProvideHandlers(
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
 	generatedImageHandler *GeneratedImageHandler,
+	videoTestTaskHandler *VideoTestTaskHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.GeneratedImageCleanupService,
+	_ *service.VideoTestTaskCleanupService,
 ) *Handlers {
 	return &Handlers{
 		Auth:             authHandler,
@@ -216,6 +218,7 @@ func ProvideHandlers(
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
 		GeneratedImage:   generatedImageHandler,
+		VideoTestTask:    videoTestTaskHandler,
 	}
 }
 
@@ -242,6 +245,7 @@ var ProviderSet = wire.NewSet(
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
 	NewGeneratedImageHandler,
+	NewVideoTestTaskHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

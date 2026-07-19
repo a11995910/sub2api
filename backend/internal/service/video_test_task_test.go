@@ -51,6 +51,18 @@ func TestVideoTestTaskServicePollErrorPreservesWaitingStatus(t *testing.T) {
 	require.Equal(t, &now, updated.LastPolledAt)
 }
 
+func TestVideoTestTaskServiceTreatsExplicitDoneAsCompleted(t *testing.T) {
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	store := newMemoryVideoTestTaskStore()
+	store.seed(VideoTestTask{ID: "local-1", UserID: 7, Status: VideoTestTaskStatusInProgress})
+	svc := NewVideoTestTaskServiceWithClock(store, func() time.Time { return now })
+
+	updated, err := svc.ApplyPollResult(context.Background(), 7, "local-1", VideoTestTaskPollResult{Status: "done"})
+	require.NoError(t, err)
+	require.Equal(t, VideoTestTaskStatusCompleted, updated.Status)
+	require.Equal(t, &now, updated.CompletedAt)
+}
+
 func TestVideoTestTaskServiceShouldPollOnlyNonTerminalAfterThrottle(t *testing.T) {
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	svc := NewVideoTestTaskServiceWithClock(newMemoryVideoTestTaskStore(), func() time.Time { return now })

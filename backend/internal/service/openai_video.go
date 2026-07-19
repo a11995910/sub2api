@@ -43,6 +43,7 @@ type OpenAIVideoContext struct {
 }
 
 const openAIVideoContextKey = "openai_video_context"
+const suppressOpenAIVideoResponseKey = "suppress_openai_video_response"
 
 func SetOpenAIVideoContext(c *gin.Context, meta OpenAIVideoContext) {
 	if c != nil {
@@ -66,6 +67,21 @@ func openAIVideoContextFromGin(c *gin.Context) (OpenAIVideoContext, bool) {
 func HasOpenAIVideoContext(c *gin.Context) bool {
 	_, ok := openAIVideoContextFromGin(c)
 	return ok
+}
+
+func SuppressOpenAIVideoResponse(c *gin.Context) {
+	if c != nil {
+		c.Set(suppressOpenAIVideoResponseKey, true)
+	}
+}
+
+func shouldWriteOpenAIVideoResponse(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(suppressOpenAIVideoResponseKey)
+	suppressed, _ := value.(bool)
+	return !ok || !suppressed
 }
 
 func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, OpenAIVideoRequest, error) {

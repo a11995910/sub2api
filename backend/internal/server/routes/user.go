@@ -122,6 +122,14 @@ func RegisterUserRoutes(
 			checkin.POST("", h.Checkin.Checkin)
 		}
 
+		videoTestTasks := authenticated.Group("/model-test/video-tasks")
+		{
+			videoTestTasks.GET("", h.VideoTestTask.List)
+			videoTestTasks.POST("/:id/refresh", h.VideoTestTask.Refresh)
+			videoTestTasks.GET("/:id/content", h.VideoTestTask.Content)
+			videoTestTasks.DELETE("/:id", h.VideoTestTask.Delete)
+		}
+
 		// 创意绘图任务
 		creativeDrawing := authenticated.Group("/creative-drawing")
 		{

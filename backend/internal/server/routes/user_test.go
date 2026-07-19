@@ -38,3 +38,32 @@ func TestPromptMarketRoutesArePublicReadOnly(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "CREATIVE_DRAWING_PROMPT_MARKET_LIBRARY_INVALID")
 }
+
+func TestVideoTestTaskRoutesRequireJWTAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	v1 := router.Group("/api/v1")
+	RegisterUserRoutes(
+		v1,
+		&handler.Handlers{},
+		servermiddleware.JWTAuthMiddleware(func(c *gin.Context) {
+			c.AbortWithStatus(http.StatusUnauthorized)
+		}),
+		servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
+		nil,
+	)
+
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/model-test/video-tasks"},
+		{http.MethodPost, "/api/v1/model-test/video-tasks/task-1/refresh"},
+		{http.MethodGet, "/api/v1/model-test/video-tasks/task-1/content"},
+		{http.MethodDelete, "/api/v1/model-test/video-tasks/task-1"},
+	} {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(route.method, route.path, nil))
+		require.Equal(t, http.StatusUnauthorized, recorder.Code, "%s %s", route.method, route.path)
+	}
+}

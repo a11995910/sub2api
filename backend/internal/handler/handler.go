@@ -67,6 +67,7 @@ type Handlers struct {
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 	GeneratedImage   *GeneratedImageHandler
+	VideoTestTask    *VideoTestTaskHandler
 }
 
 // BuildInfo contains build-time information

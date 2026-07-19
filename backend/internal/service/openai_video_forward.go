@@ -108,14 +108,21 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoStatus(
 	if err != nil {
 		return nil, fmt.Errorf("encode video status response: %w", err)
 	}
-	writeGrokMediaResponse(c, resp, normalized, s.responseHeaderFilter)
+	if shouldWriteOpenAIVideoResponse(c) {
+		writeGrokMediaResponse(c, resp, normalized, s.responseHeaderFilter)
+	}
+	progress := float64(videoResult.Progress)
 	return &OpenAIForwardResult{
-		RequestID:        firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
-		ResponseID:       videoResult.TaskID,
-		Model:            videoResult.Model,
-		UpstreamEndpoint: "/v1/videos/{task_id}",
-		ResponseHeaders:  resp.Header.Clone(),
-		Duration:         time.Since(startTime),
+		RequestID:         firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
+		ResponseID:        videoResult.TaskID,
+		Model:             videoResult.Model,
+		UpstreamEndpoint:  "/v1/videos/{task_id}",
+		ResponseHeaders:   resp.Header.Clone(),
+		Duration:          time.Since(startTime),
+		VideoStatus:       videoResult.Status,
+		VideoProgress:     &progress,
+		VideoErrorMessage: videoResult.ErrorMessage,
+		VideoResponseJSON: append(json.RawMessage(nil), normalized...),
 	}, nil
 }
 
@@ -706,6 +713,30 @@ func (s *OpenAIGatewayService) ResolveOpenAIVideoTaskAccount(
 		return nil, err
 	}
 	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey || !account.IsActive() {
+		return nil, fmt.Errorf("bound video account is unavailable")
+	}
+	return account, nil
+}
+
+func (s *OpenAIGatewayService) ResolveVideoTestTaskStoredAccount(ctx context.Context, accountID int64, platform string) (*Account, error) {
+	if s == nil || accountID <= 0 {
+		return nil, fmt.Errorf("video test task account is unavailable")
+	}
+	var (
+		account *Account
+		err     error
+	)
+	if s.schedulerSnapshot != nil {
+		account, err = s.schedulerSnapshot.GetAccount(ctx, accountID)
+	} else if s.accountRepo != nil {
+		account, err = s.accountRepo.GetByID(ctx, accountID)
+	} else {
+		return nil, fmt.Errorf("video account repository is unavailable")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if account == nil || account.Platform != platform || !account.IsActive() {
 		return nil, fmt.Errorf("bound video account is unavailable")
 	}
 	return account, nil
