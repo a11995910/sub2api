@@ -43,6 +43,9 @@ export function selectAvailableModelKind<T extends { kind: ModelKind }>(
   models: T[],
   preferred: ModelKind,
 ): ModelKind {
+  if (preferred === 'video' && models.length > 0) {
+    return 'video'
+  }
   if (models.some((model) => model.kind === preferred)) {
     return preferred
   }
@@ -50,6 +53,11 @@ export function selectAvailableModelKind<T extends { kind: ModelKind }>(
     if (models.some((model) => model.kind === fallback)) return fallback
   }
   return preferred
+}
+
+export function filterModelsByIntent<T extends { kind: ModelKind }>(models: T[], kind: ModelKind): T[] {
+  if (kind === 'video') return models
+  return models.filter((model) => model.kind === kind)
 }
 
 function isImageModelName(name: string): boolean {

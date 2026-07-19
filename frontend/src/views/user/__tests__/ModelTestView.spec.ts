@@ -442,7 +442,7 @@ describe('ModelTestView', () => {
     expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.2 灵石 / 8秒')
   })
 
-  it('Seedance 同步视频响应直接使用 URL，不调用 Grok 内容下载接口', async () => {
+  it('Seedance 视频完成后也统一通过本站内容接口下载', async () => {
     const seedanceGroup = groupFixture({
       id: 62,
       name: '视频测试',
@@ -467,6 +467,8 @@ describe('ModelTestView', () => {
       },
       requestID: 'chatcmpl_seedance',
     })
+    const videoBlob = new Blob(['seedance-video'], { type: 'video/mp4' })
+    fetchVideoContent.mockResolvedValue(videoBlob)
 
     const wrapper = mountView()
     await flushPromises()
@@ -474,8 +476,64 @@ describe('ModelTestView', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(fetchVideoContent).not.toHaveBeenCalled()
-    expect(wrapper.find('video').attributes('src')).toBe('https://cdn.test/seedance.mp4')
+    expect(fetchVideoContent).toHaveBeenCalledWith(
+      'chatcmpl_seedance',
+      'sk-seedance-key-1234567890',
+      expect.any(AbortSignal),
+    )
+    expect(wrapper.find('video').attributes('src')).toBe('blob:model-test-reference')
+  })
+
+  it('未知模型名可按视频意图选择且价格未知不阻止测试', async () => {
+    const videoGroup = groupFixture({
+      id: 63,
+      name: '未来视频',
+      platform: 'openai',
+      allow_image_generation: true,
+    })
+    const videoKey = apiKeyFixture({
+      id: 9961,
+      name: '未来视频 Key',
+      key: 'sk-future-video-1234567890',
+      group_id: 63,
+      group: videoGroup,
+    })
+    getAvailableChannels.mockResolvedValue([])
+    listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
+    listGatewayModels.mockResolvedValue(['future-motion-pro'])
+    testVideoGeneration.mockResolvedValue({
+      payload: { id: 'future-task-1', status: 'completed' },
+      requestID: 'future-task-1',
+    })
+    fetchVideoContent.mockResolvedValue(new Blob(['future-video'], { type: 'video/mp4' }))
+
+    const wrapper = mountView()
+    await flushPromises()
+    const videoButton = wrapper.findAll('button').find((button) => button.text().trim() === '视频')
+    expect(videoButton).toBeDefined()
+    await videoButton!.trigger('click')
+    await flushPromises()
+
+    expect(optionTexts(selectByLabel(wrapper, '模型'))).toEqual([
+      '请选择模型',
+      'future-motion-pro · OpenAI',
+    ])
+    expect(summaryValue(wrapper, '价格预览')).toBe('-')
+    expect(wrapper.find('input[type="file"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('textarea').setValue('生成未来城市镜头')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(testVideoGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'future-motion-pro',
+      prompt: '生成未来城市镜头',
+    }))
+    expect(fetchVideoContent).toHaveBeenCalledWith(
+      'future-task-1',
+      'sk-future-video-1234567890',
+      expect.any(AbortSignal),
+    )
   })
 
   it('Grok 图片能力分组在文本模式下仍能选择文本模型', async () => {

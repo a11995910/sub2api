@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { UserAvailableGroup, UserSupportedModelPricing } from '@/api/channels'
 import { BILLING_MODE_IMAGE, BILLING_MODE_VIDEO } from '@/constants/channel'
-import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind } from '../modelKind'
+import { filterGroupsByModelKind, filterModelsByIntent, resolveModelKind, selectAvailableModelKind } from '../modelKind'
 
 describe('resolveModelKind', () => {
   it('Seedance 模型名识别为视频', () => {
@@ -70,6 +70,27 @@ describe('selectAvailableModelKind', () => {
 
   it('当前模式没有模型时可切换到视频模式', () => {
     expect(selectAvailableModelKind([{ kind: 'video' as const }], 'image')).toBe('video')
+  })
+
+  it('视频模式把任意当前 Key 模型视为可用', () => {
+    expect(selectAvailableModelKind([{ kind: 'token' as const }], 'video')).toBe('video')
+  })
+})
+
+describe('filterModelsByIntent', () => {
+  const models = [
+    { name: 'gpt-5', kind: 'token' as const },
+    { name: 'image-2', kind: 'image' as const },
+    { name: 'future-motion-pro', kind: 'token' as const },
+  ]
+
+  it('视频意图允许当前 Key 的全部模型', () => {
+    expect(filterModelsByIntent(models, 'video')).toEqual(models)
+  })
+
+  it('文本和图片意图继续按模型分类', () => {
+    expect(filterModelsByIntent(models, 'token').map((model) => model.name)).toEqual(['gpt-5', 'future-motion-pro'])
+    expect(filterModelsByIntent(models, 'image').map((model) => model.name)).toEqual(['image-2'])
   })
 })
 

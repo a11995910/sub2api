@@ -335,7 +335,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
 import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { filterGroupsByModelKind, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
+import { filterGroupsByModelKind, filterModelsByIntent, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
@@ -527,8 +527,8 @@ const selectedGroup = computed(() => allAvailableGroups.value.find((group) => gr
 const availableGroups = computed(() => selectedGroup.value ? [selectedGroup.value] : [])
 const modelsInSelectedGroup = computed(() => modelsForGroupID(selectedGroupId.value))
 const filteredModels = computed(() =>
-  modelsInSelectedGroup.value.filter((model) =>
-    model.kind === selectedKind.value && modelSupportsCurrentEndpoint(model),
+  filterModelsByIntent(modelsInSelectedGroup.value, selectedKind.value).filter((model) =>
+    modelSupportsCurrentEndpoint(model),
   ),
 )
 const selectedModel = computed(() => filteredModels.value.find((model) => model.key === selectedModelKey.value) || null)
@@ -593,7 +593,7 @@ const gatewayEndpoint = computed(() =>
   selectedKind.value === 'image'
     ? referenceImages.value.length > 0 ? '/v1/images/edits' : '/v1/images/generations'
     : selectedKind.value === 'video'
-      ? '/v1/videos/generations'
+      ? '/v1/videos'
     : '/v1/chat/completions',
 )
 
@@ -607,11 +607,11 @@ const canRun = computed(() =>
 
 const selectedVideoBillingContext = computed(() => {
   const model = selectedModel.value
-  if (!model || model.kind !== 'video') return null
+  if (!model) return null
   const modelName = normalizeVideoBillingModelName(model.name, referenceImages.value.length > 0)
   return {
     modelName,
-    pricing: pricingForVideoBillingModel(model, modelName),
+    pricing: model.kind === 'video' ? pricingForVideoBillingModel(model, modelName) : null,
   }
 })
 
@@ -671,11 +671,9 @@ const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImag
 const videoOutputURL = computed(() => selectedKind.value === 'video' ? videoBlobURL.value || extractVideoURL(rawResponse.value) : '')
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
-watch(selectedKind, (kind) => {
+watch(selectedKind, () => {
   clearVideoBlobURL()
-  if (selectedModel.value?.kind !== kind) {
-    selectedModelKey.value = filteredModels.value[0]?.key || ''
-  }
+  syncSelectedModel()
 })
 
 watch(selectedApiKeyId, async () => {
@@ -986,11 +984,11 @@ function applyQuerySelection() {
   } else {
     selectedKind.value = selectAvailableModelKind(groupModels, selectedKind.value)
   }
-  if (!groupModels.some((model) => model.kind === selectedKind.value)) {
+  if (selectedKind.value !== 'video' && !groupModels.some((model) => model.kind === selectedKind.value)) {
     selectedKind.value = selectAvailableModelKind(groupModels, selectedKind.value)
   }
 
-  const candidates = groupModels.filter((model) => model.kind === selectedKind.value)
+  const candidates = filterModelsByIntent(groupModels, selectedKind.value)
   let target = candidates.find((model) =>
     (!queryModel || model.displayName === queryModel || model.name === queryModel) &&
     (!queryPlatform || model.platform === queryPlatform) &&
@@ -1095,7 +1093,7 @@ async function runTest() {
           : undefined,
         signal: runController.signal,
       })
-      if (videoResult.requestID && model.platform === 'grok') {
+      if (videoResult.requestID) {
         const videoBlob = await fetchVideoContent(videoResult.requestID, apiKey.key, runController.signal)
         videoBlobURL.value = URL.createObjectURL(videoBlob)
       }

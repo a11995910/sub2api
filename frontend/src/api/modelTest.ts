@@ -61,7 +61,7 @@ export class ModelTestError extends Error {
 }
 
 async function postGateway<T>(
-  path: '/v1/chat/completions' | '/v1/images/generations' | '/v1/videos/generations',
+  path: '/v1/chat/completions' | '/v1/images/generations' | '/v1/videos',
   apiKey: string,
   payload: Record<string, unknown>,
   signal?: AbortSignal,
@@ -229,28 +229,27 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
     payload.reference_images = referenceImageDataUrls.map((url) => ({ url }))
   }
 
-  const created = await postGateway<unknown>('/v1/videos/generations', req.apiKey, payload, req.signal)
+  const created = await postGateway<unknown>('/v1/videos', req.apiKey, payload, req.signal)
   const requestID = extractVideoRequestID(created)
-  if (extractVideoURL(created)) return { payload: created, requestID }
   if (!requestID) {
-    throw new ModelTestError('Video generation response did not include request_id', 502, created)
+    throw new ModelTestError('Video generation response did not include task_id', 502, created)
   }
 
-  const pollIntervalMs = Math.max(0, req.pollIntervalMs ?? 2000)
+  const pollIntervalMs = Math.max(0, req.pollIntervalMs ?? 5000)
   const timeoutMs = Math.max(1000, req.timeoutMs ?? 5 * 60 * 1000)
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     await waitForPoll(pollIntervalMs, req.signal)
     const statusPayload = await getGateway<unknown>(`/v1/videos/${encodeURIComponent(requestID)}`, req.apiKey, req.signal)
-    const status = extractVideoStatus(statusPayload)
-    if (extractVideoURL(statusPayload) || ['completed', 'succeeded', 'success', 'done'].includes(status)) {
+    const status = normalizeVideoStatus(extractVideoStatus(statusPayload))
+    if (status === 'completed') {
       return { payload: statusPayload, requestID }
     }
-    if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
+    if (status === 'failed') {
       throw new ModelTestError(extractGatewayErrorMessage(statusPayload, '', 502), 502, statusPayload)
     }
   }
-  throw new ModelTestError('Video generation timed out', 408, created)
+  throw new ModelTestError(`Video generation task ${requestID} timed out`, 408, created)
 }
 
 export async function fetchVideoContent(
@@ -281,7 +280,7 @@ export async function fetchVideoContent(
 function extractVideoRequestID(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return ''
   const obj = payload as Record<string, any>
-  return String(obj.request_id || obj.id || obj.data?.request_id || obj.data?.id || obj.video?.request_id || obj.video?.id || '').trim()
+  return String(obj.task_id || obj.request_id || obj.id || obj.data?.task_id || obj.data?.request_id || obj.data?.id || obj.video?.task_id || obj.video?.request_id || obj.video?.id || '').trim()
 }
 
 export function extractVideoURL(payload: unknown): string {
@@ -294,6 +293,14 @@ function extractVideoStatus(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return ''
   const obj = payload as Record<string, any>
   return String(obj.status || obj.data?.status || obj.video?.status || '').trim().toLowerCase()
+}
+
+function normalizeVideoStatus(status: string): 'queued' | 'in_progress' | 'completed' | 'failed' | '' {
+  if (['pending', 'queued', 'queueing'].includes(status)) return 'queued'
+  if (['in_progress', 'processing', 'running'].includes(status)) return 'in_progress'
+  if (['completed', 'succeeded', 'success', 'done'].includes(status)) return 'completed'
+  if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) return 'failed'
+  return ''
 }
 
 function waitForPoll(ms: number, signal?: AbortSignal): Promise<void> {
