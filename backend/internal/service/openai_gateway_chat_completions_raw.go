@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -489,6 +490,31 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
 	}
+	seedanceMeta, isSeedance := seedanceVideoContextFromGin(c)
+	var seedanceResult SeedanceVideoResult
+	if isSeedance {
+		seedanceResult, err = ParseSeedanceChatResponse(respBody)
+		if err != nil || seedanceResult.VideoURL == "" {
+			writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Seedance upstream response did not include a video URL")
+			if err == nil {
+				err = errors.New("Seedance upstream response did not include a video URL")
+			}
+			return nil, err
+		}
+		respBody, err = json.Marshal(map[string]any{
+			"id":     firstNonEmpty(seedanceResult.RequestID, requestID),
+			"object": "video",
+			"status": "completed",
+			"model":  originalModel,
+			"video": map[string]string{
+				"url": seedanceResult.VideoURL,
+			},
+			"url": seedanceResult.VideoURL,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal Seedance video response: %w", err)
+		}
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -501,7 +527,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c.Writer.WriteHeader(http.StatusOK)
 	_, _ = c.Writer.Write(respBody)
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:       requestID,
 		Usage:           usage,
 		Model:           originalModel,
@@ -511,7 +537,16 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		ServiceTier:     serviceTier,
 		Stream:          false,
 		Duration:        time.Since(startTime),
-	}, nil
+	}
+	if isSeedance {
+		result.RequestID = firstNonEmpty(seedanceResult.RequestID, requestID)
+		result.ResponseID = result.RequestID
+		result.VideoCount = 1
+		result.VideoResolution = seedanceMeta.Resolution
+		result.VideoDurationSeconds = seedanceMeta.Duration
+		result.VideoInputImageCount = seedanceMeta.ReferenceImageCount
+	}
+	return result, nil
 }
 
 // buildOpenAIChatCompletionsURL 拼接上游 Chat Completions 端点 URL。

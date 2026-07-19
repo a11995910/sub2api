@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 var seedanceVideoURLPattern = regexp.MustCompile(`https://[^\s\]\)"']+`)
@@ -22,6 +24,33 @@ type SeedanceVideoResult struct {
 	RequestID    string
 	Status       string
 	OutputTokens int
+}
+
+type SeedanceVideoContext struct {
+	Model               string
+	Resolution          string
+	Duration            int
+	ReferenceImageCount int
+}
+
+const seedanceVideoContextKey = "seedance_video_context"
+
+func SetSeedanceVideoContext(c *gin.Context, meta SeedanceVideoContext) {
+	if c != nil {
+		c.Set(seedanceVideoContextKey, meta)
+	}
+}
+
+func seedanceVideoContextFromGin(c *gin.Context) (SeedanceVideoContext, bool) {
+	if c == nil {
+		return SeedanceVideoContext{}, false
+	}
+	value, ok := c.Get(seedanceVideoContextKey)
+	if !ok {
+		return SeedanceVideoContext{}, false
+	}
+	meta, ok := value.(SeedanceVideoContext)
+	return meta, ok && IsSeedanceVideoModel(meta.Model)
 }
 
 func IsSeedanceVideoModel(model string) bool {

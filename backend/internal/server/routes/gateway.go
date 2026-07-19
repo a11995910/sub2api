@@ -71,6 +71,10 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
+		if getGroupPlatform(c) == service.PlatformOpenAI {
+			h.OpenAIGateway.SeedanceVideoGeneration(c)
+			return
+		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{

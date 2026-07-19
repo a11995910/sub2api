@@ -23,6 +23,8 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 		groupPlatform = platform[0]
 	}
 
+	cfg := &config.Config{}
+	cfg.Gateway.MaxBodySize = 1024 * 1024
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
@@ -42,7 +44,7 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 		nil,
 		nil,
 		nil,
-		&config.Config{},
+		cfg,
 	)
 
 	return router
@@ -199,6 +201,22 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
 		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
 	}
+}
+
+func TestGatewayRoutesOpenAISeedanceVideoReachesSeedanceHandler(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", strings.NewReader(`{
+		"model":"dreamina-seedance-2-0-mini-ep",
+		"prompt":"waves",
+		"resolution":"480p",
+		"duration":4
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.NotContains(t, w.Body.String(), "Videos API is not supported for this platform")
 }
 
 func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
