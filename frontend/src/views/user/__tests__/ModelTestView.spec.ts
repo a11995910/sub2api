@@ -1030,10 +1030,8 @@ describe('ModelTestView', () => {
     await flushPromises()
     await wrapper.find('textarea').setValue('展示产品细节')
     await wrapper.find('form').trigger('submit')
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await flushPromises()
 
-    expect(testVideoGeneration).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(testVideoGeneration).toHaveBeenCalledTimes(1))
     const request = testVideoGeneration.mock.calls[0][0] as Record<string, unknown>
     expect(request.startingImageDataUrl).toBeUndefined()
     expect(request.referenceImageDataUrls).toEqual([
