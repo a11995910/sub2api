@@ -131,6 +131,41 @@ describe('modelTest api', () => {
     })
   })
 
+  it('视频生成默认等待超过 5 分钟后仍继续轮询', async () => {
+    const now = vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(5 * 60 * 1000 + 1)
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('{"task_id":"video-slow","status":"queued"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('{"id":"video-slow","status":"in_progress"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('{"id":"video-slow","status":"completed"}'),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await testVideoGeneration({
+      apiKey: 'sk-test',
+      model: 'jing-video-2-pro',
+      prompt: '慢速视频任务',
+      pollIntervalMs: 0,
+    })
+
+    expect(fetchMock.mock.calls[2][0]).toBe('/v1/videos/video-slow')
+    expect(result.requestID).toBe('video-slow')
+    now.mockRestore()
+  })
+
   it('标准视频模型会把多张参考图传给 reference_images', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({

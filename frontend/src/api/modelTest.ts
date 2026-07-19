@@ -236,7 +236,7 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
   }
 
   const pollIntervalMs = Math.max(0, req.pollIntervalMs ?? 5000)
-  const timeoutMs = Math.max(1000, req.timeoutMs ?? 5 * 60 * 1000)
+  const timeoutMs = Math.max(1000, req.timeoutMs ?? 15 * 60 * 1000)
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     await waitForPoll(pollIntervalMs, req.signal)
