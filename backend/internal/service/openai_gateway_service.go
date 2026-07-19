@@ -411,6 +411,7 @@ type OpenAIGatewayService struct {
 	settingService        *SettingService
 	generatedImageStore   *GeneratedImageStore
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	videoTestTaskService  *VideoTestTaskService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -444,6 +445,12 @@ type OpenAIGatewayService struct {
 func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore) {
 	if s != nil {
 		s.generatedImageStore = store
+	}
+}
+
+func (s *OpenAIGatewayService) SetVideoTestTaskService(tasks *VideoTestTaskService) {
+	if s != nil {
+		s.videoTestTaskService = tasks
 	}
 }
 

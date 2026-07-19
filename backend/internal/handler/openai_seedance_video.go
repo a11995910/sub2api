@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -25,9 +26,11 @@ func (h *OpenAIGatewayHandler) OpenAIVideoGeneration(c *gin.Context) {
 
 	videoContext := service.OpenAIVideoContext{
 		Model:               requestInfo.Model,
+		Prompt:              requestInfo.Prompt,
 		Resolution:          requestInfo.Resolution,
 		DurationSeconds:     requestInfo.DurationSeconds,
 		ReferenceImageCount: len(requestInfo.ImageURLs),
+		RecordModelTestTask: isModelTestVideoRequest(c),
 	}
 	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil {
 		videoContext.APIKeyID = apiKey.ID
@@ -44,6 +47,10 @@ func (h *OpenAIGatewayHandler) OpenAIVideoGeneration(c *gin.Context) {
 	c.Request.ContentLength = int64(len(normalizedBody))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h.ChatCompletions(c)
+}
+
+func isModelTestVideoRequest(c *gin.Context) bool {
+	return c != nil && strings.TrimSpace(c.GetHeader("X-Sub2API-Model-Test")) == "video"
 }
 
 // SeedanceVideoGeneration 保留旧调用点，实际进入通用 OpenAI 视频实现。

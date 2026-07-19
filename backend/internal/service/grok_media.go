@@ -405,7 +405,21 @@ func (s *OpenAIGatewayService) ResolveVideoTaskAccount(
 	if cacheKey == "" {
 		return 0, fmt.Errorf("video task binding is invalid")
 	}
-	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	if err == nil {
+		return accountID, nil
+	}
+	if s.videoTestTaskService == nil {
+		return 0, err
+	}
+	accountID, persistentErr := s.videoTestTaskService.ResolveAccountID(ctx, userID, apiKeyID, requestID)
+	if persistentErr != nil {
+		return 0, err
+	}
+	if bindErr := s.BindVideoTaskAccount(ctx, groupID, requestID, userID, apiKeyID, accountID); bindErr != nil {
+		return 0, bindErr
+	}
+	return accountID, nil
 }
 
 func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(
@@ -557,8 +571,39 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 			grokMediaContentProxyURL(c, requestID),
 		)
 	}
-	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
+	if endpoint == GrokMediaEndpointVideosGenerations && strings.TrimSpace(usage.ResponseID) != "" {
+		if videoMeta, ok := openAIVideoContextFromGin(c); ok && videoMeta.BindTask && videoMeta.RecordModelTestTask && s.videoTestTaskService != nil {
+			groupID := videoMeta.GroupID
+			if err := s.BindVideoTaskAccount(ctx, &groupID, usage.ResponseID, videoMeta.UserID, videoMeta.APIKeyID, account.ID); err != nil {
+				return nil, fmt.Errorf("bind grok video test task: %w", err)
+			}
+			var progress *float64
+			if value := gjson.GetBytes(respBody, "progress"); value.Exists() && value.Type == gjson.Number {
+				parsed := value.Float()
+				progress = &parsed
+			}
+			if _, err := s.videoTestTaskService.RecordAccepted(ctx, VideoTestTaskAcceptedInput{
+				UserID:              videoMeta.UserID,
+				APIKeyID:            videoMeta.APIKeyID,
+				GroupID:             groupID,
+				AccountID:           account.ID,
+				UpstreamTaskID:      usage.ResponseID,
+				Platform:            PlatformGrok,
+				Model:               videoMeta.Model,
+				Prompt:              videoMeta.Prompt,
+				Resolution:          videoMeta.Resolution,
+				DurationSeconds:     videoMeta.DurationSeconds,
+				ReferenceImageCount: videoMeta.ReferenceImageCount,
+				Status:              gjson.GetBytes(respBody, "status").String(),
+				Progress:            progress,
+				ResponseJSON:        append([]byte(nil), respBody...),
+			}); err != nil {
+				return nil, fmt.Errorf("persist grok video test task: %w", err)
+			}
+		}
+	}
+	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	return &OpenAIForwardResult{
 		RequestID:            requestIDHeader,
 		ResponseID:           usage.ResponseID,

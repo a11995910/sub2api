@@ -83,3 +83,26 @@ func TestResolveGrokMediaVideoRequestAccountFallsBackToLegacyBinding(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, int64(30), accountID)
 }
+
+func TestResolveVideoTaskAccountFallsBackToPersistentTestTaskAndRebindsCache(t *testing.T) {
+	cache := &videoBindingCacheStub{}
+	store := newMemoryVideoTestTaskStore()
+	store.seed(VideoTestTask{
+		ID: "local-1", UserID: 10, APIKeyID: 20, GroupID: 7, AccountID: 30,
+		UpstreamTaskID: "task-persisted", Status: VideoTestTaskStatusQueued,
+	})
+	svc := &OpenAIGatewayService{cache: cache}
+	svc.SetVideoTestTaskService(NewVideoTestTaskService(store))
+	groupID := int64(7)
+
+	accountID, err := svc.ResolveVideoTaskAccount(context.Background(), &groupID, "task-persisted", 10, 20)
+	require.NoError(t, err)
+	require.Equal(t, int64(30), accountID)
+
+	accountID, err = svc.ResolveVideoTaskAccount(context.Background(), &groupID, "task-persisted", 10, 20)
+	require.NoError(t, err)
+	require.Equal(t, int64(30), accountID)
+
+	_, err = svc.ResolveVideoTaskAccount(context.Background(), &groupID, "task-persisted", 11, 20)
+	require.Error(t, err)
+}

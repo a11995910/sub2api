@@ -101,6 +101,24 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	requestInfo := service.ParseGrokMediaRequest(contentType, body)
 	requestModel := requestInfo.Model
 	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
+	if endpoint == service.GrokMediaEndpointVideosGenerations {
+		groupID := int64(0)
+		if apiKey.GroupID != nil {
+			groupID = *apiKey.GroupID
+		}
+		service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{
+			Model:               requestInfo.Model,
+			Prompt:              requestInfo.Prompt,
+			Resolution:          requestInfo.Resolution,
+			DurationSeconds:     requestInfo.DurationSeconds,
+			ReferenceImageCount: len(requestInfo.InputImageURLs) + len(requestInfo.ReferenceImageURLs) + len(requestInfo.Uploads),
+			UserID:              subject.UserID,
+			APIKeyID:            apiKey.ID,
+			GroupID:             groupID,
+			BindTask:            subject.UserID > 0 && apiKey.ID > 0 && groupID > 0,
+			RecordModelTestTask: isModelTestVideoRequest(c),
+		})
+	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return

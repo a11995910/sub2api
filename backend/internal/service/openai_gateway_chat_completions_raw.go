@@ -524,6 +524,32 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("marshal Seedance video response: %w", err)
 		}
+		if videoMeta.RecordModelTestTask && videoMeta.BindTask && videoMeta.AccountID > 0 && s.videoTestTaskService != nil {
+			taskID := firstNonEmpty(seedanceResult.RequestID, requestID)
+			groupID := videoMeta.GroupID
+			if err := s.BindVideoTaskAccount(c.Request.Context(), &groupID, taskID, videoMeta.UserID, videoMeta.APIKeyID, videoMeta.AccountID); err != nil {
+				return nil, fmt.Errorf("bind chat fallback video test task: %w", err)
+			}
+			progress := 100.0
+			if _, err := s.videoTestTaskService.RecordAccepted(c.Request.Context(), VideoTestTaskAcceptedInput{
+				UserID:              videoMeta.UserID,
+				APIKeyID:            videoMeta.APIKeyID,
+				GroupID:             groupID,
+				AccountID:           videoMeta.AccountID,
+				UpstreamTaskID:      taskID,
+				Platform:            PlatformOpenAI,
+				Model:               videoMeta.Model,
+				Prompt:              videoMeta.Prompt,
+				Resolution:          videoMeta.Resolution,
+				DurationSeconds:     videoMeta.DurationSeconds,
+				ReferenceImageCount: videoMeta.ReferenceImageCount,
+				Status:              VideoTestTaskStatusCompleted,
+				Progress:            &progress,
+				ResponseJSON:        append([]byte(nil), respBody...),
+			}); err != nil {
+				return nil, fmt.Errorf("persist chat fallback video test task: %w", err)
+			}
+		}
 	}
 
 	if s.responseHeaderFilter != nil {

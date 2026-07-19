@@ -30,13 +30,16 @@ type OpenAIVideoResult struct {
 
 type OpenAIVideoContext struct {
 	Model               string
+	Prompt              string
 	Resolution          string
 	DurationSeconds     int
 	ReferenceImageCount int
 	UserID              int64
 	APIKeyID            int64
 	GroupID             int64
+	AccountID           int64
 	BindTask            bool
+	RecordModelTestTask bool
 }
 
 const openAIVideoContextKey = "openai_video_context"

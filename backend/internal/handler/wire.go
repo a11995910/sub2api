@@ -124,9 +124,11 @@ func ProvideOpenAIGatewayHandler(
 	opsService *service.OpsService,
 	generatedImageStore *service.GeneratedImageStore,
 	grokQuotaService *service.GrokQuotaService,
+	videoTestTasks *service.VideoTestTaskService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
+	gatewayService.SetVideoTestTaskService(videoTestTasks)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, generatedImageStore, cfg)
 	h.securityAuditCoordinator = coordinator

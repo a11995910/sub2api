@@ -80,3 +80,22 @@ func TestOpenAIVideoLookupHidesOwnershipMismatchAsNotFound(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 	require.Contains(t, recorder.Body.String(), "Video task not found")
 }
+
+func TestIsModelTestVideoRequestRequiresExactInternalMarker(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "video", want: true},
+		{value: " video ", want: true},
+		{value: "VIDEO", want: false},
+		{value: "true", want: false},
+		{value: "", want: false},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+		c.Request.Header.Set("X-Sub2API-Model-Test", tc.value)
+		require.Equal(t, tc.want, isModelTestVideoRequest(c), tc.value)
+	}
+}

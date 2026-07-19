@@ -938,6 +938,41 @@ func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) 
 	require.Zero(t, result.VideoInputImageCount)
 }
 
+func TestForwardGrokMediaVideoGenerationPersistsMarkedModelTestTask(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","duration":10}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	SetOpenAIVideoContext(c, OpenAIVideoContext{
+		Model: "grok-imagine-video", Prompt: "waves", Resolution: "720p", DurationSeconds: 10,
+		UserID: 41, APIKeyID: 51, GroupID: 7, BindTask: true, RecordModelTestTask: true,
+	})
+	account := &Account{
+		ID: 63, Name: "grok", Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-request-recorded","status":"queued"}`)),
+	}}
+	cache := &videoProtocolGatewayCacheStub{}
+	store := newMemoryVideoTestTaskStore()
+	svc := &OpenAIGatewayService{httpUpstream: upstream, cache: cache}
+	svc.SetVideoTestTaskService(NewVideoTestTaskService(store))
+
+	_, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+	require.NoError(t, err)
+	recorded, err := store.GetByUpstreamOwner(context.Background(), 41, 51, "video-request-recorded")
+	require.NoError(t, err)
+	require.Equal(t, int64(63), recorded.AccountID)
+	require.Equal(t, "waves", recorded.Prompt)
+}
+
 func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)

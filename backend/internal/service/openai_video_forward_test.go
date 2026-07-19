@@ -151,6 +151,53 @@ func TestForwardOpenAIVideoCreateBindsTaskBeforeReturning(t *testing.T) {
 	require.Equal(t, int64(88), accountID)
 }
 
+func TestForwardOpenAIVideoCreatePersistsMarkedModelTestTask(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","resolution":"720p","duration":5}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	SetOpenAIVideoContext(c, OpenAIVideoContext{
+		Model: "dreamina-seedance-2-0-ep", Prompt: "雨夜城市", Resolution: "720p", DurationSeconds: 5,
+		UserID: 10, APIKeyID: 20, GroupID: 7, BindTask: true, RecordModelTestTask: true,
+	})
+	cache := &videoProtocolGatewayCacheStub{}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"id":"task-recorded","status":"queued"}`)),
+	}}
+	store := newMemoryVideoTestTaskStore()
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: cache, httpUpstream: upstream}
+	svc.SetVideoTestTaskService(NewVideoTestTaskService(store))
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
+	require.NoError(t, err)
+	recorded, err := store.GetByUpstreamOwner(context.Background(), 10, 20, "task-recorded")
+	require.NoError(t, err)
+	require.Equal(t, int64(88), recorded.AccountID)
+	require.Equal(t, "雨夜城市", recorded.Prompt)
+	require.Equal(t, "720p", recorded.Resolution)
+	require.Equal(t, 5, recorded.DurationSeconds)
+}
+
+func TestForwardOpenAIVideoCreateDoesNotPersistUnmarkedTask(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","duration":5}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	SetOpenAIVideoContext(c, OpenAIVideoContext{Model: "dreamina-seedance-2-0-ep", UserID: 10, APIKeyID: 20, GroupID: 7, BindTask: true})
+	cache := &videoProtocolGatewayCacheStub{}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"id":"task-unmarked","status":"queued"}`)),
+	}}
+	store := newMemoryVideoTestTaskStore()
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: cache, httpUpstream: upstream}
+	svc.SetVideoTestTaskService(NewVideoTestTaskService(store))
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
+	require.NoError(t, err)
+	_, err = store.GetByUpstreamOwner(context.Background(), 10, 20, "task-unmarked")
+	require.ErrorIs(t, err, ErrVideoTestTaskNotFound)
+}
+
 func TestForwardOpenAIVideoCreateDoesNotDeliverTaskWhenBindingFails(t *testing.T) {
 	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","duration":5}`)
 	c, recorder := openAIVideoForwardTestContext(body)
@@ -204,6 +251,38 @@ func TestForwardOpenAIVideoCreateFallsBackOnlyForUnsupportedEndpoint(t *testing.
 	require.Equal(t, "completed", gjson.Get(recorder.Body.String(), "status").String())
 	require.Equal(t, "https://cdn.test/result.mp4", gjson.Get(recorder.Body.String(), "url").String())
 	require.Equal(t, "chat-video-1", result.ResponseID)
+}
+
+func TestForwardOpenAIVideoCreatePersistsMarkedChatFallbackAsCompleted(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","resolution":"720p","duration":5}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	SetOpenAIVideoContext(c, OpenAIVideoContext{
+		Model: "dreamina-seedance-2-0-ep", Prompt: "雨夜城市", Resolution: "720p", DurationSeconds: 5,
+		UserID: 10, APIKeyID: 20, GroupID: 7, BindTask: true, RecordModelTestTask: true,
+	})
+	cache := &videoProtocolGatewayCacheStub{}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusNotFound,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(`{"error":{"message":"route not found"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewBufferString(`{"id":"chat-video-recorded","choices":[{"message":{"content":"https://cdn.test/result.mp4"}}]}`)),
+		},
+	}}
+	store := newMemoryVideoTestTaskStore()
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: cache, httpUpstream: upstream}
+	svc.SetVideoTestTaskService(NewVideoTestTaskService(store))
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
+	require.NoError(t, err)
+	recorded, err := store.GetByUpstreamOwner(context.Background(), 10, 20, "chat-video-recorded")
+	require.NoError(t, err)
+	require.Equal(t, VideoTestTaskStatusCompleted, recorded.Status)
+	require.Contains(t, string(recorded.ResponseJSON), "https://cdn.test/result.mp4")
 }
 
 func TestForwardOpenAIVideoCreateDoesNotFallbackOnUpstreamFailure(t *testing.T) {

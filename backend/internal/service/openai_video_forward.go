@@ -537,6 +537,28 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 			writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to bind video task")
 			return nil, false, fmt.Errorf("bind video task: %w", err)
 		}
+		if videoMeta.RecordModelTestTask && s.videoTestTaskService != nil {
+			progress := float64(videoResult.Progress)
+			if _, err := s.videoTestTaskService.RecordAccepted(ctx, VideoTestTaskAcceptedInput{
+				UserID:              videoMeta.UserID,
+				APIKeyID:            videoMeta.APIKeyID,
+				GroupID:             groupID,
+				AccountID:           account.ID,
+				UpstreamTaskID:      videoResult.TaskID,
+				Platform:            PlatformOpenAI,
+				Model:               videoMeta.Model,
+				Prompt:              videoMeta.Prompt,
+				Resolution:          videoMeta.Resolution,
+				DurationSeconds:     videoMeta.DurationSeconds,
+				ReferenceImageCount: videoMeta.ReferenceImageCount,
+				Status:              videoResult.Status,
+				Progress:            &progress,
+				ResponseJSON:        append([]byte(nil), respBody...),
+			}); err != nil {
+				writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to persist video test task")
+				return nil, false, fmt.Errorf("persist video test task: %w", err)
+			}
+		}
 	}
 	normalizedResponse, err := json.Marshal(map[string]any{
 		"id":       videoResult.TaskID,
@@ -585,12 +607,14 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoViaChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-	SetOpenAIVideoContext(c, OpenAIVideoContext{
-		Model:               requestedModel,
-		Resolution:          requestInfo.Resolution,
-		DurationSeconds:     requestInfo.DurationSeconds,
-		ReferenceImageCount: len(requestInfo.ImageURLs),
-	})
+	videoMeta, _ := openAIVideoContextFromGin(c)
+	videoMeta.Model = requestedModel
+	videoMeta.Prompt = requestInfo.Prompt
+	videoMeta.Resolution = requestInfo.Resolution
+	videoMeta.DurationSeconds = requestInfo.DurationSeconds
+	videoMeta.ReferenceImageCount = len(requestInfo.ImageURLs)
+	videoMeta.AccountID = account.ID
+	SetOpenAIVideoContext(c, videoMeta)
 	result, err := s.forwardAsRawChatCompletions(ctx, c, account, body, upstreamModel)
 	if result != nil {
 		result.Model = requestedModel
