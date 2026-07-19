@@ -84,23 +84,12 @@ describe('modelTest api', () => {
     expect(uploaded?.size).toBe(image.size)
   })
 
-  it('视频生成会创建任务并轮询到完成状态', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"request_id":"video-123"}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"id":"video-123","status":"pending"}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"id":"video-123","status":"completed","metadata":{"url":"https://cdn.test/video.mp4"}}'),
-      })
+  it('视频生成创建任务后立即返回并标记为测试台请求', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"request_id":"video-123","status":"queued"}'),
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await testVideoGeneration({
@@ -110,7 +99,6 @@ describe('modelTest api', () => {
       resolution: '720p',
       duration: 10,
       startingImageDataUrl: 'data:image/png;base64,aW1n',
-      pollIntervalMs: 0,
     })
 
     const [createPath, createInit] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -122,36 +110,20 @@ describe('modelTest api', () => {
       duration: 10,
       image: { url: 'data:image/png;base64,aW1n' },
     })
-    expect(fetchMock.mock.calls[1][0]).toBe('/v1/videos/video-123')
-    expect(fetchMock.mock.calls[2][0]).toBe('/v1/videos/video-123')
-    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit).method === 'POST')).toHaveLength(1)
+    expect(createInit.headers).toEqual(expect.objectContaining({ 'X-Sub2API-Model-Test': 'video' }))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
-      payload: expect.objectContaining({ status: 'completed' }),
+      payload: expect.objectContaining({ status: 'queued' }),
       requestID: 'video-123',
     })
   })
 
-  it('视频生成默认等待超过 5 分钟后仍继续轮询', async () => {
-    const now = vi.spyOn(Date, 'now')
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(5 * 60 * 1000 + 1)
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"task_id":"video-slow","status":"queued"}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"id":"video-slow","status":"in_progress"}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"id":"video-slow","status":"completed"}'),
-      })
+  it('视频生成不再使用客户端总超时或发起状态轮询', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"task_id":"video-slow","status":"in_progress"}'),
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await testVideoGeneration({
@@ -159,25 +131,19 @@ describe('modelTest api', () => {
       model: 'jing-video-2-pro',
       prompt: '慢速视频任务',
       pollIntervalMs: 0,
+      timeoutMs: 1,
     })
 
-    expect(fetchMock.mock.calls[2][0]).toBe('/v1/videos/video-slow')
     expect(result.requestID).toBe('video-slow')
-    now.mockRestore()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('标准视频模型会把多张参考图传给 reference_images', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"task_id":"video-456","status":"queued"}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"id":"video-456","status":"completed"}'),
-      })
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"task_id":"video-456","status":"queued"}'),
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     await testVideoGeneration({
@@ -200,40 +166,6 @@ describe('modelTest api', () => {
         { url: 'data:image/jpeg;base64,two' },
       ],
     })
-  })
-
-  it('视频轮询超时会保留任务 ID 且不会重新创建', async () => {
-    const now = vi.spyOn(Date, 'now')
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0)
-      .mockReturnValue(2000)
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"task_id":"video-timeout","status":"queued"}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('{"id":"video-timeout","status":"in_progress"}'),
-      })
-    vi.stubGlobal('fetch', fetchMock)
-
-    await expect(testVideoGeneration({
-      apiKey: 'sk-test',
-      model: 'future-motion-pro',
-      prompt: '慢镜头',
-      pollIntervalMs: 0,
-      timeoutMs: 1000,
-    })).rejects.toMatchObject({
-      status: 408,
-      message: expect.stringContaining('video-timeout'),
-    })
-
-    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit).method === 'POST')).toHaveLength(1)
-    expect(fetchMock.mock.calls[1][0]).toBe('/v1/videos/video-timeout')
-    now.mockRestore()
   })
 
   it('视频内容通过带 API Key 的受限网关接口下载', async () => {

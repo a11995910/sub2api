@@ -65,6 +65,7 @@ async function postGateway<T>(
   apiKey: string,
   payload: Record<string, unknown>,
   signal?: AbortSignal,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
@@ -72,6 +73,7 @@ async function postGateway<T>(
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      ...extraHeaders,
     },
     body: JSON.stringify(payload),
     signal,
@@ -229,27 +231,19 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
     payload.reference_images = referenceImageDataUrls.map((url) => ({ url }))
   }
 
-  const created = await postGateway<unknown>('/v1/videos', req.apiKey, payload, req.signal)
+  const created = await postGateway<unknown>(
+    '/v1/videos',
+    req.apiKey,
+    payload,
+    req.signal,
+    { 'X-Sub2API-Model-Test': 'video' },
+  )
   const requestID = extractVideoRequestID(created)
   if (!requestID) {
     throw new ModelTestError('Video generation response did not include task_id', 502, created)
   }
 
-  const pollIntervalMs = Math.max(0, req.pollIntervalMs ?? 5000)
-  const timeoutMs = Math.max(1000, req.timeoutMs ?? 15 * 60 * 1000)
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    await waitForPoll(pollIntervalMs, req.signal)
-    const statusPayload = await getGateway<unknown>(`/v1/videos/${encodeURIComponent(requestID)}`, req.apiKey, req.signal)
-    const status = normalizeVideoStatus(extractVideoStatus(statusPayload))
-    if (status === 'completed') {
-      return { payload: statusPayload, requestID }
-    }
-    if (status === 'failed') {
-      throw new ModelTestError(extractGatewayErrorMessage(statusPayload, '', 502), 502, statusPayload)
-    }
-  }
-  throw new ModelTestError(`Video generation task ${requestID} timed out`, 408, created)
+  return { payload: created, requestID }
 }
 
 export async function fetchVideoContent(
@@ -287,31 +281,6 @@ export function extractVideoURL(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return ''
   const obj = payload as Record<string, any>
   return String(obj.url || obj.video_url || obj.data?.url || obj.data?.video_url || obj.video?.url || obj.video?.video_url || '').trim()
-}
-
-function extractVideoStatus(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return ''
-  const obj = payload as Record<string, any>
-  return String(obj.status || obj.data?.status || obj.video?.status || '').trim().toLowerCase()
-}
-
-function normalizeVideoStatus(status: string): 'queued' | 'in_progress' | 'completed' | 'failed' | '' {
-  if (['pending', 'queued', 'queueing'].includes(status)) return 'queued'
-  if (['in_progress', 'processing', 'running'].includes(status)) return 'in_progress'
-  if (['completed', 'succeeded', 'success', 'done'].includes(status)) return 'completed'
-  if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) return 'failed'
-  return ''
-}
-
-function waitForPoll(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => {
-      window.clearTimeout(timer)
-      reject(new DOMException('Aborted', 'AbortError'))
-    }, { once: true })
-  })
 }
 
 export default {
