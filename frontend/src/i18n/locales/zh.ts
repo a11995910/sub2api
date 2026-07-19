@@ -1329,6 +1329,28 @@ export default {
     running: '测试中...',
     runSuccess: '测试完成',
     runFailed: '测试失败',
+    videoTasks: {
+      title: '视频任务记录',
+      retention: '生成中的任务会持续保留，完成或失败记录保留 30 天',
+      empty: '暂无视频任务',
+      submitSuccess: '视频任务已提交',
+      pollError: '暂时无法查询，仍在等待',
+      delete: '删除任务记录',
+      columns: {
+        status: '状态',
+        model: '模型',
+        prompt: '提示词',
+        spec: '规格',
+        createdAt: '创建时间',
+        actions: '操作'
+      },
+      status: {
+        queued: '排队中',
+        in_progress: '生成中',
+        completed: '已完成',
+        failed: '失败'
+      }
+    },
     perImage: '张'
     ,perSecond: '秒'
   },

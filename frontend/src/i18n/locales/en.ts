@@ -1325,6 +1325,28 @@ export default {
     running: 'Running...',
     runSuccess: 'Test completed',
     runFailed: 'Test failed',
+    videoTasks: {
+      title: 'Video task history',
+      retention: 'Active tasks are kept until completion; completed and failed tasks are retained for 30 days',
+      empty: 'No video tasks yet',
+      submitSuccess: 'Video task submitted',
+      pollError: 'Status is temporarily unavailable; still waiting',
+      delete: 'Delete task record',
+      columns: {
+        status: 'Status',
+        model: 'Model',
+        prompt: 'Prompt',
+        spec: 'Spec',
+        createdAt: 'Created',
+        actions: 'Actions'
+      },
+      status: {
+        queued: 'Queued',
+        in_progress: 'Generating',
+        completed: 'Completed',
+        failed: 'Failed'
+      }
+    },
     perImage: 'image'
     ,perSecond: 'sec'
   },

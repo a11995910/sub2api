@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 
 import ModelTestView from '../ModelTestView.vue'
@@ -12,8 +12,11 @@ const showSuccess = vi.hoisted(() => vi.fn())
 const push = vi.hoisted(() => vi.fn())
 const routeState = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
 const testVideoGeneration = vi.hoisted(() => vi.fn())
-const fetchVideoContent = vi.hoisted(() => vi.fn())
 const listGatewayModels = vi.hoisted(() => vi.fn())
+const listVideoTestTasks = vi.hoisted(() => vi.fn())
+const refreshVideoTestTask = vi.hoisted(() => vi.fn())
+const deleteVideoTestTask = vi.hoisted(() => vi.fn())
+const fetchVideoTestTaskContent = vi.hoisted(() => vi.fn())
 
 const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeToken': 'Token',
@@ -72,6 +75,10 @@ const messages: Record<string, string> = {
   'modelTest.running': '测试中...',
   'modelTest.runFailed': '测试失败',
   'modelTest.runSuccess': '测试完成',
+  'modelTest.videoTasks.submitSuccess': '视频任务已提交',
+  'modelTest.videoTasks.title': '视频任务记录',
+  'modelTest.videoTasks.empty': '暂无视频任务',
+  'modelTest.videoTasks.pollError': '暂时无法查询，仍在等待',
   'modelTest.summary.endpoint': '请求端点',
   'modelTest.summary.groupRate': '当前倍率',
   'modelTest.summary.input': '输入',
@@ -113,8 +120,14 @@ vi.mock('@/api/modelTest', () => ({
   testImageGeneration: vi.fn(),
   testVideoGeneration,
   listGatewayModels,
-  fetchVideoContent,
   extractVideoURL: (payload: any) => String(payload?.video?.url || ''),
+}))
+
+vi.mock('@/api/videoTestTasks', () => ({
+  listVideoTestTasks,
+  refreshVideoTestTask,
+  deleteVideoTestTask,
+  fetchVideoTestTaskContent,
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -293,9 +306,13 @@ describe('ModelTestView', () => {
     showSuccess.mockReset()
     push.mockReset()
     testVideoGeneration.mockReset()
-    fetchVideoContent.mockReset()
+    listVideoTestTasks.mockReset()
+    refreshVideoTestTask.mockReset()
+    deleteVideoTestTask.mockReset()
+    fetchVideoTestTaskContent.mockReset()
     listGatewayModels.mockReset()
     listGatewayModels.mockResolvedValue([])
+    listVideoTestTasks.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 })
     window.URL.createObjectURL = vi.fn(() => 'blob:model-test-reference') as typeof window.URL.createObjectURL
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
 
@@ -344,6 +361,10 @@ describe('ModelTestView', () => {
         ],
       },
     ])
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('默认优先选择用户已有 active Key，并带出该 Key 所属分组和可用模型', async () => {
@@ -442,7 +463,7 @@ describe('ModelTestView', () => {
     expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.2 灵石 / 8秒')
   })
 
-  it('Seedance 视频完成后也统一通过本站内容接口下载', async () => {
+  it('Seedance 视频提交后立即刷新任务记录且不等待内容下载', async () => {
     const seedanceGroup = groupFixture({
       id: 62,
       name: '视频测试',
@@ -462,13 +483,30 @@ describe('ModelTestView', () => {
     testVideoGeneration.mockResolvedValue({
       payload: {
         id: 'chatcmpl_seedance',
-        status: 'completed',
-        video: { url: 'https://cdn.test/seedance.mp4' },
+        status: 'queued',
       },
       requestID: 'chatcmpl_seedance',
     })
-    const videoBlob = new Blob(['seedance-video'], { type: 'video/mp4' })
-    fetchVideoContent.mockResolvedValue(videoBlob)
+    listVideoTestTasks
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 20 })
+      .mockResolvedValueOnce({
+        items: [{
+          id: 'local-seedance',
+          api_key_id: 9960,
+          group_id: 62,
+          upstream_task_id: 'chatcmpl_seedance',
+          platform: 'openai',
+          model: 'dreamina-seedance-2-0-mini-ep',
+          prompt: '生成纯黑背景视频',
+          reference_image_count: 0,
+          status: 'queued',
+          created_at: '2026-07-19T12:00:00Z',
+          updated_at: '2026-07-19T12:00:00Z',
+        }],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      })
 
     const wrapper = mountView()
     await flushPromises()
@@ -476,12 +514,10 @@ describe('ModelTestView', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(fetchVideoContent).toHaveBeenCalledWith(
-      'chatcmpl_seedance',
-      'sk-seedance-key-1234567890',
-      expect.any(AbortSignal),
-    )
-    expect(wrapper.find('video').attributes('src')).toBe('blob:model-test-reference')
+    expect(fetchVideoTestTaskContent).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('视频任务记录')
+    expect(wrapper.text()).toContain('生成纯黑背景视频')
+    expect(showSuccess).toHaveBeenCalledWith('视频任务已提交')
   })
 
   it('未知模型名可按视频意图选择且价格未知不阻止测试', async () => {
@@ -505,7 +541,6 @@ describe('ModelTestView', () => {
       payload: { id: 'future-task-1', status: 'completed' },
       requestID: 'future-task-1',
     })
-    fetchVideoContent.mockResolvedValue(new Blob(['future-video'], { type: 'video/mp4' }))
 
     const wrapper = mountView()
     await flushPromises()
@@ -529,11 +564,41 @@ describe('ModelTestView', () => {
       model: 'future-motion-pro',
       prompt: '生成未来城市镜头',
     }))
-    expect(fetchVideoContent).toHaveBeenCalledWith(
-      'future-task-1',
-      'sk-future-video-1234567890',
-      expect.any(AbortSignal),
-    )
+    expect(fetchVideoTestTaskContent).not.toHaveBeenCalled()
+  })
+
+  it('加载历史任务并仅在页面可见时轮询未完成任务', async () => {
+    vi.useFakeTimers()
+    const pendingTask = {
+      id: 'local-pending',
+      api_key_id: 101,
+      group_id: 1,
+      upstream_task_id: 'upstream-pending',
+      platform: 'openai',
+      model: 'future-motion-pro',
+      prompt: '等待中的任务',
+      reference_image_count: 0,
+      status: 'in_progress' as const,
+      created_at: '2026-07-19T12:00:00Z',
+      updated_at: '2026-07-19T12:00:00Z',
+    }
+    listKeys.mockResolvedValue({ items: [textKey], pages: 1 })
+    listVideoTestTasks.mockResolvedValue({ items: [pendingTask], total: 1, page: 1, page_size: 20 })
+    refreshVideoTestTask.mockResolvedValue(pendingTask)
+
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('等待中的任务')
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(refreshVideoTestTask).not.toHaveBeenCalled()
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(refreshVideoTestTask).toHaveBeenCalledWith('local-pending')
   })
 
   it('Grok 图片能力分组在文本模式下仍能选择文本模型', async () => {
@@ -1014,7 +1079,6 @@ describe('ModelTestView', () => {
       payload: { status: 'done' },
       requestID: 'video-request-multiple-images',
     })
-    fetchVideoContent.mockResolvedValue(new Blob(['video-content'], { type: 'video/mp4' }))
 
     const wrapper = mountView()
     await flushPromises()
@@ -1040,7 +1104,7 @@ describe('ModelTestView', () => {
     ])
   })
 
-  it('视频生成完成后通过内容接口创建 Blob 播放地址并在卸载时释放', async () => {
+  it('历史完成任务通过登录态内容接口创建 Blob 播放地址并在卸载时释放', async () => {
     const videoGroup = groupFixture({
       id: 9,
       name: '视频分组',
@@ -1067,27 +1131,32 @@ describe('ModelTestView', () => {
       }],
     }])
     listKeys.mockResolvedValue({ items: [videoKey], pages: 1 })
-    testVideoGeneration.mockResolvedValue({
-      payload: {
-        status: 'done',
-        video: { url: 'https://vidgen.x.ai/xai-vidgen-bucket/generated.mp4' },
-      },
-      requestID: 'video-request-123',
+    listVideoTestTasks.mockResolvedValue({
+      items: [{
+        id: 'local-completed',
+        api_key_id: 909,
+        group_id: 9,
+        upstream_task_id: 'video-request-123',
+        platform: 'grok',
+        model: 'grok-imagine-video',
+        prompt: '生成海浪视频',
+        reference_image_count: 0,
+        status: 'completed',
+        response: { status: 'done' },
+        created_at: '2026-07-19T12:00:00Z',
+        updated_at: '2026-07-19T12:10:00Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
     })
     const videoBlob = new Blob(['video-content'], { type: 'video/mp4' })
-    fetchVideoContent.mockResolvedValue(videoBlob)
+    fetchVideoTestTaskContent.mockResolvedValue(videoBlob)
 
     const wrapper = mountView()
     await flushPromises()
-    await wrapper.find('textarea').setValue('生成海浪视频')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
 
-    expect(fetchVideoContent).toHaveBeenCalledWith(
-      'video-request-123',
-      'sk-video-key-1234567890',
-      expect.any(AbortSignal),
-    )
+    expect(fetchVideoTestTaskContent).toHaveBeenCalledWith('local-completed')
     expect(window.URL.createObjectURL).toHaveBeenCalledWith(videoBlob)
     expect(wrapper.find('video').attributes('src')).toBe('blob:model-test-reference')
 

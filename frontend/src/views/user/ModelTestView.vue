@@ -311,6 +311,88 @@
           </div>
         </section>
       </section>
+
+      <section class="card overflow-hidden" data-testid="video-task-history">
+        <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <div>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modelTest.videoTasks.title') }}</h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('modelTest.videoTasks.retention') }}</p>
+          </div>
+          <button
+            type="button"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+            :disabled="videoTasksLoading"
+            :title="t('common.refresh')"
+            @click="loadVideoTasks()"
+          >
+            <Icon name="refresh" size="sm" :class="videoTasksLoading ? 'animate-spin' : ''" />
+          </button>
+        </div>
+
+        <div v-if="videoTasks.length === 0" class="px-5 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+          {{ t('modelTest.videoTasks.empty') }}
+        </div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full table-fixed text-left text-sm">
+            <thead class="bg-gray-50 text-xs font-medium text-gray-500 dark:bg-dark-800/70 dark:text-gray-400">
+              <tr>
+                <th class="w-28 px-4 py-3">{{ t('modelTest.videoTasks.columns.status') }}</th>
+                <th class="w-52 px-4 py-3">{{ t('modelTest.videoTasks.columns.model') }}</th>
+                <th class="min-w-64 px-4 py-3">{{ t('modelTest.videoTasks.columns.prompt') }}</th>
+                <th class="w-36 px-4 py-3">{{ t('modelTest.videoTasks.columns.spec') }}</th>
+                <th class="w-44 px-4 py-3">{{ t('modelTest.videoTasks.columns.createdAt') }}</th>
+                <th class="w-24 px-4 py-3 text-right">{{ t('modelTest.videoTasks.columns.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr
+                v-for="task in videoTasks"
+                :key="task.id"
+                class="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-dark-800/50"
+                :class="selectedVideoTaskID === task.id ? 'bg-primary-50/60 dark:bg-primary-900/10' : ''"
+                @click="selectVideoTask(task)"
+              >
+                <td class="px-4 py-3 align-top">
+                  <span :class="videoTaskStatusClass(task.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
+                    {{ videoTaskStatusLabel(task.status) }}
+                  </span>
+                  <p v-if="task.last_poll_error" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                    {{ t('modelTest.videoTasks.pollError') }}
+                  </p>
+                </td>
+                <td class="truncate px-4 py-3 align-top font-medium text-gray-800 dark:text-gray-100" :title="task.model">{{ task.model }}</td>
+                <td class="px-4 py-3 align-top text-gray-600 dark:text-gray-300">
+                  <p class="line-clamp-2 break-words" :title="task.prompt">{{ task.prompt }}</p>
+                </td>
+                <td class="px-4 py-3 align-top text-gray-500 dark:text-gray-400">{{ videoTaskSpec(task) }}</td>
+                <td class="px-4 py-3 align-top text-gray-500 dark:text-gray-400">{{ formatVideoTaskTime(task.created_at) }}</td>
+                <td class="px-4 py-3 align-top">
+                  <div class="flex justify-end gap-1">
+                    <button
+                      v-if="task.status === 'queued' || task.status === 'in_progress'"
+                      type="button"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-primary-600 disabled:opacity-50 dark:hover:bg-dark-700"
+                      :disabled="refreshingVideoTaskIDs.has(task.id)"
+                      :title="t('common.refresh')"
+                      @click.stop="refreshVideoTask(task)"
+                    >
+                      <Icon name="refresh" size="sm" :class="refreshingVideoTaskIDs.has(task.id) ? 'animate-spin' : ''" />
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                      :title="t('modelTest.videoTasks.delete')"
+                      @click.stop="removeVideoTask(task)"
+                    >
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </AppLayout>
 </template>
@@ -329,7 +411,15 @@ import userChannelsAPI, {
 } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import keysAPI from '@/api/keys'
-import { extractVideoURL, fetchVideoContent, listGatewayModels, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import { extractVideoURL, listGatewayModels, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import {
+  deleteVideoTestTask,
+  fetchVideoTestTaskContent,
+  listVideoTestTasks,
+  refreshVideoTestTask as refreshVideoTestTaskRequest,
+  type VideoTestTask,
+  type VideoTestTaskStatus,
+} from '@/api/videoTestTasks'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
@@ -413,8 +503,14 @@ const rawResponse = ref<unknown | null>(null)
 const videoBlobURL = ref('')
 const errorMessage = ref('')
 const durationMs = ref<number | null>(null)
+const videoTasks = ref<VideoTestTask[]>([])
+const videoTasksLoading = ref(false)
+const selectedVideoTaskID = ref('')
+const refreshingVideoTaskIDs = ref(new Set<string>())
 
 let runController: AbortController | null = null
+let videoTaskPollTimer: number | null = null
+let videoBlobTaskID = ''
 const gatewayModelRequests = new Map<number, Promise<void>>()
 
 const maxReferenceImages = 4
@@ -669,11 +765,15 @@ const currentPricePreview = computed(() => {
 const chatOutput = computed(() => selectedKind.value === 'token' ? extractChatText(rawResponse.value) : '')
 const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImageOutputs(rawResponse.value) : [])
 const videoOutputURL = computed(() => selectedKind.value === 'video' ? videoBlobURL.value || extractVideoURL(rawResponse.value) : '')
+const selectedVideoTask = computed(() => videoTasks.value.find((task) => task.id === selectedVideoTaskID.value) || null)
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
-watch(selectedKind, () => {
+watch(selectedKind, (kind) => {
   clearVideoBlobURL()
   syncSelectedModel()
+  if (kind === 'video' && selectedVideoTask.value) {
+    void syncSelectedVideoTask(selectedVideoTask.value)
+  }
 })
 
 watch(selectedApiKeyId, async () => {
@@ -1060,6 +1160,7 @@ async function runTest() {
   errorMessage.value = ''
   durationMs.value = null
   const startedAt = performance.now()
+  let successMessage = t('modelTest.runSuccess')
   try {
     if (selectedKind.value === 'image') {
       rawResponse.value = referenceImages.value.length > 0
@@ -1093,11 +1194,9 @@ async function runTest() {
           : undefined,
         signal: runController.signal,
       })
-      if (videoResult.requestID) {
-        const videoBlob = await fetchVideoContent(videoResult.requestID, apiKey.key, runController.signal)
-        videoBlobURL.value = URL.createObjectURL(videoBlob)
-      }
       rawResponse.value = videoResult.payload
+      await loadVideoTasks(videoResult.requestID)
+      successMessage = t('modelTest.videoTasks.submitSuccess')
     } else {
       rawResponse.value = await testChatCompletion({
         apiKey: apiKey.key,
@@ -1108,7 +1207,7 @@ async function runTest() {
       })
     }
     durationMs.value = Math.round(performance.now() - startedAt)
-    appStore.showSuccess(t('modelTest.runSuccess'))
+    appStore.showSuccess(successMessage)
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
@@ -1121,6 +1220,147 @@ async function runTest() {
     running.value = false
     runController = null
   }
+}
+
+async function loadVideoTasks(selectUpstreamTaskID = ''): Promise<void> {
+  videoTasksLoading.value = true
+  try {
+    const page = await listVideoTestTasks(1, 20)
+    videoTasks.value = page.items || []
+    const target = selectUpstreamTaskID
+      ? videoTasks.value.find((task) => task.upstream_task_id === selectUpstreamTaskID)
+      : selectedVideoTask.value || videoTasks.value[0]
+    if (target) {
+      selectedVideoTaskID.value = target.id
+      if (selectedKind.value === 'video') {
+        await syncSelectedVideoTask(target)
+      }
+    } else {
+      selectedVideoTaskID.value = ''
+    }
+  } catch (err: unknown) {
+    console.error('Failed to load video test tasks:', err)
+  } finally {
+    videoTasksLoading.value = false
+  }
+}
+
+async function refreshPendingVideoTasks(): Promise<void> {
+  if (document.visibilityState === 'hidden') return
+  const pending = videoTasks.value.filter((task) => task.status === 'queued' || task.status === 'in_progress')
+  await Promise.all(pending.map((task) => refreshVideoTask(task)))
+}
+
+async function refreshVideoTask(task: VideoTestTask): Promise<void> {
+  if (refreshingVideoTaskIDs.value.has(task.id)) return
+  refreshingVideoTaskIDs.value = new Set(refreshingVideoTaskIDs.value).add(task.id)
+  try {
+    const updated = await refreshVideoTestTaskRequest(task.id)
+    replaceVideoTask(updated)
+    if (selectedVideoTaskID.value === updated.id) {
+      await syncSelectedVideoTask(updated)
+    }
+  } catch (err: unknown) {
+    replaceVideoTask({
+      ...task,
+      last_poll_error: extractApiErrorMessage(err, t('modelTest.videoTasks.pollError')),
+    })
+  } finally {
+    const next = new Set(refreshingVideoTaskIDs.value)
+    next.delete(task.id)
+    refreshingVideoTaskIDs.value = next
+  }
+}
+
+function replaceVideoTask(task: VideoTestTask) {
+  const index = videoTasks.value.findIndex((item) => item.id === task.id)
+  if (index < 0) {
+    videoTasks.value = [task, ...videoTasks.value]
+    return
+  }
+  videoTasks.value = videoTasks.value.map((item) => item.id === task.id ? task : item)
+}
+
+async function selectVideoTask(task: VideoTestTask): Promise<void> {
+  selectedVideoTaskID.value = task.id
+  selectedKind.value = 'video'
+  await syncSelectedVideoTask(task)
+}
+
+async function syncSelectedVideoTask(task: VideoTestTask): Promise<void> {
+  rawResponse.value = task.response || task
+  errorMessage.value = task.status === 'failed' ? task.error_message || t('modelTest.runFailed') : ''
+  if (task.status !== 'completed') {
+    clearVideoBlobURL()
+    return
+  }
+  if (extractVideoURL(task.response)) {
+    clearVideoBlobURL()
+    return
+  }
+  if (videoBlobTaskID === task.id && videoBlobURL.value) return
+  clearVideoBlobURL()
+  try {
+    const blob = await fetchVideoTestTaskContent(task.id)
+    videoBlobURL.value = URL.createObjectURL(blob)
+    videoBlobTaskID = task.id
+  } catch (err: unknown) {
+    replaceVideoTask({
+      ...task,
+      last_poll_error: extractApiErrorMessage(err, t('modelTest.videoTasks.pollError')),
+    })
+  }
+}
+
+async function removeVideoTask(task: VideoTestTask): Promise<void> {
+  try {
+    await deleteVideoTestTask(task.id)
+    videoTasks.value = videoTasks.value.filter((item) => item.id !== task.id)
+    if (selectedVideoTaskID.value === task.id) {
+      selectedVideoTaskID.value = videoTasks.value[0]?.id || ''
+      clearVideoBlobURL()
+      rawResponse.value = null
+      if (videoTasks.value[0] && selectedKind.value === 'video') {
+        await syncSelectedVideoTask(videoTasks.value[0])
+      }
+    }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  }
+}
+
+function handleVideoTaskVisibilityChange() {
+  if (document.visibilityState !== 'hidden') {
+    void refreshPendingVideoTasks()
+  }
+}
+
+function videoTaskStatusLabel(status: VideoTestTaskStatus): string {
+  return t(`modelTest.videoTasks.status.${status}`)
+}
+
+function videoTaskStatusClass(status: VideoTestTaskStatus): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-green-50 text-green-700 dark:bg-green-900/25 dark:text-green-300'
+    case 'failed':
+      return 'bg-red-50 text-red-700 dark:bg-red-900/25 dark:text-red-300'
+    case 'in_progress':
+      return 'bg-blue-50 text-blue-700 dark:bg-blue-900/25 dark:text-blue-300'
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
+  }
+}
+
+function videoTaskSpec(task: VideoTestTask): string {
+  const parts = [task.resolution, task.duration_seconds ? `${task.duration_seconds}s` : ''].filter(Boolean)
+  return parts.join(' / ') || '-'
+}
+
+function formatVideoTaskTime(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function normalizedMaxTokens(): number {
@@ -1243,9 +1483,11 @@ function clearReferenceImages() {
 }
 
 function clearVideoBlobURL() {
-  if (!videoBlobURL.value) return
-  URL.revokeObjectURL(videoBlobURL.value)
-  videoBlobURL.value = ''
+  if (videoBlobURL.value) {
+    URL.revokeObjectURL(videoBlobURL.value)
+    videoBlobURL.value = ''
+  }
+  videoBlobTaskID = ''
 }
 
 function formatFileSize(bytes: number): string {
@@ -1323,10 +1565,20 @@ function redactForPreview(value: unknown): unknown {
 
 onMounted(() => {
   void loadData()
+  void loadVideoTasks()
+  document.addEventListener('visibilitychange', handleVideoTaskVisibilityChange)
+  videoTaskPollTimer = window.setInterval(() => {
+    void refreshPendingVideoTasks()
+  }, 5000)
 })
 
 onBeforeUnmount(() => {
   runController?.abort()
+  if (videoTaskPollTimer !== null) {
+    window.clearInterval(videoTaskPollTimer)
+    videoTaskPollTimer = null
+  }
+  document.removeEventListener('visibilitychange', handleVideoTaskVisibilityChange)
   clearVideoBlobURL()
   clearReferenceImages()
 })
