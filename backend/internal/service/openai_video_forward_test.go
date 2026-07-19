@@ -287,6 +287,67 @@ func TestForwardOpenAIVideoContentProxiesVideoAndRange(t *testing.T) {
 	require.Equal(t, "test", recorder.Body.String())
 }
 
+func TestForwardOpenAIVideoContentSlicesRangeWhenUpstreamIgnoresIt(t *testing.T) {
+	c, recorder := openAIVideoForwardTestContext(nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil)
+	c.Request.Header.Set("Range", "bytes=2-5")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": []string{"video/mp4"}, "Accept-Ranges": []string{"bytes"}},
+		Body:          io.NopCloser(bytes.NewBufferString("01234567")),
+		ContentLength: 8,
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.ForwardOpenAIVideoContent(context.Background(), c, openAIVideoForwardTestAccount(), "task-1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "bytes=2-5", upstream.lastReq.Header.Get("Range"))
+	require.Equal(t, http.StatusPartialContent, recorder.Code)
+	require.Equal(t, "bytes 2-5/8", recorder.Header().Get("Content-Range"))
+	require.Equal(t, "4", recorder.Header().Get("Content-Length"))
+	require.Equal(t, "2345", recorder.Body.String())
+}
+
+func TestForwardOpenAIVideoContentLeavesMultipleRangesUnchangedWhenUpstreamIgnoresThem(t *testing.T) {
+	c, recorder := openAIVideoForwardTestContext(nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil)
+	c.Request.Header.Set("Range", "bytes=0-1,4-5")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+		Body:          io.NopCloser(bytes.NewBufferString("01234567")),
+		ContentLength: 8,
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	_, err := svc.ForwardOpenAIVideoContent(context.Background(), c, openAIVideoForwardTestAccount(), "task-1")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Header().Get("Content-Range"))
+	require.Equal(t, "01234567", recorder.Body.String())
+}
+
+func TestForwardOpenAIVideoContentLeavesIfRangeRequestUnchangedWhenUpstreamIgnoresIt(t *testing.T) {
+	c, recorder := openAIVideoForwardTestContext(nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil)
+	c.Request.Header.Set("Range", "bytes=2-5")
+	c.Request.Header.Set("If-Range", `"stale-etag"`)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+		Body:          io.NopCloser(bytes.NewBufferString("01234567")),
+		ContentLength: 8,
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	_, err := svc.ForwardOpenAIVideoContent(context.Background(), c, openAIVideoForwardTestAccount(), "task-1")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Header().Get("Content-Range"))
+	require.Equal(t, "01234567", recorder.Body.String())
+}
+
 func TestForwardOpenAIVideoContentFallsBackToValidatedStatusURL(t *testing.T) {
 	c, recorder := openAIVideoForwardTestContext(nil)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task-1/content", nil)

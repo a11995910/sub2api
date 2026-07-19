@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -338,6 +339,12 @@ func writeOpenAIVideoContentResponse(c *gin.Context, resp *http.Response, maxByt
 	if maxBytes <= 0 {
 		maxBytes = defaultUpstreamResponseReadMaxBytes
 	}
+	if rangeHeader := strings.TrimSpace(c.GetHeader("Range")); resp.StatusCode == http.StatusOK &&
+		isOpenAIVideoSingleRange(rangeHeader) &&
+		strings.TrimSpace(c.GetHeader("If-Range")) == "" &&
+		resp.ContentLength >= 0 {
+		return writeOpenAIVideoLocalRange(c, resp, rangeHeader)
+	}
 	for _, name := range []string{
 		"Content-Type",
 		"Content-Length",
@@ -367,6 +374,86 @@ func writeOpenAIVideoContentResponse(c *gin.Context, resp *http.Response, maxByt
 		}
 	}
 	return nil
+}
+
+func isOpenAIVideoSingleRange(header string) bool {
+	if !strings.HasPrefix(header, "bytes=") {
+		return false
+	}
+	spec := strings.TrimSpace(strings.TrimPrefix(header, "bytes="))
+	return spec != "" && !strings.Contains(spec, ",")
+}
+
+func writeOpenAIVideoLocalRange(c *gin.Context, resp *http.Response, rangeHeader string) error {
+	start, end, err := parseOpenAIVideoSingleRange(rangeHeader, resp.ContentLength)
+	if err != nil {
+		c.Header("Content-Range", fmt.Sprintf("bytes */%d", resp.ContentLength))
+		c.Header("Content-Length", "0")
+		c.Status(http.StatusRequestedRangeNotSatisfiable)
+		MarkResponseCommitted(c)
+		return nil
+	}
+	if start > 0 {
+		if _, err := io.CopyN(io.Discard, resp.Body, start); err != nil {
+			return fmt.Errorf("skip video content to requested range: %w", err)
+		}
+	}
+	length := end - start + 1
+	for _, name := range []string{"Content-Type", "Content-Disposition"} {
+		if value := strings.TrimSpace(resp.Header.Get(name)); value != "" {
+			c.Header(name, value)
+		}
+	}
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, resp.ContentLength))
+	c.Header("Content-Length", strconv.FormatInt(length, 10))
+	c.Status(http.StatusPartialContent)
+	MarkResponseCommitted(c)
+	if _, err := io.CopyN(c.Writer, resp.Body, length); err != nil {
+		return fmt.Errorf("copy requested video content range: %w", err)
+	}
+	return nil
+}
+
+func parseOpenAIVideoSingleRange(header string, size int64) (int64, int64, error) {
+	header = strings.TrimSpace(header)
+	if size <= 0 || !strings.HasPrefix(header, "bytes=") {
+		return 0, 0, fmt.Errorf("invalid video content range")
+	}
+	spec := strings.TrimSpace(strings.TrimPrefix(header, "bytes="))
+	if spec == "" || strings.Contains(spec, ",") {
+		return 0, 0, fmt.Errorf("only one video content range is supported")
+	}
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid video content range")
+	}
+	if parts[0] == "" {
+		suffixLength, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || suffixLength <= 0 {
+			return 0, 0, fmt.Errorf("invalid video content suffix range")
+		}
+		if suffixLength > size {
+			suffixLength = size
+		}
+		return size - suffixLength, size - 1, nil
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, fmt.Errorf("video content range start is unsatisfiable")
+	}
+	end := size - 1
+	if parts[1] != "" {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || end < start {
+			return 0, 0, fmt.Errorf("invalid video content range end")
+		}
+		if end >= size {
+			end = size - 1
+		}
+	}
+	return start, end, nil
 }
 
 func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
