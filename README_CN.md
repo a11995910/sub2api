@@ -606,6 +606,34 @@ default:
   rate_multiplier: 1.0
 ```
 
+### OpenAI 兼容异步视频接口
+
+OpenAI 平台分组支持不依赖模型名的通用异步视频工作流。账号模型映射仍按现有账号配置执行，例如可以把站内统一模型名映射为上游 `jing-video-2-pro`；协议选择不读取 Seedance、Jing、Kling、Veo 或 Sora 等名称前缀。
+
+公开入口：
+
+- `POST /v1/videos`：创建视频任务；`POST /v1/videos/generations` 为兼容别名。无 `/v1` 前缀的对应路径也可用。
+- `GET /v1/videos/{task_id}`：读取 `queued`、`in_progress`、`completed` 或 `failed` 状态。
+- `GET /v1/videos/{task_id}/content`：通过创建任务时绑定的上游账号代理视频内容，支持 `Range`。
+
+创建请求至少包含 `model` 和 `prompt`，可选 `resolution`、`duration` 或 `seconds`、`image.url`、`image_urls`、`reference_image_urls` 及 `reference_images[].url`。网关会合并兼容图片字段，将时长规范化为字符串 `seconds`，并在模型映射后调用上游：
+
+```bash
+curl -X POST https://your-domain.example/v1/videos \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "future-motion-pro",
+    "prompt": "电影感镜头，雨夜霓虹街道，镜头缓慢推进",
+    "resolution": "720p",
+    "duration": 5
+  }'
+```
+
+首次请求优先尝试上游 `/v1/videos`，协议结果按“账号 + 映射后模型”缓存。只有明确的 `404`、`405` 或 `unsupported_endpoint` 才会在未创建任务的前提下回退一次旧 Chat Completions 视频协议；业务 `400`、`401`、`403`、`429`、`5xx`、超时和断线均不会触发回退，避免重复创建收费任务。创建成功只记录一次视频用量，状态轮询和内容下载不重复扣费。
+
+任务查询按用户、API Key、分组和任务 ID 隔离，并固定回到原创建账号。完成状态只向客户端返回本站内容路径，不暴露上游签名 URL；上游没有 `/content` 端点时，仅允许代理状态响应中的公网 HTTPS 视频地址，并继续执行重定向、媒体类型和响应体大小限制。
+
 ### Sora 功能状态（暂不可用）
 
 > ⚠️ 当前 Sora 相关功能因上游接入与媒体链路存在技术问题，暂时不可用。

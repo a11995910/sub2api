@@ -555,6 +555,34 @@ default:
   rate_multiplier: 1.0
 ```
 
+### OpenAI-Compatible Asynchronous Video API
+
+OpenAI-platform groups support a model-name-independent asynchronous video workflow. Existing account model mappings still apply, so a public model name can map to an upstream name such as `jing-video-2-pro`; protocol selection does not depend on Seedance, Jing, Kling, Veo, Sora, or other model-name prefixes.
+
+Public endpoints:
+
+- `POST /v1/videos` creates a task. `POST /v1/videos/generations` remains available as a compatibility alias, along with the equivalent paths without `/v1`.
+- `GET /v1/videos/{task_id}` returns one of `queued`, `in_progress`, `completed`, or `failed`.
+- `GET /v1/videos/{task_id}/content` proxies the video through the account bound at creation time and supports `Range` requests.
+
+Create requests require `model` and `prompt`. Optional fields include `resolution`, `duration` or `seconds`, `image.url`, `image_urls`, `reference_image_urls`, and `reference_images[].url`. The gateway merges compatible image fields, normalizes the upstream duration to a string `seconds` value, and applies account model mapping before forwarding:
+
+```bash
+curl -X POST https://your-domain.example/v1/videos \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "future-motion-pro",
+    "prompt": "Cinematic shot of a neon street in the rain, slow push in",
+    "resolution": "720p",
+    "duration": 5
+  }'
+```
+
+An unknown protocol first tries the upstream `/v1/videos` endpoint and caches the result by account and mapped model. The gateway falls back once to the legacy Chat Completions video protocol only for an explicit `404`, `405`, or `unsupported_endpoint` response that proves no task was created. Validation `400` responses, `401`, `403`, `429`, `5xx`, timeouts, and disconnects never trigger fallback, preventing duplicate billable tasks. A successful create records one video usage item; status and content reads are not billed again.
+
+Task reads are isolated by user, API key, group, and task ID, and always use the original account. Completed status responses expose only the local content endpoint instead of the upstream signed URL. If an upstream lacks `/content`, the gateway accepts only a public HTTPS result URL from status and still enforces redirect, media-type, and response-size limits.
+
 ### Sora Status (Temporarily Unavailable)
 
 > ⚠️ Sora-related features are temporarily unavailable due to technical issues in upstream integration and media delivery.
