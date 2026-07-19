@@ -236,6 +236,13 @@ describe('resolveVideoPriceQuote', () => {
     ['grok-imagine-video-1.5', '480p', 0.08],
     ['grok-imagine-video-1.5', '720p', 0.14],
     ['grok-imagine-video-1.5', '1080p', 0.25],
+    ['dreamina-seedance-2-0-ep', '480p', 0.07],
+    ['dreamina-seedance-2-0-ep', '720p', 0.15],
+    ['dreamina-seedance-2-0-ep', '1080p', 0.37],
+    ['dreamina-seedance-2-0-fast-ep', '480p', 0.06],
+    ['dreamina-seedance-2-0-fast-ep', '720p', 0.12],
+    ['dreamina-seedance-2-0-mini-ep', '480p', 0.04],
+    ['dreamina-seedance-2-0-mini-hc', '720p', 0.08],
   ] as const)('%s 的 %s 使用与后端一致的系统默认价', (modelName, resolution, basePrice) => {
     expect(resolveVideoPriceQuote({
       group: groupFixture(),
@@ -271,6 +278,18 @@ describe('videoResolutionsForModel', () => {
 
   it('1.5 包含 1080p', () => {
     expect(videoResolutionsForModel('grok-imagine-video-1.5')).toEqual(['480p', '720p', '1080p'])
+  })
+
+  it('Seedance 完整版包含 1080p', () => {
+    expect(videoResolutionsForModel('dreamina-seedance-2-0-ep')).toEqual(['480p', '720p', '1080p'])
+  })
+
+  it.each([
+    'dreamina-seedance-2-0-fast-ep',
+    'dreamina-seedance-2-0-mini-ep',
+    'dreamina-seedance-2-0-mini-hc',
+  ])('%s 仅提供 480p 和 720p', (modelName) => {
+    expect(videoResolutionsForModel(modelName)).toEqual(['480p', '720p'])
   })
 })
 

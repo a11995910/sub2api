@@ -4,6 +4,13 @@ import { BILLING_MODE_IMAGE, BILLING_MODE_VIDEO } from '@/constants/channel'
 import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind } from '../modelKind'
 
 describe('resolveModelKind', () => {
+  it('Seedance 模型名识别为视频', () => {
+    expect(resolveModelKind({
+      name: 'dreamina-seedance-2-0-mini-ep',
+      pricing: null,
+    })).toBe('video')
+  })
+
   it('模型名为 Grok 视频时覆盖历史 kind=image', () => {
     expect(resolveModelKind({
       name: 'grok-imagine-video-1.5',

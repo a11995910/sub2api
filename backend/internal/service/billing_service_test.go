@@ -810,8 +810,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")
@@ -996,6 +996,31 @@ func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	require.InDelta(t, 0.08, video15_480P.TotalCost, 1e-10)
 	require.InDelta(t, 0.14, video15_720P.TotalCost, 1e-10)
 	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
+}
+
+func TestCalculateSeedanceVideoCostUsesOfficialDefaultRateCard(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		model      string
+		resolution string
+		want       float64
+	}{
+		{model: "dreamina-seedance-2-0-ep", resolution: "480p", want: 0.07},
+		{model: "dreamina-seedance-2-0-ep", resolution: "720p", want: 0.15},
+		{model: "dreamina-seedance-2-0-ep", resolution: "1080p", want: 0.37},
+		{model: "dreamina-seedance-2-0-fast-ep", resolution: "480p", want: 0.06},
+		{model: "dreamina-seedance-2-0-fast-ep", resolution: "720p", want: 0.12},
+		{model: "dreamina-seedance-2-0-mini-ep", resolution: "480p", want: 0.04},
+		{model: "dreamina-seedance-2-0-mini-hc", resolution: "720p", want: 0.08},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model+"/"+tt.resolution, func(t *testing.T) {
+			cost := svc.CalculateVideoCost(tt.model, tt.resolution, 1, 1, nil, 1)
+			require.InDelta(t, tt.want, cost.ActualCost, 1e-10)
+		})
+	}
 }
 
 func TestIsModelSupported(t *testing.T) {

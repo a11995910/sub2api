@@ -1385,6 +1385,15 @@ const (
 	defaultGrokImagineVideo15Price720P  = 0.14
 	defaultGrokImagineVideo15Price1080P = 0.25
 
+	// Seedance 2.0 官方无视频输入、16:9 场景每秒估算价格（USD/s）。
+	defaultSeedance20Price480P     = 0.07
+	defaultSeedance20Price720P     = 0.15
+	defaultSeedance20Price1080P    = 0.37
+	defaultSeedance20FastPrice480P = 0.06
+	defaultSeedance20FastPrice720P = 0.12
+	defaultSeedance20MiniPrice480P = 0.04
+	defaultSeedance20MiniPrice720P = 0.08
+
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
 )
@@ -1556,12 +1565,57 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	if price, ok := getDefaultGrokImagineVideoPrice(model, resolution); ok {
 		return price
 	}
+	if price, ok := getDefaultSeedanceVideoPrice(model, resolution); ok {
+		return price
+	}
 
 	// The bundled LiteLLM schema does not expose an output video generation price.
 	// Keep the historical model default as the fallback (interpreted as a per-second
 	// rate; today only Grok models reach video billing, so this path is a safety net),
 	// while letting group-level video prices override it independently from image prices.
 	return s.getDefaultImagePrice(model, ImageBillingSize2K)
+}
+
+func getDefaultSeedanceVideoPrice(model string, resolution string) (float64, bool) {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if !strings.HasPrefix(model, "dreamina-seedance-") {
+		return 0, false
+	}
+
+	resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
+	switch {
+	case strings.Contains(model, "seedance-2-0-mini"):
+		switch resolution {
+		case VideoBillingResolution480P:
+			return defaultSeedance20MiniPrice480P, true
+		case VideoBillingResolution720P:
+			return defaultSeedance20MiniPrice720P, true
+		default:
+			return 0, true
+		}
+	case strings.Contains(model, "seedance-2-0-fast"):
+		switch resolution {
+		case VideoBillingResolution480P:
+			return defaultSeedance20FastPrice480P, true
+		case VideoBillingResolution720P:
+			return defaultSeedance20FastPrice720P, true
+		default:
+			return 0, true
+		}
+	case strings.Contains(model, "seedance-2-0"):
+		switch resolution {
+		case VideoBillingResolution480P:
+			return defaultSeedance20Price480P, true
+		case VideoBillingResolution720P:
+			return defaultSeedance20Price720P, true
+		case VideoBillingResolution1080P:
+			return defaultSeedance20Price1080P, true
+		default:
+			return 0, true
+		}
+	default:
+		return 0, false
+	}
 }
 
 func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, bool) {

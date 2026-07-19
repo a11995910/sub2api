@@ -58,7 +58,12 @@ function isImageModelName(name: string): boolean {
 }
 
 export function isVideoModelName(name: string): boolean {
-  return name.trim().toLowerCase().startsWith('grok-imagine-video')
+  const normalized = name.trim().toLowerCase()
+  return normalized.startsWith('grok-imagine-video') || isSeedanceVideoModel(normalized)
+}
+
+export function isSeedanceVideoModel(name: string): boolean {
+  return name.trim().toLowerCase().startsWith('dreamina-seedance-')
 }
 
 function isLegacyOpenAIImageGroup(group: UserAvailableGroup): boolean {

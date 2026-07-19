@@ -3,6 +3,7 @@ import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_VIDEO,
 } from '@/constants/channel'
+import { isSeedanceVideoModel } from '@/utils/modelKind'
 
 export type VideoResolution = '480p' | '720p' | '1080p'
 export type VideoBillingUnit = 'second' | 'request'
@@ -64,8 +65,26 @@ function quote(
   }
 }
 
-function grokDefaultVideoPrice(modelName: string, resolution: VideoResolution): number | null {
+function systemDefaultVideoPrice(modelName: string, resolution: VideoResolution): number | null {
   const normalizedModel = modelName.trim().toLowerCase()
+  if (isSeedanceVideoModel(normalizedModel)) {
+    if (normalizedModel.includes('seedance-2-0-mini')) {
+      if (resolution === '480p') return 0.04
+      if (resolution === '720p') return 0.08
+      return null
+    }
+    if (normalizedModel.includes('seedance-2-0-fast')) {
+      if (resolution === '480p') return 0.06
+      if (resolution === '720p') return 0.12
+      return null
+    }
+    if (normalizedModel.includes('seedance-2-0')) {
+      if (resolution === '480p') return 0.07
+      if (resolution === '720p') return 0.15
+      if (resolution === '1080p') return 0.37
+    }
+    return null
+  }
   if (normalizedModel.startsWith('grok-imagine-video-1.5')) {
     switch (resolution) {
       case '480p':
@@ -85,7 +104,12 @@ function grokDefaultVideoPrice(modelName: string, resolution: VideoResolution): 
 
 export function videoResolutionsForModel(modelName: string): VideoResolution[] {
   const normalizedModel = modelName.trim().toLowerCase()
-  if (normalizedModel.startsWith('grok-imagine-video-1.5')) {
+  if (
+    normalizedModel.startsWith('grok-imagine-video-1.5') ||
+    (isSeedanceVideoModel(normalizedModel) &&
+      !normalizedModel.includes('seedance-2-0-fast') &&
+      !normalizedModel.includes('seedance-2-0-mini'))
+  ) {
     return ['480p', '720p', '1080p']
   }
   return ['480p', '720p']
@@ -123,7 +147,7 @@ export function resolveVideoPriceQuote(input: VideoPriceInput): VideoPriceQuote 
     return null
   }
 
-  const systemPrice = grokDefaultVideoPrice(input.modelName, input.resolution)
+  const systemPrice = systemDefaultVideoPrice(input.modelName, input.resolution)
   return systemPrice == null
     ? null
     : quote(input, systemPrice, 'second', 'system_default')
