@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -10,6 +12,7 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+const openAIVideoProtocolPrefix = "openai_video_protocol:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -49,6 +52,56 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 // or unschedulable), allowing subsequent requests to select a new available account.
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
+	return c.rdb.Del(ctx, key).Err()
+}
+
+func buildOpenAIVideoProtocolKey(accountID int64, mappedModel string) (string, error) {
+	mappedModel = strings.TrimSpace(mappedModel)
+	if accountID <= 0 || mappedModel == "" {
+		return "", fmt.Errorf("invalid video protocol cache key")
+	}
+	digest := sha256.Sum256([]byte(strings.ToLower(mappedModel)))
+	return fmt.Sprintf("%s%d:%x", openAIVideoProtocolPrefix, accountID, digest[:12]), nil
+}
+
+func (c *gatewayCache) GetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) (service.OpenAIVideoProtocol, error) {
+	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel)
+	if err != nil {
+		return "", err
+	}
+	value, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		return "", err
+	}
+	protocol := service.OpenAIVideoProtocol(value)
+	if protocol != service.OpenAIVideoProtocolVideos && protocol != service.OpenAIVideoProtocolChatCompletions {
+		return "", fmt.Errorf("invalid cached video protocol %q", value)
+	}
+	return protocol, nil
+}
+
+func (c *gatewayCache) SetOpenAIVideoProtocol(
+	ctx context.Context,
+	accountID int64,
+	mappedModel string,
+	protocol service.OpenAIVideoProtocol,
+	ttl time.Duration,
+) error {
+	if protocol != service.OpenAIVideoProtocolVideos && protocol != service.OpenAIVideoProtocolChatCompletions {
+		return fmt.Errorf("invalid video protocol %q", protocol)
+	}
+	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Set(ctx, key, string(protocol), ttl).Err()
+}
+
+func (c *gatewayCache) DeleteOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) error {
+	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel)
+	if err != nil {
+		return err
+	}
 	return c.rdb.Del(ctx, key).Err()
 }
 

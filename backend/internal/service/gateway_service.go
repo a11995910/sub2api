@@ -485,6 +485,20 @@ type GatewayCache interface {
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 }
 
+type OpenAIVideoProtocol string
+
+const (
+	OpenAIVideoProtocolVideos          OpenAIVideoProtocol = "videos"
+	OpenAIVideoProtocolChatCompletions OpenAIVideoProtocol = "chat_completions"
+)
+
+// OpenAIVideoProtocolCache 是 GatewayCache 的可选扩展，不要求既有测试缓存实现。
+type OpenAIVideoProtocolCache interface {
+	GetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) (OpenAIVideoProtocol, error)
+	SetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, protocol OpenAIVideoProtocol, ttl time.Duration) error
+	DeleteOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) error
+}
+
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
 	if groupID == nil {
