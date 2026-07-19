@@ -65,6 +65,12 @@ func ProvideGeneratedImageCleanupService(store *GeneratedImageStore) *GeneratedI
 	return svc
 }
 
+func ProvideVideoTestTaskCleanupService(store VideoTestTaskStore) *VideoTestTaskCleanupService {
+	svc := NewVideoTestTaskCleanupService(store)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -710,6 +716,8 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageCleanupService,
 	ProvideGeneratedImageStore,
 	ProvideGeneratedImageCleanupService,
+	NewVideoTestTaskService,
+	ProvideVideoTestTaskCleanupService,
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
