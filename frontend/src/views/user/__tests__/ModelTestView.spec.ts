@@ -439,6 +439,43 @@ describe('ModelTestView', () => {
       'dreamina-seedance-2-0-ep · OpenAI',
       'dreamina-seedance-2-0-mini-ep · OpenAI',
     ])
+    expect(summaryValue(wrapper, '价格预览')).toBe('720p 1.2 灵石 / 8秒')
+  })
+
+  it('Seedance 同步视频响应直接使用 URL，不调用 Grok 内容下载接口', async () => {
+    const seedanceGroup = groupFixture({
+      id: 62,
+      name: '视频测试',
+      platform: 'openai',
+      allow_image_generation: true,
+    })
+    const seedanceKey = apiKeyFixture({
+      id: 9960,
+      name: '视频 Key',
+      key: 'sk-seedance-key-1234567890',
+      group_id: 62,
+      group: seedanceGroup,
+    })
+    getAvailableChannels.mockResolvedValue([])
+    listKeys.mockResolvedValue({ items: [seedanceKey], pages: 1 })
+    listGatewayModels.mockResolvedValue(['dreamina-seedance-2-0-mini-ep'])
+    testVideoGeneration.mockResolvedValue({
+      payload: {
+        id: 'chatcmpl_seedance',
+        status: 'completed',
+        video: { url: 'https://cdn.test/seedance.mp4' },
+      },
+      requestID: 'chatcmpl_seedance',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('textarea').setValue('生成纯黑背景视频')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetchVideoContent).not.toHaveBeenCalled()
+    expect(wrapper.find('video').attributes('src')).toBe('https://cdn.test/seedance.mp4')
   })
 
   it('Grok 图片能力分组在文本模式下仍能选择文本模型', async () => {

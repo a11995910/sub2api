@@ -335,7 +335,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
 import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { filterGroupsByModelKind, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
+import { filterGroupsByModelKind, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
@@ -543,7 +543,7 @@ const videoStartingImageSupported = computed(() =>
 const videoReferenceImagesSupported = computed(() => {
   if (selectedKind.value !== 'video' || videoStartingImageSupported.value) return false
   const modelName = selectedModel.value?.name.trim().toLowerCase() || ''
-  return modelName.startsWith('grok-imagine-video')
+  return modelName.startsWith('grok-imagine-video') || isSeedanceVideoModel(modelName)
 })
 const videoReferenceInputSupported = computed(() =>
   videoStartingImageSupported.value || videoReferenceImagesSupported.value,
@@ -1095,7 +1095,7 @@ async function runTest() {
           : undefined,
         signal: runController.signal,
       })
-      if (videoResult.requestID) {
+      if (videoResult.requestID && model.platform === 'grok') {
         const videoBlob = await fetchVideoContent(videoResult.requestID, apiKey.key, runController.signal)
         videoBlobURL.value = URL.createObjectURL(videoBlob)
       }
