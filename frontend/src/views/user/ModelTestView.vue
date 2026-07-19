@@ -329,7 +329,7 @@ import userChannelsAPI, {
 } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import keysAPI from '@/api/keys'
-import { extractVideoURL, fetchVideoContent, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import { extractVideoURL, fetchVideoContent, listGatewayModels, ModelTestError, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
@@ -392,6 +392,7 @@ const router = useRouter()
 const channels = ref<UserAvailableChannel[]>([])
 const userGroupRates = ref<Record<number, number>>({})
 const activeKeys = ref<ApiKey[]>([])
+const gatewayModelsByKeyID = ref<Record<number, string[]>>({})
 const loading = ref(false)
 const running = ref(false)
 const selectedKind = ref<ModelKind>('token')
@@ -414,6 +415,7 @@ const errorMessage = ref('')
 const durationMs = ref<number | null>(null)
 
 let runController: AbortController | null = null
+const gatewayModelRequests = new Map<number, Promise<void>>()
 
 const maxReferenceImages = 4
 const maxReferenceImageSize = 20 * 1024 * 1024
@@ -472,6 +474,34 @@ const allModels = computed<TestModelOption[]>(() => {
             existing.add(group.id)
           }
         }
+      }
+    }
+  }
+
+  for (const key of activeKeys.value) {
+    const group = availableGroupFromKey(key)
+    if (!group) continue
+    for (const modelName of gatewayModelsByKeyID.value[key.id] || []) {
+      const kind = resolveModelKind({ name: modelName, pricing: null })
+      let item = Array.from(map.values()).find((candidate) =>
+        candidate.platform === group.platform &&
+        candidate.displayName === modelName &&
+        candidate.kind === kind,
+      )
+      if (!item) {
+        item = {
+          key: `${group.platform}:${modelName}:${kind}:gateway`,
+          name: gatewayModelName(modelName, kind),
+          displayName: modelName,
+          platform: group.platform,
+          kind,
+          pricing: null,
+          groups: [],
+        }
+        map.set(item.key, item)
+      }
+      if (!item.groups.some((candidate) => candidate.id === group.id)) {
+        item.groups.push(group)
       }
     }
   }
@@ -648,8 +678,9 @@ watch(selectedKind, (kind) => {
   }
 })
 
-watch(selectedApiKeyId, () => {
+watch(selectedApiKeyId, async () => {
   syncSelectedGroupFromKey()
+  await ensureGatewayModelsForKey(selectedApiKey.value)
   syncSelectedModel()
 })
 
@@ -829,10 +860,68 @@ async function loadData() {
     userGroupRates.value = rates
     activeKeys.value = keys
     applyQuerySelection()
+    await ensureGatewayModelsForKey(selectedApiKey.value)
+    syncSelectedKindAndModel()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
     loading.value = false
+  }
+}
+
+async function ensureGatewayModelsForKey(key: ApiKey | null): Promise<void> {
+  if (!key || key.status !== 'active' || gatewayModelsByKeyID.value[key.id]) return
+  const pending = gatewayModelRequests.get(key.id)
+  if (pending) return pending
+
+  const request = listGatewayModels(key.key)
+    .then((models) => {
+      gatewayModelsByKeyID.value = {
+        ...gatewayModelsByKeyID.value,
+        [key.id]: Array.from(new Set(models)),
+      }
+    })
+    .catch((err: unknown) => {
+      console.error('Failed to load gateway models:', err)
+      gatewayModelsByKeyID.value = {
+        ...gatewayModelsByKeyID.value,
+        [key.id]: [],
+      }
+    })
+    .finally(() => {
+      gatewayModelRequests.delete(key.id)
+    })
+  gatewayModelRequests.set(key.id, request)
+  return request
+}
+
+function availableGroupFromKey(key: ApiKey): UserAvailableGroup | null {
+  const group = key.group
+  if (!group || group.id !== groupIDFromKey(key)) return null
+  return {
+    id: group.id,
+    name: group.name,
+    platform: group.platform,
+    subscription_type: group.subscription_type,
+    rate_multiplier: group.rate_multiplier,
+    peak_rate_enabled: group.peak_rate_enabled,
+    peak_start: group.peak_start,
+    peak_end: group.peak_end,
+    peak_rate_multiplier: group.peak_rate_multiplier,
+    is_exclusive: group.is_exclusive,
+    allow_image_generation: group.allow_image_generation,
+    image_super_resolution_enabled: group.image_super_resolution_enabled,
+    image_rate_independent: group.image_rate_independent,
+    cache_hit_quarter_to_input_enabled: group.cache_hit_quarter_to_input_enabled,
+    image_rate_multiplier: group.image_rate_multiplier,
+    image_price_1k: group.image_price_1k,
+    image_price_2k: group.image_price_2k,
+    image_price_4k: group.image_price_4k,
+    video_rate_independent: group.video_rate_independent,
+    video_rate_multiplier: group.video_rate_multiplier,
+    video_price_480p: group.video_price_480p,
+    video_price_720p: group.video_price_720p,
+    video_price_1080p: group.video_price_1080p,
   }
 }
 

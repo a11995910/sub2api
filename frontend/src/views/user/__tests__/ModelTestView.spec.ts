@@ -13,6 +13,7 @@ const push = vi.hoisted(() => vi.fn())
 const routeState = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
 const testVideoGeneration = vi.hoisted(() => vi.fn())
 const fetchVideoContent = vi.hoisted(() => vi.fn())
+const listGatewayModels = vi.hoisted(() => vi.fn())
 
 const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeToken': 'Token',
@@ -111,6 +112,7 @@ vi.mock('@/api/modelTest', () => ({
   testImageEdit: vi.fn(),
   testImageGeneration: vi.fn(),
   testVideoGeneration,
+  listGatewayModels,
   fetchVideoContent,
   extractVideoURL: (payload: any) => String(payload?.video?.url || ''),
 }))
@@ -292,6 +294,8 @@ describe('ModelTestView', () => {
     push.mockReset()
     testVideoGeneration.mockReset()
     fetchVideoContent.mockReset()
+    listGatewayModels.mockReset()
+    listGatewayModels.mockResolvedValue([])
     window.URL.createObjectURL = vi.fn(() => 'blob:model-test-reference') as typeof window.URL.createObjectURL
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
 
@@ -402,6 +406,39 @@ describe('ModelTestView', () => {
     expect(groupSelect.value).toBe('2')
     expect(optionTexts(modelSelect)).toEqual(['请选择模型', 'image-2 · OpenAI'])
     expect(modelSelect.value).not.toBe('')
+  })
+
+  it('无渠道分组从当前 API Key 的网关模型列表读取 Seedance', async () => {
+    const seedanceGroup = groupFixture({
+      id: 62,
+      name: '视频测试',
+      platform: 'openai',
+      allow_image_generation: true,
+    })
+    const seedanceKey = apiKeyFixture({
+      id: 9960,
+      name: '视频 Key',
+      key: 'sk-seedance-key-1234567890',
+      group_id: 62,
+      group: seedanceGroup,
+    })
+    getAvailableChannels.mockResolvedValue([])
+    listKeys.mockResolvedValue({ items: [seedanceKey], pages: 1 })
+    listGatewayModels.mockResolvedValue([
+      'dreamina-seedance-2-0-ep',
+      'dreamina-seedance-2-0-mini-ep',
+    ])
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(listGatewayModels).toHaveBeenCalledWith(seedanceKey.key)
+    expect(selectByLabel(wrapper, '分组').value).toBe('62')
+    expect(optionTexts(selectByLabel(wrapper, '模型'))).toEqual([
+      '请选择模型',
+      'dreamina-seedance-2-0-ep · OpenAI',
+      'dreamina-seedance-2-0-mini-ep · OpenAI',
+    ])
   })
 
   it('Grok 图片能力分组在文本模式下仍能选择文本模型', async () => {

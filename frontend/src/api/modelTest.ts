@@ -102,6 +102,13 @@ async function getGateway<T>(path: string, apiKey: string, signal?: AbortSignal)
   return data as T
 }
 
+export async function listGatewayModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
+  const payload = await getGateway<{ data?: Array<{ id?: string }> }>('/v1/models', apiKey, signal)
+  return (payload.data || [])
+    .map((item) => String(item.id || '').trim())
+    .filter(Boolean)
+}
+
 async function postGatewayFormData<T>(
   path: '/v1/images/edits',
   apiKey: string,
