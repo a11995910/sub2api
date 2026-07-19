@@ -136,6 +136,10 @@ func ProvideOpenAIGatewayHandler(
 	return h
 }
 
+func ProvideVideoTestTaskGateway(gateway *service.OpenAIGatewayService) videoTestTaskGateway {
+	return gateway
+}
+
 func ProvideBatchImageHandler(
 	batchService *service.BatchImagePublicService,
 	download *service.BatchImageDownloadService,
@@ -246,6 +250,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageHandler,
 	NewGeneratedImageHandler,
 	NewVideoTestTaskHandler,
+	ProvideVideoTestTaskGateway,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

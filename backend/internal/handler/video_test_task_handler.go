@@ -24,11 +24,7 @@ type VideoTestTaskHandler struct {
 	gateway videoTestTaskGateway
 }
 
-func NewVideoTestTaskHandler(tasks *service.VideoTestTaskService, gateway *service.OpenAIGatewayService) *VideoTestTaskHandler {
-	return &VideoTestTaskHandler{tasks: tasks, gateway: gateway}
-}
-
-func newVideoTestTaskHandlerWithGateway(tasks *service.VideoTestTaskService, gateway videoTestTaskGateway) *VideoTestTaskHandler {
+func NewVideoTestTaskHandler(tasks *service.VideoTestTaskService, gateway videoTestTaskGateway) *VideoTestTaskHandler {
 	return &VideoTestTaskHandler{tasks: tasks, gateway: gateway}
 }
 

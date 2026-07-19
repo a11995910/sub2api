@@ -200,10 +200,11 @@ func (s *VideoTestTaskService) ApplyPollResult(ctx context.Context, userID int64
 		if next != "" {
 			task.Status = next
 		}
-		if next == VideoTestTaskStatusCompleted {
+		switch next {
+		case VideoTestTaskStatusCompleted:
 			task.CompletedAt = &now
 			task.ErrorMessage = ""
-		} else if next == VideoTestTaskStatusFailed {
+		case VideoTestTaskStatusFailed:
 			task.FailedAt = &now
 			task.ErrorMessage = strings.TrimSpace(result.ErrorMessage)
 		}

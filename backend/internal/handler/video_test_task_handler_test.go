@@ -26,7 +26,7 @@ func TestVideoTestTaskHandlerRefreshUpdatesSuccessfulStatus(t *testing.T) {
 	gateway := &videoTestTaskGatewayStub{statusResult: &service.OpenAIForwardResult{
 		VideoStatus: "processing", VideoProgress: &progress, VideoResponseJSON: json.RawMessage(`{"status":"processing"}`),
 	}}
-	h := newVideoTestTaskHandlerWithGateway(service.NewVideoTestTaskService(store), gateway)
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway)
 	c, recorder := newVideoTaskHandlerContext(http.MethodPost, "/api/v1/model-test/video-tasks/local-1/refresh", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
@@ -42,7 +42,7 @@ func TestVideoTestTaskHandlerListReturnsOnlyCurrentUserTasks(t *testing.T) {
 		service.VideoTestTask{ID: "mine", UserID: 7, Status: service.VideoTestTaskStatusQueued},
 		service.VideoTestTask{ID: "other", UserID: 8, Status: service.VideoTestTaskStatusQueued},
 	)
-	h := newVideoTestTaskHandlerWithGateway(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
 	c, recorder := newVideoTaskHandlerContext(http.MethodGet, "/api/v1/model-test/video-tasks?page=1&page_size=20", 7)
 
 	h.List(c)
@@ -61,7 +61,7 @@ func TestVideoTestTaskHandlerRefreshErrorKeepsTaskWaiting(t *testing.T) {
 		UpstreamTaskID: "upstream-1", Status: service.VideoTestTaskStatusInProgress,
 	})
 	gateway := &videoTestTaskGatewayStub{statusErr: errors.New("upstream timeout")}
-	h := newVideoTestTaskHandlerWithGateway(service.NewVideoTestTaskService(store), gateway)
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway)
 	c, recorder := newVideoTaskHandlerContext(http.MethodPost, "/api/v1/model-test/video-tasks/local-1/refresh", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
@@ -74,7 +74,7 @@ func TestVideoTestTaskHandlerRefreshErrorKeepsTaskWaiting(t *testing.T) {
 
 func TestVideoTestTaskHandlerRejectsOtherUsersTask(t *testing.T) {
 	store := newHandlerVideoTaskStore(service.VideoTestTask{ID: "local-1", UserID: 8, Status: service.VideoTestTaskStatusQueued})
-	h := newVideoTestTaskHandlerWithGateway(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
 	c, recorder := newVideoTaskHandlerContext(http.MethodPost, "/api/v1/model-test/video-tasks/local-1/refresh", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
@@ -89,7 +89,7 @@ func TestVideoTestTaskHandlerContentProxiesRangeOnlyAfterCompletion(t *testing.T
 		UpstreamTaskID: "upstream-1", Status: service.VideoTestTaskStatusCompleted,
 	})
 	gateway := &videoTestTaskGatewayStub{}
-	h := newVideoTestTaskHandlerWithGateway(service.NewVideoTestTaskService(store), gateway)
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway)
 	c, recorder := newVideoTaskHandlerContext(http.MethodGet, "/api/v1/model-test/video-tasks/local-1/content", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 	c.Request.Header.Set("Range", "bytes=0-3")
@@ -103,7 +103,7 @@ func TestVideoTestTaskHandlerContentProxiesRangeOnlyAfterCompletion(t *testing.T
 
 func TestVideoTestTaskHandlerDeleteIsOwnerScoped(t *testing.T) {
 	store := newHandlerVideoTaskStore(service.VideoTestTask{ID: "local-1", UserID: 7, Status: service.VideoTestTaskStatusQueued})
-	h := newVideoTestTaskHandlerWithGateway(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
 	c, recorder := newVideoTaskHandlerContext(http.MethodDelete, "/api/v1/model-test/video-tasks/local-1", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
