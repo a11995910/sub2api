@@ -5,9 +5,34 @@ package service
 import (
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestOpenAIVideoContextCanBeDetectedByHandler(t *testing.T) {
+	c, _ := gin.CreateTestContext(nil)
+	require.False(t, HasOpenAIVideoContext(c))
+
+	SetOpenAIVideoContext(c, OpenAIVideoContext{Model: "future-motion-pro"})
+	require.True(t, HasOpenAIVideoContext(c))
+}
+
+func TestAccountSupportsOpenAIVideoEndpointCapability(t *testing.T) {
+	apiKey := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"openai_capabilities": []any{"embeddings"},
+		},
+	}
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	grok := &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey}
+
+	require.True(t, apiKey.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityVideos))
+	require.False(t, oauth.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityVideos))
+	require.False(t, grok.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityVideos))
+}
 
 func TestNormalizeOpenAIVideoCreateBodyUsesMappedModelAndStringSeconds(t *testing.T) {
 	body, req, err := NormalizeOpenAIVideoCreateBody([]byte(`{

@@ -940,6 +940,22 @@ func TestExtractContentModerationInput_OpenAIImagesIncludesPromptAndImages(t *te
 	require.Equal(t, []string{"https://example.com/source.png", "data:image/png;base64,aGVsbG8="}, input.Images)
 }
 
+func TestExtractContentModerationInput_OpenAIVideoIncludesPromptAndImageURLs(t *testing.T) {
+	body := []byte(`{
+		"model":"future-motion-pro",
+		"prompt":"雨夜城市",
+		"image_urls":[
+			"https://example.com/source.png",
+			"data:image/png;base64,aGVsbG8="
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIVideo, body)
+
+	require.Equal(t, "雨夜城市", input.Text)
+	require.Equal(t, []string{"https://example.com/source.png", "data:image/png;base64,aGVsbG8="}, input.Images)
+}
+
 func TestContentModerationInput_NormalizeKeepsImagesAndModerationInputSamplesOneImage(t *testing.T) {
 	images := []string{
 		"data:image/png;base64,Zmlyc3Q=",

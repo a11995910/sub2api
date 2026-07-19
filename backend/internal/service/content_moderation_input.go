@@ -31,6 +31,12 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 	case ContentModerationProtocolOpenAIImages:
 		addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
 		collectContentValue(gjson.GetBytes(body, "images"), &parts, &images)
+	case ContentModerationProtocolOpenAIVideo:
+		addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
+		gjson.GetBytes(body, "image_urls").ForEach(func(_, item gjson.Result) bool {
+			addModerationImage(&images, item.String())
+			return true
+		})
 	default:
 		collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)

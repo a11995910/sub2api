@@ -33,6 +33,10 @@ type OpenAIVideoContext struct {
 	Resolution          string
 	DurationSeconds     int
 	ReferenceImageCount int
+	UserID              int64
+	APIKeyID            int64
+	GroupID             int64
+	BindTask            bool
 }
 
 const openAIVideoContextKey = "openai_video_context"
@@ -53,6 +57,12 @@ func openAIVideoContextFromGin(c *gin.Context) (OpenAIVideoContext, bool) {
 	}
 	meta, ok := value.(OpenAIVideoContext)
 	return meta, ok && strings.TrimSpace(meta.Model) != ""
+}
+
+// HasOpenAIVideoContext 供共用 Chat handler 选择视频审核与账号能力。
+func HasOpenAIVideoContext(c *gin.Context) bool {
+	_, ok := openAIVideoContextFromGin(c)
+	return ok
 }
 
 func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, OpenAIVideoRequest, error) {

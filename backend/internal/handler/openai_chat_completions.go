@@ -90,7 +90,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && !decision.AllowNextStage {
+	moderationProtocol := service.ContentModerationProtocolOpenAIChat
+	if service.HasOpenAIVideoContext(c) {
+		moderationProtocol = service.ContentModerationProtocolOpenAIVideo
+	}
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, moderationProtocol, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
@@ -107,6 +111,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(apiKey)
+	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
+	if service.HasOpenAIVideoContext(c) {
+		requiredCapability = service.OpenAIEndpointCapabilityVideos
+	}
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -152,7 +160,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			reqModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			requiredCapability,
 			false,
 			false,
 			true,

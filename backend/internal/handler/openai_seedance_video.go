@@ -4,68 +4,49 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"strings"
 
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 )
 
-// SeedanceVideoGeneration 将统一视频请求转换为 Helix Chat Completions 请求，
-// 后续账号调度、错误切换和用量记录复用现有 OpenAI Chat Completions 链路。
-func (h *OpenAIGatewayHandler) SeedanceVideoGeneration(c *gin.Context) {
+// OpenAIVideoGeneration 复用 Chat Completions handler 的账号调度、故障切换和计费循环。
+func (h *OpenAIGatewayHandler) OpenAIVideoGeneration(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
-	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	if !service.IsSeedanceVideoModel(model) {
-		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Videos API is not supported for this platform")
-		return
-	}
-	resolution := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "resolution").String()))
-	if resolution == "" {
-		resolution = service.VideoBillingResolution720P
-	}
-	duration := int(gjson.GetBytes(body, "duration").Int())
-	if duration <= 0 {
-		duration = service.VideoBillingDefaultDurationSeconds
-	}
-	referenceImages := seedanceReferenceImageURLs(body)
-	chatBody, err := service.BuildSeedanceChatRequest(service.SeedanceVideoRequest{
-		Model:                  model,
-		Prompt:                 gjson.GetBytes(body, "prompt").String(),
-		Resolution:             resolution,
-		Duration:               duration,
-		ReferenceImageDataURLs: referenceImages,
-	})
+	normalizedBody, requestInfo, err := service.NormalizeOpenAIVideoCreateBody(body, "")
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
 
-	service.SetSeedanceVideoContext(c, service.SeedanceVideoContext{
-		Model:               model,
-		Resolution:          resolution,
-		Duration:            duration,
-		ReferenceImageCount: len(referenceImages),
-	})
-	c.Request.Body = io.NopCloser(bytes.NewReader(chatBody))
-	c.Request.ContentLength = int64(len(chatBody))
+	videoContext := service.OpenAIVideoContext{
+		Model:               requestInfo.Model,
+		Resolution:          requestInfo.Resolution,
+		DurationSeconds:     requestInfo.DurationSeconds,
+		ReferenceImageCount: len(requestInfo.ImageURLs),
+	}
+	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil {
+		videoContext.APIKeyID = apiKey.ID
+		if apiKey.GroupID != nil {
+			videoContext.GroupID = *apiKey.GroupID
+		}
+	}
+	if subject, ok := middleware2.GetAuthSubjectFromContext(c); ok {
+		videoContext.UserID = subject.UserID
+	}
+	videoContext.BindTask = videoContext.UserID > 0 && videoContext.APIKeyID > 0
+	service.SetOpenAIVideoContext(c, videoContext)
+	c.Request.Body = io.NopCloser(bytes.NewReader(normalizedBody))
+	c.Request.ContentLength = int64(len(normalizedBody))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h.ChatCompletions(c)
 }
 
-func seedanceReferenceImageURLs(body []byte) []string {
-	urls := make([]string, 0, 4)
-	if rawURL := strings.TrimSpace(gjson.GetBytes(body, "image.url").String()); rawURL != "" {
-		urls = append(urls, rawURL)
-	}
-	for _, item := range gjson.GetBytes(body, "reference_images").Array() {
-		if rawURL := strings.TrimSpace(item.Get("url").String()); rawURL != "" {
-			urls = append(urls, rawURL)
-		}
-	}
-	return urls
+// SeedanceVideoGeneration 保留旧调用点，实际进入通用 OpenAI 视频实现。
+func (h *OpenAIGatewayHandler) SeedanceVideoGeneration(c *gin.Context) {
+	h.OpenAIVideoGeneration(c)
 }

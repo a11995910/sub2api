@@ -464,18 +464,8 @@ func isGrokVideoBillingModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-video")
 }
 
-func isVideoUsageResult(result *OpenAIForwardResult, billingModels []string) bool {
-	if result == nil || result.VideoCount <= 0 {
-		return false
-	}
-	candidates := append([]string{}, billingModels...)
-	candidates = append(candidates, result.BillingModel, result.Model, result.UpstreamModel)
-	for _, candidate := range candidates {
-		if isGrokVideoBillingModel(candidate) || IsSeedanceVideoModel(candidate) {
-			return true
-		}
-	}
-	return false
+func isVideoUsageResult(result *OpenAIForwardResult, _ []string) bool {
+	return result != nil && result.VideoCount > 0
 }
 
 func isUsagePricingUnavailableError(err error) bool {

@@ -84,6 +84,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
+	if _, ok := openAIVideoContextFromGin(c); ok {
+		return s.ForwardOpenAIVideoCreate(ctx, c, account, body, defaultMappedModel)
+	}
 	if _, ok := seedanceVideoContextFromGin(c); ok {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}

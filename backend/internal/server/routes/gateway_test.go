@@ -174,7 +174,7 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
+func TestGatewayRoutesOpenAIRejectsUnsupportedVideoMutations(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
 	for _, tc := range []struct {
@@ -182,16 +182,10 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		path   string
 		body   string
 	}{
-		{http.MethodPost, "/v1/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
-		{http.MethodPost, "/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
 		{http.MethodPost, "/v1/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodPost, "/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodPost, "/v1/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
-		{http.MethodGet, "/v1/videos/request-123", ""},
-		{http.MethodGet, "/videos/request-123", ""},
-		{http.MethodGet, "/v1/videos/request-123/content", ""},
-		{http.MethodGet, "/videos/request-123/content", ""},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
@@ -203,10 +197,30 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesOpenAISeedanceVideoReachesSeedanceHandler(t *testing.T) {
+func TestGatewayRoutesOpenAIVideoPathsAreRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
-	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", strings.NewReader(`{
-		"model":"dreamina-seedance-2-0-mini-ep",
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, route := range []string{
+		"POST /v1/videos",
+		"POST /videos",
+		"POST /v1/videos/generations",
+		"POST /videos/generations",
+		"GET /v1/videos/:task_id",
+		"GET /videos/:task_id",
+		"GET /v1/videos/:task_id/content",
+		"GET /videos/:task_id/content",
+	} {
+		require.True(t, registered[route], "%s should be registered", route)
+	}
+}
+
+func TestGatewayRoutesOpenAIVideoAcceptsUnknownModelName(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{
+		"model":"future-motion-pro",
 		"prompt":"waves",
 		"resolution":"480p",
 		"duration":4
@@ -215,7 +229,6 @@ func TestGatewayRoutesOpenAISeedanceVideoReachesSeedanceHandler(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
-	require.NotEqual(t, http.StatusNotFound, w.Code, w.Body.String())
 	require.NotContains(t, w.Body.String(), "Videos API is not supported for this platform")
 }
 

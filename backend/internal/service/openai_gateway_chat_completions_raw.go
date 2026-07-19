@@ -490,9 +490,19 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
 	}
+	videoMeta, isVideo := openAIVideoContextFromGin(c)
 	seedanceMeta, isSeedance := seedanceVideoContextFromGin(c)
+	if !isVideo && isSeedance {
+		videoMeta = OpenAIVideoContext{
+			Model:               seedanceMeta.Model,
+			Resolution:          seedanceMeta.Resolution,
+			DurationSeconds:     seedanceMeta.Duration,
+			ReferenceImageCount: seedanceMeta.ReferenceImageCount,
+		}
+		isVideo = true
+	}
 	var seedanceResult SeedanceVideoResult
-	if isSeedance {
+	if isVideo {
 		seedanceResult, err = ParseSeedanceChatResponse(respBody)
 		if err != nil || seedanceResult.VideoURL == "" {
 			writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Seedance upstream response did not include a video URL")
@@ -505,7 +515,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 			"id":     firstNonEmpty(seedanceResult.RequestID, requestID),
 			"object": "video",
 			"status": "completed",
-			"model":  originalModel,
+			"model":  videoMeta.Model,
 			"video": map[string]string{
 				"url": seedanceResult.VideoURL,
 			},
@@ -538,13 +548,13 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}
-	if isSeedance {
+	if isVideo {
 		result.RequestID = firstNonEmpty(seedanceResult.RequestID, requestID)
 		result.ResponseID = result.RequestID
 		result.VideoCount = 1
-		result.VideoResolution = seedanceMeta.Resolution
-		result.VideoDurationSeconds = seedanceMeta.Duration
-		result.VideoInputImageCount = seedanceMeta.ReferenceImageCount
+		result.VideoResolution = videoMeta.Resolution
+		result.VideoDurationSeconds = videoMeta.DurationSeconds
+		result.VideoInputImageCount = videoMeta.ReferenceImageCount
 	}
 	return result, nil
 }
