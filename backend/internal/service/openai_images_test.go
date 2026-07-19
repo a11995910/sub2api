@@ -2113,6 +2113,10 @@ func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableUngroupedByPlatfor
 	panic("unexpected ListSchedulableUngroupedByPlatforms call")
 }
 
+func (r *openAIImages4KEnhancementAccountRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
+	panic("unexpected ListModelAvailabilityCandidates call")
+}
+
 func (r *openAIImages4KEnhancementAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	panic("unexpected SetRateLimited call")
 }
