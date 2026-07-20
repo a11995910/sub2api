@@ -238,6 +238,7 @@ docker compose down -v
 | `ADMIN_EMAIL` | No | `admin@sub2api.local` | Admin email |
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |
 | `TZ` | No | `Asia/Shanghai` | Timezone |
+| `UPDATE_GITHUB_TOKEN` | No | *(empty)* | Token for `api.github.com` release checks only; asset downloads remain anonymous. |
 | `GEMINI_OAUTH_CLIENT_ID` | No | *(empty)* | Custom Google OAuth client ID (AI Studio OAuth). Leave empty for Code Assist / Google One built-in flow. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(empty)* | Custom Google OAuth client secret (AI Studio OAuth). Leave empty for Code Assist / Google One built-in flow. |
 | `GEMINI_CLI_OAUTH_CLIENT_ID` | Required for built-in flow | *(empty)* | Gemini CLI built-in OAuth client ID, injected at runtime. |

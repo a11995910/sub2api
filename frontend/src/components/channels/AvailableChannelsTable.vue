@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full overflow-y-auto p-4">
+  <div class="table-wrapper h-full overflow-y-auto p-4">
     <div v-if="loading" class="flex min-h-[280px] items-center justify-center">
       <Icon name="refresh" size="lg" class="animate-spin text-gray-400" />
     </div>
