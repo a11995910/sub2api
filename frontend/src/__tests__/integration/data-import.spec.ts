@@ -17,7 +17,8 @@ vi.mock('@/stores/app', () => ({
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
-      importData: vi.fn()
+      importData: vi.fn(),
+      importCodexSession: vi.fn()
     }
   }
 }))
@@ -60,6 +61,7 @@ describe('ImportDataModal', () => {
     showWarning.mockReset()
     const { adminAPI } = await import('@/api/admin')
     vi.mocked(adminAPI.accounts.importData).mockReset()
+    vi.mocked(adminAPI.accounts.importCodexSession).mockReset()
   })
 
   it('未选择文件时提示错误', async () => {
@@ -173,6 +175,118 @@ describe('ImportDataModal', () => {
       skip_default_group_bind: true
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
+  })
+
+  it('批量导入多个 Agent Identity auth.json', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    vi.mocked(adminAPI.accounts.importCodexSession).mockResolvedValue({
+      total: 2,
+      created: 1,
+      updated: 1,
+      skipped: 0,
+      failed: 0
+    })
+
+    const firstContent = JSON.stringify({
+      auth_mode: 'agentIdentity',
+      agent_identity: {
+        agent_runtime_id: 'runtime-a',
+        agent_private_key: 'key-a',
+        account_id: 'account-a',
+        chatgpt_user_id: 'user-a'
+      }
+    })
+    const secondContent = JSON.stringify({
+      authMode: 'agentIdentity',
+      agentIdentity: {
+        agentRuntimeId: 'runtime-b',
+        agentPrivateKey: 'key-b',
+        accountId: 'account-b',
+        chatgptUserId: 'user-b'
+      }
+    })
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile('first-auth.json', firstContent),
+      makeJsonFile('second-auth.json', secondContent)
+    ])
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importCodexSession).toHaveBeenCalledWith({
+      contents: [firstContent, secondContent],
+      update_existing: true,
+      skip_default_group_bind: true
+    })
+    expect(adminAPI.accounts.importData).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.agentIdentityImportSuccess')
+    expect(wrapper.emitted('imported')).toHaveLength(1)
+  })
+
+  it('拒绝混选 Sub2API 导出数据和 Agent Identity 文件', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'sub2api.json',
+        JSON.stringify({ exported_at: '2026-07-05T00:00:00Z', proxies: [], accounts: [] })
+      ),
+      makeJsonFile(
+        'auth.json',
+        JSON.stringify({
+          auth_mode: 'agentIdentity',
+          agent_identity: { agent_runtime_id: 'runtime-a' }
+        })
+      )
+    ])
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportMixedFileTypes')
+    expect(adminAPI.accounts.importData).not.toHaveBeenCalled()
+    expect(adminAPI.accounts.importCodexSession).not.toHaveBeenCalled()
+  })
+
+  it('Agent Identity 部分成功时关闭弹窗会刷新账号列表', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    vi.mocked(adminAPI.accounts.importCodexSession).mockResolvedValue({
+      total: 2,
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 1,
+      errors: [{ index: 2, message: 'agent identity 缺少必要字段' }]
+    })
+
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'auth-list.json',
+        JSON.stringify([
+          { auth_mode: 'agentIdentity', agent_identity: { agent_runtime_id: 'runtime-a' } },
+          { auth_mode: 'agentIdentity', agent_identity: { agent_runtime_id: 'runtime-b' } }
+        ])
+      )
+    ])
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith(
+      'admin.accounts.agentIdentityImportCompletedWithErrors'
+    )
+    expect(wrapper.emitted('imported')).toBeUndefined()
+
+    await wrapper.findAll('button.btn-secondary')[1]!.trigger('click')
+    expect(wrapper.emitted('imported')).toHaveLength(1)
   })
 
   it('部分成功时关闭弹窗仍通知父组件刷新', async () => {

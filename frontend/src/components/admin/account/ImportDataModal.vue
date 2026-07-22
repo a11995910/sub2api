@@ -52,14 +52,17 @@
       </div>
 
       <div
-        v-if="result"
+        v-if="dataResult || codexResult"
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
       >
         <div class="text-sm font-medium text-gray-900 dark:text-white">
           {{ t('admin.accounts.dataImportResult') }}
         </div>
-        <div class="text-sm text-gray-700 dark:text-dark-300">
-          {{ t('admin.accounts.dataImportResultSummary', result) }}
+        <div v-if="dataResult" class="text-sm text-gray-700 dark:text-dark-300">
+          {{ t('admin.accounts.dataImportResultSummary', dataResult) }}
+        </div>
+        <div v-else-if="codexResult" class="text-sm text-gray-700 dark:text-dark-300">
+          {{ t('admin.accounts.agentIdentityImportResultSummary', codexResult) }}
         </div>
 
         <div v-if="errorItems.length" class="mt-2">
@@ -70,7 +73,7 @@
             class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-dark-800"
           >
             <div v-for="(item, idx) in errorItems" :key="idx" class="whitespace-pre-wrap">
-              {{ item.kind }} {{ item.name || item.proxy_key || '-' }} — {{ item.message }}
+              {{ item.label }} — {{ item.message }}
             </div>
           </div>
         </div>
@@ -101,7 +104,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type { AdminDataImportResult, AdminDataPayload, CodexSessionImportResult } from '@/types'
 
 interface Props {
   show: boolean
@@ -123,7 +126,8 @@ const files = ref<File[]>([])
 const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
-const result = ref<AdminDataImportResult | null>(null)
+const dataResult = ref<AdminDataImportResult | null>(null)
+const codexResult = ref<CodexSessionImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFilesLabel = computed(() => {
@@ -133,7 +137,27 @@ const selectedFilesLabel = computed(() => {
 })
 const fileListTitle = computed(() => files.value.map((item) => item.name).join(', '))
 
-const errorItems = computed(() => result.value?.errors || [])
+const errorItems = computed(() => {
+  if (dataResult.value) {
+    return (dataResult.value.errors || []).map((item) => ({
+      label: `${item.kind} ${item.name || item.proxy_key || '-'}`,
+      message: item.message
+    }))
+  }
+  if (codexResult.value) {
+    return [
+      ...(codexResult.value.errors || []).map((item) => ({
+        label: `#${item.index} ${item.name || ''}`.trim(),
+        message: item.message
+      })),
+      ...(codexResult.value.warnings || []).map((item) => ({
+        label: `${t('admin.accounts.agentIdentityImportWarning')} #${item.index} ${item.name || ''}`.trim(),
+        message: item.message
+      }))
+    ]
+  }
+  return []
+})
 
 watch(
   () => props.show,
@@ -142,7 +166,8 @@ watch(
       files.value = []
       dragDepth.value = 0
       hasCreatedData.value = false
-      result.value = null
+      dataResult.value = null
+      codexResult.value = null
       if (fileInput.value) {
         fileInput.value.value = ''
       }
@@ -188,7 +213,8 @@ const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => 
     )
   }
   files.value = picked
-  result.value = null
+  dataResult.value = null
+  codexResult.value = null
 }
 
 const handleDragEnter = () => {
@@ -249,6 +275,21 @@ const isValidDataPayload = (payload: unknown): payload is AdminDataPayload => {
   return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
 }
 
+const isAgentIdentityPayload = (payload: unknown): boolean => {
+  if (Array.isArray(payload)) {
+    return payload.length > 0 && payload.every(isAgentIdentityPayload)
+  }
+  if (!payload || typeof payload !== 'object') return false
+
+  const candidate = payload as Record<string, unknown>
+  const authMode = candidate.auth_mode ?? candidate.authMode
+  const agentIdentity = candidate.agent_identity ?? candidate.agentIdentity
+  return (
+    (typeof authMode === 'string' && authMode.toLowerCase() === 'agentidentity') ||
+    (!!agentIdentity && typeof agentIdentity === 'object' && !Array.isArray(agentIdentity))
+  )
+}
+
 const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
   const [firstPayload] = payloads
   if (payloads.length === 1 && firstPayload) return firstPayload
@@ -275,22 +316,64 @@ const handleImport = async () => {
   importing.value = true
   try {
     const dataPayloads: AdminDataPayload[] = []
+    const agentIdentityContents: string[] = []
     for (const sourceFile of files.value) {
+      let content: string
       let parsed: unknown
       try {
-        parsed = JSON.parse(await readFileAsText(sourceFile))
+        content = await readFileAsText(sourceFile)
+        parsed = JSON.parse(content)
       } catch {
         appStore.showError(
           t('admin.accounts.dataImportParseFailedFile', { name: sourceFile.name })
         )
         return
       }
-      if (!isValidDataPayload(parsed)) {
+
+      if (isValidDataPayload(parsed)) {
+        dataPayloads.push(parsed)
+      } else if (isAgentIdentityPayload(parsed)) {
+        agentIdentityContents.push(content)
+      } else {
         appStore.showError(t('admin.accounts.dataImportInvalidFile', { name: sourceFile.name }))
         return
       }
-      dataPayloads.push(parsed)
     }
+
+    if (dataPayloads.length > 0 && agentIdentityContents.length > 0) {
+      appStore.showError(t('admin.accounts.dataImportMixedFileTypes'))
+      return
+    }
+
+    if (agentIdentityContents.length > 0) {
+      const res = await adminAPI.accounts.importCodexSession({
+        contents: agentIdentityContents,
+        update_existing: true,
+        skip_default_group_bind: true
+      })
+      codexResult.value = res
+      const msgParams: Record<string, unknown> = {
+        created: res.created,
+        updated: res.updated,
+        skipped: res.skipped,
+        failed: res.failed
+      }
+
+      if (res.created > 0 || res.updated > 0) {
+        hasCreatedData.value = true
+      }
+      if (res.failed > 0) {
+        appStore.showError(
+          t('admin.accounts.agentIdentityImportCompletedWithErrors', msgParams)
+        )
+      } else {
+        hasCreatedData.value = false
+        appStore.showSuccess(t('admin.accounts.agentIdentityImportSuccess', msgParams))
+        emit('imported')
+      }
+      return
+    }
+
     const dataPayload = mergeDataPayloads(dataPayloads)
 
     const res = await adminAPI.accounts.importData({
@@ -298,7 +381,7 @@ const handleImport = async () => {
       skip_default_group_bind: true
     })
 
-    result.value = res
+    dataResult.value = res
 
     const msgParams: Record<string, unknown> = {
       account_created: res.account_created,

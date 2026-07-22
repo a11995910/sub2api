@@ -2,6 +2,17 @@
 
 账号管理页面用于维护上游 AI 服务账号，支持按平台、类型、状态、分组、隐私模式和关键字筛选账号，并对账号执行单条编辑、状态恢复、令牌刷新、测试、统计查看和批量操作。
 
+## 数据与 Agent Identity 导入
+
+账号页“更多操作 > 数据操作 > 导入”支持多选或拖入 JSON 文件，并根据文件内容识别以下格式：
+
+- Sub2API 账号与代理导出数据：文件包含 `proxies` 和 `accounts` 数组。多个导出文件会在浏览器端校验并合并，再提交账号数据导入接口。
+- Codex Agent Identity `auth.json`：根对象使用 `auth_mode=agentIdentity` 或包含 `agent_identity` 对象；同时兼容对应的 camelCase 字段和由多个 Agent Identity 对象组成的 JSON 数组。多个文件的原始 JSON 内容会一次提交给 Codex 导入接口。
+
+两类格式不能在同一次操作中混选。Agent Identity 导入创建 OpenAI OAuth 类型账号，不保存 OAuth access token 或 refresh token；运行时使用 `agent_private_key` 动态签名。导入不自动绑定默认分组，管理员需在导入后手工绑定分组。
+
+Agent Identity 重复判断以 `chatgpt_account_id` 为准：同一 ChatGPT 账号更新已有 Agent Identity 凭据，不同账号分别创建。单个条目解析或字段校验失败不会回滚同批次中已经成功的条目，页面会展示新增、更新、跳过、失败数量以及后端返回的错误和警告。文件解析在浏览器内完成，凭据仅通过管理员导入请求提交，不写入前端日志。
+
 ## 批量操作范围
 
 - 勾选表格行或点击表头复选框时，系统只选中当前页可见账号。
@@ -15,6 +26,8 @@
 - `POST /api/v1/admin/accounts/bulk-update`：批量更新账号。请求包含 `account_ids` 时按账号 ID 列表更新；请求仅包含 `filters` 时按筛选条件解析全部目标账号。
 - `POST /api/v1/admin/accounts/batch-refresh`：批量刷新已选账号令牌。
 - `POST /api/v1/admin/accounts/batch-clear-error`：批量重置已选账号错误状态。
+- `POST /api/v1/admin/accounts/data`：导入 Sub2API 账号与代理导出数据。
+- `POST /api/v1/admin/accounts/import/codex-session`：批量导入 Codex Agent Identity `auth.json`；请求通过 `contents` 传递多个文件内容，并启用已有账号更新。
 - `GET /api/v1/keys`、`POST /api/v1/keys`、`GET /api/v1/admin/users/:id/keys` 等 API Key DTO 会返回 `current_concurrency`，表示该 Key 当前正在执行的实时请求数。
 
 ## 优先级与调度影响
@@ -89,3 +102,4 @@ Anthropic 和 OpenAI 平台的 `api_key` 类型账号支持请求头覆写。管
 - DTO 测试覆盖 `anthropic_forwarding_risk` 对 Anthropic OAuth/SetupToken、Anthropic API Key 透传和非 Anthropic 账号的返回差异。
 - Handler 测试覆盖创建 Anthropic OAuth/SetupToken 账号时自动写入保守 `base_rpm`、`max_sessions`、`session_idle_timeout_minutes`，且不影响 Anthropic API Key 账号。
 - 服务测试覆盖网关调试日志对认证头、Claude Code session、metadata 用户标识和 prompt cache key 的脱敏。
+- 组件测试覆盖多个 Agent Identity 文件导入、camelCase 字段兼容、与 Sub2API 导出数据混选拒绝，以及部分成功后刷新账号列表。
