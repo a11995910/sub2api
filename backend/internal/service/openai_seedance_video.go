@@ -118,7 +118,7 @@ func ParseSeedanceChatResponse(body []byte) (SeedanceVideoResult, error) {
 		return SeedanceVideoResult{}, fmt.Errorf("decode Seedance response: %w", err)
 	}
 	if errValue, ok := payload["error"].(map[string]any); ok {
-		message := strings.TrimSpace(stringValue(errValue["message"]))
+		message := strings.TrimSpace(seedanceStringValue(errValue["message"]))
 		if message == "" {
 			message = "Seedance upstream request failed"
 		}
@@ -126,8 +126,8 @@ func ParseSeedanceChatResponse(body []byte) (SeedanceVideoResult, error) {
 	}
 
 	result := SeedanceVideoResult{
-		RequestID: strings.TrimSpace(stringValue(payload["id"])),
-		Status:    strings.TrimSpace(stringValue(payload["status"])),
+		RequestID: strings.TrimSpace(seedanceStringValue(payload["id"])),
+		Status:    strings.TrimSpace(seedanceStringValue(payload["status"])),
 	}
 	if usage, ok := payload["usage"].(map[string]any); ok {
 		result.OutputTokens = intValue(usage["completion_tokens"])
@@ -153,19 +153,19 @@ func mergeSeedanceResult(result *SeedanceVideoResult, value any) {
 		for key, item := range typed {
 			switch strings.ToLower(key) {
 			case "video_url", "output_url", "download_url":
-				if rawURL := validSeedanceVideoURL(stringValue(item)); rawURL != "" {
+				if rawURL := validSeedanceVideoURL(seedanceStringValue(item)); rawURL != "" {
 					result.VideoURL = rawURL
 				}
 			case "request_id", "task_id":
-				if id := strings.TrimSpace(stringValue(item)); id != "" {
+				if id := strings.TrimSpace(seedanceStringValue(item)); id != "" {
 					result.RequestID = id
 				}
 			case "status", "state":
-				if status := strings.TrimSpace(stringValue(item)); status != "" {
+				if status := strings.TrimSpace(seedanceStringValue(item)); status != "" {
 					result.Status = status
 				}
 			case "url":
-				if rawURL := validSeedanceVideoURL(stringValue(item)); rawURL != "" {
+				if rawURL := validSeedanceVideoURL(seedanceStringValue(item)); rawURL != "" {
 					result.VideoURL = rawURL
 				}
 			}
@@ -206,7 +206,7 @@ func validSeedanceVideoURL(value string) string {
 	return ""
 }
 
-func stringValue(value any) string {
+func seedanceStringValue(value any) string {
 	text, _ := value.(string)
 	return text
 }

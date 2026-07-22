@@ -14,8 +14,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// 同时包含分组图片响应格式与网页搜索按次价格，递增版本以淘汰旧结构缓存。
-const apiKeyAuthSnapshotVersion = 19
+// 同时包含分组图片响应格式、网页搜索按次价格与推理策略，递增版本以淘汰旧结构缓存。
+const apiKeyAuthSnapshotVersion = 20
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -425,6 +425,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                apiKey.Group.ModelsListConfig,
 			RPMLimit:                        apiKey.Group.RPMLimit,
+			MaxReasoningEffort:              apiKey.Group.MaxReasoningEffort,
+			ReasoningEffortMappings:         apiKey.Group.ReasoningEffortMappings,
 			PeakRateEnabled:                 apiKey.Group.PeakRateEnabled,
 			PeakStart:                       apiKey.Group.PeakStart,
 			PeakEnd:                         apiKey.Group.PeakEnd,
@@ -521,6 +523,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                snapshot.Group.ModelsListConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
+			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,
+			ReasoningEffortMappings:         snapshot.Group.ReasoningEffortMappings,
 			PeakRateEnabled:                 snapshot.Group.PeakRateEnabled,
 			PeakStart:                       snapshot.Group.PeakStart,
 			PeakEnd:                         snapshot.Group.PeakEnd,

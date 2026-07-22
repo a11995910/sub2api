@@ -163,6 +163,10 @@ type Group struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
+	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
+	MaxReasoningEffort string `json:"max_reasoning_effort"`
+	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
+	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
 	// AccessExpiresAt/AccessSource 仅用户侧可用分组接口会填，用于展示限时授权倒计时。
 	AccessExpiresAt *time.Time `json:"access_expires_at,omitempty"`
