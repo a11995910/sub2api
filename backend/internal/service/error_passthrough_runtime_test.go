@@ -37,6 +37,57 @@ func TestApplyErrorPassthroughRule_NoBoundService(t *testing.T) {
 	assert.Equal(t, "Upstream request failed", errMsg)
 }
 
+func TestClientSafeUpstreamErrorMessage_HidesInfrastructureDetails(t *testing.T) {
+	body := []byte(`{"cloudflare_error":true,"detail":"The origin web server did not return a complete response.","zone":"api-cdn.apis.example.org","type":"https://developers.cloudflare.com/support/error-524/"}`)
+
+	message := ClientSafeUpstreamErrorMessage(524, body, "Upstream request failed")
+
+	assert.Equal(t, "Upstream service temporarily unavailable", message)
+	assert.NotContains(t, message, "api-cdn.apis.example.org")
+	assert.NotContains(t, message, "cloudflare.com")
+}
+
+func TestClientSafeUpstreamErrorMessage_HidesAddressInClientCorrectableError(t *testing.T) {
+	body := []byte(`{"error":{"message":"Invalid callback URL: https://api-cdn.apis.example.org/v1?access_token=secret"}}`)
+
+	message := ClientSafeUpstreamErrorMessage(http.StatusBadRequest, body, "Upstream request failed")
+
+	assert.Contains(t, message, "Invalid callback URL")
+	assert.NotContains(t, message, "api-cdn.apis.example.org")
+	assert.NotContains(t, message, "access_token=secret")
+}
+
+func TestApplyErrorPassthroughRule_524DoesNotExposeUpstreamBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	rule := &model.ErrorPassthroughRule{
+		ID:              1,
+		Name:            "cloudflare-524",
+		Enabled:         true,
+		Priority:        1,
+		ErrorCodes:      []int{524},
+		MatchMode:       model.MatchModeAny,
+		PassthroughCode: true,
+		PassthroughBody: true,
+	}
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, ruleSvc)
+	body := []byte(`{"detail":"The origin web server did not return a complete response.","zone":"api-cdn.apis.example.org"}`)
+
+	status, errType, message, matched := applyErrorPassthroughRule(
+		c, PlatformOpenAI, 524, body, http.StatusBadGateway, "upstream_error", "Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	assert.Equal(t, 524, status)
+	assert.Equal(t, "upstream_error", errType)
+	assert.Equal(t, "Upstream service temporarily unavailable", message)
+	assert.NotContains(t, message, "api-cdn.apis.example.org")
+}
+
 func TestGatewayHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

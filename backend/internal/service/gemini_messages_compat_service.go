@@ -1700,6 +1700,9 @@ func sleepGeminiBackoff(attempt int) {
 
 var (
 	sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\s]+`)
+	upstreamURLRegex         = regexp.MustCompile(`(?i)\bhttps?://[^\s<>"']+`)
+	upstreamDomainRegex      = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63})\b`)
+	upstreamIPRegex          = regexp.MustCompile(`\b(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})(?:\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})){3}\b`)
 	retryInRegex             = regexp.MustCompile(`Please retry in ([0-9.]+)s`)
 )
 
@@ -1707,7 +1710,25 @@ func sanitizeUpstreamErrorMessage(msg string) string {
 	if msg == "" {
 		return msg
 	}
-	return sensitiveQueryParamRegex.ReplaceAllString(msg, `$1***`)
+	msg = sensitiveQueryParamRegex.ReplaceAllString(msg, `$1***`)
+	msg = upstreamURLRegex.ReplaceAllString(msg, "[upstream address hidden]")
+	msg = upstreamDomainRegex.ReplaceAllString(msg, "[upstream address hidden]")
+	return upstreamIPRegex.ReplaceAllString(msg, "[upstream address hidden]")
+}
+
+// ClientSafeUpstreamErrorMessage 返回允许暴露给客户端的上游错误摘要。
+// 基础设施类错误可能带有 CDN 区域、回源域名等内部路由信息，因此 5xx 一律不
+// 透传上游文案；4xx 仍可保留可操作的参数校验提示，但会隐藏地址和敏感查询参数。
+func ClientSafeUpstreamErrorMessage(statusCode int, body []byte, fallback string) string {
+	if statusCode >= http.StatusInternalServerError {
+		return "Upstream service temporarily unavailable"
+	}
+
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	if message != "" {
+		return message
+	}
+	return sanitizeUpstreamErrorMessage(strings.TrimSpace(fallback))
 }
 
 func (s *GeminiMessagesCompatService) writeGeminiMappedError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {

@@ -56,9 +56,12 @@ func applyErrorPassthroughRule(
 		status = *rule.ResponseCode
 	}
 
-	errMsg = ExtractUpstreamErrorMessage(responseBody)
+	errMsg = ClientSafeUpstreamErrorMessage(upstreamStatus, responseBody, defaultErrMsg)
 	if !rule.PassthroughBody && rule.CustomMessage != nil {
-		errMsg = *rule.CustomMessage
+		// 5xx 不允许通过自定义透传规则重新暴露上游细节。
+		if upstreamStatus < 500 {
+			errMsg = sanitizeUpstreamErrorMessage(*rule.CustomMessage)
+		}
 	}
 
 	// 命中 skip_monitoring 时在 context 中标记，供 ops_error_logger 跳过记录。

@@ -1623,9 +1623,11 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 			}
 
 			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
+			msg := service.ClientSafeUpstreamErrorMessage(statusCode, responseBody, "Upstream request failed")
 			if !rule.PassthroughBody && rule.CustomMessage != nil {
-				msg = *rule.CustomMessage
+				if statusCode < http.StatusInternalServerError {
+					msg = service.ClientSafeUpstreamErrorMessage(statusCode, nil, *rule.CustomMessage)
+				}
 			}
 
 			if rule.SkipMonitoring {
