@@ -589,15 +589,6 @@ func (s *notificationEmailTestSMTPServer) messageCount() int64 {
 	return s.messages.Load()
 }
 
-func (s *notificationEmailTestSMTPServer) lastMessage() string {
-	s.messageMu.Lock()
-	defer s.messageMu.Unlock()
-	if len(s.messageBodies) == 0 {
-		return ""
-	}
-	return s.messageBodies[len(s.messageBodies)-1]
-}
-
 func (s *notificationEmailTestSMTPServer) close() {
 	_ = s.listener.Close()
 	s.wg.Wait()

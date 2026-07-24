@@ -142,7 +142,7 @@ func ParseSeedanceChatResponse(body []byte) (SeedanceVideoResult, error) {
 		}
 	}
 	if result.VideoURL == "" && result.RequestID == "" {
-		return SeedanceVideoResult{}, fmt.Errorf("Seedance response did not include video URL or request ID")
+		return SeedanceVideoResult{}, fmt.Errorf("seedance response did not include video URL or request ID")
 	}
 	return result, nil
 }

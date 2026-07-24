@@ -511,7 +511,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		if err != nil || seedanceResult.VideoURL == "" {
 			writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Seedance upstream response did not include a video URL")
 			if err == nil {
-				err = errors.New("Seedance upstream response did not include a video URL")
+				err = errors.New("seedance upstream response did not include a video URL")
 			}
 			return nil, err
 		}
