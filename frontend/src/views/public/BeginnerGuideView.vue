@@ -219,12 +219,12 @@
                 </span>
                 <div>
                   <h3 class="font-semibold text-slate-950 dark:text-white">CC-Switch（cc-switch）</h3>
-                  <p class="text-xs text-slate-500 dark:text-dark-400">当前核实 Release：{{ ccSwitchVersion }}</p>
+                  <p class="text-xs text-slate-500 dark:text-dark-400">本站直连 · 官方原版安装包</p>
                 </div>
               </div>
-              <a :href="ccSwitchLatestUrl" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm rounded-lg">
-                GitHub 最新版本
-                <Icon name="externalLink" size="xs" />
+              <a href="/downloads/clients/SHA256SUMS.txt" class="btn btn-secondary btn-sm rounded-lg">
+                文件校验值
+                <Icon name="download" size="xs" />
               </a>
             </div>
 
@@ -236,8 +236,8 @@
               >
                 <p class="font-semibold text-slate-900 dark:text-white">{{ item.label }}</p>
                 <p class="mt-1 min-h-10 text-xs leading-5 text-slate-500 dark:text-dark-400">{{ item.note }}</p>
-                <a :href="item.href" target="_blank" rel="noopener noreferrer" class="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">
-                  GitHub 下载
+                <a :href="item.href" class="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">
+                  {{ item.actionLabel }}
                   <Icon name="download" size="xs" />
                 </a>
               </div>
@@ -341,6 +341,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { ccSwitchDownloads, codexDesktopDownloads } from '@/config/beginnerGuideDownloads'
 
 type IconName = InstanceType<typeof Icon>['$props']['name']
 
@@ -426,35 +427,6 @@ const codexCliInstall = 'npm install -g @openai/codex'
 const claudeCodeDocsUrl = 'https://docs.anthropic.com/en/docs/claude-code/setup'
 const claudeCodeNativeInstall = 'curl -fsSL https://claude.ai/install.sh | bash'
 const claudeCodeNpmInstall = 'npm install -g @anthropic-ai/claude-code'
-const ccSwitchVersion = 'v3.15.0'
-const ccSwitchLatestUrl = 'https://github.com/farion1231/cc-switch/releases/latest'
-
-const codexDesktopDownloads = [
-  {
-    system: 'Windows',
-    label: '下载安装器',
-    actionLabel: '下载',
-    href: 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS?cid=website_cta_psi',
-    note: '适合 Windows 10/11 用户，使用 OpenAI 官方页面提供的 Microsoft 安装入口。',
-    external: true
-  },
-  {
-    system: 'macOS',
-    label: '下载 DMG',
-    actionLabel: '下载',
-    href: 'https://persistent.oaistatic.com/codex-app-prod/Codex.dmg',
-    note: '适合 macOS 用户，使用 OpenAI 官方页面提供的统一 DMG。',
-    external: true
-  },
-  {
-    system: 'Linux',
-    label: '使用 CLI',
-    actionLabel: '查看',
-    href: codexCliDocsUrl,
-    note: '当前官方页面未提供 Linux 桌面端下载入口，Linux 用户建议使用 Codex CLI。',
-    external: true
-  }
-]
 
 const imageStudioDownloads = [
   {
@@ -470,39 +442,6 @@ const imageStudioDownloads = [
     href: '/downloads/image-studio/本地生图工作台-0.1.0-portable.exe',
     note: '适合大多数 Windows 用户。下载后直接运行，再在设置里填写生图 Key。',
     external: false
-  }
-]
-
-const ccSwitchDownloads = [
-  {
-    label: 'Windows 安装包',
-    href: 'https://github.com/farion1231/cc-switch/releases/download/v3.15.0/CC-Switch-v3.15.0-Windows.msi',
-    note: '推荐大多数 Windows 用户使用。'
-  },
-  {
-    label: 'Windows 便携版',
-    href: 'https://github.com/farion1231/cc-switch/releases/download/v3.15.0/CC-Switch-v3.15.0-Windows-Portable.zip',
-    note: '不想安装时使用，解压后运行。'
-  },
-  {
-    label: 'macOS DMG',
-    href: 'https://github.com/farion1231/cc-switch/releases/download/v3.15.0/CC-Switch-v3.15.0-macOS.dmg',
-    note: '适合 macOS 图形安装。'
-  },
-  {
-    label: 'Linux x86_64 AppImage',
-    href: 'https://github.com/farion1231/cc-switch/releases/download/v3.15.0/CC-Switch-v3.15.0-Linux-x86_64.AppImage',
-    note: '适合常见 64 位 Linux 桌面。'
-  },
-  {
-    label: 'Linux arm64 AppImage',
-    href: 'https://github.com/farion1231/cc-switch/releases/download/v3.15.0/CC-Switch-v3.15.0-Linux-arm64.AppImage',
-    note: '适合 ARM64 Linux 设备。'
-  },
-  {
-    label: 'Linux x86_64 DEB',
-    href: 'https://github.com/farion1231/cc-switch/releases/download/v3.15.0/CC-Switch-v3.15.0-Linux-x86_64.deb',
-    note: '适合 Debian / Ubuntu 系。'
   }
 ]
 
@@ -738,7 +677,7 @@ const guideContents: Record<GuideKey, GuideContent> = {
     },
     quickSteps: codexQuickSteps,
     downloadsTitle: '下载必备工具',
-    downloadsDesc: 'Codex 分为 CLI 和桌面端。CLI 用统一安装方式；桌面端按系统下载。CC-Switch 全名为 cc-switch，下载入口使用 GitHub Release。',
+    downloadsDesc: 'Codex 分为 CLI 和桌面端。桌面端和 CC-Switch 都由本站提供对应系统的安装包，不需要再打开 GitHub 或 Microsoft Store。',
     downloadCards: [
       {
         title: 'Codex CLI',
@@ -753,17 +692,11 @@ const guideContents: Record<GuideKey, GuideContent> = {
       {
         title: 'Codex 桌面端',
         kicker: '按系统选择',
-        desc: '完全新手优先选择桌面端。Windows 和 macOS 使用官方桌面端，Linux 建议按 CLI 文档安装。',
+        desc: '完全新手优先选择桌面端。Windows 可直接下载官方 MSIX，不需要打开 Microsoft Store；macOS 下载官方 DMG；Linux 建议使用 CLI。',
         icon: 'download',
         iconClass: 'bg-blue-600 text-white',
         wide: true,
-        items: codexDesktopDownloads.map((item) => ({
-          label: item.system,
-          href: item.href,
-          note: item.note,
-          actionLabel: item.actionLabel,
-          external: item.external
-        })),
+        items: codexDesktopDownloads,
         actions: [{ label: '官方说明', href: codexAppDocsUrl, external: true }]
       }
     ],

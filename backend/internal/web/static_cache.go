@@ -3,6 +3,7 @@
 package web
 
 import (
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -11,6 +12,7 @@ import (
 // Vite emits content-hashed filenames under assets/, so the backend can apply
 // immutable caching without relying on a reverse proxy to classify paths.
 const staticAssetsCacheControl = "public, max-age=31536000, immutable"
+const runtimeDownloadCacheControl = "public, max-age=3600"
 
 const markdownContentType = "text/markdown; charset=utf-8"
 
@@ -23,7 +25,24 @@ func applyEmbeddedStaticHeaders(header http.Header, cleanPath string) {
 	if strings.EqualFold(path.Ext(cleanPath), ".md") {
 		header.Set("Content-Type", markdownContentType)
 	}
+	applyRuntimeDownloadHeaders(header, cleanPath)
 	applyStaticAssetCacheHeaders(header, cleanPath)
+}
+
+func isRuntimeDownloadPath(cleanPath string) bool {
+	normalized := strings.TrimPrefix(path.Clean("/"+cleanPath), "/")
+	return strings.HasPrefix(normalized, "downloads/")
+}
+
+func applyRuntimeDownloadHeaders(header http.Header, cleanPath string) {
+	if header == nil || !isRuntimeDownloadPath(cleanPath) {
+		return
+	}
+
+	header.Set("Cache-Control", runtimeDownloadCacheControl)
+	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(cleanPath)}); disposition != "" {
+		header.Set("Content-Disposition", disposition)
+	}
 }
 
 // isFingerprintedEmbeddedAssetPath reports whether a cleaned URL path refers to

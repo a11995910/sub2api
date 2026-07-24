@@ -17,6 +17,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `sync-client-downloads.sh` | 同步小白攻略使用的 Codex / CC-Switch 官方安装包 |
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
@@ -177,6 +178,35 @@ SELECT
 - 主进程固定探测 `/tmp/sub2api-datamanagement.sock`
 - Docker 场景下需把宿主机 Socket 挂载到容器内同路径
 - 详细步骤见：`deploy/DATAMANAGEMENTD_CN.md`
+
+### 小白攻略客户端安装包
+
+`/beginner-guide` 的 Codex 与 CC-Switch 下载按钮只访问本站，不直接跳转 GitHub 或 Microsoft Store。安装包放在应用数据目录的 `public/downloads/clients` 下，由内嵌前端的运行时覆盖目录提供下载；大文件不进入 Git 或 Docker 镜像。
+
+先只核实官方来源和当前下载地址：
+
+```bash
+./sync-client-downloads.sh --check
+```
+
+正式 VPS 的 staging 与 prod 数据目录相互隔离，应分别同步：
+
+```bash
+./sync-client-downloads.sh \
+  --output-dir /opt/sub2api/data/staging/public/downloads/clients
+
+./sync-client-downloads.sh \
+  --output-dir /opt/sub2api/data/prod/public/downloads/clients
+```
+
+脚本会执行以下校验：
+
+- Windows Codex 通过 Microsoft 官方 SFS 接口解析 x64 / ARM64 MSIX，只接受 Microsoft Delivery 官方 CDN，并校验接口返回的 SHA256 及包内签名文件。
+- macOS Codex 只从 OpenAI 官方静态域名同步 DMG。
+- CC-Switch 固定到脚本声明的 Release 版本，并校验 GitHub API 提供的 SHA256 摘要。
+- 所有文件完整下载后再替换现有镜像，同时生成 `SHA256SUMS.txt` 供用户核对。
+
+运行同步需要 `curl`、`jq`、`awk`、`openssl` 和 `sha256sum` 等基础工具。Codex 安装包体积较大，执行前应确认磁盘空间和出口带宽；更新攻略页中的文件名时，必须同步更新此脚本和前端下载清单。
 
 ### Commands
 

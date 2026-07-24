@@ -711,6 +711,26 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, "local installer bytes", w.Body.String())
 		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
 		assert.Equal(t, "public, max-age=3600", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment;")
+	})
+
+	t.Run("returns_not_found_for_missing_download_instead_of_spa", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/downloads/clients/codex/missing.msix", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.NotContains(t, w.Body.String(), "<!doctype html>")
 	})
 
 	t.Run("sets_immutable_cache_for_hashed_assets", func(t *testing.T) {
@@ -910,6 +930,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 		assert.Equal(t, "portable installer bytes", w.Body.String())
 		assert.NotContains(t, w.Header().Get("Content-Type"), "text/html")
 		assert.Equal(t, "public, max-age=3600", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment;")
 	})
 
 	t.Run("skips_api_routes", func(t *testing.T) {

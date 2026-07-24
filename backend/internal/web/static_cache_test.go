@@ -4,6 +4,7 @@ package web
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,5 +107,36 @@ func TestApplyEmbeddedStaticHeaders(t *testing.T) {
 		assert.NotPanics(t, func() {
 			applyEmbeddedStaticHeaders(nil, "developer-docs.md")
 		})
+	})
+}
+
+func TestRuntimeDownloadHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("recognizes_only_download_children", func(t *testing.T) {
+		t.Parallel()
+		assert.True(t, isRuntimeDownloadPath("downloads/clients/codex/Codex-Windows-x64.msix"))
+		assert.True(t, isRuntimeDownloadPath("/downloads/clients/SHA256SUMS.txt"))
+		assert.False(t, isRuntimeDownloadPath("downloads"))
+		assert.False(t, isRuntimeDownloadPath("download/client.exe"))
+		assert.False(t, isRuntimeDownloadPath("assets/downloads/client.exe"))
+	})
+
+	t.Run("forces_attachment_and_short_cache", func(t *testing.T) {
+		t.Parallel()
+		header := make(http.Header)
+		applyRuntimeDownloadHeaders(header, "downloads/clients/cc-switch/CC-Switch-macOS.dmg")
+
+		assert.Equal(t, runtimeDownloadCacheControl, header.Get("Cache-Control"))
+		assert.True(t, strings.HasPrefix(header.Get("Content-Disposition"), "attachment;"))
+		assert.Contains(t, header.Get("Content-Disposition"), "CC-Switch-macOS.dmg")
+	})
+
+	t.Run("ignores_non_download_paths", func(t *testing.T) {
+		t.Parallel()
+		header := make(http.Header)
+		applyRuntimeDownloadHeaders(header, "assets/index-AbCd1234.js")
+		assert.Empty(t, header.Get("Content-Disposition"))
+		assert.Empty(t, header.Get("Cache-Control"))
 	})
 }

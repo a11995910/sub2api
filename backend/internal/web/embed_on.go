@@ -112,6 +112,11 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 
 		// For SPA routes, serve with injected settings
 		if !s.fileExists(cleanPath) {
+			if isRuntimeDownloadPath(cleanPath) {
+				c.Status(http.StatusNotFound)
+				c.Abort()
+				return
+			}
 			s.serveIndexHTML(c)
 			return
 		}
@@ -143,6 +148,7 @@ func (s *FrontendServer) tryServeOverride(c *gin.Context, cleanPath string) bool
 	if err != nil || info.IsDir() {
 		return false
 	}
+	applyRuntimeDownloadHeaders(c.Writer.Header(), cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
@@ -345,6 +351,12 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			return
 		}
 
+		if isRuntimeDownloadPath(cleanPath) {
+			c.Status(http.StatusNotFound)
+			c.Abort()
+			return
+		}
+
 		serveIndexHTML(c, distFS)
 	}
 }
@@ -359,6 +371,7 @@ func tryServeOverrideFile(c *gin.Context, overrideDir, cleanPath string) bool {
 	if err != nil || info.IsDir() {
 		return false
 	}
+	applyRuntimeDownloadHeaders(c.Writer.Header(), cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
