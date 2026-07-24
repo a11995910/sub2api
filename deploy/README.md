@@ -193,10 +193,10 @@ SELECT
 
 ```bash
 ./sync-client-downloads.sh \
-  --output-dir /opt/sub2api/data/staging/public/downloads/clients
+  --output-dir /opt/sub2api/data/staging/app/public/downloads/clients
 
 ./sync-client-downloads.sh \
-  --output-dir /opt/sub2api/data/prod/public/downloads/clients
+  --output-dir /opt/sub2api/data/prod/app/public/downloads/clients
 ```
 
 脚本会执行以下校验：
