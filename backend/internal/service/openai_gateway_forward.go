@@ -72,6 +72,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			return nil, err
 		}
 	}
+	// 所有 OpenAI Responses 出站分支共用同一 ID 契约。必须在 passthrough
+	// 早返回之前清理，否则 API-key/自定义 Base URL 会把客户端回放的
+	// message/function_call item_* id 原样发给上游并持续收到 400。
+	if account.Platform == PlatformOpenAI {
+		normalizedItemIDBody, normalizedItemIDs, normalizeErr := sanitizeOpenAIResponsesInputItemIDs(body)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		if normalizedItemIDs {
+			body = normalizedItemIDBody
+		}
+	}
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
