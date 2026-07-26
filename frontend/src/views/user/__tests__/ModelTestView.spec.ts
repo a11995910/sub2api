@@ -120,7 +120,7 @@ vi.mock('@/api/modelTest', () => ({
   testImageGeneration: vi.fn(),
   testVideoGeneration,
   listGatewayModels,
-  extractVideoURL: (payload: any) => String(payload?.video?.url || ''),
+  extractVideoURL: (payload: any) => String(payload?.url || payload?.video?.url || ''),
 }))
 
 vi.mock('@/api/videoTestTasks', () => ({
@@ -1104,7 +1104,7 @@ describe('ModelTestView', () => {
     ])
   })
 
-  it('历史完成任务通过登录态内容接口创建 Blob 播放地址并在卸载时释放', async () => {
+  it('历史完成任务即使返回受保护 URL 也会通过登录态内容接口创建 Blob', async () => {
     const videoGroup = groupFixture({
       id: 9,
       name: '视频分组',
@@ -1142,7 +1142,10 @@ describe('ModelTestView', () => {
         prompt: '生成海浪视频',
         reference_image_count: 0,
         status: 'completed',
-        response: { status: 'done' },
+        response: {
+          status: 'completed',
+          url: '/videos/video-request-123/content',
+        },
         created_at: '2026-07-19T12:00:00Z',
         updated_at: '2026-07-19T12:10:00Z',
       }],

@@ -764,8 +764,10 @@ const currentPricePreview = computed(() => {
 
 const chatOutput = computed(() => selectedKind.value === 'token' ? extractChatText(rawResponse.value) : '')
 const imageOutputs = computed(() => selectedKind.value === 'image' ? extractImageOutputs(rawResponse.value) : [])
-const videoOutputURL = computed(() => selectedKind.value === 'video' ? videoBlobURL.value || extractVideoURL(rawResponse.value) : '')
 const selectedVideoTask = computed(() => videoTasks.value.find((task) => task.id === selectedVideoTaskID.value) || null)
+const videoOutputURL = computed(() => selectedKind.value === 'video'
+  ? videoBlobURL.value || (selectedVideoTask.value ? '' : extractVideoURL(rawResponse.value))
+  : '')
 const responsePreview = computed(() => rawResponse.value == null ? '' : JSON.stringify(redactForPreview(rawResponse.value), null, 2))
 
 watch(selectedKind, (kind) => {
@@ -1291,10 +1293,6 @@ async function syncSelectedVideoTask(task: VideoTestTask): Promise<void> {
   rawResponse.value = task.response || task
   errorMessage.value = task.status === 'failed' ? task.error_message || t('modelTest.runFailed') : ''
   if (task.status !== 'completed') {
-    clearVideoBlobURL()
-    return
-  }
-  if (extractVideoURL(task.response)) {
     clearVideoBlobURL()
     return
   }
