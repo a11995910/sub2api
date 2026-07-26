@@ -178,4 +178,54 @@ describe('AffiliateView', () => {
     expect(text).toContain('被邀请用户充值产生返利后，你还会获得 7 天「Claude 订阅」订阅使用权')
     expect(text).toContain('请求按订阅额度消耗，天数可累加')
   })
+
+  it('移动端长邀请码与复制按钮分行展示并保持桌面布局', async () => {
+    const affiliateCode = 'affiliate-code-that-is-long-enough-to-overflow-a-mobile-viewport'
+    getAffiliateDetail.mockResolvedValue({
+      ...detailFixture({}),
+      aff_code: affiliateCode,
+    })
+    copyToClipboard.mockResolvedValue(true)
+
+    const wrapper = await mountAffiliateView()
+    const values = wrapper.findAll('code')
+    expect(values).toHaveLength(2)
+    for (const value of values) {
+      expect(value.classes()).toEqual(expect.arrayContaining([
+        'min-w-0',
+        'break-all',
+        'sm:flex-1',
+        'sm:truncate',
+      ]))
+      expect(Array.from(value.element.parentElement?.classList ?? [])).toEqual(expect.arrayContaining([
+        'flex-col',
+        'items-stretch',
+        'sm:flex-row',
+        'sm:items-center',
+      ]))
+    }
+
+    const copyButtons = wrapper.findAll('button').filter((button) =>
+      ['复制邀请码', '复制链接'].includes(button.text()),
+    )
+    expect(copyButtons).toHaveLength(2)
+    for (const button of copyButtons) {
+      expect(button.classes()).toEqual(expect.arrayContaining([
+        'w-full',
+        'sm:w-auto',
+        'sm:shrink-0',
+      ]))
+    }
+
+    await copyButtons[0].trigger('click')
+    await copyButtons[1].trigger('click')
+    await flushPromises()
+
+    expect(copyToClipboard).toHaveBeenNthCalledWith(1, affiliateCode, 'affiliate.codeCopied')
+    expect(copyToClipboard).toHaveBeenNthCalledWith(
+      2,
+      `${window.location.origin}/register?aff=${encodeURIComponent(affiliateCode)}`,
+      'affiliate.linkCopied',
+    )
+  })
 })
