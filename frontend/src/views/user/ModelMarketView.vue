@@ -1,53 +1,74 @@
 <template>
   <AppLayout>
     <div class="space-y-5">
-      <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+      <section class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-950/5 dark:bg-dark-800 dark:shadow-none dark:ring-white/10">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div class="min-w-0">
-            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('modelMarket.title') }}</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('modelMarket.description') }}</p>
+            <h1 class="text-balance text-xl font-semibold text-gray-900 dark:text-white">{{ t('modelMarket.title') }}</h1>
+            <p class="mt-1 text-pretty text-base text-gray-500 sm:text-sm dark:text-gray-400">{{ t('modelMarket.description') }}</p>
           </div>
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div class="relative w-full sm:w-80">
-              <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+              <Icon name="search" size="xs" class="absolute left-3 top-1/2 shrink-0 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input
                 v-model="searchQuery"
                 type="text"
+                name="model-search"
+                :aria-label="t('modelMarket.searchPlaceholder')"
                 :placeholder="t('modelMarket.searchPlaceholder')"
-                class="input pl-10"
+                class="input pl-10 max-sm:text-base"
               />
             </div>
             <button
-              @click="loadModels"
+              type="button"
               :disabled="loading"
-              class="btn btn-secondary justify-center"
+              class="btn btn-secondary relative justify-center"
               :title="t('common.refresh')"
+              :aria-label="t('common.refresh')"
+              @click="loadModels"
             >
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+              <span class="absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 pointer-fine:hidden" aria-hidden="true"></span>
+              <Icon name="refresh" size="xs" class="shrink-0" :class="loading ? 'animate-spin' : ''" />
             </button>
           </div>
         </div>
 
-        <div class="mt-5 flex gap-2 overflow-x-auto pb-1">
-          <button
-            v-for="group in visibleGroups"
-            :key="group.group.id"
-            type="button"
-            class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition"
-            :class="selectedGroupId === group.group.id
-              ? 'border-primary-600 bg-primary-600 text-white shadow-sm'
-              : 'border-gray-200 bg-white text-gray-700 shadow-sm hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-700 dark:bg-dark-900/50 dark:text-gray-200 dark:hover:border-primary-800 dark:hover:bg-primary-900/20 dark:hover:text-primary-300'"
-            @click="selectedGroupId = group.group.id"
+        <div v-if="visibleGroups.length" class="mt-5 border-t border-gray-950/10 pt-4 dark:border-white/10">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modelMarket.groupPicker') }}</h2>
+            <p class="text-base text-gray-500 sm:text-sm dark:text-gray-400">
+              {{ t('modelMarket.availableGroupCount', { count: visibleGroups.length }) }}
+            </p>
+          </div>
+
+          <div
+            class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+            data-testid="group-grid"
           >
-            <PlatformIcon :platform="group.group.platform as GroupPlatform" size="xs" />
-            <span class="max-w-48 truncate">{{ group.group.name }}</span>
-            <span
-              class="rounded-full px-1.5 py-0.5 text-[11px]"
-              :class="selectedGroupId === group.group.id ? 'bg-white/20 text-white' : 'bg-white text-gray-500 dark:bg-dark-800 dark:text-gray-400'"
+            <button
+              v-for="group in visibleGroups"
+              :key="group.group.id"
+              type="button"
+              class="flex min-h-14 min-w-0 items-center gap-3 rounded-lg border p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+              :class="selectedGroupId === group.group.id
+                ? 'border-primary-300 bg-primary-50 text-primary-900 ring-1 ring-primary-500/20 dark:border-primary-800 dark:bg-primary-950/40 dark:text-primary-100'
+                : 'border-gray-950/10 bg-white text-gray-800 hover:border-primary-200 hover:bg-gray-50 dark:border-white/10 dark:bg-dark-900/50 dark:text-gray-200 dark:hover:border-primary-900 dark:hover:bg-dark-900'"
+              :aria-pressed="selectedGroupId === group.group.id"
+              data-testid="group-option"
+              @click="selectedGroupId = group.group.id"
             >
-              x{{ formatRate(effectiveTextRate(group.group)) }}
-            </span>
-          </button>
+              <PlatformIcon :platform="group.group.platform as GroupPlatform" size="xs" class="shrink-0" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium">{{ group.group.name }}</p>
+                <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ platformLabel(group.group.platform) }} · {{ t('modelMarket.modelCount', { count: group.models.length }) }}
+                </p>
+              </div>
+              <p class="shrink-0 rounded-md bg-white px-2 py-1 font-mono text-xs tabular-nums text-gray-600 ring-1 ring-gray-950/5 dark:bg-dark-800 dark:text-gray-300 dark:ring-white/10">
+                x{{ formatRate(effectiveTextRate(group.group)) }}
+              </p>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -61,12 +82,12 @@
       </section>
 
       <template v-else>
-        <section v-if="selectedGroup" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <section v-if="selectedGroup" class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-950/5 dark:bg-dark-800 dark:shadow-none dark:ring-white/10">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <PlatformIcon :platform="selectedGroup.group.platform as GroupPlatform" size="sm" />
-                <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">{{ selectedGroup.group.name }}</h2>
+                <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white" data-testid="selected-group-title">{{ selectedGroup.group.name }}</h2>
                 <span v-if="selectedGroup.group.is_exclusive" class="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
                   {{ t('availableChannels.exclusive') }}
                 </span>
@@ -74,19 +95,35 @@
                   {{ t('modelMarket.subscriptionGroup') }}
                 </span>
               </div>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p class="mt-1 text-base text-gray-500 sm:text-sm dark:text-gray-400">
                 {{ t('modelMarket.groupSummary', { count: selectedModels.length, rate: formatRate(effectiveTextRate(selectedGroup.group)) }) }}
               </p>
             </div>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              :disabled="!selectedModels[0]"
-              @click="selectedModels[0] && goTestSelected(selectedModels[0])"
-            >
-              <Icon name="beaker" size="sm" />
-              {{ t('modelMarket.test') }}
-            </button>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div class="inline-grid grid-cols-[1fr_2rem]">
+                <label for="model-market-sort" class="sr-only">{{ t('modelMarket.sort.label') }}</label>
+                <select
+                  id="model-market-sort"
+                  v-model="modelSort"
+                  name="model-sort"
+                  class="input col-span-full row-start-1 min-w-52 appearance-none pr-8 max-sm:text-base"
+                >
+                  <option value="recommended">{{ t('modelMarket.sort.recommended') }}</option>
+                  <option value="name-asc">{{ t('modelMarket.sort.nameAsc') }}</option>
+                  <option value="name-desc">{{ t('modelMarket.sort.nameDesc') }}</option>
+                </select>
+                <Icon name="chevronDown" size="xs" class="pointer-events-none col-start-2 row-start-1 shrink-0 place-self-center text-gray-400" />
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                :disabled="!selectedModels[0]"
+                @click="selectedModels[0] && goTestSelected(selectedModels[0])"
+              >
+                <Icon name="beaker" size="xs" class="shrink-0" />
+                {{ t('modelMarket.test') }}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -95,11 +132,11 @@
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('modelMarket.noModelsInGroup') }}</p>
         </section>
 
-        <section v-else class="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+        <section v-else class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           <article
             v-for="model in selectedModels"
             :key="model.key"
-            class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:border-primary-200 hover:shadow-md dark:border-dark-700 dark:bg-dark-800 dark:hover:border-primary-900"
+            class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-950/5 dark:bg-dark-800 dark:shadow-none dark:ring-white/10"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
@@ -110,28 +147,29 @@
                 <div class="mt-2 flex flex-wrap items-center gap-1.5">
                   <span
                     :class="[
-                      'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium',
+                      'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium',
                       platformBadgeClass(model.platform),
                     ]"
                   >
                     {{ platformLabel(model.platform) }}
                   </span>
-                  <span class="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                  <span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
                     {{ billingModeLabel(model.pricing?.billing_mode) }}
                   </span>
-                  <span v-if="model.pricing?.intervals?.length" class="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  <span v-if="model.pricing?.intervals?.length" class="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                     {{ t('modelMarket.intervalCount', { count: model.pricing.intervals.length }) }}
                   </span>
                 </div>
               </div>
               <button type="button" class="btn btn-secondary btn-sm shrink-0" @click="goTestSelected(model)">
-                <Icon name="beaker" size="sm" />
+                <Icon name="beaker" size="xs" class="shrink-0" />
                 {{ t('modelMarket.test') }}
               </button>
             </div>
 
             <div
-              class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"
+              class="mt-4"
+              :class="model.kind === 'token' && model.pricing?.billing_mode !== BILLING_MODE_PER_REQUEST ? '' : 'grid grid-cols-1 gap-2 sm:grid-cols-3'"
             >
               <template v-if="model.kind === 'image'">
                 <PriceTile
@@ -172,23 +210,13 @@
                 <PriceTile :label="t('modelMarket.columns.cacheRead')" value="-" />
               </template>
               <template v-else>
-                <PriceTile
-                  :label="t('modelMarket.columns.input')"
-                  :value="formatSelectedPrice(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)"
-                  :official-value="formatOfficialPrice(model.pricing?.input_price, perMillionScale)"
+                <TokenPriceSummary
+                  :input-value="formatSelectedPrice(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)"
+                  :output-value="formatSelectedPrice(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)"
+                  :cache-read-value="formatSelectedPrice(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)"
+                  :cache-write-value="formatSelectedPrice(model.pricing?.cache_write_price, perMillionScale, model.pricing?.billing_mode)"
+                  :official-input-value="formatOfficialPrice(model.pricing?.input_price, perMillionScale)"
                   :discount-value="formatSelectedDiscount(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)"
-                />
-                <PriceTile
-                  :label="t('modelMarket.columns.cacheRead')"
-                  :value="formatSelectedPrice(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)"
-                  :official-value="formatOfficialPrice(model.pricing?.cache_read_price, perMillionScale)"
-                  :discount-value="formatSelectedDiscount(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)"
-                />
-                <PriceTile
-                  :label="t('modelMarket.columns.output')"
-                  :value="formatSelectedPrice(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)"
-                  :official-value="formatOfficialPrice(model.pricing?.output_price, perMillionScale)"
-                  :discount-value="formatSelectedDiscount(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)"
                 />
               </template>
             </div>
@@ -211,6 +239,7 @@ import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import TokenPriceSummary from '@/components/user/model-market/TokenPriceSummary.vue'
 import userChannelsAPI, {
   type UserAvailableChannel,
   type UserAvailableGroup,
@@ -286,6 +315,8 @@ interface MarketGroup {
   models: GroupMarketModel[]
 }
 
+type ModelSort = 'recommended' | 'name-asc' | 'name-desc'
+
 const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
@@ -296,6 +327,7 @@ const userGroupRates = ref<Record<number, number>>({})
 const loading = ref(false)
 const searchQuery = ref('')
 const selectedGroupId = ref<number | null>(null)
+const modelSort = ref<ModelSort>('recommended')
 const perMillionScale = 1_000_000
 const usdToSpiritStoneRate = 7.1
 
@@ -339,14 +371,31 @@ const pricingSignature = (pricing: UserSupportedModelPricing | null): string => 
   })
 }
 
+function isGptModel(model: GroupMarketModel): boolean {
+  const name = model.name.trim().toLowerCase()
+  return model.kind === 'token' && (name === 'gpt' || name.startsWith('gpt-'))
+}
+
+function compareModelNames(a: GroupMarketModel, b: GroupMarketModel): number {
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+}
+
 function compareMarketModels(a: GroupMarketModel, b: GroupMarketModel): number {
+  const gptOrder = Number(isGptModel(b)) - Number(isGptModel(a))
+  if (gptOrder !== 0) return gptOrder
+
   const order: Record<ModelKind, number> = { token: 0, image: 1, video: 2 }
   const kindOrder = order[a.kind] - order[b.kind]
   if (kindOrder !== 0) return kindOrder
-  return a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)
+
+  if (isGptModel(a) && isGptModel(b)) return compareModelNames(b, a)
+  return a.platform.localeCompare(b.platform) || compareModelNames(a, b)
 }
 
 function compareMarketGroups(a: MarketGroup, b: MarketGroup): number {
+  const gptOrder = Number(b.models.some(isGptModel)) - Number(a.models.some(isGptModel))
+  if (gptOrder !== 0) return gptOrder
+
   const kindOrder = Number(a.group.allow_image_generation) - Number(b.group.allow_image_generation)
   if (kindOrder !== 0) return kindOrder
   return a.group.platform.localeCompare(b.group.platform) || a.group.name.localeCompare(b.group.name)
@@ -418,12 +467,17 @@ const selectedGroup = computed(() => {
 const selectedModels = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   const models = selectedGroup.value?.models ?? []
-  if (!q) return models
-  return models.filter((model) =>
-    model.name.toLowerCase().includes(q) ||
-    model.platform.toLowerCase().includes(q) ||
-    selectedGroup.value?.group.name.toLowerCase().includes(q),
-  )
+  const filtered = q
+    ? models.filter((model) =>
+        model.name.toLowerCase().includes(q) ||
+        model.platform.toLowerCase().includes(q) ||
+        selectedGroup.value?.group.name.toLowerCase().includes(q),
+      )
+    : models
+
+  if (modelSort.value === 'name-asc') return [...filtered].sort(compareModelNames)
+  if (modelSort.value === 'name-desc') return [...filtered].sort((a, b) => compareModelNames(b, a))
+  return [...filtered].sort(compareMarketModels)
 })
 
 const selectedTextRateLabel = computed(() => {

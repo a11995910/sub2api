@@ -1212,8 +1212,11 @@ export default {
   // Model Market
   modelMarket: {
     title: '模型广场',
-    description: '查看当前可调用模型、可用分组和倍率后的灵石价格',
+    description: '查看当前可调用模型、可用分组和倍率后的灵石价格。',
     searchPlaceholder: '搜索模型、平台或分组...',
+    groupPicker: '选择分组',
+    availableGroupCount: '{count} 个可用分组',
+    modelCount: '{count} 个模型',
     allPlatforms: '全部平台',
     empty: '暂无可展示的模型',
     noPricing: '未配置定价',
@@ -1226,6 +1229,21 @@ export default {
     officialPrice: '官方',
     discount: '优惠',
     test: '去测试',
+    inputPrice: '输入价格',
+    perMillionTokens: '每百万 Token',
+    priceDetails: '价格明细',
+    inputMeaning: '发送给模型的内容',
+    outputMeaning: '模型回复内容',
+    cacheReadMeaning: '重复内容命中缓存',
+    cacheWriteMeaning: '首次写入可复用缓存',
+    officialReference: '官方输入参考',
+    discountCompared: '比官方参考低 {value}',
+    sort: {
+      label: '模型排序',
+      recommended: '推荐排序（GPT 优先）',
+      nameAsc: '名称 A-Z',
+      nameDesc: '名称 Z-A'
+    },
     stats: {
       models: '可调用模型',
       platforms: '平台',
@@ -1234,10 +1252,10 @@ export default {
     columns: {
       group: '分组',
       multiplier: '最终倍率',
-      input: '输入 / 1M token',
-      output: '输出 / 1M token',
-      cacheWrite: '缓存写入 / 1M token',
-      cacheRead: '缓存读取 / 1M token',
+      input: '输入',
+      output: '输出',
+      cacheWrite: '缓存写入',
+      cacheRead: '缓存读取',
       imageOutput: '图片输出',
       perRequest: '按次',
       actions: '操作'

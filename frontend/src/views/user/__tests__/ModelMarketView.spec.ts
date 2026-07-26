@@ -21,6 +21,9 @@ const messages: Record<string, string> = {
   'modelMarket.title': '模型广场',
   'modelMarket.description': '查看当前可调用模型、可用分组和倍率后的灵石价格',
   'modelMarket.searchPlaceholder': '搜索模型、平台或分组...',
+  'modelMarket.groupPicker': '选择分组',
+  'modelMarket.availableGroupCount': '{count} 个可用分组',
+  'modelMarket.modelCount': '{count} 个模型',
   'modelMarket.empty': '暂无可展示的模型',
   'modelMarket.noPricing': '未配置定价',
   'modelMarket.intervalCount': '阶梯 {count} 档',
@@ -32,6 +35,19 @@ const messages: Record<string, string> = {
   'modelMarket.officialPrice': '官方',
   'modelMarket.discount': '优惠',
   'modelMarket.test': '去测试',
+  'modelMarket.sort.label': '模型排序',
+  'modelMarket.sort.recommended': '推荐排序（GPT 优先）',
+  'modelMarket.sort.nameAsc': '名称 A-Z',
+  'modelMarket.sort.nameDesc': '名称 Z-A',
+  'modelMarket.inputPrice': '输入价格',
+  'modelMarket.perMillionTokens': '每百万 Token',
+  'modelMarket.priceDetails': '价格明细',
+  'modelMarket.inputMeaning': '发送给模型的内容',
+  'modelMarket.outputMeaning': '模型回复内容',
+  'modelMarket.cacheReadMeaning': '重复内容命中缓存',
+  'modelMarket.cacheWriteMeaning': '首次写入可复用缓存',
+  'modelMarket.officialReference': '官方输入参考',
+  'modelMarket.discountCompared': '比官方参考低 {value}',
   'modelMarket.columns.input': '输入',
   'modelMarket.columns.output': '输出',
   'modelMarket.columns.cacheRead': '缓存读取',
@@ -224,22 +240,104 @@ describe('ModelMarketView', () => {
     const groupButtonTexts = groupButtons.map((button) => button.text())
 
     expect(groupButtonTexts).toEqual([
-      expect.stringContaining('暂无模型分组'),
       expect.stringContaining('文本分组'),
+      expect.stringContaining('暂无模型分组'),
       expect.stringContaining('图片分组'),
     ])
-
-    await groupButtons[1].trigger('click')
-    expect(wrapper.text()).toContain('gpt-4.1')
-    expect(wrapper.text()).toContain('$1')
-    expect(wrapper.text()).toContain('-85.9%')
-    expect(wrapper.text()).not.toContain('image-2')
+    expect(wrapper.get('[data-testid="group-grid"]').classes()).toContain('grid')
+    expect(wrapper.get('[data-testid="group-grid"]').classes()).not.toContain('overflow-x-auto')
 
     await groupButtons[0].trigger('click')
+    expect(wrapper.text()).toContain('gpt-4.1')
+    expect(modelCard(wrapper, 'gpt-4.1').get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
+    expect(wrapper.text()).toContain('$1')
+    expect(wrapper.text()).toContain('比官方参考低 85.9%')
+    expect(wrapper.text()).not.toContain('image-2')
+
+    await groupButtons[1].trigger('click')
     expect(wrapper.text()).toContain('当前分组暂无匹配模型')
 
     await groupButtons[2].trigger('click')
     expect(wrapper.text()).toContain('image-2')
+  })
+
+  it('默认优先 GPT 分组和 GPT 模型，并支持按名称重新排序', async () => {
+    const claudeGroup = groupFixture({
+      id: 20,
+      name: 'Claude 分组',
+      platform: 'anthropic',
+    })
+    const gptGroup = groupFixture({
+      id: 21,
+      name: 'GPT 分组',
+      platform: 'openai',
+    })
+
+    getAvailableGroups.mockResolvedValue([claudeGroup, gptGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([
+      {
+        name: 'Anthropic 渠道',
+        description: '',
+        platforms: [{
+          platform: 'anthropic',
+          groups: [claudeGroup],
+          supported_models: [{
+            name: 'claude-sonnet-4-6',
+            platform: 'anthropic',
+            kind: 'token',
+            pricing: { billing_mode: 'token', input_price: 0.000003, output_price: 0.000015, intervals: [] },
+          }],
+        }],
+      },
+      {
+        name: 'OpenAI 渠道',
+        description: '',
+        platforms: [{
+          platform: 'openai',
+          groups: [gptGroup],
+          supported_models: [
+            {
+              name: 'alpha-chat',
+              platform: 'openai',
+              kind: 'token',
+              pricing: { billing_mode: 'token', input_price: 0.000001, output_price: 0.000004, intervals: [] },
+            },
+            {
+              name: 'gpt-5.6',
+              platform: 'openai',
+              kind: 'token',
+              pricing: { billing_mode: 'token', input_price: 0.000002, output_price: 0.000008, intervals: [] },
+            },
+          ],
+        }],
+      },
+    ])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const groupButtons = wrapper.findAll('[data-testid="group-option"]')
+    expect(groupButtons.map((button) => button.text())).toEqual([
+      expect.stringContaining('GPT 分组'),
+      expect.stringContaining('Claude 分组'),
+    ])
+    expect(wrapper.get('[data-testid="selected-group-title"]').text()).toBe('GPT 分组')
+    expect(wrapper.findAll('article').map((card) => card.get('h3').text())).toEqual(['gpt-5.6', 'alpha-chat'])
+
+    await wrapper.get('select[name="model-sort"]').setValue('name-asc')
+    expect(wrapper.findAll('article').map((card) => card.get('h3').text())).toEqual(['alpha-chat', 'gpt-5.6'])
+
+    await wrapper.get('select[name="model-sort"]').setValue('name-desc')
+    expect(wrapper.findAll('article').map((card) => card.get('h3').text())).toEqual(['gpt-5.6', 'alpha-chat'])
   })
 
   it.each([

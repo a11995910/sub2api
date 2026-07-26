@@ -1208,8 +1208,11 @@ export default {
   // Model Market
   modelMarket: {
     title: 'Model Market',
-    description: 'Browse callable models, available groups, and multiplier-adjusted Spirit Stone pricing',
+    description: 'Browse callable models, available groups, and multiplier-adjusted Spirit Stone pricing.',
     searchPlaceholder: 'Search models, platforms, or groups...',
+    groupPicker: 'Choose a group',
+    availableGroupCount: '{count} available groups',
+    modelCount: '{count} models',
     allPlatforms: 'All platforms',
     empty: 'No models to display',
     noPricing: 'Pricing not configured',
@@ -1222,6 +1225,21 @@ export default {
     officialPrice: 'Official',
     discount: 'Discount',
     test: 'Test',
+    inputPrice: 'Input price',
+    perMillionTokens: 'Per million tokens',
+    priceDetails: 'Price details',
+    inputMeaning: 'Content sent to the model',
+    outputMeaning: 'Content returned by the model',
+    cacheReadMeaning: 'Repeated content served from cache',
+    cacheWriteMeaning: 'Content written to reusable cache',
+    officialReference: 'Official input reference',
+    discountCompared: '{value} below the official reference',
+    sort: {
+      label: 'Sort models',
+      recommended: 'Recommended (GPT first)',
+      nameAsc: 'Name A-Z',
+      nameDesc: 'Name Z-A'
+    },
     stats: {
       models: 'Callable Models',
       platforms: 'Platforms',
@@ -1230,10 +1248,10 @@ export default {
     columns: {
       group: 'Group',
       multiplier: 'Final Rate',
-      input: 'Input / 1M tokens',
-      output: 'Output / 1M tokens',
-      cacheWrite: 'Cache Write / 1M tokens',
-      cacheRead: 'Cache Read / 1M tokens',
+      input: 'Input',
+      output: 'Output',
+      cacheWrite: 'Cache Write',
+      cacheRead: 'Cache Read',
       imageOutput: 'Image Output',
       perRequest: 'Per Request',
       actions: 'Actions'
