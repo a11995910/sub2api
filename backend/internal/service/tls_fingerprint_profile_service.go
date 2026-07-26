@@ -2,7 +2,8 @@ package service
 
 import (
 	"context"
-	"math/rand/v2"
+	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -145,8 +146,15 @@ func (s *TLSFingerprintProfileService) GetProfileByID(id int64) *tlsfingerprint.
 	return nil
 }
 
-// getRandomProfile 从本地缓存中随机选择一个 Profile
-func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profile {
+// pickStableProfile 为账号从本地缓存中挑选一个 Profile（"随机"模式）。
+//
+// 这里刻意不使用每次调用都变的随机数：profile 参与上游连接池的复用判定，逐请求随机会让
+// 每个请求都重建 transport 并重新握手，既打掉了连接复用，"同一账号的 JA3 每次都不同"
+// 本身也比固定一个指纹更异常。改为按账号 ID 稳定分配后，语义是"不同账号分散到不同指纹，
+// 同一账号始终保持同一指纹"——这才是这个开关想要的效果。
+//
+// 按 ID 排序后取模，保证同一份模板集合在多实例、多次重启之间给出一致的结果。
+func (s *TLSFingerprintProfileService) pickStableProfile(accountID int64) *tlsfingerprint.Profile {
 	s.localMu.RLock()
 	defer s.localMu.RUnlock()
 
@@ -164,8 +172,13 @@ func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profil
 	if len(profiles) == 0 {
 		return nil
 	}
+	sort.Slice(profiles, func(i, j int) bool { return profiles[i].ID < profiles[j].ID })
 
-	return profiles[rand.IntN(len(profiles))].ToTLSProfile()
+	idx := accountID % int64(len(profiles))
+	if idx < 0 {
+		idx += int64(len(profiles))
+	}
+	return profiles[idx].ToTLSProfile()
 }
 
 // ResolveTLSProfile 根据 Account 的配置解析出运行时 TLS Profile
@@ -185,8 +198,8 @@ func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsf
 		}
 	}
 	if id == -1 {
-		// 随机选择一个 profile
-		if p := s.getRandomProfile(); p != nil {
+		// "随机"模式：按账号稳定分配一个 profile，而非逐请求随机
+		if p := s.pickStableProfile(account.ID); p != nil {
 			return p
 		}
 	}
@@ -225,6 +238,15 @@ func (s *TLSFingerprintProfileService) reloadFromDB(ctx context.Context) error {
 func (s *TLSFingerprintProfileService) setLocalCache(profiles []*model.TLSFingerprintProfile) {
 	m := make(map[int64]*model.TLSFingerprintProfile, len(profiles))
 	for _, p := range profiles {
+		// ALPN 校验是后加的，库里可能已存在写入了 "h2" 的旧模板。这类模板会让绑定它的账号
+		// 每个请求都被上游重置，且错误完全不指向模板本身——启动/刷新时明确报出来。
+		if bad := tlsfingerprint.UnsupportedALPNProtocols(p.ALPNProtocols); len(bad) > 0 {
+			slog.Warn("tls_fp_profile_unsupported_alpn",
+				"profile_id", p.ID,
+				"profile_name", p.Name,
+				"unsupported", bad,
+				"hint", "only "+tlsfingerprint.ALPNHTTP11+" is supported; accounts bound to this profile will fail")
+		}
 		m[p.ID] = p
 	}
 

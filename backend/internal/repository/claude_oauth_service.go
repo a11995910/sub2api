@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 
@@ -20,16 +21,30 @@ import (
 
 func NewClaudeOAuthClient() service.ClaudeOAuthClient {
 	return &claudeOAuthService{
-		baseURL:       "https://claude.ai",
-		tokenURL:      oauth.TokenURL,
-		clientFactory: createReqClient,
+		baseURL:            "https://claude.ai",
+		tokenURL:           oauth.TokenURL,
+		clientFactory:      createReqClient,
+		tokenClientFactory: createTokenReqClient,
 	}
 }
 
 type claudeOAuthService struct {
-	baseURL       string
-	tokenURL      string
+	baseURL  string
+	tokenURL string
+	// clientFactory 用于 claude.ai 上携带浏览器 sessionKey 的请求（组织列表、授权码）。
+	// 那些请求本来就源自浏览器会话，Chrome 指纹是合适的。
 	clientFactory func(proxyURL string) (*req.Client, error)
+	// tokenClientFactory 用于 OAuth token 端点（换取 / 刷新），走 Node.js 指纹。
+	tokenClientFactory func(proxyURL string) (*req.Client, error)
+}
+
+// tokenClient 返回用于 OAuth token 端点的客户端。
+// 兼容只注入了 clientFactory 的既有测试。
+func (s *claudeOAuthService) tokenClient(proxyURL string) (*req.Client, error) {
+	if s.tokenClientFactory != nil {
+		return s.tokenClientFactory(proxyURL)
+	}
+	return s.clientFactory(proxyURL)
 }
 
 func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
@@ -172,7 +187,7 @@ func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKe
 }
 
 func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.tokenClient(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -228,7 +243,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 }
 
 func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
-	client, err := s.clientFactory(proxyURL)
+	client, err := s.tokenClient(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
@@ -267,6 +282,35 @@ func createReqClient(proxyURL string) (*req.Client, error) {
 		SetTimeout(60 * time.Second).
 		ImpersonateChrome().
 		SetCookieJar(nil) // 禁用 CookieJar
+
+	trimmed, _, err := proxyurl.Parse(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if trimmed != "" {
+		client.SetProxyURL(trimmed)
+	}
+
+	return instrumentReqClient(client), nil
+}
+
+// createTokenReqClient 构建访问 OAuth token 端点的客户端。
+//
+// 这里刻意不用 ImpersonateChrome()：那个方法除了 Chrome 的 JA3 与 HTTP/2 SETTINGS，
+// 还会给客户端挂上一整套 Chrome 公共头（sec-ch-ua、sec-fetch-dest: document、
+// upgrade-insecure-requests: 1、accept-language: zh-CN ...）。而这两个调用点发出去的
+// User-Agent 是 axios/1.13.6——"一个正在导航文档的 Chrome 用 axios 发 JSON POST"是个
+// 现实中不存在的组合，其中 accept-language: zh-CN 更是一个跨账号稳定的关联特征。
+//
+// 真实 Claude Code 用 Node.js 里的 axios 刷新令牌，所以这里改用内置的 Node.js 24.x 指纹，
+// 与 axios UA 保持一致。req 的 SetTLSHandshake 在设置了代理时同样生效（它先完成
+// 代理拨号/CONNECT 再把明文连接交给我们握手），因此无需按代理类型分支。
+func createTokenReqClient(proxyURL string) (*req.Client, error) {
+	// 禁用 CookieJar，确保每次授权都是干净的会话
+	client := req.C().
+		SetTimeout(60 * time.Second).
+		SetCookieJar(nil).
+		SetTLSHandshake(tlsfingerprint.NewTLSHandshakeFunc(nil)) // nil profile → 内置 Node.js 24.x 默认值
 
 	trimmed, _, err := proxyurl.Parse(proxyURL)
 	if err != nil {

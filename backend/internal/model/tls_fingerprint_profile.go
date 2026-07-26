@@ -2,6 +2,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -31,6 +32,15 @@ type TLSFingerprintProfile struct {
 func (p *TLSFingerprintProfile) Validate() error {
 	if p.Name == "" {
 		return &ValidationError{Field: "name", Message: "name is required"}
+	}
+	// 指纹 transport 恒为 HTTP/1.1（详见 tlsfingerprint.ALPNHTTP11）。若这里放行 "h2"，
+	// 服务端会在 ALPN 中选中 h2，而客户端仍然发 HTTP/1.1 请求行，结果是该账号的每一个
+	// 请求都被上游以协议错误重置——且错误信息完全不指向这份模板。宁可在保存时就拒绝。
+	if bad := tlsfingerprint.UnsupportedALPNProtocols(p.ALPNProtocols); len(bad) > 0 {
+		return &ValidationError{
+			Field:   "alpn_protocols",
+			Message: "unsupported ALPN protocol(s) " + strings.Join(bad, ", ") + `; only "` + tlsfingerprint.ALPNHTTP11 + `" is supported (leave empty to use the built-in default)`,
+		}
 	}
 	return nil
 }

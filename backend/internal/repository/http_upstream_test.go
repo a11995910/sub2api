@@ -657,6 +657,30 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
 }
 
+// 改了账号绑定的指纹模板后必须立刻换 transport。否则缓存下来的客户端会带着旧指纹
+// 一直服务到空闲淘汰（默认 15 分钟）或进程重启，管理员看到的是"改了没生效"。
+func (s *HTTPUpstreamSuite) TestTLSFingerprintProfileChangeRebuildsClient() {
+	svc := s.newService()
+	profile := &tlsfingerprint.Profile{Name: "node", CipherSuites: []uint16{0x1301, 0x1302}}
+
+	entry1, err := svc.getClientEntryWithTLS("", 1, 1, profile, service.HTTPUpstreamProfileDefault, false, false)
+	require.NoError(s.T(), err)
+
+	same, err := svc.getClientEntryWithTLS("", 1, 1, profile, service.HTTPUpstreamProfileDefault, false, false)
+	require.NoError(s.T(), err)
+	require.Same(s.T(), entry1, same, "unchanged profile should reuse the pooled client")
+
+	changed := &tlsfingerprint.Profile{Name: "node", CipherSuites: []uint16{0x1301}}
+	entry2, err := svc.getClientEntryWithTLS("", 1, 1, changed, service.HTTPUpstreamProfileDefault, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), entry1, entry2, "edited profile should rebuild the client")
+
+	// 换回原指纹同样要重建，而不是复用刚刚那个改过的客户端。
+	entry3, err := svc.getClientEntryWithTLS("", 1, 1, profile, service.HTTPUpstreamProfileDefault, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), entry2, entry3)
+}
+
 func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
 	s.cfg.Gateway = config.GatewayConfig{
 		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{Enabled: false},

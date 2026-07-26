@@ -270,6 +270,13 @@ func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.
 // It builds a ClientHello spec from the profile, applies it, and completes the handshake.
 // On failure, conn is closed and an error is returned.
 func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, addr string) (net.Conn, error) {
+	return Handshake(ctx, conn, profile, addr)
+}
+
+// Handshake performs the uTLS handshake with the profile's fingerprint on an
+// already-established connection (direct TCP, or a CONNECT/SOCKS5 tunnel).
+// On failure, conn is closed and an error is returned.
+func Handshake(ctx context.Context, conn net.Conn, profile *Profile, addr string) (*utls.UConn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr

@@ -478,7 +478,10 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
 	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	// 指纹参与 poolKey：管理员改了账号绑定的模板（或模板内容本身被编辑）后，
+	// shouldReuseEntry 会因 poolKey 变化判定不可复用并重建 transport。否则缓存的客户端
+	// 会带着旧指纹一直服务到空闲淘汰（默认 15 分钟）或进程重启为止。
+	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls:" + profile.CacheKey()
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -1308,6 +1311,14 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 	return h2, nil
 }
 
+// profileName 返回用于日志的 TLS 指纹模板名称。
+func profileName(profile *tlsfingerprint.Profile) string {
+	if profile == nil || profile.Name == "" {
+		return "built-in default"
+	}
+	return profile.Name
+}
+
 // buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport
 // 使用 utls 库模拟 Claude CLI 的 TLS 指纹
 //
@@ -1352,6 +1363,15 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		case "https":
 			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
 			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
+			//
+			// Warn, not debug: the account still shows "TLS fingerprint enabled" in the
+			// UI while every request goes out with Go's stock ClientHello. Operators need
+			// to see that the switch is a no-op for this proxy.
+			slog.Warn("tls_fingerprint_disabled_https_proxy",
+				"proxy", proxyURL.Host,
+				"profile", profileName(profile),
+				"reason", "fingerprint dialer cannot establish TLS to an HTTPS proxy",
+				"hint", "use an http:// or socks5:// proxy to keep TLS fingerprinting active")
 			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
 		case "http":
 			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
@@ -1360,7 +1380,11 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			transport.DialTLSContext = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
-			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
+			slog.Warn("tls_fingerprint_disabled_unknown_proxy_scheme",
+				"scheme", scheme,
+				"proxy", proxyURL.Host,
+				"profile", profileName(profile),
+				"hint", "use an http:// or socks5:// proxy to keep TLS fingerprinting active")
 			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 				return nil, err
 			}
