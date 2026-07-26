@@ -1226,7 +1226,7 @@ export default {
     noModelsInGroup: '当前分组暂无匹配模型',
     effectiveRate: '生效倍率',
     currentPrice: '当前',
-    officialPrice: '官方',
+    officialPrice: '官方原价',
     discount: '优惠',
     test: '去测试',
     inputPrice: '输入价格',

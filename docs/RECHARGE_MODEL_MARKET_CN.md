@@ -7,7 +7,7 @@
 - `兑换码兑换`：用户在 `/redeem` 页面兑换余额兑换码或订阅兑换码。
 - `在线充值`：用户在 `/payment` 页面使用内置支付渠道直接充值灵石余额或购买订阅，入口受 `payment_enabled` 控制。
 - `我的订阅`：用户在 `/subscriptions` 页面查看订阅用量，并直接使用灵石兑换可售订阅套餐。
-- `模型广场`：用户在 `/models` 查看当前可调用模型、可用分组，以及按用户有效倍率计算后的灵石价格。
+- `模型广场`：用户在 `/model-market` 查看当前可调用模型、可用分组，以及按用户有效倍率计算后的灵石价格。该页面路径与模型请求接口 `/models`、`/v1/models` 分离，避免网关路由冲突。
 - `模型测试台`：用户在 `/model-test` 选择模型、分组和对应 API Key，通过真实 `/v1` 网关在线测试文本、图片或视频模型。
 
 用户侧菜单已不再展示“灵石充值”、“可用渠道”和“渠道状态”入口，相关后端接口、调度逻辑和管理员能力不受影响。`/purchase` 是历史兼容路由，访问时跳转到 `/redeem`，不再加载外部小铺 iframe。
@@ -199,4 +199,4 @@ OpenAI 平台账号会先经过现有模型映射，再优先调用上游 `/v1/v
 - 前端构建：`./node_modules/.bin/vite build`
 - 源码部署编译：`make build-deploy`
 - 后端测试：`go test ./...`
-- 部署后检查 `/purchase` 会跳转到 `/redeem`，并检查 `/payment`、`/orders`、`/redeem`、`/subscriptions`、`/models`、`/model-test`、管理端邀请返利记录和用户侧菜单显示。
+- 部署后检查 `/purchase` 会跳转到 `/redeem`，并检查 `/payment`、`/orders`、`/redeem`、`/subscriptions`、`/model-market`、`/model-test`、管理端邀请返利记录和用户侧菜单显示。

@@ -1222,7 +1222,7 @@ export default {
     noModelsInGroup: 'No matching models in this group',
     effectiveRate: 'Effective Rate',
     currentPrice: 'Current',
-    officialPrice: 'Official',
+    officialPrice: 'Official list price',
     discount: 'Discount',
     test: 'Test',
     inputPrice: 'Input price',

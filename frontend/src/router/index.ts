@@ -288,7 +288,7 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/models',
+    path: '/model-market',
     name: 'ModelMarket',
     component: () => import('@/views/user/ModelMarketView.vue'),
     meta: {

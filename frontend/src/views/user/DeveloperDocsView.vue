@@ -66,7 +66,7 @@
               <Icon name="key" size="sm" />
               管理 API Key
             </router-link>
-            <router-link to="/models" class="btn btn-primary">
+            <router-link to="/model-market" class="btn btn-primary">
               查看可用模型
             </router-link>
           </div>

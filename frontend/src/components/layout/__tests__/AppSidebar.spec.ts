@@ -56,11 +56,12 @@ describe('AppSidebar header styles', () => {
 
 describe('AppSidebar 自定义菜单顺序', () => {
   it('将用户侧自定义菜单整体放在模型广场之后、模型测试台之前', () => {
-    const modelMarketIndex = componentSource.indexOf("path: '/models'")
+    const modelMarketIndex = componentSource.indexOf("path: '/model-market'")
     const customMenuIndex = componentSource.indexOf('...customMenuItemsForUser.value.map(customMenuToNavItem)')
     const modelTestIndex = componentSource.indexOf("path: '/model-test'")
 
     expect(modelMarketIndex).toBeGreaterThanOrEqual(0)
+    expect(componentSource).not.toContain("path: '/models'")
     expect(customMenuIndex).toBeGreaterThan(modelMarketIndex)
     expect(modelTestIndex).toBeGreaterThan(customMenuIndex)
     expect(componentSource).not.toContain("path: '/creative-drawing'")

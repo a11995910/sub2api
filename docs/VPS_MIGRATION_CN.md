@@ -37,7 +37,7 @@ staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 5. 将同一代码合并到 `main` 并推送；正式 VPS 切换到 `main`，核对 commit 与 staging 已验证 commit 完全一致。
 6. 记录 prod 当前镜像，备份 prod PostgreSQL、Redis 关键状态和 prod `.env`，再把已验证镜像标记为 `sub2api:prod-<commit>`。
 7. 原子更新 prod 的 `SUB2API_IMAGE`，只重建 Sub2API 应用容器；PostgreSQL 和 Redis 不得因应用发布被重建或清空。
-8. 完成容器、健康接口、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/models`、数据库连接和日志回归。
+8. 完成容器、健康接口、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/model-market`、数据库连接和日志回归。
 
 ## 构建与版本追溯
 

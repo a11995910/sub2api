@@ -15,6 +15,8 @@ const messages: Record<string, string> = {
   'modelMarket.columns.output': '输出',
   'modelMarket.columns.cacheRead': '缓存读取',
   'modelMarket.columns.cacheWrite': '缓存写入',
+  'modelMarket.officialPrice': '官方原价',
+  'modelMarket.discount': '优惠',
   'modelMarket.officialReference': '官方输入参考',
   'modelMarket.discountCompared': '比官方参考低 {value}',
 }
@@ -36,7 +38,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('TokenPriceSummary', () => {
-  it('主视图仅强调输入价格，并用可访问明细解释输出与缓存价格', () => {
+  it('主视图常驻展示输入价格、官方原价和优惠幅度，并用可访问明细解释输出与缓存价格', () => {
     const wrapper = mount(TokenPriceSummary, {
       props: {
         inputValue: '1 灵石',
@@ -57,6 +59,8 @@ describe('TokenPriceSummary', () => {
 
     expect(trigger.text()).toContain('输入价格')
     expect(trigger.text()).toContain('1 灵石')
+    expect(wrapper.get('[data-testid="token-official-price"]').text()).toBe('$1')
+    expect(wrapper.get('[data-testid="token-price-discount"]').text()).toBe('优惠 85.9%')
     expect(wrapper.get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
     expect(trigger.text()).not.toContain('2 灵石')
     expect(trigger.text()).not.toContain('0.25 灵石')
@@ -85,6 +89,8 @@ describe('TokenPriceSummary', () => {
     })
 
     expect(wrapper.get('[role="tooltip"]').text()).not.toContain('缓存写入')
+    expect(wrapper.find('[data-testid="token-official-price"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="token-price-discount"]').exists()).toBe(false)
 
     await wrapper.setProps({ cacheWriteValue: '1.25 灵石' })
 
