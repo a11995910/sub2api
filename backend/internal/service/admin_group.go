@@ -397,6 +397,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
+	autoFallbackGroupID := normalizePositiveInt64Ptr(input.AutoFallbackGroupID)
+	if autoFallbackGroupID != nil {
+		if err := s.validateAutoFallbackGroup(ctx, 0, platform, subscriptionType, *autoFallbackGroupID); err != nil {
+			return nil, err
+		}
+	}
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
@@ -491,6 +497,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
+		AutoFallbackGroupID:             autoFallbackGroupID,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
@@ -627,6 +634,46 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	}
 	if fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
 		return fmt.Errorf("fallback group cannot have invalid request fallback configured")
+	}
+	return nil
+}
+
+// validateAutoFallbackGroup 保证承接链只在同平台标准分组之间流转，并拒绝循环配置。
+func (s *adminServiceImpl) validateAutoFallbackGroup(ctx context.Context, currentGroupID int64, platform, subscriptionType string, fallbackGroupID int64) error {
+	if subscriptionType != SubscriptionTypeStandard {
+		return errors.New("only standard groups can configure auto fallback")
+	}
+	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
+		return errors.New("cannot set self as auto fallback group")
+	}
+
+	visited := make(map[int64]struct{})
+	for nextID := fallbackGroupID; nextID > 0; {
+		if currentGroupID > 0 && nextID == currentGroupID {
+			return errors.New("auto fallback group cycle detected")
+		}
+		if _, exists := visited[nextID]; exists {
+			return errors.New("auto fallback group cycle detected")
+		}
+		visited[nextID] = struct{}{}
+
+		target, err := s.groupRepo.GetByIDLite(ctx, nextID)
+		if err != nil {
+			return fmt.Errorf("auto fallback group not found: %w", err)
+		}
+		if target.Status != StatusActive {
+			return errors.New("auto fallback group must be active")
+		}
+		if target.Platform != platform {
+			return errors.New("auto fallback group must use the same platform")
+		}
+		if target.SubscriptionType != SubscriptionTypeStandard {
+			return errors.New("auto fallback group must be a standard group")
+		}
+		if target.AutoFallbackGroupID == nil {
+			return nil
+		}
+		nextID = *target.AutoFallbackGroupID
 	}
 	return nil
 }
@@ -808,6 +855,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
+	if input.AutoFallbackGroupID != nil {
+		group.AutoFallbackGroupID = normalizePositiveInt64Ptr(input.AutoFallbackGroupID)
+	}
+	if group.AutoFallbackGroupID != nil {
+		if err := s.validateAutoFallbackGroup(ctx, id, group.Platform, group.SubscriptionType, *group.AutoFallbackGroupID); err != nil {
+			return nil, err
+		}
+	}
 
 	// 模型路由配置
 	if input.ModelRouting != nil {

@@ -1989,7 +1989,7 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	requiredTransport OpenAIUpstreamTransport,
 	requireCompact bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
+	return s.selectAccountWithSchedulerAutoFallback(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
 }
 
 // SelectAccountWithSchedulerForCapability 按能力要求调度账号。
@@ -2013,7 +2013,7 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
-	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	return s.selectAccountWithSchedulerAutoFallback(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 }
 
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
@@ -2024,15 +2024,72 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
-	if err == nil && selection != nil && selection.Account != nil {
-		return selection, decision, nil
+	currentGroupID := groupID
+	for {
+		selection, decision, err := s.selectAccountWithScheduler(ctx, currentGroupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
+		if err == nil && selection != nil && selection.Account != nil {
+			return selection, decision, nil
+		}
+		// 当前分组先完整尝试 native 和 basic，避免 native 首次失败就过早跨组。
+		if requiredCapability == OpenAIImagesCapabilityNative {
+			selection, decision, err = s.selectAccountWithScheduler(ctx, currentGroupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
+			if err == nil && selection != nil && selection.Account != nil {
+				return selection, decision, nil
+			}
+		}
+		if !isAutoGroupFallbackSelectionError(err) {
+			return selection, decision, err
+		}
+		nextGroupID, ok := advanceAutoGroupFallback(ctx, s.groupRepo, currentGroupID, requestedModel, s.DiagnoseModelAvailabilityForPlatform)
+		if !ok {
+			return selection, decision, err
+		}
+		currentGroupID = nextGroupID
 	}
-	// 如果要求 native 能力（如指定了模型）但没有可用的 APIKey 账号，回退到 basic（OAuth 账号）
-	if requiredCapability == OpenAIImagesCapabilityNative {
-		return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerAutoFallback(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+	useUpstreamTokenCost bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	currentGroupID := groupID
+	for {
+		attemptModel := autoGroupFallbackRoutingModel(ctx, currentGroupID, requestedModel)
+		selection, decision, err := s.selectAccountWithScheduler(
+			ctx,
+			currentGroupID,
+			previousResponseID,
+			sessionHash,
+			attemptModel,
+			excludedIDs,
+			requiredTransport,
+			requiredCapability,
+			requiredImageCapability,
+			requireCompact,
+			platform,
+			previousResponseCanMove,
+			useUpstreamTokenCost,
+		)
+		if err == nil || !isAutoGroupFallbackSelectionError(err) {
+			return selection, decision, err
+		}
+		nextGroupID, ok := advanceAutoGroupFallback(ctx, s.groupRepo, currentGroupID, attemptModel, s.DiagnoseModelAvailabilityForPlatform)
+		if !ok {
+			return nil, decision, err
+		}
+		currentGroupID = nextGroupID
 	}
-	return selection, decision, err
 }
 
 func (s *OpenAIGatewayService) selectAccountWithScheduler(

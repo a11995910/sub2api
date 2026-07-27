@@ -1499,6 +1499,23 @@
           </div>
         </div>
 
+        <div
+          v-if="createForm.subscription_type === 'standard'"
+          class="border-t border-gray-200 pt-4 dark:border-dark-400"
+        >
+          <h4 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t("admin.groups.autoFallback.title") }}
+          </h4>
+          <Select
+            v-model="createForm.auto_fallback_group_id"
+            :options="autoFallbackGroupOptions"
+            :placeholder="t('admin.groups.autoFallback.disabled')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.autoFallback.hint") }}
+          </p>
+        </div>
+
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -3166,6 +3183,23 @@
               {{ t("admin.groups.claudeCode.fallbackHint") }}
             </p>
           </div>
+        </div>
+
+        <div
+          v-if="editForm.subscription_type === 'standard'"
+          class="border-t border-gray-200 pt-4 dark:border-dark-400"
+        >
+          <h4 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t("admin.groups.autoFallback.title") }}
+          </h4>
+          <Select
+            v-model="editForm.auto_fallback_group_id"
+            :options="autoFallbackGroupOptionsForEdit"
+            :placeholder="t('admin.groups.autoFallback.disabled')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.autoFallback.hint") }}
+          </p>
         </div>
 
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
@@ -4843,6 +4877,38 @@ const fallbackGroupOptionsForEdit = computed(() => {
   return options;
 });
 
+const buildAutoFallbackGroupOptions = (
+  platform: GroupPlatform,
+  currentGroupID?: number,
+) => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.autoFallback.disabled") },
+  ];
+  autoFallbackGroups.value
+    .filter(
+      (group) =>
+        group.platform === platform &&
+        group.status === "active" &&
+        group.subscription_type === "standard" &&
+        group.id !== currentGroupID,
+    )
+    .forEach((group) => {
+      options.push({
+        value: group.id,
+        label: `${group.name} (${group.rate_multiplier}x)`,
+      });
+    });
+  return options;
+};
+
+const autoFallbackGroupOptions = computed(() =>
+  buildAutoFallbackGroupOptions(createForm.platform),
+);
+
+const autoFallbackGroupOptionsForEdit = computed(() =>
+  buildAutoFallbackGroupOptions(editForm.platform, editingGroup.value?.id),
+);
+
 const buildImage4KEnhancementGroupOptions = (currentGroupID?: number) => {
   const options: { value: number | null; label: string }[] = [
     { value: null, label: t("admin.groups.imagePricing.noImage4KEnhancementGroup") },
@@ -4966,6 +5032,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 });
 
 const groups = ref<AdminGroup[]>([]);
+const autoFallbackGroups = ref<AdminGroup[]>([]);
 const imageEnhancementGroups = ref<AdminGroup[]>([]);
 const imageEnhancementGroupsLoading = ref(false);
 const loading = ref(false);
@@ -5174,6 +5241,7 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  auto_fallback_group_id: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5531,6 +5599,7 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  auto_fallback_group_id: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5931,6 +6000,14 @@ const loadImageEnhancementGroups = async () => {
   }
 };
 
+const loadAutoFallbackGroups = async () => {
+  try {
+    autoFallbackGroups.value = await adminAPI.groups.getAll();
+  } catch (error) {
+    console.error("Error loading automatic fallback groups:", error);
+  }
+};
+
 const loadImage4KEnhancementModels = async (
   mode: "create" | "edit",
   groupID: number | null,
@@ -5995,6 +6072,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const openCreateModal = () => {
   showCreateModal.value = true;
+  loadAutoFallbackGroups();
   loadImageEnhancementGroups();
   loadModelsListCandidates("create", 0, createForm.platform);
 };
@@ -6044,6 +6122,7 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.auto_fallback_group_id = null;
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
   createForm.require_oauth_only = false;
@@ -6214,6 +6293,7 @@ const handleCreateGroup = async () => {
 };
 
 const handleEdit = async (group: AdminGroup) => {
+  loadAutoFallbackGroups();
   editingGroup.value = group;
   editForm.name = group.name;
   editForm.description = group.description || "";
@@ -6267,6 +6347,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.auto_fallback_group_id = group.auto_fallback_group_id ?? null;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -6392,6 +6473,10 @@ const handleUpdateGroup = async () => {
         editForm.fallback_group_id_on_invalid_request === null
           ? 0
           : editForm.fallback_group_id_on_invalid_request,
+      auto_fallback_group_id:
+        editForm.auto_fallback_group_id === null
+          ? 0
+          : editForm.auto_fallback_group_id,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
@@ -6884,6 +6969,7 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+      createForm.auto_fallback_group_id = null;
     } else {
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
@@ -6897,6 +6983,9 @@ watch(
 watch(
   () => editForm.subscription_type,
   (newVal) => {
+    if (newVal === "subscription") {
+      editForm.auto_fallback_group_id = null;
+    }
     if (newVal !== "subscription") {
       editForm.peak_rate_enabled = false;
       editForm.peak_start = "";
@@ -6909,6 +6998,7 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    createForm.auto_fallback_group_id = null;
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -6964,6 +7054,9 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (!editingGroup.value || newVal !== editingGroup.value.platform) {
+      editForm.auto_fallback_group_id = null;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
@@ -7118,6 +7211,7 @@ const saveSortOrder = async () => {
 
 onMounted(() => {
   loadGroups();
+  loadAutoFallbackGroups();
   loadImageEnhancementGroups();
   void loadLiveCapability();
   loadModelsListCandidates("create", 0, createForm.platform);

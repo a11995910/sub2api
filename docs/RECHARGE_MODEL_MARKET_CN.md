@@ -12,6 +12,51 @@
 
 用户侧菜单已不再展示“灵石充值”、“可用渠道”和“渠道状态”入口，相关后端接口、调度逻辑和管理员能力不受影响。`/purchase` 是历史兼容路由，访问时跳转到 `/redeem`，不再加载外部小铺 iframe。
 
+## 分组自动承接
+
+标准计费分组可以配置同平台的自动承接链。例如 Plus 指向 Pro、Pro 指向正价组；当一次请求在当前分组内已经没有可用账号时，调度器可以继续到下一分组选择支持同一模型的账号。自动承接只改变本次请求的有效分组，不会永久修改 API Key 绑定的原分组。
+
+### 配置入口与权限
+
+- 管理员在分组创建或编辑弹窗的“自动承接分组”中选择目标分组；选择“关闭自动承接”表示该分组是承接链终点。
+- 来源和目标都必须是启用的标准计费分组，且平台必须相同。目标不能是来源自身，配置链不能形成循环。
+- 管理端候选列表读取全部启用分组，不受分组列表当前页、搜索词或筛选条件影响；编辑时排除当前分组。
+- 用户在 API Key 创建或编辑弹窗中控制“自动分组承接”。新建 Key 默认开启，用户关闭后，该 Key 的请求始终停留在原绑定分组。
+
+### 调度流程
+
+请求必须同时满足以下条件才会进入下一承接分组：
+
+1. API Key 的 `auto_group_fallback_enabled` 为 `true`，绑定分组处于启用状态、采用标准计费，并已配置 `auto_fallback_group_id`。
+2. 当前分组的正常账号选择结果是“没有可用账号”。账号忙碌、处于临时限流或过载冷却，或上游失败后当前请求已排除全部候选账号，都可能形成该结果。
+3. 当前分组存在持久化账号池，并且至少一个账号按现有 `model_mapping` 规则支持请求模型。显式映射和通配映射按账号模型匹配规则判断；空 `model_mapping` 表示该账号接受全部模型。
+4. 承接目标仍是启用、同平台的标准计费分组，且尚未在本次请求中访问过。
+
+每次账号选择失败后只前进一跳，因此 Plus 和 Pro 都没有可用账号时可以继续到正价组。本次请求最多前进 8 跳，并记录已访问分组，防止旧数据、并发配置变化或异常链导致死循环。OpenAI 图片请求会先在当前分组内完整尝试 native 和 basic 两类图片能力，两者都无法选择账号后才进入下一分组。
+
+以下情况不会触发自动承接：
+
+- 请求模型不属于当前分组账号池，或请求没有可判断的模型；
+- `/responses/compact` 缺少专用能力；
+- 渠道价格限制拒绝该模型；
+- 来源或目标是订阅分组、停用分组、跨平台分组；
+- Key 用户关闭自动承接，或分组没有配置承接目标；
+- 4K 图片二段增强等内部派生请求。内部请求禁止改写外层请求的有效计费分组。
+
+分组的自定义 `/models` 返回列表只控制客户端看到的模型清单，不是请求权限白名单；是否属于当前分组以账号池和账号 `model_mapping` 的真实调度规则为准。诊断模型归属时忽略临时限流、过载和运行时熔断状态，因此“支持该模型但当前全部暂时不可用”可以承接，而“分组从未配置该模型”不会承接。复合分组按请求已解析出的实际目标平台诊断账号池，避免使用 `composite` 虚拟平台误判为没有模型账号。
+
+### 计费、接口与数据
+
+承接成功后，粘性会话、后续重试、渠道检查、请求转发、用量记录和计费统一读取本次请求的有效分组。渠道模型映射按实际承接分组重新解析；OpenAI Messages 和 Count Tokens 还会按每一跳分组重新解析 Claude 到 OpenAI 的调度模型，OpenAI 图片入口则按实际承接分组重新读取原生 Images / Chat Completions 转发模式。`usage_logs.group_id` 记录实际承接分组，分组倍率和用户专属倍率也按实际承接分组计算。例如 Plus 的 `0.12` 倍率请求承接到 Pro 后，默认使用 Pro 的 `0.18` 倍率，不再按 Plus 计费。
+
+- 分组管理接口的创建、更新和响应使用 `auto_fallback_group_id`。更新时传 `0` 清空承接目标。复制分组会原样复制该配置且复制结果默认停用；后续通过更新接口调整或启用复制分组时，会按当前承接链执行目标合法性校验。
+- API Key 的创建、更新、列表和详情使用 `auto_group_fallback_enabled`。创建请求不传该字段时服务端按 `true` 处理。
+- `groups.auto_fallback_group_id` 保存下一承接分组，目标删除时置空；`api_keys.auto_group_fallback_enabled` 保存用户开关，数据库默认值为 `true`。
+- 数据库结构由 `backend/migrations/191_group_auto_fallback.sql` 维护。认证缓存快照包含分组承接目标和 Key 开关，配置变化后按现有认证缓存失效机制生效。
+- 承接发生时服务端记录 `auto group fallback activated` 日志，包含 API Key、来源分组、目标分组、模型和跳数，便于排查实际调度路径。
+
+自动化验证覆盖管理端循环与目标校验、Key 默认值、认证快照、模型不归属时不承接、Key 关闭时不承接、Plus 到 Pro 的真实账号选择、目标分组渠道映射、承接后的 `usage_logs.group_id` 与倍率，以及管理端候选过滤和用户 Key 表单提交。后端入口为 `go test ./internal/service -run 'Test(AdvanceAutoGroupFallback|OpenAIGatewayAutoGroupFallback|AutoGroupFallback_RecordUsage|APIKeyAuthSnapshot_PreservesAutoGroupFallbackSettings|ResolveAutoGroupFallbackEnabled|AdminGroupAutoFallback)'` 和 `go test ./internal/handler -run 'Test(OpenAIResponsesAutoGroupFallbackUsesTargetChannelMapping|SeedOpenAIForwardImageIntentHint)'`；前端入口为 `npm run test:run -- src/views/admin/__tests__/GroupsView.autoFallback.spec.ts src/views/user/__tests__/KeysView.spec.ts src/api/__tests__/keys.spec.ts`。
+
 ## 充值与兑换入口
 
 兑换页文件：`frontend/src/views/user/RedeemView.vue`

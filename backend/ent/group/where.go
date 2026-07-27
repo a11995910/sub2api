@@ -280,6 +280,11 @@ func FallbackGroupIDOnInvalidRequest(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupIDOnInvalidRequest, v))
 }
 
+// AutoFallbackGroupID applies equality check predicate on the "auto_fallback_group_id" field. It's identical to AutoFallbackGroupIDEQ.
+func AutoFallbackGroupID(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoFallbackGroupID, v))
+}
+
 // ModelRoutingEnabled applies equality check predicate on the "model_routing_enabled" field. It's identical to ModelRoutingEnabledEQ.
 func ModelRoutingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
@@ -2228,6 +2233,56 @@ func FallbackGroupIDOnInvalidRequestIsNil() predicate.Group {
 // FallbackGroupIDOnInvalidRequestNotNil applies the NotNil predicate on the "fallback_group_id_on_invalid_request" field.
 func FallbackGroupIDOnInvalidRequestNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldFallbackGroupIDOnInvalidRequest))
+}
+
+// AutoFallbackGroupIDEQ applies the EQ predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoFallbackGroupID, v))
+}
+
+// AutoFallbackGroupIDNEQ applies the NEQ predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAutoFallbackGroupID, v))
+}
+
+// AutoFallbackGroupIDIn applies the In predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAutoFallbackGroupID, vs...))
+}
+
+// AutoFallbackGroupIDNotIn applies the NotIn predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAutoFallbackGroupID, vs...))
+}
+
+// AutoFallbackGroupIDGT applies the GT predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAutoFallbackGroupID, v))
+}
+
+// AutoFallbackGroupIDGTE applies the GTE predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAutoFallbackGroupID, v))
+}
+
+// AutoFallbackGroupIDLT applies the LT predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAutoFallbackGroupID, v))
+}
+
+// AutoFallbackGroupIDLTE applies the LTE predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAutoFallbackGroupID, v))
+}
+
+// AutoFallbackGroupIDIsNil applies the IsNil predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldAutoFallbackGroupID))
+}
+
+// AutoFallbackGroupIDNotNil applies the NotNil predicate on the "auto_fallback_group_id" field.
+func AutoFallbackGroupIDNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldAutoFallbackGroupID))
 }
 
 // ModelRoutingIsNil applies the IsNil predicate on the "model_routing" field.

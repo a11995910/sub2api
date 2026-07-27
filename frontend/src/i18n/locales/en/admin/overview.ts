@@ -1073,6 +1073,11 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       },
+      autoFallback: {
+        title: 'Automatic Fallback Group',
+        disabled: 'Disable automatic fallback',
+        hint: 'Only triggers when this group supports the requested model but has no available account. The chain uses active standard groups on the same platform and bills at the actual fallback group rate.'
+      },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',

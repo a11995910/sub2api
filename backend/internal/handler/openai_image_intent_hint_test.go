@@ -42,3 +42,17 @@ func TestSeedOpenAIForwardImageIntentHint(t *testing.T) {
 		})
 	}
 }
+
+func TestSeedOpenAIForwardImageIntentHintMappedBodyClearsPreviousHint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := &gin.Context{}
+	service.SetOpenAIClientTransport(c, service.OpenAIClientTransportHTTP)
+
+	seedOpenAIForwardImageIntentHint(c, false, true)
+	seedOpenAIForwardImageIntentHint(c, true, true)
+
+	for _, value := range c.Keys {
+		_, isHint := value.(bool)
+		require.False(t, isHint)
+	}
+}

@@ -15,7 +15,7 @@ import (
 )
 
 // 同时包含分组图片响应格式、网页搜索按次价格、推理策略与 OpenAI Live 开关，递增版本以淘汰旧结构缓存。
-const apiKeyAuthSnapshotVersion = 20
+const apiKeyAuthSnapshotVersion = 21
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -337,21 +337,22 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		return nil
 	}
 	snapshot := &APIKeyAuthSnapshot{
-		Version:               apiKeyAuthSnapshotVersion,
-		APIKeyID:              apiKey.ID,
-		UserID:                apiKey.UserID,
-		GroupID:               apiKey.GroupID,
-		Name:                  apiKey.Name,
-		Status:                apiKey.Status,
-		OpenAIFastModeEnabled: apiKey.OpenAIFastModeEnabled,
-		IPWhitelist:           apiKey.IPWhitelist,
-		IPBlacklist:           apiKey.IPBlacklist,
-		Quota:                 apiKey.Quota,
-		QuotaUsed:             apiKey.QuotaUsed,
-		ExpiresAt:             apiKey.ExpiresAt,
-		RateLimit5h:           apiKey.RateLimit5h,
-		RateLimit1d:           apiKey.RateLimit1d,
-		RateLimit7d:           apiKey.RateLimit7d,
+		Version:                  apiKeyAuthSnapshotVersion,
+		APIKeyID:                 apiKey.ID,
+		UserID:                   apiKey.UserID,
+		GroupID:                  apiKey.GroupID,
+		Name:                     apiKey.Name,
+		Status:                   apiKey.Status,
+		OpenAIFastModeEnabled:    apiKey.OpenAIFastModeEnabled,
+		AutoGroupFallbackEnabled: apiKey.AutoGroupFallbackEnabled,
+		IPWhitelist:              apiKey.IPWhitelist,
+		IPBlacklist:              apiKey.IPBlacklist,
+		Quota:                    apiKey.Quota,
+		QuotaUsed:                apiKey.QuotaUsed,
+		ExpiresAt:                apiKey.ExpiresAt,
+		RateLimit5h:              apiKey.RateLimit5h,
+		RateLimit1d:              apiKey.RateLimit1d,
+		RateLimit7d:              apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
@@ -416,6 +417,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
+			AutoFallbackGroupID:             apiKey.Group.AutoFallbackGroupID,
 			ModelRouting:                    apiKey.Group.ModelRouting,
 			ModelRoutingEnabled:             apiKey.Group.ModelRoutingEnabled,
 			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
@@ -442,21 +444,22 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		return nil
 	}
 	apiKey := &APIKey{
-		ID:                    snapshot.APIKeyID,
-		UserID:                snapshot.UserID,
-		GroupID:               snapshot.GroupID,
-		Key:                   key,
-		Name:                  snapshot.Name,
-		Status:                snapshot.Status,
-		OpenAIFastModeEnabled: snapshot.OpenAIFastModeEnabled,
-		IPWhitelist:           snapshot.IPWhitelist,
-		IPBlacklist:           snapshot.IPBlacklist,
-		Quota:                 snapshot.Quota,
-		QuotaUsed:             snapshot.QuotaUsed,
-		ExpiresAt:             snapshot.ExpiresAt,
-		RateLimit5h:           snapshot.RateLimit5h,
-		RateLimit1d:           snapshot.RateLimit1d,
-		RateLimit7d:           snapshot.RateLimit7d,
+		ID:                       snapshot.APIKeyID,
+		UserID:                   snapshot.UserID,
+		GroupID:                  snapshot.GroupID,
+		Key:                      key,
+		Name:                     snapshot.Name,
+		Status:                   snapshot.Status,
+		OpenAIFastModeEnabled:    snapshot.OpenAIFastModeEnabled,
+		AutoGroupFallbackEnabled: snapshot.AutoGroupFallbackEnabled,
+		IPWhitelist:              snapshot.IPWhitelist,
+		IPBlacklist:              snapshot.IPBlacklist,
+		Quota:                    snapshot.Quota,
+		QuotaUsed:                snapshot.QuotaUsed,
+		ExpiresAt:                snapshot.ExpiresAt,
+		RateLimit5h:              snapshot.RateLimit5h,
+		RateLimit1d:              snapshot.RateLimit1d,
+		RateLimit7d:              snapshot.RateLimit7d,
 		User: &User{
 			ID:                         snapshot.User.ID,
 			Status:                     snapshot.User.Status,
@@ -515,6 +518,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,
+			AutoFallbackGroupID:             snapshot.Group.AutoFallbackGroupID,
 			ModelRouting:                    snapshot.Group.ModelRouting,
 			ModelRoutingEnabled:             snapshot.Group.ModelRoutingEnabled,
 			MCPXMLInject:                    snapshot.Group.MCPXMLInject,

@@ -431,7 +431,7 @@ func (s *OpenAIGatewayService) enhanceOpenAIImageViaTargetGroup(
 	var lastErr error
 	for attempt := 1; attempt <= image4KEnhancementMaxAttempts; attempt++ {
 		selection, _, err := s.SelectAccountWithSchedulerForImages(
-			WithOpenAIImageGenerationIntent(ctx),
+			WithoutAutoGroupFallback(WithOpenAIImageGenerationIntent(ctx)),
 			&targetGroupID,
 			"",
 			targetRequestModel,

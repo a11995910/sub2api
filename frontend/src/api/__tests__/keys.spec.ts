@@ -39,4 +39,20 @@ describe('keys api', () => {
       openai_fast_mode_enabled: false,
     })
   })
+
+  it('sends automatic group fallback preference', async () => {
+    await create('Quality Key', 13, undefined, [], [], 0, undefined, undefined, false, true)
+
+    expect(post).toHaveBeenCalledWith('/keys', {
+      name: 'Quality Key',
+      group_id: 13,
+      openai_fast_mode_enabled: false,
+      auto_group_fallback_enabled: true,
+    })
+
+    await update(7, { auto_group_fallback_enabled: false })
+    expect(put).toHaveBeenCalledWith('/keys/7', {
+      auto_group_fallback_enabled: false,
+    })
+  })
 })

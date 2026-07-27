@@ -67,22 +67,23 @@ type UserGroupAccess struct {
 }
 
 type APIKey struct {
-	ID                    int64      `json:"id"`
-	UserID                int64      `json:"user_id"`
-	Key                   string     `json:"key"`
-	Name                  string     `json:"name"`
-	GroupID               *int64     `json:"group_id"`
-	Status                string     `json:"status"`
-	OpenAIFastModeEnabled bool       `json:"openai_fast_mode_enabled"`
-	IPWhitelist           []string   `json:"ip_whitelist"`
-	IPBlacklist           []string   `json:"ip_blacklist"`
-	LastUsedAt            *time.Time `json:"last_used_at"`
-	LastUsedIP            *string    `json:"last_used_ip"`
-	Quota                 float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
-	QuotaUsed             float64    `json:"quota_used"` // Used quota amount in USD
-	ExpiresAt             *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
-	CreatedAt             time.Time  `json:"created_at"`
-	UpdatedAt             time.Time  `json:"updated_at"`
+	ID                       int64      `json:"id"`
+	UserID                   int64      `json:"user_id"`
+	Key                      string     `json:"key"`
+	Name                     string     `json:"name"`
+	GroupID                  *int64     `json:"group_id"`
+	Status                   string     `json:"status"`
+	OpenAIFastModeEnabled    bool       `json:"openai_fast_mode_enabled"`
+	AutoGroupFallbackEnabled bool       `json:"auto_group_fallback_enabled"`
+	IPWhitelist              []string   `json:"ip_whitelist"`
+	IPBlacklist              []string   `json:"ip_blacklist"`
+	LastUsedAt               *time.Time `json:"last_used_at"`
+	LastUsedIP               *string    `json:"last_used_ip"`
+	Quota                    float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
+	QuotaUsed                float64    `json:"quota_used"` // Used quota amount in USD
+	ExpiresAt                *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
+	CreatedAt                time.Time  `json:"created_at"`
+	UpdatedAt                time.Time  `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
 
@@ -154,6 +155,8 @@ type Group struct {
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 	// 无效请求兜底分组
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
+	// 当前分组支持的模型无可用账号时使用的承接分组
+	AutoFallbackGroupID *int64 `json:"auto_fallback_group_id"`
 
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`

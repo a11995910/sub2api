@@ -100,6 +100,11 @@ func OpenaiFastModeEnabled(v bool) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldOpenaiFastModeEnabled, v))
 }
 
+// AutoGroupFallbackEnabled applies equality check predicate on the "auto_group_fallback_enabled" field. It's identical to AutoGroupFallbackEnabledEQ.
+func AutoGroupFallbackEnabled(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAutoGroupFallbackEnabled, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -548,6 +553,16 @@ func OpenaiFastModeEnabledEQ(v bool) predicate.APIKey {
 // OpenaiFastModeEnabledNEQ applies the NEQ predicate on the "openai_fast_mode_enabled" field.
 func OpenaiFastModeEnabledNEQ(v bool) predicate.APIKey {
 	return predicate.APIKey(sql.FieldNEQ(FieldOpenaiFastModeEnabled, v))
+}
+
+// AutoGroupFallbackEnabledEQ applies the EQ predicate on the "auto_group_fallback_enabled" field.
+func AutoGroupFallbackEnabledEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldAutoGroupFallbackEnabled, v))
+}
+
+// AutoGroupFallbackEnabledNEQ applies the NEQ predicate on the "auto_group_fallback_enabled" field.
+func AutoGroupFallbackEnabledNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldAutoGroupFallbackEnabled, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

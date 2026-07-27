@@ -4,17 +4,18 @@ import "time"
 
 // APIKeyAuthSnapshot API Key 认证缓存快照（仅包含认证所需字段）
 type APIKeyAuthSnapshot struct {
-	Version               int                      `json:"version"`
-	APIKeyID              int64                    `json:"api_key_id"`
-	UserID                int64                    `json:"user_id"`
-	GroupID               *int64                   `json:"group_id,omitempty"`
-	Name                  string                   `json:"name"`
-	Status                string                   `json:"status"`
-	OpenAIFastModeEnabled bool                     `json:"openai_fast_mode_enabled"`
-	IPWhitelist           []string                 `json:"ip_whitelist,omitempty"`
-	IPBlacklist           []string                 `json:"ip_blacklist,omitempty"`
-	User                  APIKeyAuthUserSnapshot   `json:"user"`
-	Group                 *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
+	Version                  int                      `json:"version"`
+	APIKeyID                 int64                    `json:"api_key_id"`
+	UserID                   int64                    `json:"user_id"`
+	GroupID                  *int64                   `json:"group_id,omitempty"`
+	Name                     string                   `json:"name"`
+	Status                   string                   `json:"status"`
+	OpenAIFastModeEnabled    bool                     `json:"openai_fast_mode_enabled"`
+	AutoGroupFallbackEnabled bool                     `json:"auto_group_fallback_enabled"`
+	IPWhitelist              []string                 `json:"ip_whitelist,omitempty"`
+	IPBlacklist              []string                 `json:"ip_blacklist,omitempty"`
+	User                     APIKeyAuthUserSnapshot   `json:"user"`
+	Group                    *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)
@@ -93,6 +94,7 @@ type APIKeyAuthGroupSnapshot struct {
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
+	AutoFallbackGroupID             *int64   `json:"auto_fallback_group_id,omitempty"`
 
 	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.
 	// Only anthropic groups use these fields; others may leave them empty.

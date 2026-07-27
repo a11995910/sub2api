@@ -62,7 +62,7 @@ func TestOpenAIVideoLookupHidesOwnershipMismatchAsNotFound(t *testing.T) {
 	groupID := int64(7)
 	cache := &openAIVideoHandlerCacheStub{}
 	gatewayService := service.NewOpenAIGatewayService(
-		openAIVideoHandlerAccountRepoStub{}, nil, nil, nil, nil, nil, cache, nil,
+		openAIVideoHandlerAccountRepoStub{}, nil, nil, nil, nil, nil, nil, cache, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	require.NoError(t, gatewayService.BindVideoTaskAccount(context.Background(), &groupID, "task-1", 10, 20, 30))

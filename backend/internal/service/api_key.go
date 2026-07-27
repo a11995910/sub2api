@@ -36,6 +36,8 @@ type APIKey struct {
 	Status  string
 	// OpenAIFastModeEnabled 表示当客户端未显式指定 service_tier 时，为 OpenAI 请求默认补 priority。
 	OpenAIFastModeEnabled bool
+	// AutoGroupFallbackEnabled 控制此 Key 是否允许进入管理员配置的分组承接链。
+	AutoGroupFallbackEnabled bool
 	IPWhitelist           []string
 	IPBlacklist           []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。

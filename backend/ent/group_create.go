@@ -651,6 +651,20 @@ func (_c *GroupCreate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *Gro
 	return _c
 }
 
+// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
+func (_c *GroupCreate) SetAutoFallbackGroupID(v int64) *GroupCreate {
+	_c.mutation.SetAutoFallbackGroupID(v)
+	return _c
+}
+
+// SetNillableAutoFallbackGroupID sets the "auto_fallback_group_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAutoFallbackGroupID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetAutoFallbackGroupID(*v)
+	}
+	return _c
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_c *GroupCreate) SetModelRouting(v map[string][]int64) *GroupCreate {
 	_c.mutation.SetModelRouting(v)
@@ -1519,6 +1533,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
 		_node.FallbackGroupIDOnInvalidRequest = &value
+	}
+	if value, ok := _c.mutation.AutoFallbackGroupID(); ok {
+		_spec.SetField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
+		_node.AutoFallbackGroupID = &value
 	}
 	if value, ok := _c.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -2477,6 +2495,30 @@ func (u *GroupUpsert) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpsert {
 // ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
 func (u *GroupUpsert) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsert {
 	u.SetNull(group.FieldFallbackGroupIDOnInvalidRequest)
+	return u
+}
+
+// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
+func (u *GroupUpsert) SetAutoFallbackGroupID(v int64) *GroupUpsert {
+	u.Set(group.FieldAutoFallbackGroupID, v)
+	return u
+}
+
+// UpdateAutoFallbackGroupID sets the "auto_fallback_group_id" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAutoFallbackGroupID() *GroupUpsert {
+	u.SetExcluded(group.FieldAutoFallbackGroupID)
+	return u
+}
+
+// AddAutoFallbackGroupID adds v to the "auto_fallback_group_id" field.
+func (u *GroupUpsert) AddAutoFallbackGroupID(v int64) *GroupUpsert {
+	u.Add(group.FieldAutoFallbackGroupID, v)
+	return u
+}
+
+// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
+func (u *GroupUpsert) ClearAutoFallbackGroupID() *GroupUpsert {
+	u.SetNull(group.FieldAutoFallbackGroupID)
 	return u
 }
 
@@ -3591,6 +3633,34 @@ func (u *GroupUpsertOne) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertOne
 func (u *GroupUpsertOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
+func (u *GroupUpsertOne) SetAutoFallbackGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoFallbackGroupID(v)
+	})
+}
+
+// AddAutoFallbackGroupID adds v to the "auto_fallback_group_id" field.
+func (u *GroupUpsertOne) AddAutoFallbackGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAutoFallbackGroupID(v)
+	})
+}
+
+// UpdateAutoFallbackGroupID sets the "auto_fallback_group_id" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAutoFallbackGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoFallbackGroupID()
+	})
+}
+
+// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
+func (u *GroupUpsertOne) ClearAutoFallbackGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAutoFallbackGroupID()
 	})
 }
 
@@ -4904,6 +4974,34 @@ func (u *GroupUpsertBulk) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertBu
 func (u *GroupUpsertBulk) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
+func (u *GroupUpsertBulk) SetAutoFallbackGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoFallbackGroupID(v)
+	})
+}
+
+// AddAutoFallbackGroupID adds v to the "auto_fallback_group_id" field.
+func (u *GroupUpsertBulk) AddAutoFallbackGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAutoFallbackGroupID(v)
+	})
+}
+
+// UpdateAutoFallbackGroupID sets the "auto_fallback_group_id" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAutoFallbackGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoFallbackGroupID()
+	})
+}
+
+// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
+func (u *GroupUpsertBulk) ClearAutoFallbackGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAutoFallbackGroupID()
 	})
 }
 

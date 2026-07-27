@@ -879,6 +879,33 @@ func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 	return _u
 }
 
+// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
+func (_u *GroupUpdate) SetAutoFallbackGroupID(v int64) *GroupUpdate {
+	_u.mutation.ResetAutoFallbackGroupID()
+	_u.mutation.SetAutoFallbackGroupID(v)
+	return _u
+}
+
+// SetNillableAutoFallbackGroupID sets the "auto_fallback_group_id" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAutoFallbackGroupID(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetAutoFallbackGroupID(*v)
+	}
+	return _u
+}
+
+// AddAutoFallbackGroupID adds value to the "auto_fallback_group_id" field.
+func (_u *GroupUpdate) AddAutoFallbackGroupID(v int64) *GroupUpdate {
+	_u.mutation.AddAutoFallbackGroupID(v)
+	return _u
+}
+
+// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
+func (_u *GroupUpdate) ClearAutoFallbackGroupID() *GroupUpdate {
+	_u.mutation.ClearAutoFallbackGroupID()
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdate) SetModelRouting(v map[string][]int64) *GroupUpdate {
 	_u.mutation.SetModelRouting(v)
@@ -1672,6 +1699,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.AutoFallbackGroupID(); ok {
+		_spec.SetField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAutoFallbackGroupID(); ok {
+		_spec.AddField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.AutoFallbackGroupIDCleared() {
+		_spec.ClearField(group.FieldAutoFallbackGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -2894,6 +2930,33 @@ func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne
 	return _u
 }
 
+// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
+func (_u *GroupUpdateOne) SetAutoFallbackGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.ResetAutoFallbackGroupID()
+	_u.mutation.SetAutoFallbackGroupID(v)
+	return _u
+}
+
+// SetNillableAutoFallbackGroupID sets the "auto_fallback_group_id" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAutoFallbackGroupID(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAutoFallbackGroupID(*v)
+	}
+	return _u
+}
+
+// AddAutoFallbackGroupID adds value to the "auto_fallback_group_id" field.
+func (_u *GroupUpdateOne) AddAutoFallbackGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.AddAutoFallbackGroupID(v)
+	return _u
+}
+
+// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
+func (_u *GroupUpdateOne) ClearAutoFallbackGroupID() *GroupUpdateOne {
+	_u.mutation.ClearAutoFallbackGroupID()
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdateOne) SetModelRouting(v map[string][]int64) *GroupUpdateOne {
 	_u.mutation.SetModelRouting(v)
@@ -3717,6 +3780,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.AutoFallbackGroupID(); ok {
+		_spec.SetField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedAutoFallbackGroupID(); ok {
+		_spec.AddField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.AutoFallbackGroupIDCleared() {
+		_spec.ClearField(group.FieldAutoFallbackGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)

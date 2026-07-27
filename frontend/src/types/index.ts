@@ -594,6 +594,7 @@ export interface Group {
   claude_code_only: boolean
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
+  auto_fallback_group_id: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
   // OpenAI Live 接口开关
@@ -703,6 +704,7 @@ export interface ApiKey {
   group_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   openai_fast_mode_enabled: boolean
+  auto_group_fallback_enabled: boolean
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
@@ -733,6 +735,7 @@ export interface CreateApiKeyRequest {
   group_id?: number | null
   custom_key?: string // Optional custom API Key
   openai_fast_mode_enabled?: boolean
+  auto_group_fallback_enabled?: boolean
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (0 = unlimited)
@@ -747,6 +750,7 @@ export interface UpdateApiKeyRequest {
   group_id?: number | null
   status?: 'active' | 'inactive'
   openai_fast_mode_enabled?: boolean
+  auto_group_fallback_enabled?: boolean
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
@@ -798,6 +802,7 @@ export interface CreateGroupRequest {
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
+  auto_fallback_group_id?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
@@ -857,6 +862,7 @@ export interface UpdateGroupRequest {
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
+  auto_fallback_group_id?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig

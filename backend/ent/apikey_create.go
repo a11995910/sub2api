@@ -127,6 +127,20 @@ func (_c *APIKeyCreate) SetNillableOpenaiFastModeEnabled(v *bool) *APIKeyCreate 
 	return _c
 }
 
+// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
+func (_c *APIKeyCreate) SetAutoGroupFallbackEnabled(v bool) *APIKeyCreate {
+	_c.mutation.SetAutoGroupFallbackEnabled(v)
+	return _c
+}
+
+// SetNillableAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableAutoGroupFallbackEnabled(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetAutoGroupFallbackEnabled(*v)
+	}
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -405,6 +419,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultOpenaiFastModeEnabled
 		_c.mutation.SetOpenaiFastModeEnabled(v)
 	}
+	if _, ok := _c.mutation.AutoGroupFallbackEnabled(); !ok {
+		v := apikey.DefaultAutoGroupFallbackEnabled
+		_c.mutation.SetAutoGroupFallbackEnabled(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -477,6 +495,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.OpenaiFastModeEnabled(); !ok {
 		return &ValidationError{Name: "openai_fast_mode_enabled", err: errors.New(`ent: missing required field "APIKey.openai_fast_mode_enabled"`)}
+	}
+	if _, ok := _c.mutation.AutoGroupFallbackEnabled(); !ok {
+		return &ValidationError{Name: "auto_group_fallback_enabled", err: errors.New(`ent: missing required field "APIKey.auto_group_fallback_enabled"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -559,6 +580,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.OpenaiFastModeEnabled(); ok {
 		_spec.SetField(apikey.FieldOpenaiFastModeEnabled, field.TypeBool, value)
 		_node.OpenaiFastModeEnabled = value
+	}
+	if value, ok := _c.mutation.AutoGroupFallbackEnabled(); ok {
+		_spec.SetField(apikey.FieldAutoGroupFallbackEnabled, field.TypeBool, value)
+		_node.AutoGroupFallbackEnabled = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -827,6 +852,18 @@ func (u *APIKeyUpsert) SetOpenaiFastModeEnabled(v bool) *APIKeyUpsert {
 // UpdateOpenaiFastModeEnabled sets the "openai_fast_mode_enabled" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateOpenaiFastModeEnabled() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldOpenaiFastModeEnabled)
+	return u
+}
+
+// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
+func (u *APIKeyUpsert) SetAutoGroupFallbackEnabled(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldAutoGroupFallbackEnabled, v)
+	return u
+}
+
+// UpdateAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateAutoGroupFallbackEnabled() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldAutoGroupFallbackEnabled)
 	return u
 }
 
@@ -1268,6 +1305,20 @@ func (u *APIKeyUpsertOne) SetOpenaiFastModeEnabled(v bool) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateOpenaiFastModeEnabled() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateOpenaiFastModeEnabled()
+	})
+}
+
+// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
+func (u *APIKeyUpsertOne) SetAutoGroupFallbackEnabled(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAutoGroupFallbackEnabled(v)
+	})
+}
+
+// UpdateAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateAutoGroupFallbackEnabled() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAutoGroupFallbackEnabled()
 	})
 }
 
@@ -1920,6 +1971,20 @@ func (u *APIKeyUpsertBulk) SetOpenaiFastModeEnabled(v bool) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateOpenaiFastModeEnabled() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateOpenaiFastModeEnabled()
+	})
+}
+
+// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
+func (u *APIKeyUpsertBulk) SetAutoGroupFallbackEnabled(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAutoGroupFallbackEnabled(v)
+	})
+}
+
+// UpdateAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateAutoGroupFallbackEnabled() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAutoGroupFallbackEnabled()
 	})
 }
 

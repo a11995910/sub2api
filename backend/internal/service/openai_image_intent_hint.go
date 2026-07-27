@@ -15,6 +15,14 @@ func SetOpenAIImageIntentHint(c *gin.Context, imageIntent bool) {
 	c.Set(openAIImageIntentHintContextKey, imageIntent)
 }
 
+// ClearOpenAIImageIntentHint 将请求级判定恢复为 unknown，供模型映射改变规范请求时重新计算。
+func ClearOpenAIImageIntentHint(c *gin.Context) {
+	if c == nil || GetOpenAIClientTransport(c) != OpenAIClientTransportHTTP {
+		return
+	}
+	c.Set(openAIImageIntentHintContextKey, nil)
+}
+
 func getOpenAIImageIntentHint(c *gin.Context) (imageIntent bool, known bool) {
 	if c == nil || GetOpenAIClientTransport(c) != OpenAIClientTransportHTTP {
 		return false, false

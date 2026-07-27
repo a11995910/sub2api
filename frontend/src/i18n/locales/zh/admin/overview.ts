@@ -1071,6 +1071,11 @@ export default {
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
       },
+      autoFallback: {
+        title: '自动承接分组',
+        disabled: '关闭自动承接',
+        hint: '仅当当前分组确实支持请求模型但没有可用账号时触发。承接链仅允许同平台的启用标准分组，并按实际承接分组倍率计费。'
+      },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',

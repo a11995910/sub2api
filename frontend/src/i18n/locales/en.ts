@@ -774,6 +774,8 @@ export default {
     openaiFastModeHint: 'When enabled, this key defaults OpenAI requests without service_tier to priority.',
     openaiFastModeBadge: 'Fast',
     openaiFastModeEnabled: 'OpenAI Fast Mode enabled',
+    autoGroupFallback: 'Automatic Group Fallback',
+    autoGroupFallbackHint: 'When this group supports the model but has no available account, use the configured fallback group and bill at that group rate.',
     statusLabel: 'Status',
     selectStatus: 'Select status',
     saving: 'Saving...',

@@ -773,6 +773,8 @@ export default {
     openaiFastModeHint: '开启后，此 Key 的 OpenAI 请求未携带 service_tier 时会默认使用 priority。',
     openaiFastModeBadge: 'Fast',
     openaiFastModeEnabled: '已开启 OpenAI Fast 模式',
+    autoGroupFallback: '分组自动承接',
+    autoGroupFallbackHint: '当前分组确实支持该模型但没有可用账号时，按管理员配置切换到承接分组，并按承接分组倍率计费。',
     statusLabel: '状态',
     selectStatus: '选择状态',
     saving: '保存中...',

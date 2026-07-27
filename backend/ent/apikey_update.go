@@ -148,6 +148,20 @@ func (_u *APIKeyUpdate) SetNillableOpenaiFastModeEnabled(v *bool) *APIKeyUpdate 
 	return _u
 }
 
+// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
+func (_u *APIKeyUpdate) SetAutoGroupFallbackEnabled(v bool) *APIKeyUpdate {
+	_u.mutation.SetAutoGroupFallbackEnabled(v)
+	return _u
+}
+
+// SetNillableAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableAutoGroupFallbackEnabled(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetAutoGroupFallbackEnabled(*v)
+	}
+	return _u
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_u *APIKeyUpdate) SetLastUsedAt(v time.Time) *APIKeyUpdate {
 	_u.mutation.SetLastUsedAt(v)
@@ -613,6 +627,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.OpenaiFastModeEnabled(); ok {
 		_spec.SetField(apikey.FieldOpenaiFastModeEnabled, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.AutoGroupFallbackEnabled(); ok {
+		_spec.SetField(apikey.FieldAutoGroupFallbackEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 	}
@@ -948,6 +965,20 @@ func (_u *APIKeyUpdateOne) SetOpenaiFastModeEnabled(v bool) *APIKeyUpdateOne {
 func (_u *APIKeyUpdateOne) SetNillableOpenaiFastModeEnabled(v *bool) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetOpenaiFastModeEnabled(*v)
+	}
+	return _u
+}
+
+// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
+func (_u *APIKeyUpdateOne) SetAutoGroupFallbackEnabled(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetAutoGroupFallbackEnabled(v)
+	return _u
+}
+
+// SetNillableAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableAutoGroupFallbackEnabled(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetAutoGroupFallbackEnabled(*v)
 	}
 	return _u
 }
@@ -1446,6 +1477,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.OpenaiFastModeEnabled(); ok {
 		_spec.SetField(apikey.FieldOpenaiFastModeEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AutoGroupFallbackEnabled(); ok {
+		_spec.SetField(apikey.FieldAutoGroupFallbackEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)

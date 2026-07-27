@@ -50,6 +50,9 @@ func (APIKey) Fields() []ent.Field {
 		field.Bool("openai_fast_mode_enabled").
 			Default(false).
 			Comment("When enabled, OpenAI requests without service_tier are sent with priority tier by default"),
+		field.Bool("auto_group_fallback_enabled").
+			Default(true).
+			Comment("是否允许在当前分组支持的模型无可用账号时自动切换到承接分组"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
