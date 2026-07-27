@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -862,14 +864,57 @@ func (h *SettingHandler) ensureActorTotpForStepUp(c *gin.Context) bool {
 	return true
 }
 
+var settingKeyJSONAliases = map[string]string{
+	"smtp_from_email": service.SettingKeySMTPFrom,
+}
+
+var settingKeyByJSONName = buildSettingKeyByJSONName()
+
+func buildSettingKeyByJSONName() map[string]string {
+	t := reflect.TypeOf(UpdateSettingsRequest{})
+	out := make(map[string]string, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Type.Kind() == reflect.Ptr {
+			continue
+		}
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		if alias, ok := settingKeyJSONAliases[name]; ok {
+			out[name] = alias
+			continue
+		}
+		out[name] = name
+	}
+	return out
+}
+
+func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSettingKeys {
+	omitted := make(service.OmittedSettingKeys, len(settingKeyByJSONName))
+	for jsonName, settingKey := range settingKeyByJSONName {
+		if _, sent := sentFields[jsonName]; !sent {
+			omitted[settingKey] = struct{}{}
+		}
+	}
+	return omitted
+}
+
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
-	var req UpdateSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var sentFields map[string]json.RawMessage
+	if err := c.ShouldBindBodyWith(&sentFields, binding.JSON); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	var req UpdateSettingsRequest
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	omitted := omittedSettingKeys(sentFields)
 
 	previousSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -2222,11 +2267,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
-	if err := h.settingService.UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy(
+	if err := h.settingService.UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicyOmitting(
 		c.Request.Context(),
 		settings,
 		authSourceDefaults,
 		openAIFastPolicySettings,
+		omitted,
 	); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -3671,6 +3717,51 @@ func (h *SettingHandler) UpdateRateLimit429CooldownSettings(c *gin.Context) {
 	response.Success(c, dto.RateLimit429CooldownSettings{
 		Enabled:         updatedSettings.Enabled,
 		CooldownSeconds: updatedSettings.CooldownSeconds,
+	})
+}
+
+func (h *SettingHandler) GetPanelRateLimitSettings(c *gin.Context) {
+	settings, err := h.settingService.GetPanelRateLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.PanelRateLimitSettings{
+		Enabled: settings.Enabled, UserRPM: settings.UserRPM, HeavyRPM: settings.HeavyRPM,
+		ExemptAdmin: settings.ExemptAdmin, PublicIPRPM: settings.PublicIPRPM,
+	})
+}
+
+type UpdatePanelRateLimitSettingsRequest struct {
+	Enabled     bool `json:"enabled"`
+	UserRPM     int  `json:"user_rpm"`
+	HeavyRPM    int  `json:"heavy_rpm"`
+	ExemptAdmin bool `json:"exempt_admin"`
+	PublicIPRPM int  `json:"public_ip_rpm"`
+}
+
+func (h *SettingHandler) UpdatePanelRateLimitSettings(c *gin.Context) {
+	var req UpdatePanelRateLimitSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings := &service.PanelRateLimitSettings{
+		Enabled: req.Enabled, UserRPM: req.UserRPM, HeavyRPM: req.HeavyRPM,
+		ExemptAdmin: req.ExemptAdmin, PublicIPRPM: req.PublicIPRPM,
+	}
+	if err := h.settingService.SetPanelRateLimitSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	updatedSettings, err := h.settingService.GetPanelRateLimitSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.PanelRateLimitSettings{
+		Enabled: updatedSettings.Enabled, UserRPM: updatedSettings.UserRPM, HeavyRPM: updatedSettings.HeavyRPM,
+		ExemptAdmin: updatedSettings.ExemptAdmin, PublicIPRPM: updatedSettings.PublicIPRPM,
 	})
 }
 

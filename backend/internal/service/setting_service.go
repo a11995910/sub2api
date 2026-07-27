@@ -124,6 +124,11 @@ type SettingService struct {
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 
+	// panelRateLimitCache 面板 API 限流配置进程内缓存（*cachedPanelRateLimitSettings）。
+	// 面板每个认证请求都会读取，禁止在热路径上直接访问 DB。
+	panelRateLimitCache atomic.Value
+	panelRateLimitSF    singleflight.Group
+
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
 	// path without ever blocking on the DB; when the cached entry expires, a background
@@ -474,6 +479,16 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy
 	authDefaults *AuthSourceDefaultSettings,
 	fastPolicy *OpenAIFastPolicySettings,
 ) error {
+	return s.UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicyOmitting(ctx, settings, authDefaults, fastPolicy, nil)
+}
+
+func (s *SettingService) UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicyOmitting(
+	ctx context.Context,
+	settings *SystemSettings,
+	authDefaults *AuthSourceDefaultSettings,
+	fastPolicy *OpenAIFastPolicySettings,
+	omitted OmittedSettingKeys,
+) error {
 	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
 	if err != nil {
 		return err
@@ -486,6 +501,7 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy
 	for key, value := range authSourceUpdates {
 		updates[key] = value
 	}
+	omitted.dropFrom(updates)
 	if fastPolicy != nil {
 		value, err := normalizeAndMarshalOpenAIFastPolicySettings(fastPolicy)
 		if err != nil {
@@ -494,11 +510,11 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaultsAndOpenAIFastPolicy
 		updates[SettingKeyOpenAIFastPolicySettings] = value
 	}
 
-	err = s.settingRepo.SetMultiple(ctx, updates)
-	if err == nil {
-		s.refreshCachedSettings(settings)
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return err
 	}
-	return err
+	s.refreshCachedSettingsAfterWrite(ctx, settings, omitted)
+	return nil
 }
 
 func (s *SettingService) validateAffiliateSubscriptionRewardGroup(ctx context.Context, groupID int64) error {
