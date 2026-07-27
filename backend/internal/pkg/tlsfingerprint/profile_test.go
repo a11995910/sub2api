@@ -130,7 +130,10 @@ func newLocalTLSServer(t *testing.T) net.Listener {
 	t.Helper()
 
 	cert := selfSignedCert(t)
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 

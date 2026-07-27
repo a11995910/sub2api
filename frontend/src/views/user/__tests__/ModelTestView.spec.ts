@@ -429,6 +429,68 @@ describe('ModelTestView', () => {
     expect(modelSelect.value).not.toBe('')
   })
 
+  it('同平台测试 Key 不会看到其他持久号池分组的模型', async () => {
+    const supportedGroup = groupFixture({ id: 74, name: 'pro正价分组' })
+    const unsupportedGroup = groupFixture({ id: 75, name: '其他正价分组' })
+    const unsupportedKey = apiKeyFixture({
+      id: 303,
+      name: '其他分组 Key',
+      key: 'sk-other-key-1234567890',
+      group_id: 75,
+      group: unsupportedGroup,
+    })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'OpenAI 渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [supportedGroup, unsupportedGroup],
+        supported_models: [
+          {
+            name: 'gpt-5.6',
+            platform: 'openai',
+            kind: 'token',
+            group_ids: [74],
+            pricing: {
+              billing_mode: 'token',
+              input_price: 0.000002,
+              output_price: 0.000008,
+              cache_write_price: null,
+              cache_read_price: null,
+              image_output_price: null,
+              per_request_price: null,
+              intervals: [],
+            },
+          },
+          {
+            name: 'gpt-5.4',
+            platform: 'openai',
+            kind: 'token',
+            group_ids: [75],
+            pricing: {
+              billing_mode: 'token',
+              input_price: 0.000001,
+              output_price: 0.000004,
+              cache_write_price: null,
+              cache_read_price: null,
+              image_output_price: null,
+              per_request_price: null,
+              intervals: [],
+            },
+          },
+        ],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [unsupportedKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(selectByLabel(wrapper, '分组').value).toBe('75')
+    expect(optionTexts(selectByLabel(wrapper, '模型'))).toEqual(['请选择模型', 'gpt-5.4 · OpenAI'])
+    expect(optionTexts(selectByLabel(wrapper, '模型'))).not.toContain('gpt-5.6 · OpenAI')
+  })
+
   it('无渠道分组从当前 API Key 的网关模型列表读取 Seedance', async () => {
     const seedanceGroup = groupFixture({
       id: 62,

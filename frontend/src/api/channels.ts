@@ -72,6 +72,8 @@ export interface UserSupportedModel {
   /** token = 文本/普通按次，image = 图片，video = 视频。旧后端可能没有该字段，前端需兜底。 */
   kind?: 'token' | 'image' | 'video'
   pricing: UserSupportedModelPricing | null
+  /** 持久账号池实际支持该模型的用户可见分组；旧后端可能没有该字段。 */
+  group_ids?: number[]
 }
 
 /**

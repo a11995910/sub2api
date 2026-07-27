@@ -251,7 +251,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { formatScaled, formatUSDScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
-import { filterGroupsByModelKind, resolveModelKind, type ModelKind } from '@/utils/modelKind'
+import { filterGroupsByModelAvailability, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   resolveVideoPriceQuote,
   videoResolutionsForModel,
@@ -424,7 +424,7 @@ const marketGroups = computed<MarketGroup[]>(() => {
       }
       for (const model of section.supported_models || []) {
         const kind = resolveModelKind(model)
-        for (const group of filterGroupsByModelKind(section.groups, kind)) {
+        for (const group of filterGroupsByModelAvailability(section.groups, model)) {
           const bucket = ensureGroup(group)
           const modelPlatform = model.platform || platform
           const key = `${group.id}:${modelPlatform}:${model.name}:${pricingSignature(model.pricing)}`

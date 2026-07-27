@@ -29,6 +29,7 @@ func TestPromptMarketRoutesArePublicReadOnly(t *testing.T) {
 			c.Next()
 		}),
 		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/creative-drawing/prompt-market/libraries/invalid/prompts", nil)
@@ -50,6 +51,7 @@ func TestVideoTestTaskRoutesRequireJWTAuthentication(t *testing.T) {
 			c.AbortWithStatus(http.StatusUnauthorized)
 		}),
 		servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
+		nil,
 		nil,
 	)
 

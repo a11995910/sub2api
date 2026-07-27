@@ -261,6 +261,53 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain('image-2')
   })
 
+  it('同平台模型只展示到持久号池支持的分组', async () => {
+    const supportedGroup = groupFixture({ id: 74, name: 'pro正价分组' })
+    const unsupportedGroup = groupFixture({ id: 75, name: '其他正价分组' })
+    getAvailableGroups.mockResolvedValue([supportedGroup, unsupportedGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: 'OpenAI 渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [supportedGroup, unsupportedGroup],
+        supported_models: [{
+          name: 'gpt-5.6',
+          platform: 'openai',
+          kind: 'token',
+          group_ids: [74],
+          pricing: { billing_mode: 'token', input_price: 0.000002, output_price: 0.000008, intervals: [] },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const supportedButton = wrapper.findAll('[data-testid="group-option"]')
+      .find((button) => button.text().includes('pro正价分组'))
+    const unsupportedButton = wrapper.findAll('[data-testid="group-option"]')
+      .find((button) => button.text().includes('其他正价分组'))
+    expect(supportedButton).toBeDefined()
+    expect(unsupportedButton).toBeDefined()
+
+    await supportedButton!.trigger('click')
+    expect(wrapper.text()).toContain('gpt-5.6')
+
+    await unsupportedButton!.trigger('click')
+    expect(wrapper.text()).not.toContain('gpt-5.6')
+    expect(wrapper.text()).toContain('当前分组暂无匹配模型')
+  })
+
   it('默认优先 GPT 分组和 GPT 模型，并支持按名称重新排序', async () => {
     const claudeGroup = groupFixture({
       id: 20,

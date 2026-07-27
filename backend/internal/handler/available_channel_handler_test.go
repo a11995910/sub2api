@@ -3,10 +3,12 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -96,6 +98,106 @@ func TestToUserSupportedModels_MarksVideoPricingKind(t *testing.T) {
 	require.Equal(t, modelKindVideo, models[0].Kind)
 }
 
+func TestAnnotateSupportedModelGroups_UsesPersistentAccountPool(t *testing.T) {
+	transientReset := time.Now().Add(time.Hour)
+	models := []userSupportedModel{
+		{Name: "gpt-5.6", Platform: service.PlatformOpenAI, Kind: modelKindToken},
+		{Name: "gpt-5.7", Platform: service.PlatformOpenAI, Kind: modelKindToken},
+	}
+	groups := []userAvailableGroup{
+		{ID: 74, Name: "pro正价分组", Platform: service.PlatformOpenAI},
+		{ID: 75, Name: "其他 OpenAI 分组", Platform: service.PlatformOpenAI},
+	}
+	accountsByGroup := map[int64][]service.Account{
+		74: {{
+			Platform:         service.PlatformOpenAI,
+			Type:             service.AccountTypeOAuth,
+			RateLimitResetAt: &transientReset,
+			OverloadUntil:    &transientReset,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"},
+			},
+		}},
+		75: {{
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"},
+			},
+		}},
+	}
+
+	got := annotateSupportedModelGroups(models, groups, accountsByGroup)
+
+	require.Len(t, got, 1)
+	require.Equal(t, "gpt-5.6", got[0].Name)
+	require.Equal(t, []int64{74}, got[0].GroupIDs)
+}
+
+type modelAvailabilityAccountRepoStub struct {
+	accountsByGroup map[int64][]service.Account
+	calls           []modelAvailabilityAccountRepoCall
+}
+
+type modelAvailabilityAccountRepoCall struct {
+	groupID        int64
+	platforms      []string
+	includeGrouped bool
+}
+
+func (s *modelAvailabilityAccountRepoStub) ListModelAvailabilityCandidates(
+	_ context.Context,
+	groupID *int64,
+	platforms []string,
+	includeGrouped bool,
+) ([]service.Account, error) {
+	call := modelAvailabilityAccountRepoCall{
+		platforms:      append([]string(nil), platforms...),
+		includeGrouped: includeGrouped,
+	}
+	if groupID != nil {
+		call.groupID = *groupID
+	}
+	s.calls = append(s.calls, call)
+	return s.accountsByGroup[call.groupID], nil
+}
+
+func TestLoadPersistentAccountsByGroup_UsesDedicatedRepositoryQuery(t *testing.T) {
+	repo := &modelAvailabilityAccountRepoStub{accountsByGroup: map[int64][]service.Account{
+		74: {{ID: 1, Platform: service.PlatformOpenAI}},
+	}}
+	h := &AvailableChannelHandler{accountRepo: repo}
+
+	got, err := h.loadPersistentAccountsByGroup(context.Background(), []userAvailableGroup{{
+		ID: 74, Platform: service.PlatformOpenAI,
+	}}, nil)
+
+	require.NoError(t, err)
+	require.Len(t, got[74], 1)
+	got, err = h.loadPersistentAccountsByGroup(context.Background(), []userAvailableGroup{{
+		ID: 74, Platform: service.PlatformOpenAI,
+	}}, got)
+	require.NoError(t, err)
+	require.Equal(t, []modelAvailabilityAccountRepoCall{{
+		groupID: 74, platforms: []string{service.PlatformOpenAI}, includeGrouped: false,
+	}}, repo.calls)
+}
+
+func TestAnnotateSupportedModelGroups_EmptyMappingKeepsDefaultSupport(t *testing.T) {
+	models := []userSupportedModel{{
+		Name: "gpt-5.6", Platform: service.PlatformOpenAI, Kind: modelKindToken,
+	}}
+	groups := []userAvailableGroup{{ID: 74, Platform: service.PlatformOpenAI}}
+	accountsByGroup := map[int64][]service.Account{
+		74: {{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}},
+	}
+
+	got := annotateSupportedModelGroups(models, groups, accountsByGroup)
+
+	require.Len(t, got, 1)
+	require.Equal(t, []int64{74}, got[0].GroupIDs)
+}
+
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	// 通过序列化 userAvailableChannel 结构体验证响应形状：
 	// 只有 name / description / platforms；不含管理端字段。
@@ -132,6 +234,19 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	for _, key := range []string{"platform", "groups", "supported_models"} {
 		_, exists := sectionDecoded[key]
 		require.Truef(t, exists, "platform section must expose %q", key)
+	}
+
+	model := userSupportedModel{
+		Name: "gpt-5.6", Platform: service.PlatformOpenAI, Kind: modelKindToken, GroupIDs: []int64{74},
+	}
+	rawModel, err := json.Marshal(model)
+	require.NoError(t, err)
+	var modelDecoded map[string]any
+	require.NoError(t, json.Unmarshal(rawModel, &modelDecoded))
+	require.Equal(t, []any{float64(74)}, modelDecoded["group_ids"])
+	for _, key := range []string{"account_ids", "account_names", "account_types", "credentials", "oauth"} {
+		_, exists := modelDecoded[key]
+		require.Falsef(t, exists, "model DTO must not expose %q", key)
 	}
 
 	// Group DTO 暴露区分专属/公开、订阅类型、默认倍率、高峰倍率规则、图片能力所需的字段，
@@ -211,8 +326,8 @@ func TestFilterUserVisibleGroups_ExposesImageControls(t *testing.T) {
 func TestFilterGroupsForModelKind_SplitsImageGroups(t *testing.T) {
 	// 模型广场需要用模型类型切分分组：图片分组只给图片模型，普通分组只给 token/按次模型。
 	groups := []userAvailableGroup{
-		{ID: 1, Name: "text", AllowImageGeneration: false},
-		{ID: 2, Name: "image", AllowImageGeneration: true},
+		{ID: 1, Name: "text", Platform: service.PlatformOpenAI, AllowImageGeneration: false},
+		{ID: 2, Name: "image", Platform: service.PlatformOpenAI, AllowImageGeneration: true},
 	}
 
 	tokenGroups := filterGroupsForModelKind(groups, modelKindToken)
@@ -239,7 +354,11 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 		{ID: 2, Name: "g-ant", Platform: "anthropic"},
 		{ID: 3, Name: "g-empty", Platform: ""},
 	}
-	sections := buildPlatformSections(ch, visible)
+	accountsByGroup := map[int64][]service.Account{
+		1: {{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}},
+		2: {{Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey}},
+	}
+	sections := buildPlatformSections(ch, visible, accountsByGroup)
 	require.Len(t, sections, 2)
 	require.Equal(t, "anthropic", sections[0].Platform)
 	require.Equal(t, "openai", sections[1].Platform)
@@ -267,7 +386,11 @@ func TestBuildPlatformSections_AppendsOpenAIImageModelForImageGroup(t *testing.T
 		{ID: 2, Name: "ChatGPT2API 图片", Platform: service.PlatformOpenAI, AllowImageGeneration: true},
 	}
 
-	sections := buildPlatformSections(ch, visible)
+	accountsByGroup := map[int64][]service.Account{
+		1: {{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}},
+		2: {{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}},
+	}
+	sections := buildPlatformSections(ch, visible, accountsByGroup)
 
 	require.Len(t, sections, 1)
 	require.Len(t, sections[0].SupportedModels, 2)

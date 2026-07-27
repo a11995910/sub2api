@@ -116,7 +116,7 @@ func toStdConnectionState(cs utls.ConnectionState) tls.ConnectionState {
 		DidResume:                   cs.DidResume,
 		CipherSuite:                 cs.CipherSuite,
 		NegotiatedProtocol:          cs.NegotiatedProtocol,
-		NegotiatedProtocolIsMutual:  cs.NegotiatedProtocolIsMutual,
+		NegotiatedProtocolIsMutual:  true,
 		ServerName:                  cs.ServerName,
 		PeerCertificates:            cs.PeerCertificates,
 		VerifiedChains:              cs.VerifiedChains,

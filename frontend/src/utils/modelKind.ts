@@ -39,6 +39,20 @@ export function filterGroupsByModelKind(
   )
 }
 
+/**
+ * 在模型类型分组规则之上，按后端持久账号池返回的 group_ids 过滤。
+ * 字段缺失表示正在兼容旧后端；显式空数组表示没有可见号池支持。
+ */
+export function filterGroupsByModelAvailability(
+  groups: UserAvailableGroup[] | undefined,
+  model: Pick<UserSupportedModel, 'kind' | 'name' | 'pricing' | 'group_ids'>,
+): UserAvailableGroup[] {
+  const eligible = filterGroupsByModelKind(groups, resolveModelKind(model))
+  if (!Array.isArray(model.group_ids)) return eligible
+  const visibleGroupIDs = new Set(model.group_ids)
+  return eligible.filter((group) => visibleGroupIDs.has(group.id))
+}
+
 export function selectAvailableModelKind<T extends { kind: ModelKind }>(
   models: T[],
   preferred: ModelKind,

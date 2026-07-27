@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"fmt"
 	"sort"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -24,6 +26,16 @@ type AvailableChannelHandler struct {
 	channelService *service.ChannelService
 	apiKeyService  *service.APIKeyService
 	settingService *service.SettingService
+	accountRepo    modelAvailabilityAccountRepository
+}
+
+type modelAvailabilityAccountRepository interface {
+	ListModelAvailabilityCandidates(
+		ctx context.Context,
+		groupID *int64,
+		platforms []string,
+		includeGrouped bool,
+	) ([]service.Account, error)
 }
 
 // NewAvailableChannelHandler 创建用户侧可用渠道 handler。
@@ -31,11 +43,13 @@ func NewAvailableChannelHandler(
 	channelService *service.ChannelService,
 	apiKeyService *service.APIKeyService,
 	settingService *service.SettingService,
+	accountRepo service.AccountRepository,
 ) *AvailableChannelHandler {
 	return &AvailableChannelHandler{
 		channelService: channelService,
 		apiKeyService:  apiKeyService,
 		settingService: settingService,
+		accountRepo:    accountRepo,
 	}
 }
 
@@ -109,6 +123,7 @@ type userSupportedModel struct {
 	Platform string                     `json:"platform"`
 	Kind     string                     `json:"kind"`
 	Pricing  *userSupportedModelPricing `json:"pricing"`
+	GroupIDs []int64                    `json:"group_ids"`
 }
 
 // userChannelPlatformSection 单渠道内某个平台的子视图：用户可见的分组 + 该平台
@@ -163,6 +178,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	}
 
 	out := make([]userAvailableChannel, 0, len(channels))
+	accountsByGroup := make(map[int64][]service.Account)
 	for _, ch := range channels {
 		if ch.Status != service.StatusActive {
 			continue
@@ -171,7 +187,12 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		if len(visibleGroups) == 0 {
 			continue
 		}
-		sections := buildPlatformSections(ch, visibleGroups)
+		accountsByGroup, err = h.loadPersistentAccountsByGroup(c.Request.Context(), visibleGroups, accountsByGroup)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		sections := buildPlatformSections(ch, visibleGroups, accountsByGroup)
 		if len(sections) == 0 {
 			continue
 		}
@@ -185,12 +206,45 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// loadPersistentAccountsByGroup 读取分组中由持久配置启用的账号池。
+// 专用仓储查询会忽略限流、过载、临时不可调度和过期窗口，避免用户页面随
+// 短期运行状态闪烁。
+func (h *AvailableChannelHandler) loadPersistentAccountsByGroup(
+	ctx context.Context,
+	groups []userAvailableGroup,
+	accountsByGroup map[int64][]service.Account,
+) (map[int64][]service.Account, error) {
+	if h.accountRepo == nil {
+		return nil, fmt.Errorf("account repository is not configured")
+	}
+	if accountsByGroup == nil {
+		accountsByGroup = make(map[int64][]service.Account, len(groups))
+	}
+	for _, group := range groups {
+		if _, loaded := accountsByGroup[group.ID]; loaded {
+			continue
+		}
+		accounts, err := h.accountRepo.ListModelAvailabilityCandidates(
+			ctx,
+			&group.ID,
+			[]string{group.Platform},
+			false,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("list model availability candidates for group %d: %w", group.ID, err)
+		}
+		accountsByGroup[group.ID] = accounts
+	}
+	return accountsByGroup, nil
+}
+
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
 // 每个 section 对应一个平台，只包含该平台的 groups 和 supported_models。
 // 输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
 func buildPlatformSections(
 	ch service.AvailableChannel,
 	visibleGroups []userAvailableGroup,
+	accountsByGroup map[int64][]service.Account,
 ) []userChannelPlatformSection {
 	groupsByPlatform := make(map[string][]userAvailableGroup, 4)
 	for _, g := range visibleGroups {
@@ -214,6 +268,7 @@ func buildPlatformSections(
 		platformSet := map[string]struct{}{platform: {}}
 		models := toUserSupportedModels(ch.SupportedModels, platformSet)
 		models = appendImageModelsForPlatform(models, groupsByPlatform[platform], platform)
+		models = annotateSupportedModelGroups(models, groupsByPlatform[platform], accountsByGroup)
 		section := userChannelPlatformSection{
 			Platform:        platform,
 			Groups:          groupsByPlatform[platform],
@@ -293,8 +348,34 @@ func filterGroupsForModelKind(groups []userAvailableGroup, kind string) []userAv
 			}
 			continue
 		}
-		if !g.AllowImageGeneration {
+		if !g.AllowImageGeneration || g.Platform != service.PlatformOpenAI {
 			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// annotateSupportedModelGroups 为渠道候选模型标注真实可见分组。
+// 这里只检查账号持久配置和模型映射，不返回账号身份，也不读取临时运行状态。
+func annotateSupportedModelGroups(
+	models []userSupportedModel,
+	groups []userAvailableGroup,
+	accountsByGroup map[int64][]service.Account,
+) []userSupportedModel {
+	out := make([]userSupportedModel, 0, len(models))
+	for _, model := range models {
+		model.GroupIDs = nil
+		for _, group := range filterGroupsForModelKind(groups, model.Kind) {
+			accounts := accountsByGroup[group.ID]
+			for i := range accounts {
+				if accounts[i].IsModelSupported(model.Name) {
+					model.GroupIDs = append(model.GroupIDs, group.ID)
+					break
+				}
+			}
+		}
+		if len(model.GroupIDs) > 0 {
+			out = append(out, model)
 		}
 	}
 	return out

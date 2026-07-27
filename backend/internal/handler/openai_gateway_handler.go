@@ -381,7 +381,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 账号调度可能切换有效分组，渠道映射必须在选中账号后按实际分组解析。
 	channelMapping := service.ChannelMappingResult{MappedModel: reqModel}
-	forwardBody := body
+	var forwardBody []byte
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
@@ -1613,7 +1613,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	cyberBlockedThisConn := false
 
 	// 账号调度可能切换有效分组，渠道映射必须在选中账号后按实际分组解析。
-	channelMappingWS := service.ChannelMappingResult{MappedModel: reqModel}
+	var channelMappingWS service.ChannelMappingResult
 
 	var currentUserRelease func()
 	var currentAccountRelease func()

@@ -425,7 +425,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
 import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { filterGroupsByModelKind, filterModelsByIntent, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
+import { filterGroupsByModelAvailability, filterModelsByIntent, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
@@ -564,7 +564,7 @@ const allModels = computed<TestModelOption[]>(() => {
         }
 
         const existing = new Set(item.groups.map((group) => group.id))
-        for (const group of filterGroupsByModelKind(section.groups, kind)) {
+        for (const group of filterGroupsByModelAvailability(section.groups, model)) {
           if (!existing.has(group.id)) {
             item.groups.push(group)
             existing.add(group.id)

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { UserAvailableGroup, UserSupportedModelPricing } from '@/api/channels'
 import { BILLING_MODE_IMAGE, BILLING_MODE_VIDEO } from '@/constants/channel'
-import { filterGroupsByModelKind, filterModelsByIntent, resolveModelKind, selectAvailableModelKind } from '../modelKind'
+import {
+  filterGroupsByModelAvailability,
+  filterGroupsByModelKind,
+  filterModelsByIntent,
+  resolveModelKind,
+  selectAvailableModelKind,
+} from '../modelKind'
 
 describe('resolveModelKind', () => {
   it('Seedance 模型名识别为视频', () => {
@@ -141,5 +147,82 @@ describe('filterGroupsByModelKind', () => {
       { ...baseGroup, id: 2, platform: 'grok', allow_image_generation: true },
     ]
     expect(filterGroupsByModelKind(groups, 'video').map((group) => group.id)).toEqual([2])
+  })
+})
+
+describe('filterGroupsByModelAvailability', () => {
+  const groups = [
+    {
+      id: 74,
+      name: 'pro正价分组',
+      platform: 'openai',
+      subscription_type: 'standard',
+      rate_multiplier: 1,
+      peak_rate_enabled: false,
+      peak_start: '',
+      peak_end: '',
+      peak_rate_multiplier: 1,
+      is_exclusive: false,
+      allow_image_generation: false,
+      image_super_resolution_enabled: false,
+      image_rate_independent: false,
+      cache_hit_quarter_to_input_enabled: false,
+      image_rate_multiplier: 1,
+      image_price_1k: null,
+      image_price_2k: null,
+      image_price_4k: null,
+    },
+    {
+      id: 75,
+      name: '其他 OpenAI 分组',
+      platform: 'openai',
+      subscription_type: 'standard',
+      rate_multiplier: 1,
+      peak_rate_enabled: false,
+      peak_start: '',
+      peak_end: '',
+      peak_rate_multiplier: 1,
+      is_exclusive: false,
+      allow_image_generation: false,
+      image_super_resolution_enabled: false,
+      image_rate_independent: false,
+      cache_hit_quarter_to_input_enabled: false,
+      image_rate_multiplier: 1,
+      image_price_1k: null,
+      image_price_2k: null,
+      image_price_4k: null,
+    },
+  ] satisfies UserAvailableGroup[]
+
+  it('只保留模型持久号池支持的分组', () => {
+    const visible = filterGroupsByModelAvailability(groups, {
+      name: 'gpt-5.6',
+      kind: 'token',
+      pricing: null,
+      group_ids: [74],
+    })
+
+    expect(visible.map((group) => group.id)).toEqual([74])
+  })
+
+  it('旧后端缺少 group_ids 时沿用原有分组规则', () => {
+    const visible = filterGroupsByModelAvailability(groups, {
+      name: 'gpt-5.6',
+      kind: 'token',
+      pricing: null,
+    })
+
+    expect(visible.map((group) => group.id)).toEqual([74, 75])
+  })
+
+  it('显式空 group_ids 表示没有可见号池支持', () => {
+    const visible = filterGroupsByModelAvailability(groups, {
+      name: 'gpt-5.6',
+      kind: 'token',
+      pricing: null,
+      group_ids: [],
+    })
+
+    expect(visible).toEqual([])
   })
 })
