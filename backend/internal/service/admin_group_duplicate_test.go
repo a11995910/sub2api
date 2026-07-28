@@ -131,6 +131,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		PeakEnd:                         "18:00",
 		PeakRateMultiplier:              1.2,
 		IsExclusive:                     true,
+		OAuthPoolVisible:                true,
 		Status:                          StatusActive,
 		Hydrated:                        true,
 		SubscriptionType:                SubscriptionTypeSubscription,
@@ -201,6 +202,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.Description, duplicate.Description)
 	require.Equal(t, source.Platform, duplicate.Platform)
 	require.Equal(t, source.RateMultiplier, duplicate.RateMultiplier)
+	require.Equal(t, source.OAuthPoolVisible, duplicate.OAuthPoolVisible)
 	require.Equal(t, source.PeakRateMultiplier, duplicate.PeakRateMultiplier)
 	require.Equal(t, source.DefaultValidityDays, duplicate.DefaultValidityDays)
 	require.Equal(t, source.ImagePrice4K, duplicate.ImagePrice4K)

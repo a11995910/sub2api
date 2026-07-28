@@ -40,41 +40,10 @@
         <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
           {{ usageInfo.error }}
         </div>
-        <!-- 5h Window -->
-        <UsageProgressBar
-          v-if="usageInfo.five_hour"
-          label="5h"
-          :utilization="usageInfo.five_hour.utilization"
-          :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
-          color="indigo"
-        />
-
-        <!-- 7d Window (OAuth only) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day"
-          label="7d"
-          :utilization="usageInfo.seven_day.utilization"
-          :resets-at="usageInfo.seven_day.resets_at"
-          color="emerald"
-        />
-
-        <!-- 7d Sonnet Window (OAuth only) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day_sonnet"
-          label="7d S"
-          :utilization="usageInfo.seven_day_sonnet.utilization"
-          :resets-at="usageInfo.seven_day_sonnet.resets_at"
-          color="purple"
-        />
-
-        <!-- 7d Fable Window (7d_oi) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day_fable"
-          label="7d F"
-          :utilization="usageInfo.seven_day_fable.utilization"
-          :resets-at="usageInfo.seven_day_fable.resets_at"
-          color="amber"
+        <OAuthUsageWindows
+          :usage="usageInfo"
+          :show-window-stats="true"
+          :show-extended-windows="account.type === 'oauth'"
         />
 
         <!-- Passive sampling label + active query button -->
@@ -121,23 +90,11 @@
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
-        <UsageProgressBar
-          v-if="usageInfo?.five_hour"
-          label="5h"
-          :utilization="usageInfo.five_hour.utilization"
-          :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
+        <OAuthUsageWindows
+          v-if="usageInfo"
+          :usage="usageInfo"
+          :show-window-stats="true"
           :show-now-when-idle="true"
-          color="indigo"
-        />
-        <UsageProgressBar
-          v-if="usageInfo?.seven_day"
-          label="7d"
-          :utilization="usageInfo.seven_day.utilization"
-          :resets-at="usageInfo.seven_day.resets_at"
-          :window-stats="usageInfo.seven_day.window_stats"
-          :show-now-when-idle="true"
-          color="emerald"
         />
         <!--
           Upstream codex /wham/usage quota query + reset. The local active-sampling
@@ -631,6 +588,7 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber, formatRelativeTime, formatSpiritStones } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
+import OAuthUsageWindows from './OAuthUsageWindows.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'

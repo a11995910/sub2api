@@ -187,6 +187,8 @@ type Group struct {
 type AdminGroup struct {
 	Group
 
+	OAuthPoolVisible bool `json:"oauth_pool_visible"`
+
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
@@ -208,6 +210,28 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+}
+
+type OAuthAccountPoolWindow struct {
+	Utilization float64    `json:"utilization"`
+	ResetsAt    *time.Time `json:"resets_at"`
+}
+
+type OAuthAccountPoolAccount struct {
+	Name  string `json:"name"`
+	Usage struct {
+		FiveHour *OAuthAccountPoolWindow `json:"five_hour"`
+		SevenDay *OAuthAccountPoolWindow `json:"seven_day"`
+	} `json:"usage"`
+}
+
+type OAuthAccountPoolGroup struct {
+	Name     string                    `json:"name"`
+	Accounts []OAuthAccountPoolAccount `json:"accounts"`
+}
+
+type OAuthAccountPool struct {
+	Groups []OAuthAccountPoolGroup `json:"groups"`
 }
 
 type Account struct {
@@ -506,7 +530,7 @@ type UsageLog struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
 	APIKeyID  int64  `json:"api_key_id"`
-	AccountID int64  `json:"account_id"`
+	AccountID *int64 `json:"account_id,omitempty"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
@@ -579,6 +603,12 @@ type UsageLog struct {
 	APIKey       *APIKey           `json:"api_key,omitempty"`
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`
+	OAuthAccount *OAuthAccountName `json:"oauth_account,omitempty"`
+}
+
+// OAuthAccountName 是普通用户使用记录允许返回的最小账号信息。
+type OAuthAccountName struct {
+	Name string `json:"name"`
 }
 
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。

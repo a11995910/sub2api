@@ -110,6 +110,11 @@ func IsExclusive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldIsExclusive, v))
 }
 
+// OauthPoolVisible applies equality check predicate on the "oauth_pool_visible" field. It's identical to OauthPoolVisibleEQ.
+func OauthPoolVisible(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOauthPoolVisible, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
@@ -833,6 +838,16 @@ func IsExclusiveEQ(v bool) predicate.Group {
 // IsExclusiveNEQ applies the NEQ predicate on the "is_exclusive" field.
 func IsExclusiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldIsExclusive, v))
+}
+
+// OauthPoolVisibleEQ applies the EQ predicate on the "oauth_pool_visible" field.
+func OauthPoolVisibleEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOauthPoolVisible, v))
+}
+
+// OauthPoolVisibleNEQ applies the NEQ predicate on the "oauth_pool_visible" field.
+func OauthPoolVisibleNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldOauthPoolVisible, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

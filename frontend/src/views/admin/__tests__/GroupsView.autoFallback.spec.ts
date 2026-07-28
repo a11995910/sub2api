@@ -12,6 +12,7 @@ const {
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
+  createGroupAPI,
   updateGroup,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
@@ -20,6 +21,7 @@ const {
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
+  createGroupAPI: vi.fn(),
   updateGroup: vi.fn(),
 }))
 
@@ -32,7 +34,7 @@ vi.mock('@/api/admin', () => ({
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
-      create: vi.fn(),
+      create: createGroupAPI,
       update: updateGroup,
       delete: vi.fn(),
       updateSortOrder: vi.fn(),
@@ -73,6 +75,7 @@ const createGroup = (overrides: Partial<AdminGroup> = {}): AdminGroup => ({
   rate_multiplier: 0.12,
   rpm_limit: 0,
   is_exclusive: false,
+  oauth_pool_visible: false,
   status: 'active',
   subscription_type: 'standard',
   daily_limit_usd: null,
@@ -151,6 +154,7 @@ describe('GroupsView 自动承接分组', () => {
     getUsageSummary.mockReset()
     getCapacitySummary.mockReset()
     getLiveCapability.mockReset()
+    createGroupAPI.mockReset()
     updateGroup.mockReset()
 
     const plus = createGroup()
@@ -176,6 +180,7 @@ describe('GroupsView 自动承接分组', () => {
     getUsageSummary.mockResolvedValue([])
     getCapacitySummary.mockResolvedValue([])
     getLiveCapability.mockResolvedValue({ supported: false })
+    createGroupAPI.mockImplementation((payload: object) => Promise.resolve({ ...plus, ...payload }))
     updateGroup.mockImplementation((_id: number, payload: object) =>
       Promise.resolve({ ...plus, ...payload }),
     )
@@ -217,6 +222,38 @@ describe('GroupsView 自动承接分组', () => {
     expect(updateGroup).toHaveBeenCalledWith(
       72,
       expect.objectContaining({ auto_fallback_group_id: 73 }),
+    )
+    wrapper.unmount()
+  })
+
+  it('创建分组时提交号池可见开关', async () => {
+    const wrapper = await mountView()
+    const vm = wrapper.vm as any
+
+    vm.createForm.name = '公开号池分组'
+    vm.createForm.oauth_pool_visible = true
+    await vm.handleCreateGroup()
+
+    expect(createGroupAPI).toHaveBeenCalledWith(
+      expect.objectContaining({ oauth_pool_visible: true }),
+    )
+    wrapper.unmount()
+  })
+
+  it('编辑分组时回显并提交号池可见开关', async () => {
+    const wrapper = await mountView()
+    const vm = wrapper.vm as any
+
+    await vm.handleEdit(createGroup({ oauth_pool_visible: true }))
+    await flushPromises()
+    expect(vm.editForm.oauth_pool_visible).toBe(true)
+
+    vm.editForm.oauth_pool_visible = false
+    await vm.handleUpdateGroup()
+
+    expect(updateGroup).toHaveBeenCalledWith(
+      72,
+      expect.objectContaining({ oauth_pool_visible: false }),
     )
     wrapper.unmount()
   })

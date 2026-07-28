@@ -122,6 +122,7 @@ const usageLog = {
   reasoning_effort: null,
   ip_address: '203.0.113.10',
   api_key: { name: 'demo-key' },
+  oauth_account: { name: 'Pro 正价' },
   billing_mode: 'token',
   request_type: 'sync',
   stream: false,
@@ -192,7 +193,7 @@ describe('user UsageView', () => {
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
-    mountUsageView()
+    const wrapper = mountUsageView()
     await flushPromises()
 
     expect(query).toHaveBeenCalled()
@@ -205,6 +206,9 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+    expect((wrapper.vm as any).visibleColumns).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'oauth_account' })]),
+    )
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {
@@ -244,6 +248,8 @@ describe('user UsageView', () => {
     expect(csvContent).not.toContain('Upstream Endpoint')
     expect(csvContent).not.toContain('account_cost')
     expect(csvContent).not.toContain('account_rate_multiplier')
+    expect(csvContent).not.toContain('OAuth Account')
+    expect(csvContent).not.toContain('Pro 正价')
 
     window.URL.createObjectURL = originalCreateObjectURL
     window.URL.revokeObjectURL = originalRevokeObjectURL

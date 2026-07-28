@@ -201,6 +201,17 @@ type UsageLog struct {
 	Subscription *UserSubscription
 }
 
+// CanExposeOAuthAccountToUser 判断普通用户使用记录是否可以展示命中的 OAuth 账号名称。
+// 判断必须基于 usage_logs 记录的实际分组和实际账号关联，不能使用 API Key 原始绑定分组。
+func CanExposeOAuthAccountToUser(log *UsageLog, userID int64) bool {
+	return log != nil &&
+		log.UserID == userID &&
+		log.Group != nil &&
+		log.Group.OAuthPoolVisible &&
+		log.Account != nil &&
+		log.Account.Type == AccountTypeOAuth
+}
+
 func (u *UsageLog) TotalTokens() int {
 	return u.InputTokens + u.OutputTokens + u.CacheCreationTokens + u.CacheReadTokens
 }

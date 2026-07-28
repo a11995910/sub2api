@@ -1811,6 +1811,32 @@
           </div>
         </div>
 
+        <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">
+                {{ t("admin.groups.accountFilters.poolVisible") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.accountFilters.poolVisibleHint") }}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="createForm.oauth_pool_visible"
+              @click="createForm.oauth_pool_visible = !createForm.oauth_pool_visible"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="createForm.oauth_pool_visible ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="createForm.oauth_pool_visible ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- 账号过滤控制 (OpenAI/Antigravity/Anthropic/Gemini) -->
         <div
           v-if="
@@ -3494,6 +3520,32 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="text-sm text-gray-600 dark:text-gray-400">
+                {{ t("admin.groups.accountFilters.poolVisible") }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.accountFilters.poolVisibleHint") }}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="editForm.oauth_pool_visible"
+              @click="editForm.oauth_pool_visible = !editForm.oauth_pool_visible"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="editForm.oauth_pool_visible ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="editForm.oauth_pool_visible ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
           </div>
         </div>
 
@@ -5206,6 +5258,7 @@ const createForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  oauth_pool_visible: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
@@ -5563,6 +5616,7 @@ const editForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
+  oauth_pool_visible: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -6091,6 +6145,7 @@ const closeCreateModal = () => {
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
+  createForm.oauth_pool_visible = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
@@ -6358,6 +6413,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.allow_messages_dispatch ||
     messagesDispatchFormState.allow_messages_dispatch;
   editForm.allow_live = group.allow_live ?? false;
+  editForm.oauth_pool_visible = group.oauth_pool_visible ?? false;
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;

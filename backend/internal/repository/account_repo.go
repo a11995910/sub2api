@@ -75,6 +75,11 @@ func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache se
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 }
 
+// NewOAuthAccountPoolRepository 提供号池页面专用的最小只读仓储。
+func NewOAuthAccountPoolRepository(client *dbent.Client) service.OAuthAccountPoolRepository {
+	return &accountRepository{client: client}
+}
+
 // NewAdminAccountRepository exposes the account repository's atomic duplication capability
 // as an explicit dependency of the admin service.
 func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
@@ -1103,6 +1108,60 @@ func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]s
 		return nil, err
 	}
 	return accounts, nil
+}
+
+func (r *accountRepository) ListActiveOAuthByGroupIDs(ctx context.Context, groupIDs []int64) ([]service.OAuthAccountPoolBinding, error) {
+	if len(groupIDs) == 0 {
+		return []service.OAuthAccountPoolBinding{}, nil
+	}
+
+	bindings, err := r.client.AccountGroup.Query().
+		Where(
+			dbaccountgroup.GroupIDIn(groupIDs...),
+			dbaccountgroup.HasGroupWith(
+				dbgroup.DeletedAtIsNil(),
+				dbgroup.StatusEQ(service.StatusActive),
+				dbgroup.OauthPoolVisibleEQ(true),
+			),
+			dbaccountgroup.HasAccountWith(
+				dbaccount.DeletedAtIsNil(),
+				dbaccount.StatusEQ(service.StatusActive),
+				dbaccount.TypeEQ(service.AccountTypeOAuth),
+			),
+		).
+		Order(
+			dbaccountgroup.ByGroupID(),
+			dbaccountgroup.ByPriority(),
+			dbaccountgroup.ByAccountField(dbaccount.FieldName),
+			dbaccountgroup.ByAccountField(dbaccount.FieldID),
+		).
+		WithAccount(func(query *dbent.AccountQuery) {
+			query.Select(
+				dbaccount.FieldID,
+				dbaccount.FieldName,
+				dbaccount.FieldPlatform,
+				dbaccount.FieldType,
+				dbaccount.FieldExtra,
+				dbaccount.FieldSessionWindowEnd,
+				dbaccount.FieldSessionWindowStatus,
+			)
+		}).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]service.OAuthAccountPoolBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if binding.Edges.Account == nil {
+			continue
+		}
+		result = append(result, service.OAuthAccountPoolBinding{
+			GroupID: binding.GroupID,
+			Account: *accountEntityToService(binding.Edges.Account),
+		})
+	}
+	return result, nil
 }
 
 func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, error) {

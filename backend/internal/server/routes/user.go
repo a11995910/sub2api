@@ -89,6 +89,8 @@ func RegisterUserRoutes(
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
 
+		authenticated.GET("/oauth-account-pool", h.OAuthAccountPool.List)
+
 		// 用户可用渠道（非管理员接口）
 		channels := authenticated.Group("/channels")
 		{

@@ -333,6 +333,36 @@ func NewAccountUsageService(
 	}
 }
 
+// BuildCachedUsage 仅根据已加载账号的本地字段构建额度窗口。
+// 用户号池必须调用此方法，禁止调用可能访问 OAuth 上游的 GetUsage。
+func (s *AccountUsageService) BuildCachedUsage(account *Account) *UsageInfo {
+	info := &UsageInfo{Source: "passive"}
+	if account == nil {
+		return info
+	}
+
+	switch account.Platform {
+	case PlatformOpenAI:
+		now := time.Now()
+		applyExtraToUsage(info, account.Extra, now)
+		if raw, ok := account.Extra["codex_usage_updated_at"]; ok {
+			if updatedAt, err := parseTime(fmt.Sprint(raw)); err == nil {
+				info.UpdatedAt = &updatedAt
+			}
+		}
+	case PlatformAnthropic:
+		info = s.estimateSetupTokenUsage(account)
+		info.Source = "passive"
+		info.SevenDay = buildPassiveUsageWindow(account.Extra, "passive_usage_7d_utilization", "passive_usage_7d_reset")
+		if raw, ok := account.Extra["passive_usage_sampled_at"]; ok {
+			if updatedAt, err := parseTime(fmt.Sprint(raw)); err == nil {
+				info.UpdatedAt = &updatedAt
+			}
+		}
+	}
+	return info
+}
+
 // GetUsage 获取账号使用量
 // OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）

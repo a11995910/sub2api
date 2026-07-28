@@ -180,6 +180,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	}
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
+		OAuthPoolVisible:            g.OAuthPoolVisible,
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,
@@ -198,6 +199,37 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 			ag := g.AccountGroups[i]
 			out.AccountGroups = append(out.AccountGroups, *AccountGroupFromService(&ag))
 		}
+	}
+	return out
+}
+
+func oauthAccountPoolWindowFromService(window *service.UsageProgress) *OAuthAccountPoolWindow {
+	if window == nil {
+		return nil
+	}
+	return &OAuthAccountPoolWindow{
+		Utilization: window.Utilization,
+		ResetsAt:    window.ResetsAt,
+	}
+}
+
+func OAuthAccountPoolFromService(pool *service.OAuthAccountPool) *OAuthAccountPool {
+	if pool == nil {
+		return nil
+	}
+	out := &OAuthAccountPool{Groups: make([]OAuthAccountPoolGroup, 0, len(pool.Groups))}
+	for i := range pool.Groups {
+		group := OAuthAccountPoolGroup{
+			Name:     pool.Groups[i].Name,
+			Accounts: make([]OAuthAccountPoolAccount, 0, len(pool.Groups[i].Accounts)),
+		}
+		for j := range pool.Groups[i].Accounts {
+			account := OAuthAccountPoolAccount{Name: pool.Groups[i].Accounts[j].Name}
+			account.Usage.FiveHour = oauthAccountPoolWindowFromService(pool.Groups[i].Accounts[j].FiveHour)
+			account.Usage.SevenDay = oauthAccountPoolWindowFromService(pool.Groups[i].Accounts[j].SevenDay)
+			group.Accounts = append(group.Accounts, account)
+		}
+		out.Groups = append(out.Groups, group)
 	}
 	return out
 }
@@ -741,7 +773,6 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ID:                        l.ID,
 		UserID:                    l.UserID,
 		APIKeyID:                  l.APIKeyID,
-		AccountID:                 l.AccountID,
 		RequestID:                 l.RequestID,
 		Model:                     requestedModel,
 		ServiceTier:               l.ServiceTier,
@@ -803,6 +834,17 @@ func UsageLogFromService(l *service.UsageLog) *UsageLog {
 	return &u
 }
 
+// UsageLogFromServiceForUser 在统一所有权与号池可见性判断通过时，
+// 仅向普通用户追加 OAuth 账号名称，不返回内部账号 ID。
+func UsageLogFromServiceForUser(l *service.UsageLog, userID int64) *UsageLog {
+	out := UsageLogFromService(l)
+	if out == nil || !service.CanExposeOAuthAccountToUser(l, userID) {
+		return out
+	}
+	out.OAuthAccount = &OAuthAccountName{Name: l.Account.Name}
+	return out
+}
+
 // UsageLogFromServiceAdmin converts a service UsageLog to DTO for admin users.
 // It includes minimal Account info (ID, Name only) and IP address.
 func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
@@ -810,6 +852,8 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		return nil
 	}
 	usageLog := usageLogFromServiceUser(l)
+	accountID := l.AccountID
+	usageLog.AccountID = &accountID
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
 	return &AdminUsageLog{
 		UsageLog:              usageLog,

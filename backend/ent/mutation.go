@@ -23010,6 +23010,7 @@ type GroupMutation struct {
 	peak_rate_multiplier                    *float64
 	addpeak_rate_multiplier                 *float64
 	is_exclusive                            *bool
+	oauth_pool_visible                      *bool
 	status                                  *string
 	duplicate_operation_id                  *string
 	platform                                *string
@@ -23666,6 +23667,42 @@ func (m *GroupMutation) OldIsExclusive(ctx context.Context) (v bool, err error) 
 // ResetIsExclusive resets all changes to the "is_exclusive" field.
 func (m *GroupMutation) ResetIsExclusive() {
 	m.is_exclusive = nil
+}
+
+// SetOauthPoolVisible sets the "oauth_pool_visible" field.
+func (m *GroupMutation) SetOauthPoolVisible(b bool) {
+	m.oauth_pool_visible = &b
+}
+
+// OauthPoolVisible returns the value of the "oauth_pool_visible" field in the mutation.
+func (m *GroupMutation) OauthPoolVisible() (r bool, exists bool) {
+	v := m.oauth_pool_visible
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOauthPoolVisible returns the old "oauth_pool_visible" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldOauthPoolVisible(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOauthPoolVisible is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOauthPoolVisible requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOauthPoolVisible: %w", err)
+	}
+	return oldValue.OauthPoolVisible, nil
+}
+
+// ResetOauthPoolVisible resets all changes to the "oauth_pool_visible" field.
+func (m *GroupMutation) ResetOauthPoolVisible() {
+	m.oauth_pool_visible = nil
 }
 
 // SetStatus sets the "status" field.
@@ -26545,7 +26582,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 61)
+	fields := make([]string, 0, 62)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26578,6 +26615,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.is_exclusive != nil {
 		fields = append(fields, group.FieldIsExclusive)
+	}
+	if m.oauth_pool_visible != nil {
+		fields = append(fields, group.FieldOauthPoolVisible)
 	}
 	if m.status != nil {
 		fields = append(fields, group.FieldStatus)
@@ -26759,6 +26799,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.PeakRateMultiplier()
 	case group.FieldIsExclusive:
 		return m.IsExclusive()
+	case group.FieldOauthPoolVisible:
+		return m.OauthPoolVisible()
 	case group.FieldStatus:
 		return m.Status()
 	case group.FieldDuplicateOperationID:
@@ -26890,6 +26932,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldPeakRateMultiplier(ctx)
 	case group.FieldIsExclusive:
 		return m.OldIsExclusive(ctx)
+	case group.FieldOauthPoolVisible:
+		return m.OldOauthPoolVisible(ctx)
 	case group.FieldStatus:
 		return m.OldStatus(ctx)
 	case group.FieldDuplicateOperationID:
@@ -27075,6 +27119,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIsExclusive(v)
+		return nil
+	case group.FieldOauthPoolVisible:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOauthPoolVisible(v)
 		return nil
 	case group.FieldStatus:
 		v, ok := value.(string)
@@ -27921,6 +27972,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldIsExclusive:
 		m.ResetIsExclusive()
+		return nil
+	case group.FieldOauthPoolVisible:
+		m.ResetOauthPoolVisible()
 		return nil
 	case group.FieldStatus:
 		m.ResetStatus()

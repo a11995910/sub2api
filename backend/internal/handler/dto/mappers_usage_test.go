@@ -245,6 +245,57 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 	require.NotContains(t, string(body), `"image_size":"2K"`)
 }
 
+func TestUsageLogFromServiceForUserOnlyExposesOAuthNameForVisibleActualGroup(t *testing.T) {
+	log := &service.UsageLog{
+		UserID:    7,
+		AccountID: 99,
+		Group:     &service.Group{OAuthPoolVisible: true},
+		Account:   &service.Account{ID: 99, Name: "OAuth Pro", Type: service.AccountTypeOAuth},
+	}
+
+	visible := UsageLogFromServiceForUser(log, 7)
+	require.Equal(t, "OAuth Pro", visible.OAuthAccount.Name)
+	require.Nil(t, visible.AccountID)
+
+	for name, mutate := range map[string]func(*service.UsageLog){
+		"other user":      func(item *service.UsageLog) { item.UserID = 8 },
+		"hidden group":    func(item *service.UsageLog) { item.Group.OAuthPoolVisible = false },
+		"api key account": func(item *service.UsageLog) { item.Account.Type = service.AccountTypeAPIKey },
+		"missing group":   func(item *service.UsageLog) { item.Group = nil },
+		"missing account": func(item *service.UsageLog) { item.Account = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			copyLog := *log
+			if log.Group != nil {
+				copyGroup := *log.Group
+				copyLog.Group = &copyGroup
+			}
+			if log.Account != nil {
+				copyAccount := *log.Account
+				copyLog.Account = &copyAccount
+			}
+			mutate(&copyLog)
+			got := UsageLogFromServiceForUser(&copyLog, 7)
+			require.Nil(t, got.OAuthAccount)
+			require.Nil(t, got.AccountID)
+		})
+	}
+}
+
+func TestUsageLogDTOHidesUserAccountIDButKeepsAdminAccountID(t *testing.T) {
+	log := &service.UsageLog{AccountID: 42, Account: &service.Account{ID: 42, Name: "internal"}}
+
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "account_id")
+	require.NotContains(t, string(userJSON), "oauth_account")
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.NotNil(t, adminDTO.AccountID)
+	require.EqualValues(t, 42, *adminDTO.AccountID)
+	require.Equal(t, "internal", adminDTO.Account.Name)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

@@ -319,6 +319,7 @@ export default {
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    retry: 'Retry',
     autoRefresh: {
       title: 'Auto Refresh',
       enable: 'Enable auto refresh',
@@ -401,6 +402,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    accountPool: 'Account Pool',
     redeem: 'Redeem',
     checkin: 'Daily Check-in',
     affiliate: 'Affiliate Rebates',
@@ -907,6 +909,17 @@ export default {
     },
   },
 
+  oauthAccountPool: {
+    title: 'Account Pool',
+    description: 'View OAuth account quota status for your available groups',
+    accountCount: '{count} accounts',
+    noUsageSnapshot: 'No quota data',
+    emptyTitle: 'No visible account pool',
+    emptyDescription: 'No OAuth account status is currently available to you.',
+    errorTitle: 'Unable to load account pool',
+    errorDescription: 'Account pool status is temporarily unavailable. Please try again later.'
+  },
+
   // Usage
   usage: {
     title: 'Usage Records',
@@ -936,6 +949,7 @@ export default {
     inSelectedRange: 'in selected range',
     perRequest: 'per request',
     apiKeyFilter: 'API Key',
+    oauthAccount: 'OAuth Account',
     allApiKeys: 'All API Keys',
     timeRange: 'Time Range',
     exportCsv: 'Export CSV',
@@ -2433,6 +2447,8 @@ export default {
       rateLabel: 'rate',
       accountFilters: {
         title: 'Account Filter Controls',
+        poolVisible: 'Show account pool to users',
+        poolVisibleHint: 'Users with access to this group can see OAuth account names and cached quota windows.',
         oauthOnly: 'Only allow OAuth accounts',
         oauthOnlyEnabled: 'Enabled — API Key accounts will be excluded',
         privacySetOnly: 'Only allow accounts with privacy protection set',

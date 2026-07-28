@@ -74,6 +74,7 @@ const sourceGroup: AdminGroup = {
   rate_multiplier: 1,
   rpm_limit: 0,
   is_exclusive: false,
+  oauth_pool_visible: true,
   status: 'active',
   subscription_type: 'standard',
   daily_limit_usd: null,

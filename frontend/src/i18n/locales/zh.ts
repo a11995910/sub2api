@@ -319,6 +319,7 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    retry: '重试',
     autoRefresh: {
       title: '自动刷新',
       enable: '启用自动刷新',
@@ -401,6 +402,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
+    accountPool: '号池状态',
     redeem: '兑换',
     checkin: '每日签到',
     affiliate: '邀请返利',
@@ -911,6 +913,17 @@ export default {
     }
   },
 
+  oauthAccountPool: {
+    title: '号池状态',
+    description: '查看可用分组中的 OAuth 账号额度状态',
+    accountCount: '{count} 个账号',
+    noUsageSnapshot: '暂无额度数据',
+    emptyTitle: '暂无可见号池',
+    emptyDescription: '当前没有向您公开的 OAuth 账号状态。',
+    errorTitle: '号池状态加载失败',
+    errorDescription: '暂时无法读取号池状态，请稍后重试。'
+  },
+
   // Usage
   usage: {
     title: '使用记录',
@@ -940,6 +953,7 @@ export default {
     inSelectedRange: '所选范围内',
     perRequest: '每次请求',
     apiKeyFilter: 'API 密钥',
+    oauthAccount: 'OAuth 账号',
     allApiKeys: '全部密钥',
     timeRange: '时间范围',
     exportCsv: '导出 CSV',
@@ -2557,6 +2571,8 @@ export default {
       rateLabel: '倍率',
       accountFilters: {
         title: '账号过滤控制',
+        poolVisible: '号池对用户可见',
+        poolVisibleHint: '开启后，有权使用该分组的用户可查看 OAuth 账号名称和缓存额度。',
         oauthOnly: '仅允许 OAuth 账号',
         oauthOnlyEnabled: '已启用 — 排除 API Key 类型账号',
         privacySetOnly: '仅允许隐私保护已设置的账号',

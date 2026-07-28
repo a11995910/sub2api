@@ -610,6 +610,8 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  oauth_pool_visible: boolean
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -768,6 +770,7 @@ export interface CreateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  oauth_pool_visible?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -827,6 +830,7 @@ export interface UpdateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  oauth_pool_visible?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -1605,7 +1609,7 @@ export interface UsageLog {
   id: number
   user_id: number
   api_key_id: number
-  account_id: number | null
+  account_id?: number | null
   request_id: string
   model: string
   service_tier?: string | null
@@ -1667,6 +1671,9 @@ export interface UsageLog {
   api_key?: ApiKey
   group?: Group
   subscription?: UserSubscription
+  oauth_account?: {
+    name: string
+  }
 }
 
 export interface UsageLogAccountSummary {
