@@ -176,6 +176,7 @@ backend/migrations/192_group_oauth_pool_visible.sql
 - 迁移默认值与可重复执行语句。
 - 分组创建、更新和复制的开关传递。
 - 用户可访问分组过滤和空分组省略。
+- PostgreSQL 中分组账号联表查询、公开分组过滤和稳定排序，避免邻表字段产生歧义。
 - OpenAI 与 Anthropic 缓存额度构建。
 - 普通用户账号 ID 脱敏、OAuth 名称条件展示和管理员字段保留。
 - 服务、处理器、仓储、路由和迁移相关包回归。
@@ -193,6 +194,7 @@ backend/migrations/192_group_oauth_pool_visible.sql
 ```bash
 cd backend
 go test ./internal/service ./internal/handler/... ./internal/repository ./internal/server/routes ./migrations
+go test -tags integration ./internal/repository -run TestAccountRepoSuite/TestListActiveOAuthByGroupIDs_OrdersWithoutAmbiguousColumns -count=1
 
 cd ../frontend
 npm run typecheck

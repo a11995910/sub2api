@@ -1133,7 +1133,8 @@ func (r *accountRepository) ListActiveOAuthByGroupIDs(ctx context.Context, group
 			dbaccountgroup.ByGroupID(),
 			dbaccountgroup.ByPriority(),
 			dbaccountgroup.ByAccountField(dbaccount.FieldName),
-			dbaccountgroup.ByAccountField(dbaccount.FieldID),
+			// account_id 与账号 id 等价，并避免 Ent 邻表排序在 PostgreSQL 中生成歧义的 id 引用。
+			dbaccountgroup.ByAccountID(),
 		).
 		WithAccount(func(query *dbent.AccountQuery) {
 			query.Select(

@@ -636,6 +636,30 @@ func (s *AccountRepoSuite) TestListByGroup() {
 	s.Require().Equal(acc2.ID, accounts[0].ID, "expected acc2 first (priority=1)")
 }
 
+func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_OrdersWithoutAmbiguousColumns() {
+	visibleGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-oauth-pool-visible"})
+	_, err := s.client.Group.UpdateOneID(visibleGroup.ID).
+		SetOauthPoolVisible(true).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	hiddenGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-oauth-pool-hidden"})
+
+	alpha := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-alpha"})
+	beta := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-beta"})
+	hidden := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-hidden"})
+	mustBindAccountToGroup(s.T(), s.client, beta.ID, visibleGroup.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, alpha.ID, visibleGroup.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, hidden.ID, hiddenGroup.ID, 1)
+
+	bindings, err := s.repo.ListActiveOAuthByGroupIDs(s.ctx, []int64{visibleGroup.ID, hiddenGroup.ID})
+
+	s.Require().NoError(err)
+	s.Require().Len(bindings, 2)
+	s.Require().Equal(visibleGroup.ID, bindings[0].GroupID)
+	s.Require().Equal(alpha.ID, bindings[0].Account.ID)
+	s.Require().Equal(beta.ID, bindings[1].Account.ID)
+}
+
 func (s *AccountRepoSuite) TestListActive() {
 	mustCreateAccount(s.T(), s.client, &service.Account{Name: "active1", Status: service.StatusActive})
 	mustCreateAccount(s.T(), s.client, &service.Account{Name: "inactive1", Status: service.StatusDisabled})
