@@ -20,18 +20,18 @@
 
 - 修改前后都要查看 `git status --short`，确认工作区状态。
 - 提交前必须检查 diff，确保只包含本次任务相关内容。
-- 日常修改默认直接在 `main` 分支完成，不为普通任务创建新分支。
-- 只有上游同步、隔离 worktree、风险验证或其他确有隔离必要的场景才允许创建临时分支。临时分支上的工作完成并验证通过后，必须在任务结束前合并进 `main`、切换回 `main`，并删除对应的本地和远端临时分支；完成后必须核对当前分支和分支残留。生产环境切换仍需遵守独立的口头确认门禁。
+- 日常修改默认直接在 `main` 分支完成，项目不使用长期 `dev` 分支。
+- 只有上游同步、隔离 worktree、风险验证或其他确有隔离必要的场景才允许在本地创建临时分支。临时分支必须先完成本地验证，再合并进 `main` 并推送；正式 VPS 不得拉取、检出或构建 `dev`、功能分支、同步分支或其他临时分支。任务结束前必须切回 `main`，删除对应的本地和远端临时分支，并核对当前分支和分支残留。生产环境切换仍需遵守独立的口头确认门禁。
 - 提交说明使用中文，格式保持简洁，例如 `docs: 规范源码定制上线流程`。
 - `AGENTS.md` 必须纳入版本控制，部署拓扑或发布门禁变化时同步更新。
 - 任何生产构建前，本地相关改动必须先完成 Git 提交并推送到远端；严禁用未提交工作区直接构建生产产物。
-- 正式 VPS 上线前必须在 `/opt/sub2api/repo` 执行 `git fetch`、切换目标分支、`git pull --ff-only`，并核对镜像构建 commit 与本次待发布 commit 一致。
+- 正式 VPS 的 `/opt/sub2api/repo` 只能检出 `main`。构建前必须执行 `git fetch origin`、`git switch main`、`git pull --ff-only origin main`，并核对镜像构建 commit 与本次待发布的 `origin/main` commit 一致。
 
 ## 正式 VPS staging 与 prod 操作
 
 - 项目只使用一台正式 VPS：`207.57.145.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`；不存在独立测试 VPS。
-- 预发布验证在正式 VPS 的隔离 staging 中完成。staging 默认拉取 `origin/main`；确有隔离必要时可拉取明确的临时分支，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
-- staging 验证通过后，若使用了临时分支，必须先把已验证提交合并进 `main`、切回 `main` 并删除临时分支，然后报告验证结果和风险点；必须等待用户明确口头命令，才允许把 prod 切换到同一已验证 commit。
+- 预发布验证在正式 VPS 的隔离 staging 中完成。功能代码必须先在本地完成验证、合并并推送到 `main`，staging 只允许拉取和构建 `origin/main`，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
+- staging 验证通过后必须报告验证结果、目标 `main` commit 和风险点，并等待用户明确口头命令；prod 只能切换到 staging 已验证的同一个 `main` commit，不得在 staging 验证后再合并代码或更换 commit。
 - 正式 VPS 资源空间充足，构建默认不需要使用低资源管控参数；仍需在构建前核对磁盘、内存、CPU 余量和当前运行服务，避免与线上请求争抢资源。
 - 正式 VPS 的 root 密码不得写入本文件、仓库、文档、提交记录或日志；如需密码登录，应使用运行时凭据或本机 Keychain 凭据引用，例如 `sub2api-new-vps-root`，并优先使用 SSH Key 免密登录。
 - 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
@@ -70,13 +70,13 @@
 
 - 本地开发完成后必须先提交并推送到 GitHub；正式 VPS 只从 GitHub 拉取已推送 commit，不接收本地未提交源码或本地构建产物。
 - 正式 VPS 源码目录必须保持干净：每次构建前执行 `git status --short`，若存在未确认改动，必须先核实来源，不得直接覆盖。
-- staging 默认跟随 `main`；确有隔离必要时可使用明确的临时分支，prod 只允许使用 `main`。临时分支完成 staging 验证后必须合并进 `main`、切回 `main` 并删除临时分支；prod 切换仍必须等待用户明确口头确认。
+- `/opt/sub2api/repo` 必须始终检出 `main`，staging 和 prod 都只允许使用 `origin/main`。任何功能分支或同步分支都必须在本地验证并合并、推送到 `main` 后，才允许进入 VPS staging；VPS 上禁止检出或构建其他分支。prod 切换仍必须等待用户明确口头确认。
 - 每次构建必须使用 `deploy/Dockerfile` 在正式 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
 - Docker 构建必须传入可追溯版本信息，至少包含 `COMMIT=$(git rev-parse --short=12 HEAD)` 和 `DATE=$(git show -s --format=%cI HEAD)`。
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
 - `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在正式 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
 - 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。
-- 上游同步必须先进入独立同步分支，例如 `sync/upstream-YYYYMMDD`；构建到 staging 验证通过后必须合并进 `main`、切回 `main` 并删除同步分支，禁止直接把 upstream 合并到 prod。
+- 上游同步可先在本地独立同步分支中解决冲突并完成本地验证，例如 `sync/upstream-YYYYMMDD`；随后必须先合并并推送到 `main`、删除同步分支，再由正式 VPS 的隔离 staging 构建该 `main` commit。禁止让 VPS 拉取同步分支，也禁止跳过 staging 直接切换 prod。
 
 正式 VPS staging 构建示例：
 

@@ -10,6 +10,7 @@
 | 登录账户 | `root` |
 | 本机 SSH 别名 | `sub2api-new-vps` |
 | 源码目录 | `/opt/sub2api/repo` |
+| 源码分支 | 只允许 `main` |
 | 部署方式 | VPS 拉取 Git、VPS 本机构建 Docker 镜像 |
 | 预发布入口 | staging，宿主机端口 `18080` |
 | 正式入口 | prod，宿主机端口 `8080` |
@@ -30,14 +31,13 @@ staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 
 ## 发布顺序
 
-1. 本地在 `dev` 完成修改、自动化测试、提交和推送。
-2. 正式 VPS 的 `/opt/sub2api/repo` 拉取已推送 commit，并使用 `deploy/Dockerfile` 构建 `sub2api:staging-<commit>`。
+1. 本地在 `main` 直接完成修改，或在临时分支完成修改和自动化测试后合并回 `main`；推送 `main` 前必须完成本地验证并清理临时分支。
+2. 正式 VPS 的 `/opt/sub2api/repo` 只能检出 `main`，拉取已推送的目标 `origin/main` commit，并使用 `deploy/Dockerfile` 构建 `sub2api:staging-<commit>`。
 3. 备份 staging 数据后，在隔离 staging 启动镜像并验证版本、健康接口、关键页面、API、数据库迁移和日志。
 4. staging 验证通过后报告结果，等待用户明确口头确认。
-5. 将同一代码合并到 `main` 并推送；正式 VPS 切换到 `main`，核对 commit 与 staging 已验证 commit 完全一致。
-6. 记录 prod 当前镜像，备份 prod PostgreSQL、Redis 关键状态和 prod `.env`，再把已验证镜像标记为 `sub2api:prod-<commit>`。
-7. 原子更新 prod 的 `SUB2API_IMAGE`，只重建 Sub2API 应用容器；PostgreSQL 和 Redis 不得因应用发布被重建或清空。
-8. 完成容器、健康接口、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/model-market`、数据库连接和日志回归。
+5. 核对 VPS 仍位于 `main`，且当前 commit 与 staging 已验证 commit 完全一致；不得在 staging 验证后再合并代码或更换 commit。
+6. 记录 prod 当前镜像，备份 prod PostgreSQL、Redis 关键状态和 prod `.env`，再把已验证镜像标记为 `sub2api:prod-<commit>`，原子更新 prod 的 `SUB2API_IMAGE`，只重建 Sub2API 应用容器；PostgreSQL 和 Redis 不得因应用发布被重建或清空。
+7. 完成容器、健康接口、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/model-market`、数据库连接和日志回归。
 
 ## 构建与版本追溯
 
@@ -46,7 +46,7 @@ staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 - `COMMIT=$(git rev-parse --short=12 HEAD)`
 - `DATE=$(git show -s --format=%cI HEAD)`
 
-构建后执行镜像内 `/app/sub2api --version`，输出 commit 必须与待发布 Git commit 一致。prod 只能运行 `main` 上已推送且经过 staging 验证的 commit。
+构建后执行镜像内 `/app/sub2api --version`，输出 commit 必须与待发布 Git commit 一致。staging 和 prod 都只能运行 `main` 上已推送的 commit，prod 只能使用 staging 已验证的同一个 commit。
 
 ## 备份与回滚
 

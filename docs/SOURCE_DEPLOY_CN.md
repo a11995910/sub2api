@@ -4,11 +4,11 @@
 
 ## 强制原则
 
-- 新功能开发默认走 `dev -> 正式 VPS staging -> 用户口头确认 -> main -> 正式 VPS prod` 链路；不得跳过隔离 staging 直接切换 prod。
-- staging 默认拉取 `origin/dev` 或明确的功能分支，prod 只允许使用 `origin/main`；两个环境的 compose project、配置、数据库、Redis、数据目录和端口必须相互隔离。
-- staging 验证通过后，只能在用户明确口头命令后合并到 `main` 并执行 prod 切换。
+- 新功能开发固定走 `本地修改与验证 -> 合并并推送 main -> 正式 VPS staging -> 用户口头确认 -> 正式 VPS prod` 链路；项目不使用长期 `dev` 分支，不得跳过隔离 staging 直接切换 prod。
+- 正式 VPS 的 `/opt/sub2api/repo` 只能检出 `main`，staging 和 prod 都只允许拉取和构建 `origin/main`；禁止在 VPS 检出或构建 `dev`、功能分支、同步分支或其他临时分支。两个环境的 compose project、配置、数据库、Redis、数据目录和端口必须相互隔离。
+- staging 验证前，目标代码必须已经合并并推送到 `main`；验证通过后只能在用户明确口头命令下把同一个已验证 commit 切换到 prod，不得再合并代码或更换 commit。
 - 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
-- 正式 VPS 的 `/opt/sub2api/repo` 必须拉取到本次构建对应的已推送 commit，确保运行镜像有可追溯源码。
+- 正式 VPS 的 `/opt/sub2api/repo` 必须保持在 `main` 并拉取到本次构建对应的已推送 `origin/main` commit，确保运行镜像有可追溯源码。
 - 正式 VPS 登录账户为 `root`，本机 SSH 别名为 `sub2api-new-vps`。
 - 正式 VPS 默认使用 `deploy/Dockerfile` 构建完整 Docker 镜像；只有资源核对确认紧张时才使用低资源构建参数。
 - 镜像化流程必须执行 `docker buildx build -f deploy/Dockerfile ... --load .`，由 Dockerfile 先构建前端，再把前端资源嵌入 Go 后端镜像。
@@ -60,14 +60,14 @@
 
 - GitHub：`git@github.com:a11995910/sub2api.git`
 - 主分支：`main`
-- 开发分支：`dev`
+- 长期开发分支：无；项目不使用 `dev`
 - 本地开发完成后，提交并推送到 GitHub：
 
 ```bash
 git status
 git add .
 git commit -m "说明本次修改"
-git push
+git push origin main
 ```
 
 ## 本地提交与推送要求
@@ -79,7 +79,7 @@ cd /Users/wangjun/Documents/GitHub/sub2api
 git status --short
 git add 本次相关文件
 git commit -m "说明本次修改"
-git push
+git push origin main
 git rev-parse HEAD
 git log -1 --oneline
 ```
@@ -93,7 +93,7 @@ git log -1 --oneline
 | 正式 VPS | `207.57.145.15` |
 | 登录账户 | `root` |
 | SSH 别名 | `sub2api-new-vps` |
-| Git 分支 | staging 使用 `dev` 或功能分支，prod 只使用 `main` |
+| Git 分支 | `/opt/sub2api/repo`、staging、prod 都只使用 `main` |
 | 源码目录 | `/opt/sub2api/repo` |
 | 构建策略 | VPS 拉取已推送源码并使用 `deploy/Dockerfile` 本机构建镜像 |
 
@@ -119,7 +119,7 @@ git log -1 --oneline
   scripts/
 ```
 
-`repo/` 是干净 Git 工作区，只负责拉取、切分支和构建镜像；`.env`、证书、数据库目录和业务数据不得写入 `repo/` 或 Git。
+`repo/` 是干净 Git 工作区，只负责拉取 `main` 和构建镜像，必须始终检出 `main`；不得在该目录创建或检出 `dev`、功能分支、同步分支或其他临时分支。`.env`、证书、数据库目录和业务数据不得写入 `repo/` 或 Git。
 
 正式 VPS 的环境 compose 文件只保存 staging 或 prod 差异，不能脱离仓库基础文件单独运行。所有 `config`、`up`、`ps`、`logs` 操作都必须同时叠加 `/opt/sub2api/repo/deploy/docker-compose.yml` 和对应环境的 override 文件，并固定 `-p` 项目名与 `--env-file`，避免两个环境共享默认项目名或漏加载基础服务定义。
 
@@ -387,7 +387,7 @@ chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 
 ### staging 构建与发布
 
-staging 用于承接 `dev` 或功能分支。每次构建都必须核对本地已推送 commit 与正式 VPS 工作区 commit 一致：
+staging 只承接已经合并并推送到 `main` 的 commit。每次构建都必须核对本地 `main`、`origin/main` 与正式 VPS 工作区 commit 一致：
 
 ```bash
 ssh sub2api-new-vps
@@ -395,9 +395,10 @@ set -Eeuo pipefail
 cd /opt/sub2api/repo
 git status --short
 git fetch origin
-git switch dev
-git pull --ff-only origin dev
-expected_commit='填写本地 dev 的 git rev-parse HEAD 输出'
+git switch main
+git pull --ff-only origin main
+test "$(git branch --show-current)" = "main"
+expected_commit='填写本地 main 的 git rev-parse HEAD 输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
 
@@ -488,7 +489,7 @@ curl -I http://127.0.0.1:18080/health
 
 如果当前版本已保存包含 `user_ids` 的 `openai_fast_policy_settings`，旧镜像回滚前必须先恢复发布前的该设置快照，或删除所有带 `user_ids` 的规则。旧版本忽略未知字段后会把用户专属规则视为全局规则，可能导致全局 block、filter 或 force_priority；只切换镜像不构成安全回滚。
 
-prod 只允许使用 `main`，并且必须在 staging 验证通过、用户明确确认后执行。截至 2026-07-11，生产主渠道定价表已有 2 条合法的显式 `video` 每秒定价，账号统计定价表为 0 条；发布前仍必须用真实表查询再次确认，不能把盘点结论当作永久事实：
+prod 只允许使用 staging 已验证的同一个 `main` commit，并且必须在 staging 验证通过、用户明确确认后执行；不得在两次操作之间合并代码或更换 commit。截至 2026-07-11，生产主渠道定价表已有 2 条合法的显式 `video` 每秒定价，账号统计定价表为 0 条；发布前仍必须用真实表查询再次确认，不能把盘点结论当作永久事实：
 
 ```sql
 SELECT 'channel_model_pricing' AS source, COUNT(*) AS video_count
@@ -822,7 +823,7 @@ Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查�
 git switch -c sync/upstream-YYYYMMDD
 ```
 
-解决冲突并完成本地验证后，先部署到正式 VPS staging。只有 staging 验证通过后，才允许把同步结果并入 `dev`，再按正常流程进入 `main` 和 prod。
+解决冲突并完成本地验证后，必须先把同步结果合并并推送到 `main`，删除本地和远端同步分支，再由正式 VPS 的隔离 staging 拉取该 `main` commit。VPS 不得检出同步分支；staging 验证通过并取得用户明确口头确认后，prod 只能切换到同一个已验证 commit。
 
 ## 线上域名与 Nginx
 
