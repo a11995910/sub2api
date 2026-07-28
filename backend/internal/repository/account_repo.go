@@ -1142,10 +1142,21 @@ func (r *accountRepository) ListActiveOAuthByGroupIDs(ctx context.Context, group
 				dbaccount.FieldName,
 				dbaccount.FieldPlatform,
 				dbaccount.FieldType,
+				dbaccount.FieldConcurrency,
+				dbaccount.FieldCredentials,
 				dbaccount.FieldExtra,
+				dbaccount.FieldSessionWindowStart,
 				dbaccount.FieldSessionWindowEnd,
 				dbaccount.FieldSessionWindowStatus,
-			)
+				dbaccount.FieldParentAccountID,
+				dbaccount.FieldQuotaDimension,
+			).WithParent(func(parentQuery *dbent.AccountQuery) {
+				parentQuery.Select(
+					dbaccount.FieldID,
+					dbaccount.FieldCredentials,
+					dbaccount.FieldExtra,
+				)
+			})
 		}).
 		All(ctx)
 	if err != nil {
@@ -3321,7 +3332,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 
 	rateMultiplier := m.RateMultiplier
 
-	return &service.Account{
+	out := &service.Account{
 		ID:                      m.ID,
 		Name:                    m.Name,
 		Notes:                   m.Notes,
@@ -3354,6 +3365,12 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		ParentAccountID:         m.ParentAccountID,
 		QuotaDimension:          string(m.QuotaDimension),
 	}
+	if parent := m.Edges.Parent; parent != nil {
+		parentAccount := accountEntityToService(parent)
+		out.ParentDisplayIdentifier = service.ResolveOAuthAccountDisplayIdentifier(parentAccount)
+		out.ParentPlanType = service.ResolveOAuthAccountPlanType(parentAccount)
+	}
+	return out
 }
 
 func normalizeJSONMap(in map[string]any) map[string]any {

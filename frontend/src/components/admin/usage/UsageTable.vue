@@ -53,7 +53,7 @@
         </template>
 
         <template #cell-oauth_account="{ row }">
-          <span class="text-sm text-gray-900 dark:text-white">{{ row.oauth_account?.name || '-' }}</span>
+          <span class="break-all text-sm text-gray-900 dark:text-white">{{ row.oauth_account?.identifier || '-' }}</span>
         </template>
 
         <template #cell-model="{ row }">

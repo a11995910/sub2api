@@ -1308,6 +1308,28 @@ func (s *UsageLogRepoSuite) TestGetAccountWindowStats() {
 	s.Require().Equal(int64(70), stats.Tokens) // (10+20) + (15+25)
 }
 
+func (s *UsageLogRepoSuite) TestGetOAuthAccountPoolStats() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "poolstats@test.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-poolstats", Name: "k"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-poolstats"})
+
+	now := time.Now()
+	s.createUsageLog(user, apiKey, account, 10, 20, 0.1, now.Add(-time.Hour))
+	s.createUsageLog(user, apiKey, account, 15, 25, 0.1, now.Add(-6*time.Hour))
+	s.createUsageLog(user, apiKey, account, 20, 30, 0.1, now.Add(-8*24*time.Hour))
+
+	stats, err := s.repo.GetOAuthAccountPoolStats(s.ctx, []service.OAuthAccountPoolStatsWindow{{
+		AccountID:     account.ID,
+		FiveHourStart: now.Add(-5 * time.Hour),
+		SevenDayStart: now.Add(-7 * 24 * time.Hour),
+	}})
+
+	s.Require().NoError(err)
+	s.Require().Equal(service.OAuthAccountPoolRequestTokenStats{Requests: 1, Tokens: 30}, stats[account.ID].FiveHour)
+	s.Require().Equal(service.OAuthAccountPoolRequestTokenStats{Requests: 2, Tokens: 70}, stats[account.ID].SevenDay)
+	s.Require().Equal(service.OAuthAccountPoolRequestTokenStats{Requests: 3, Tokens: 120}, stats[account.ID].Total)
+}
+
 // --- GetUserUsageTrendByUserID ---
 
 func (s *UsageLogRepoSuite) TestGetUserUsageTrendByUserID() {

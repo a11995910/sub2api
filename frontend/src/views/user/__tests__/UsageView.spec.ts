@@ -122,7 +122,7 @@ const usageLog = {
   reasoning_effort: null,
   ip_address: '203.0.113.10',
   api_key: { name: 'demo-key' },
-  oauth_account: { name: 'Pro 正价' },
+  oauth_account: { identifier: 'owner@example.com' },
   billing_mode: 'token',
   request_type: 'sync',
   stream: false,

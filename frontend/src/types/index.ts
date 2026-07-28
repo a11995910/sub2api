@@ -1672,7 +1672,7 @@ export interface UsageLog {
   group?: Group
   subscription?: UserSubscription
   oauth_account?: {
-    name: string
+    identifier: string
   }
 }
 

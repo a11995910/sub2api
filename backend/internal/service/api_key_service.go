@@ -319,6 +319,18 @@ func (s *APIKeyService) SetConcurrencyService(concurrencyService *ConcurrencySer
 	s.concurrencyService = concurrencyService
 }
 
+// GetAccountConcurrencyBatch 为用户号池复用账号管理页的实时并发口径。
+func (s *APIKeyService) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	if s == nil || s.concurrencyService == nil {
+		result := make(map[int64]int, len(accountIDs))
+		for _, accountID := range accountIDs {
+			result[accountID] = 0
+		}
+		return result, nil
+	}
+	return s.concurrencyService.GetAccountConcurrencyBatch(ctx, accountIDs)
+}
+
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
 	if apiKey == nil {
 		return

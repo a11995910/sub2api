@@ -245,17 +245,25 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 	require.NotContains(t, string(body), `"image_size":"2K"`)
 }
 
-func TestUsageLogFromServiceForUserOnlyExposesOAuthNameForVisibleActualGroup(t *testing.T) {
+func TestUsageLogFromServiceForUserOnlyExposesOAuthIdentifierForVisibleActualGroup(t *testing.T) {
 	log := &service.UsageLog{
 		UserID:    7,
 		AccountID: 99,
 		Group:     &service.Group{OAuthPoolVisible: true},
-		Account:   &service.Account{ID: 99, Name: "OAuth Pro", Type: service.AccountTypeOAuth},
+		Account: &service.Account{
+			ID:          99,
+			Name:        "Pro 正价",
+			Type:        service.AccountTypeOAuth,
+			Credentials: map[string]any{"email": "owner@example.com"},
+		},
 	}
 
 	visible := UsageLogFromServiceForUser(log, 7)
-	require.Equal(t, "OAuth Pro", visible.OAuthAccount.Name)
+	require.Equal(t, "owner@example.com", visible.OAuthAccount.Identifier)
 	require.Nil(t, visible.AccountID)
+	body, err := json.Marshal(visible)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "Pro 正价")
 
 	for name, mutate := range map[string]func(*service.UsageLog){
 		"other user":      func(item *service.UsageLog) { item.UserID = 8 },
@@ -280,6 +288,12 @@ func TestUsageLogFromServiceForUserOnlyExposesOAuthNameForVisibleActualGroup(t *
 			require.Nil(t, got.AccountID)
 		})
 	}
+
+	withoutIdentifier := *log
+	accountWithoutIdentifier := *log.Account
+	accountWithoutIdentifier.Credentials = nil
+	withoutIdentifier.Account = &accountWithoutIdentifier
+	require.Nil(t, UsageLogFromServiceForUser(&withoutIdentifier, 7).OAuthAccount)
 }
 
 func TestUsageLogDTOHidesUserAccountIDButKeepsAdminAccountID(t *testing.T) {

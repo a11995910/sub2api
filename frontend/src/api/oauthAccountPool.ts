@@ -5,21 +5,42 @@ export interface OAuthAccountPoolWindow {
   resets_at: string | null
 }
 
+export interface OAuthAccountPoolRequestTokenStats {
+  requests: number
+  tokens: number
+}
+
+export interface OAuthAccountPoolAccountStats {
+  five_hour: OAuthAccountPoolRequestTokenStats
+  seven_day: OAuthAccountPoolRequestTokenStats
+  total: OAuthAccountPoolRequestTokenStats
+}
+
+export interface OAuthAccountPoolSummary extends OAuthAccountPoolRequestTokenStats {
+  account_count: number
+}
+
 export interface OAuthAccountPoolAccount {
-  name: string
+  identifier: string
+  plan_type: string
+  current_concurrency: number
+  concurrency: number
   usage: {
     five_hour: OAuthAccountPoolWindow | null
     seven_day: OAuthAccountPoolWindow | null
   }
+  stats: OAuthAccountPoolAccountStats
 }
 
 export interface OAuthAccountPoolGroup {
   name: string
   accounts: OAuthAccountPoolAccount[]
+  summary: OAuthAccountPoolSummary
 }
 
 export interface OAuthAccountPoolResponse {
   groups: OAuthAccountPoolGroup[]
+  summary: OAuthAccountPoolSummary
 }
 
 export async function getOAuthAccountPool(): Promise<OAuthAccountPoolResponse> {

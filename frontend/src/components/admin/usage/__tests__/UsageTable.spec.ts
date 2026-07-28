@@ -121,10 +121,10 @@ describe('admin UsageTable tooltip', () => {
     } as DOMRect)
   })
 
-  it('普通用户数据带公开 OAuth 摘要时显示账号名称', () => {
+  it('普通用户数据带公开 OAuth 摘要时显示真实账号且不显示自定义名称', () => {
     const wrapper = mount(UsageTable, {
       props: {
-        data: [{ ...baseImageRow, oauth_account: { name: 'Pro 正价' } }],
+        data: [{ ...baseImageRow, oauth_account: { identifier: 'owner@example.com' } }],
         loading: false,
         columns: [],
       },
@@ -138,7 +138,8 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Pro 正价')
+    expect(wrapper.text()).toContain('owner@example.com')
+    expect(wrapper.text()).not.toContain('Pro 正价')
   })
 
   it('marks only usage rows that actually applied long-context billing', () => {

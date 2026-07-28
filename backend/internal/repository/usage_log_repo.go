@@ -2311,6 +2311,82 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 	return result, nil
 }
 
+// GetOAuthAccountPoolStats 使用一次批量查询聚合每个账号的 5h、7d 与累计请求/Token。
+// 每个账号可携带不同窗口起点，以保持与对应额度重置窗口一致。
+func (r *usageLogRepository) GetOAuthAccountPoolStats(ctx context.Context, windows []service.OAuthAccountPoolStatsWindow) (map[int64]service.OAuthAccountPoolAccountStats, error) {
+	result := make(map[int64]service.OAuthAccountPoolAccountStats, len(windows))
+	if len(windows) == 0 {
+		return result, nil
+	}
+
+	accountIDs := make([]int64, 0, len(windows))
+	fiveHourStarts := make([]time.Time, 0, len(windows))
+	sevenDayStarts := make([]time.Time, 0, len(windows))
+	for _, window := range windows {
+		accountIDs = append(accountIDs, window.AccountID)
+		fiveHourStarts = append(fiveHourStarts, window.FiveHourStart)
+		sevenDayStarts = append(sevenDayStarts, window.SevenDayStart)
+	}
+
+	query := `
+		WITH requested_accounts AS (
+			SELECT *
+			FROM UNNEST($1::bigint[], $2::timestamptz[], $3::timestamptz[])
+				AS requested(account_id, five_hour_start, seven_day_start)
+		)
+		SELECT
+			requested.account_id,
+			COUNT(usage.id) FILTER (WHERE usage.created_at >= requested.five_hour_start) AS five_hour_requests,
+			COALESCE(SUM(usage.input_tokens + usage.output_tokens + usage.cache_creation_tokens + usage.cache_read_tokens)
+				FILTER (WHERE usage.created_at >= requested.five_hour_start), 0) AS five_hour_tokens,
+			COUNT(usage.id) FILTER (WHERE usage.created_at >= requested.seven_day_start) AS seven_day_requests,
+			COALESCE(SUM(usage.input_tokens + usage.output_tokens + usage.cache_creation_tokens + usage.cache_read_tokens)
+				FILTER (WHERE usage.created_at >= requested.seven_day_start), 0) AS seven_day_tokens,
+			COUNT(usage.id) AS total_requests,
+			COALESCE(SUM(usage.input_tokens + usage.output_tokens + usage.cache_creation_tokens + usage.cache_read_tokens), 0) AS total_tokens
+		FROM requested_accounts requested
+		LEFT JOIN usage_logs usage ON usage.account_id = requested.account_id
+		GROUP BY requested.account_id
+	`
+	rows, err := r.sql.QueryContext(
+		ctx,
+		query,
+		pq.Array(accountIDs),
+		pq.Array(fiveHourStarts),
+		pq.Array(sevenDayStarts),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var accountID int64
+		var stats service.OAuthAccountPoolAccountStats
+		if err := rows.Scan(
+			&accountID,
+			&stats.FiveHour.Requests,
+			&stats.FiveHour.Tokens,
+			&stats.SevenDay.Requests,
+			&stats.SevenDay.Tokens,
+			&stats.Total.Requests,
+			&stats.Total.Tokens,
+		); err != nil {
+			return nil, err
+		}
+		result[accountID] = stats
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, window := range windows {
+		if _, exists := result[window.AccountID]; !exists {
+			result[window.AccountID] = service.OAuthAccountPoolAccountStats{}
+		}
+	}
+	return result, nil
+}
+
 // GetGeminiUsageTotalsBatch 批量聚合 Gemini 账号在窗口内的 Pro/Flash 请求与用量。
 // 模型分类规则与 service.geminiModelClassFromName 一致：model 包含 flash/lite 视为 flash，其余视为 pro。
 func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]service.GeminiUsageTotals, error) {
@@ -4375,7 +4451,16 @@ func (r *usageLogRepository) loadAccounts(ctx context.Context, ids []int64) (map
 	if len(ids) == 0 {
 		return out, nil
 	}
-	models, err := r.client.Account.Query().Where(dbaccount.IDIn(ids...)).All(ctx)
+	models, err := r.client.Account.Query().
+		Where(dbaccount.IDIn(ids...)).
+		WithParent(func(query *dbent.AccountQuery) {
+			query.Select(
+				dbaccount.FieldID,
+				dbaccount.FieldCredentials,
+				dbaccount.FieldExtra,
+			)
+		}).
+		All(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -217,21 +217,44 @@ type OAuthAccountPoolWindow struct {
 	ResetsAt    *time.Time `json:"resets_at"`
 }
 
+type OAuthAccountPoolRequestTokenStats struct {
+	Requests int64 `json:"requests"`
+	Tokens   int64 `json:"tokens"`
+}
+
+type OAuthAccountPoolAccountStats struct {
+	FiveHour OAuthAccountPoolRequestTokenStats `json:"five_hour"`
+	SevenDay OAuthAccountPoolRequestTokenStats `json:"seven_day"`
+	Total    OAuthAccountPoolRequestTokenStats `json:"total"`
+}
+
+type OAuthAccountPoolSummary struct {
+	AccountCount int   `json:"account_count"`
+	Requests     int64 `json:"requests"`
+	Tokens       int64 `json:"tokens"`
+}
+
 type OAuthAccountPoolAccount struct {
-	Name  string `json:"name"`
-	Usage struct {
+	Identifier         string `json:"identifier"`
+	PlanType           string `json:"plan_type"`
+	CurrentConcurrency int    `json:"current_concurrency"`
+	Concurrency        int    `json:"concurrency"`
+	Usage              struct {
 		FiveHour *OAuthAccountPoolWindow `json:"five_hour"`
 		SevenDay *OAuthAccountPoolWindow `json:"seven_day"`
 	} `json:"usage"`
+	Stats OAuthAccountPoolAccountStats `json:"stats"`
 }
 
 type OAuthAccountPoolGroup struct {
 	Name     string                    `json:"name"`
 	Accounts []OAuthAccountPoolAccount `json:"accounts"`
+	Summary  OAuthAccountPoolSummary   `json:"summary"`
 }
 
 type OAuthAccountPool struct {
-	Groups []OAuthAccountPoolGroup `json:"groups"`
+	Groups  []OAuthAccountPoolGroup `json:"groups"`
+	Summary OAuthAccountPoolSummary `json:"summary"`
 }
 
 type Account struct {
@@ -603,12 +626,12 @@ type UsageLog struct {
 	APIKey       *APIKey           `json:"api_key,omitempty"`
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`
-	OAuthAccount *OAuthAccountName `json:"oauth_account,omitempty"`
+	OAuthAccount *OAuthAccountInfo `json:"oauth_account,omitempty"`
 }
 
-// OAuthAccountName 是普通用户使用记录允许返回的最小账号信息。
-type OAuthAccountName struct {
-	Name string `json:"name"`
+// OAuthAccountInfo 是普通用户使用记录允许返回的最小真实账号信息。
+type OAuthAccountInfo struct {
+	Identifier string `json:"identifier"`
 }
 
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。

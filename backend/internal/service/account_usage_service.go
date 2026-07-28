@@ -98,6 +98,13 @@ type windowStatsCache struct {
 	timestamp time.Time
 }
 
+type oauthAccountPoolStatsCache struct {
+	fiveHourStart time.Time
+	sevenDayStart time.Time
+	stats         OAuthAccountPoolAccountStats
+	timestamp     time.Time
+}
+
 // antigravityUsageCache 缓存 Antigravity 额度数据
 type antigravityUsageCache struct {
 	usageInfo *UsageInfo
@@ -110,6 +117,7 @@ const (
 	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
 	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL     = 1 * time.Minute
+	oauthPoolStatsCacheTTL  = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	grokProbeRetryTTL       = 1 * time.Minute
 	grokFreeQuotaWindow     = 24 * time.Hour
@@ -120,6 +128,7 @@ const (
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
+	oauthPoolStats    sync.Map           // accountID -> *oauthAccountPoolStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
@@ -130,6 +139,18 @@ type UsageCache struct {
 // NewUsageCache 创建 UsageCache 实例
 func NewUsageCache() *UsageCache {
 	return &UsageCache{}
+}
+
+type oauthAccountPoolStatsRepository interface {
+	GetOAuthAccountPoolStats(ctx context.Context, windows []OAuthAccountPoolStatsWindow) (map[int64]OAuthAccountPoolAccountStats, error)
+}
+
+func oauthPoolStatsWindowStartMatches(cached, current time.Time) bool {
+	delta := cached.Sub(current)
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= oauthPoolStatsCacheTTL
 }
 
 // WindowStats 窗口期统计
@@ -1677,4 +1698,59 @@ func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64
 // 用于账号列表页面显示当前窗口费用
 func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
+}
+
+// GetOAuthAccountPoolStats 批量读取号池账号的 5h、7d 与累计请求/Token。
+// 查询只访问本地 usage_logs；短缓存用于避免用户频繁刷新时重复扫描账号历史记录。
+func (s *AccountUsageService) GetOAuthAccountPoolStats(ctx context.Context, windows []OAuthAccountPoolStatsWindow) (map[int64]OAuthAccountPoolAccountStats, error) {
+	result := make(map[int64]OAuthAccountPoolAccountStats, len(windows))
+	if len(windows) == 0 {
+		return result, nil
+	}
+	if s == nil || s.usageLogRepo == nil {
+		return nil, fmt.Errorf("usage log repository is unavailable")
+	}
+	repo, ok := s.usageLogRepo.(oauthAccountPoolStatsRepository)
+	if !ok {
+		return nil, fmt.Errorf("usage log repository does not support oauth account pool stats")
+	}
+
+	now := time.Now()
+	missing := make([]OAuthAccountPoolStatsWindow, 0, len(windows))
+	for _, window := range windows {
+		if s.cache != nil {
+			if cached, exists := s.cache.oauthPoolStats.Load(window.AccountID); exists {
+				entry, valid := cached.(*oauthAccountPoolStatsCache)
+				if valid &&
+					now.Sub(entry.timestamp) < oauthPoolStatsCacheTTL &&
+					oauthPoolStatsWindowStartMatches(entry.fiveHourStart, window.FiveHourStart) &&
+					oauthPoolStatsWindowStartMatches(entry.sevenDayStart, window.SevenDayStart) {
+					result[window.AccountID] = entry.stats
+					continue
+				}
+			}
+		}
+		missing = append(missing, window)
+	}
+
+	if len(missing) == 0 {
+		return result, nil
+	}
+	fresh, err := repo.GetOAuthAccountPoolStats(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	for _, window := range missing {
+		stats := fresh[window.AccountID]
+		result[window.AccountID] = stats
+		if s.cache != nil {
+			s.cache.oauthPoolStats.Store(window.AccountID, &oauthAccountPoolStatsCache{
+				fiveHourStart: window.FiveHourStart,
+				sevenDayStart: window.SevenDayStart,
+				stats:         stats,
+				timestamp:     now,
+			})
+		}
+	}
+	return result, nil
 }

@@ -660,6 +660,34 @@ func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_OrdersWithoutAmbiguousC
 	s.Require().Equal(beta.ID, bindings[1].Account.ID)
 }
 
+func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_LoadsRealIdentityAndShadowParent() {
+	visibleGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-oauth-pool-identity"})
+	_, err := s.client.Group.UpdateOneID(visibleGroup.ID).
+		SetOauthPoolVisible(true).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	parent := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "parent-custom-name",
+		Platform:    service.PlatformOpenAI,
+		Credentials: map[string]any{"email": "parent@example.com", "plan_type": "pro"},
+	})
+	shadow := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:            "shadow-custom-name",
+		Platform:        service.PlatformOpenAI,
+		ParentAccountID: &parent.ID,
+		QuotaDimension:  service.QuotaDimensionSpark,
+	})
+	mustBindAccountToGroup(s.T(), s.client, shadow.ID, visibleGroup.ID, 1)
+
+	bindings, err := s.repo.ListActiveOAuthByGroupIDs(s.ctx, []int64{visibleGroup.ID})
+
+	s.Require().NoError(err)
+	s.Require().Len(bindings, 1)
+	s.Require().Equal("parent@example.com", service.ResolveOAuthAccountDisplayIdentifier(&bindings[0].Account))
+	s.Require().Equal("pro", service.ResolveOAuthAccountPlanType(&bindings[0].Account))
+}
+
 func (s *AccountRepoSuite) TestListActive() {
 	mustCreateAccount(s.T(), s.client, &service.Account{Name: "active1", Status: service.StatusActive})
 	mustCreateAccount(s.T(), s.client, &service.Account{Name: "inactive1", Status: service.StatusDisabled})
