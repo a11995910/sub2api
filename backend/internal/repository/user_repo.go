@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userblockedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -126,6 +127,9 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
 		return err
 	}
+	if err := r.syncUserBlockedGroupsWithClient(txCtx, txClient, created.ID, userIn.BlockedGroups); err != nil {
+		return err
+	}
 	if err := ensureEmailAuthIdentityWithClient(txCtx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
 		return err
 	}
@@ -154,6 +158,11 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	blockedGroups, err := r.loadBlockedGroups(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	out.BlockedGroups = blockedGroups[id]
 	return out, nil
 }
 
@@ -171,6 +180,11 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	blockedGroups, err := r.loadBlockedGroups(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	out.BlockedGroups = blockedGroups[id]
 	return out, nil
 }
 
@@ -198,6 +212,11 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
+	blockedGroups, err := r.loadBlockedGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	out.BlockedGroups = blockedGroups[m.ID]
 	return out, nil
 }
 
@@ -305,6 +324,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+		return err
+	}
+	if err := r.syncUserBlockedGroupsWithClient(txCtx, txClient, updated.ID, userIn.BlockedGroups); err != nil {
 		return err
 	}
 	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
@@ -595,6 +617,13 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
 		}
+	}
+	blockedGroupsByUser, err := r.loadBlockedGroups(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		u.BlockedGroups = blockedGroupsByUser[id]
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
@@ -1527,6 +1556,11 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
+	blockedGroups, err := r.loadBlockedGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	out.BlockedGroups = blockedGroups[m.ID]
 	return out, nil
 }
 
@@ -1554,6 +1588,25 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].GroupID)
 	}
 
+	return out, nil
+}
+
+func (r *userRepository) loadBlockedGroups(ctx context.Context, userIDs []int64) (map[int64][]int64, error) {
+	out := make(map[int64][]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := clientFromContext(ctx, r.client).UserBlockedGroup.Query().
+		Where(userblockedgroup.UserIDIn(userIDs...)).
+		Order(userblockedgroup.ByUserID(), userblockedgroup.ByGroupID()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].GroupID)
+	}
 	return out, nil
 }
 
@@ -1625,6 +1678,38 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 		entries = append(entries, service.UserAllowedGroupAccessInput{GroupID: groupID})
 	}
 	return r.syncUserAllowedGroupAccessWithClient(ctx, client, userID, entries)
+}
+
+// syncUserBlockedGroupsWithClient 在同一用户更新事务中同步公开分组黑名单。
+func (r *userRepository) syncUserBlockedGroupsWithClient(ctx context.Context, client *dbent.Client, userID int64, groupIDs []int64) error {
+	if client == nil {
+		return nil
+	}
+	groupIDs = uniquePositiveInt64s(groupIDs)
+
+	deleteQ := client.UserBlockedGroup.Delete().Where(userblockedgroup.UserIDEQ(userID))
+	if len(groupIDs) > 0 {
+		deleteQ = deleteQ.Where(userblockedgroup.GroupIDNotIn(groupIDs...))
+	}
+	if _, err := deleteQ.Exec(ctx); err != nil {
+		return err
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+
+	creates := make([]*dbent.UserBlockedGroupCreate, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		creates = append(creates, client.UserBlockedGroup.Create().SetUserID(userID).SetGroupID(groupID))
+	}
+	if err := client.UserBlockedGroup.
+		CreateBulk(creates...).
+		OnConflictColumns(userblockedgroup.FieldUserID, userblockedgroup.FieldGroupID).
+		DoNothing().
+		Exec(ctx); err != nil && !isSQLNoRowsError(err) {
+		return err
+	}
+	return nil
 }
 
 func (r *userRepository) syncUserAllowedGroupAccessWithClient(ctx context.Context, client *dbent.Client, userID int64, entries []service.UserAllowedGroupAccessInput) error {

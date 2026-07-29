@@ -124,6 +124,8 @@ export interface AdminUser extends User {
   group_rates?: Record<number, number>
   // 专属分组授权元数据 (group_id -> access meta)
   allowed_group_access?: Record<number, UserAllowedGroupAccess>
+  // 用户不可使用的公开标准分组 ID
+  blocked_groups?: number[]
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }
@@ -1948,6 +1950,7 @@ export interface UpdateUserRequest {
   rpm_limit?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  blocked_groups?: number[]
   allowed_group_access?: Array<{
     group_id: number
     expires_at: string | null

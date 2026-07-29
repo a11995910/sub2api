@@ -212,6 +212,7 @@ type groupRepoStub struct {
 	deleteCalls     []int64
 	groupsByID      map[int64]*Group
 	getByIDLiteIDs  []int64
+	getByIDLiteErr  error
 }
 
 func (s *groupRepoStub) Create(ctx context.Context, group *Group) error {
@@ -224,6 +225,9 @@ func (s *groupRepoStub) GetByID(ctx context.Context, id int64) (*Group, error) {
 
 func (s *groupRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
 	s.getByIDLiteIDs = append(s.getByIDLiteIDs, id)
+	if s.getByIDLiteErr != nil {
+		return nil, s.getByIDLiteErr
+	}
 	if group, ok := s.groupsByID[id]; ok {
 		return group, nil
 	}

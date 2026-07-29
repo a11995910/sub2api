@@ -23,6 +23,9 @@ type User struct {
 	Concurrency    int
 	Status         string
 	AllowedGroups  []int64
+	// BlockedGroups 保存当前用户不可使用的公开标准分组 ID。
+	// 黑名单优先于公开分组的默认开放规则，不影响专属分组和订阅分组的既有授权模型。
+	BlockedGroups []int64
 	// AllowedGroupAccess 保存管理员侧可见的专属分组授权元数据。
 	// key 为 group_id；AllowedGroups 仍保留为兼容旧接口的授权分组 ID 列表。
 	AllowedGroupAccess map[int64]UserGroupAccessMeta
@@ -75,13 +78,15 @@ func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }
 
-// CanBindGroup checks whether a user can bind to a given group.
-// For standard groups:
-// - Public groups (non-exclusive): all users can bind
-// - Exclusive groups: only users with the group in AllowedGroups can bind
+// CanBindGroup 判断用户是否可以绑定标准分组：公开分组使用黑名单，专属分组使用白名单。
 func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
-	// 公开分组（非专属）：所有用户都可以绑定
+	// 公开分组（非专属）：默认开放，但用户级黑名单优先。
 	if !isExclusive {
+		for _, id := range u.BlockedGroups {
+			if id == groupID {
+				return false
+			}
+		}
 		return true
 	}
 	// 专属分组：需要在 AllowedGroups 中

@@ -401,6 +401,23 @@ func TestAdvanceAutoGroupFallback_RejectsInvalidTargetAndCycle(t *testing.T) {
 		})
 	}
 
+	t.Run("用户已屏蔽目标公开分组", func(t *testing.T) {
+		target := autoFallbackTestGroup(targetID, 0.18, nil)
+		repo := &autoFallbackGroupRepoStub{groups: map[int64]*Group{targetID: target}}
+		apiKey := &APIKey{
+			GroupID:                  &source.ID,
+			Group:                    source,
+			User:                     &User{ID: 10, BlockedGroups: []int64{targetID}},
+			AutoGroupFallbackEnabled: true,
+		}
+		ctx := WithAutoGroupFallbackState(context.Background(), apiKey)
+
+		_, ok := advanceAutoGroupFallback(ctx, repo, apiKey.GroupID, "gpt-5.6-sol", diagnose)
+
+		require.False(t, ok)
+		require.Same(t, source, apiKey.Group)
+	})
+
 	t.Run("循环链在已访问分组前停止", func(t *testing.T) {
 		sourceID := source.ID
 		target := autoFallbackTestGroup(targetID, 0.18, &sourceID)

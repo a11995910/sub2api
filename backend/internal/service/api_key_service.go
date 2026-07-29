@@ -408,14 +408,14 @@ func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID in
 
 // canUserBindGroup 检查用户是否可以绑定指定分组
 // 对于订阅类型分组：检查用户是否有有效订阅
-// 对于标准类型分组：使用原有的 AllowedGroups 和 IsExclusive 逻辑
+// 对于标准类型分组：公开分组使用黑名单，专属分组使用白名单
 func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
 	// 订阅类型分组：需要有效订阅
 	if group.IsSubscriptionType() {
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
 		return err == nil // 有有效订阅则允许
 	}
-	// 标准类型分组：使用原有逻辑
+	// 标准类型分组：统一使用用户的公开黑名单和专属白名单规则。
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
@@ -959,7 +959,7 @@ func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 
 // GetAvailableGroups 获取用户有权限绑定的分组列表
 // 返回用户可以选择的分组：
-// - 标准类型分组：公开的（非专属）或用户被明确允许的
+// - 标准类型分组：未被用户屏蔽的公开分组，或用户被明确允许的专属分组
 // - 订阅类型分组：用户有有效订阅的
 func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error) {
 	// 获取用户信息
@@ -1025,7 +1025,7 @@ func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subsc
 	if group.IsSubscriptionType() {
 		return subscribedGroupIDs[group.ID]
 	}
-	// 标准类型分组：使用原有逻辑
+	// 标准类型分组：统一使用用户的公开黑名单和专属白名单规则。
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 

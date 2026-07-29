@@ -270,3 +270,34 @@ func TestAPIKeyRepository_GetByKeyForAuth_FiltersExpiredAllowedGroups_SQLite(t *
 	require.ElementsMatch(t, []int64{permanentGroup.ID, activeTemporaryGroup.ID}, got.User.AllowedGroups)
 	require.NotContains(t, got.User.AllowedGroups, expiredTemporaryGroup.ID)
 }
+
+func TestAPIKeyRepository_GetByKeyForAuth_LoadsBlockedGroups_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-blocked-groups@test.com")
+	group, err := client.Group.Create().
+		SetName("g-auth-blocked-public").
+		SetStatus(service.StatusActive).
+		SetSubscriptionType(service.SubscriptionTypeStandard).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.UserBlockedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(group.ID).
+		Save(ctx)
+	require.NoError(t, err)
+
+	key := &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-getbykey-auth-blocked-groups",
+		Name:    "Blocked Groups Key",
+		GroupID: &group.ID,
+		Status:  service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.NotNil(t, got.User)
+	require.Equal(t, []int64{group.ID}, got.User.BlockedGroups)
+}

@@ -217,6 +217,34 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 			}
 		}
 	}
+	var normalizedBlockedGroups []int64
+	if input.BlockedGroups != nil {
+		if s.groupRepo == nil {
+			return nil, fmt.Errorf("group repository is not configured")
+		}
+		seen := make(map[int64]struct{}, len(*input.BlockedGroups))
+		normalizedBlockedGroups = make([]int64, 0, len(*input.BlockedGroups))
+		for _, groupID := range *input.BlockedGroups {
+			if groupID <= 0 {
+				return nil, infraerrors.BadRequest("INVALID_BLOCKED_GROUP", "blocked group id must be positive")
+			}
+			if _, ok := seen[groupID]; ok {
+				continue
+			}
+			group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+			if err != nil {
+				if errors.Is(err, ErrGroupNotFound) {
+					return nil, infraerrors.BadRequest("INVALID_BLOCKED_GROUP", fmt.Sprintf("blocked group %d does not exist", groupID))
+				}
+				return nil, fmt.Errorf("get blocked group %d: %w", groupID, err)
+			}
+			if group.SubscriptionType != SubscriptionTypeStandard || group.IsExclusive {
+				return nil, infraerrors.BadRequest("INVALID_BLOCKED_GROUP", fmt.Sprintf("blocked group %d must be a public standard group", groupID))
+			}
+			seen[groupID] = struct{}{}
+			normalizedBlockedGroups = append(normalizedBlockedGroups, groupID)
+		}
+	}
 
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -233,6 +261,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
 	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
+	oldBlockedGroups := append([]int64(nil), user.BlockedGroups...)
 	allowedGroupAccessUpdated := input.AllowedGroupAccess != nil
 	var accessRepo UserGroupAccessAdminRepository
 	if input.AllowedGroupAccess != nil {
@@ -298,6 +327,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	} else if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
+	if input.BlockedGroups != nil {
+		user.BlockedGroups = normalizedBlockedGroups
+	}
 
 	if input.AllowedGroupAccess != nil {
 		if s.entClient != nil {
@@ -344,8 +376,8 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
-		// allowed_groups 参与 API Key 专属分组授权判断；不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
+		// allowed_groups 与 blocked_groups 都参与 API Key 分组授权判断；修改后必须立即失效旧快照。
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || !sameInt64Set(user.BlockedGroups, oldBlockedGroups) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}

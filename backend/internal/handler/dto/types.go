@@ -49,6 +49,8 @@ type AdminUser struct {
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
 	// AllowedGroupAccess 专属分组授权元数据，key 为 group_id。
 	AllowedGroupAccess map[int64]UserGroupAccess `json:"allowed_group_access,omitempty"`
+	// BlockedGroups 用户不可使用的公开标准分组 ID。
+	BlockedGroups []int64 `json:"blocked_groups"`
 }
 
 type UserGroupAccess struct {

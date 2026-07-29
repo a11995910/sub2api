@@ -163,13 +163,17 @@ type GroupEdges struct {
 	Accounts []*Account `json:"accounts,omitempty"`
 	// AllowedUsers holds the value of the allowed_users edge.
 	AllowedUsers []*User `json:"allowed_users,omitempty"`
+	// BlockedUsers holds the value of the blocked_users edge.
+	BlockedUsers []*User `json:"blocked_users,omitempty"`
 	// AccountGroups holds the value of the account_groups edge.
 	AccountGroups []*AccountGroup `json:"account_groups,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
+	// UserBlockedGroups holds the value of the user_blocked_groups edge.
+	UserBlockedGroups []*UserBlockedGroup `json:"user_blocked_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [8]bool
+	loadedTypes [10]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -226,10 +230,19 @@ func (e GroupEdges) AllowedUsersOrErr() ([]*User, error) {
 	return nil, &NotLoadedError{edge: "allowed_users"}
 }
 
+// BlockedUsersOrErr returns the BlockedUsers value or an error if the edge
+// was not loaded in eager-loading.
+func (e GroupEdges) BlockedUsersOrErr() ([]*User, error) {
+	if e.loadedTypes[6] {
+		return e.BlockedUsers, nil
+	}
+	return nil, &NotLoadedError{edge: "blocked_users"}
+}
+
 // AccountGroupsOrErr returns the AccountGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e GroupEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.AccountGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "account_groups"}
@@ -238,10 +251,19 @@ func (e GroupEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e GroupEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[8] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
+}
+
+// UserBlockedGroupsOrErr returns the UserBlockedGroups value or an error if the edge
+// was not loaded in eager-loading.
+func (e GroupEdges) UserBlockedGroupsOrErr() ([]*UserBlockedGroup, error) {
+	if e.loadedTypes[9] {
+		return e.UserBlockedGroups, nil
+	}
+	return nil, &NotLoadedError{edge: "user_blocked_groups"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -726,6 +748,11 @@ func (_m *Group) QueryAllowedUsers() *UserQuery {
 	return NewGroupClient(_m.config).QueryAllowedUsers(_m)
 }
 
+// QueryBlockedUsers queries the "blocked_users" edge of the Group entity.
+func (_m *Group) QueryBlockedUsers() *UserQuery {
+	return NewGroupClient(_m.config).QueryBlockedUsers(_m)
+}
+
 // QueryAccountGroups queries the "account_groups" edge of the Group entity.
 func (_m *Group) QueryAccountGroups() *AccountGroupQuery {
 	return NewGroupClient(_m.config).QueryAccountGroups(_m)
@@ -734,6 +761,11 @@ func (_m *Group) QueryAccountGroups() *AccountGroupQuery {
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the Group entity.
 func (_m *Group) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 	return NewGroupClient(_m.config).QueryUserAllowedGroups(_m)
+}
+
+// QueryUserBlockedGroups queries the "user_blocked_groups" edge of the Group entity.
+func (_m *Group) QueryUserBlockedGroups() *UserBlockedGroupQuery {
+	return NewGroupClient(_m.config).QueryUserBlockedGroups(_m)
 }
 
 // Update returns a builder for updating this Group.

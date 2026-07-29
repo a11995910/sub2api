@@ -13,7 +13,7 @@ func TestAPIKeyService_AuthSnapshotPreservesOpenAIFastModeEnabled(t *testing.T) 
 		Name:                  "fast-key",
 		Status:                StatusActive,
 		OpenAIFastModeEnabled: true,
-		User:                  &User{ID: 22, Status: StatusActive, Role: RoleUser, Balance: 10, Concurrency: 1},
+		User:                  &User{ID: 22, Status: StatusActive, Role: RoleUser, Balance: 10, Concurrency: 1, BlockedGroups: []int64{7, 9}},
 	}
 
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
@@ -30,6 +30,27 @@ func TestAPIKeyService_AuthSnapshotPreservesOpenAIFastModeEnabled(t *testing.T) 
 	}
 	if !roundTripped.OpenAIFastModeEnabled {
 		t.Fatalf("expected api key to preserve openai_fast_mode_enabled after snapshot round trip")
+	}
+	if len(roundTripped.User.BlockedGroups) != 2 || roundTripped.User.BlockedGroups[0] != 7 || roundTripped.User.BlockedGroups[1] != 9 {
+		t.Fatalf("expected api key to preserve blocked groups after snapshot round trip, got %#v", roundTripped.User.BlockedGroups)
+	}
+}
+
+func TestAPIKeyService_RejectsV21AuthSnapshotWithoutBlockedGroups(t *testing.T) {
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-blocked-groups", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 21},
+	})
+
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected v21 auth snapshot to be rejected after blocked groups were added")
+	}
+	if apiKey != nil {
+		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
 	}
 }
 

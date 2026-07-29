@@ -2246,9 +2246,10 @@ export default {
       failedToUpdateAllowedGroups: 'Failed to update allowed groups',
       // User Group Configuration
       groupConfig: 'User Group Configuration',
-      groupConfigHint: 'Configure custom rate multipliers for user {email} (overrides group defaults)',
+      groupConfigHint: 'Configure group access and custom rates for {email}',
       exclusiveGroups: 'Exclusive Groups',
-      publicGroups: 'Public Groups (Default Available)',
+      publicGroups: 'Public Groups',
+      blockedGroup: 'Blocked',
       defaultRate: 'Default Rate',
       customRate: 'Custom Rate',
       useDefaultRate: 'Use Default',

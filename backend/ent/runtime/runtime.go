@@ -44,6 +44,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userblockedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -2427,6 +2428,12 @@ func init() {
 	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
 	// userattributevalue.DefaultValue holds the default value on creation for the value field.
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
+	userblockedgroupFields := schema.UserBlockedGroup{}.Fields()
+	_ = userblockedgroupFields
+	// userblockedgroupDescCreatedAt is the schema descriptor for created_at field.
+	userblockedgroupDescCreatedAt := userblockedgroupFields[2].Descriptor()
+	// userblockedgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userblockedgroup.DefaultCreatedAt = userblockedgroupDescCreatedAt.Default.(func() time.Time)
 	userplatformquotaMixin := schema.UserPlatformQuota{}.Mixin()
 	userplatformquotaMixinHooks1 := userplatformquotaMixin[1].Hooks()
 	userplatformquota.Hooks[0] = userplatformquotaMixinHooks1[0]

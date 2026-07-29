@@ -53,6 +53,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userblockedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 
@@ -140,6 +141,8 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserBlockedGroup is the client for interacting with the UserBlockedGroup builders.
+	UserBlockedGroup *UserBlockedGroupClient
 	// UserPlatformQuota is the client for interacting with the UserPlatformQuota builders.
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
@@ -193,6 +196,7 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserBlockedGroup = NewUserBlockedGroupClient(c.config)
 	c.UserPlatformQuota = NewUserPlatformQuotaClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
@@ -325,6 +329,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserBlockedGroup:              NewUserBlockedGroupClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
@@ -384,6 +389,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserBlockedGroup:              NewUserBlockedGroupClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
@@ -425,7 +431,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserBlockedGroup, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -445,7 +451,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserBlockedGroup, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -530,6 +536,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserBlockedGroupMutation:
+		return c.UserBlockedGroup.mutate(ctx, m)
 	case *UserPlatformQuotaMutation:
 		return c.UserPlatformQuota.mutate(ctx, m)
 	case *UserSubscriptionMutation:
@@ -3377,6 +3385,22 @@ func (c *GroupClient) QueryAllowedUsers(_m *Group) *UserQuery {
 	return query
 }
 
+// QueryBlockedUsers queries the blocked_users edge of a Group.
+func (c *GroupClient) QueryBlockedUsers(_m *Group) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, group.BlockedUsersTable, group.BlockedUsersPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryAccountGroups queries the account_groups edge of a Group.
 func (c *GroupClient) QueryAccountGroups(_m *Group) *AccountGroupQuery {
 	query := (&AccountGroupClient{config: c.config}).Query()
@@ -3402,6 +3426,22 @@ func (c *GroupClient) QueryUserAllowedGroups(_m *Group) *UserAllowedGroupQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.GroupColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, group.UserAllowedGroupsTable, group.UserAllowedGroupsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUserBlockedGroups queries the user_blocked_groups edge of a Group.
+func (c *GroupClient) QueryUserBlockedGroups(_m *Group) *UserBlockedGroupQuery {
+	query := (&UserBlockedGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(userblockedgroup.Table, userblockedgroup.GroupColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, group.UserBlockedGroupsTable, group.UserBlockedGroupsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -6042,6 +6082,22 @@ func (c *UserClient) QueryAllowedGroups(_m *User) *GroupQuery {
 	return query
 }
 
+// QueryBlockedGroups queries the blocked_groups edge of a User.
+func (c *UserClient) QueryBlockedGroups(_m *User) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, user.BlockedGroupsTable, user.BlockedGroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUsageLogs queries the usage_logs edge of a User.
 func (c *UserClient) QueryUsageLogs(_m *User) *UsageLogQuery {
 	query := (&UsageLogClient{config: c.config}).Query()
@@ -6179,6 +6235,22 @@ func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.UserColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, user.UserAllowedGroupsTable, user.UserAllowedGroupsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUserBlockedGroups queries the user_blocked_groups edge of a User.
+func (c *UserClient) QueryUserBlockedGroups(_m *User) *UserBlockedGroupQuery {
+	query := (&UserBlockedGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(userblockedgroup.Table, userblockedgroup.UserColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, user.UserBlockedGroupsTable, user.UserBlockedGroupsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -6645,6 +6717,122 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserBlockedGroupClient is a client for the UserBlockedGroup schema.
+type UserBlockedGroupClient struct {
+	config
+}
+
+// NewUserBlockedGroupClient returns a client for the UserBlockedGroup from the given config.
+func NewUserBlockedGroupClient(c config) *UserBlockedGroupClient {
+	return &UserBlockedGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userblockedgroup.Hooks(f(g(h())))`.
+func (c *UserBlockedGroupClient) Use(hooks ...Hook) {
+	c.hooks.UserBlockedGroup = append(c.hooks.UserBlockedGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userblockedgroup.Intercept(f(g(h())))`.
+func (c *UserBlockedGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserBlockedGroup = append(c.inters.UserBlockedGroup, interceptors...)
+}
+
+// Create returns a builder for creating a UserBlockedGroup entity.
+func (c *UserBlockedGroupClient) Create() *UserBlockedGroupCreate {
+	mutation := newUserBlockedGroupMutation(c.config, OpCreate)
+	return &UserBlockedGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserBlockedGroup entities.
+func (c *UserBlockedGroupClient) CreateBulk(builders ...*UserBlockedGroupCreate) *UserBlockedGroupCreateBulk {
+	return &UserBlockedGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserBlockedGroupClient) MapCreateBulk(slice any, setFunc func(*UserBlockedGroupCreate, int)) *UserBlockedGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserBlockedGroupCreateBulk{err: fmt.Errorf("calling to UserBlockedGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserBlockedGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserBlockedGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserBlockedGroup.
+func (c *UserBlockedGroupClient) Update() *UserBlockedGroupUpdate {
+	mutation := newUserBlockedGroupMutation(c.config, OpUpdate)
+	return &UserBlockedGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserBlockedGroupClient) UpdateOne(_m *UserBlockedGroup) *UserBlockedGroupUpdateOne {
+	mutation := newUserBlockedGroupMutation(c.config, OpUpdateOne)
+	mutation.user = &_m.UserID
+	mutation.group = &_m.GroupID
+	return &UserBlockedGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserBlockedGroup.
+func (c *UserBlockedGroupClient) Delete() *UserBlockedGroupDelete {
+	mutation := newUserBlockedGroupMutation(c.config, OpDelete)
+	return &UserBlockedGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Query returns a query builder for UserBlockedGroup.
+func (c *UserBlockedGroupClient) Query() *UserBlockedGroupQuery {
+	return &UserBlockedGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserBlockedGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// QueryUser queries the user edge of a UserBlockedGroup.
+func (c *UserBlockedGroupClient) QueryUser(_m *UserBlockedGroup) *UserQuery {
+	return c.Query().
+		Where(userblockedgroup.UserID(_m.UserID), userblockedgroup.GroupID(_m.GroupID)).
+		QueryUser()
+}
+
+// QueryGroup queries the group edge of a UserBlockedGroup.
+func (c *UserBlockedGroupClient) QueryGroup(_m *UserBlockedGroup) *GroupQuery {
+	return c.Query().
+		Where(userblockedgroup.UserID(_m.UserID), userblockedgroup.GroupID(_m.GroupID)).
+		QueryGroup()
+}
+
+// Hooks returns the client hooks.
+func (c *UserBlockedGroupClient) Hooks() []Hook {
+	return c.hooks.UserBlockedGroup
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserBlockedGroupClient) Interceptors() []Interceptor {
+	return c.inters.UserBlockedGroup
+}
+
+func (c *UserBlockedGroupClient) mutate(ctx context.Context, m *UserBlockedGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserBlockedGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserBlockedGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserBlockedGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserBlockedGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserBlockedGroup mutation op: %q", m.Op())
+	}
+}
+
 // UserPlatformQuotaClient is a client for the UserPlatformQuota schema.
 type UserPlatformQuotaClient struct {
 	config
@@ -7007,7 +7195,7 @@ type (
 		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
 		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Hook
+		UserBlockedGroup, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -7019,7 +7207,7 @@ type (
 		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
 		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
 		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Interceptor
+		UserBlockedGroup, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

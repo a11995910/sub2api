@@ -2306,9 +2306,10 @@ export default {
       failedToUpdateAllowedGroups: '更新允许分组失败',
       // 用户分组配置
       groupConfig: '用户分组配置',
-      groupConfigHint: '为用户 {email} 配置专属分组倍率（覆盖分组默认倍率）',
+      groupConfigHint: '为用户 {email} 配置分组权限和专属倍率',
       exclusiveGroups: '专属分组',
-      publicGroups: '公开分组（默认可用）',
+      publicGroups: '公开分组',
+      blockedGroup: '已屏蔽',
       defaultRate: '默认倍率',
       customRate: '专属倍率',
       useDefaultRate: '使用默认',

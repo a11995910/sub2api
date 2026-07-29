@@ -173,6 +173,8 @@ type UpdateUserInput struct {
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	// BlockedGroups 保存用户不可使用的公开标准分组；nil 表示不修改。
+	BlockedGroups *[]int64
 	// AllowedGroupAccess 保存专属分组授权有效期；nil 表示不修改，非 nil 表示同步授权集合和时间。
 	AllowedGroupAccess *[]UserAllowedGroupAccessInput
 	// GroupRates 用户专属分组倍率配置

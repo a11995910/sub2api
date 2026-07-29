@@ -14,8 +14,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// 同时包含分组图片响应格式、网页搜索按次价格、推理策略与 OpenAI Live 开关，递增版本以淘汰旧结构缓存。
-const apiKeyAuthSnapshotVersion = 21
+// 同时包含分组图片响应格式、网页搜索按次价格、推理策略、OpenAI Live 开关与用户分组黑名单，递增版本以淘汰旧结构缓存。
+const apiKeyAuthSnapshotVersion = 22
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -360,6 +360,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Balance:                    apiKey.User.Balance,
 			Concurrency:                apiKey.User.Concurrency,
 			AllowedGroups:              apiKey.User.AllowedGroups,
+			BlockedGroups:              apiKey.User.BlockedGroups,
 			Email:                      apiKey.User.Email,
 			Username:                   apiKey.User.Username,
 			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
@@ -467,6 +468,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Balance:                    snapshot.User.Balance,
 			Concurrency:                snapshot.User.Concurrency,
 			AllowedGroups:              snapshot.User.AllowedGroups,
+			BlockedGroups:              snapshot.User.BlockedGroups,
 			Email:                      snapshot.User.Email,
 			Username:                   snapshot.User.Username,
 			BalanceNotifyEnabled:       snapshot.User.BalanceNotifyEnabled,

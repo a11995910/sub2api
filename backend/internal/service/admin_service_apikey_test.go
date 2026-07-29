@@ -482,6 +482,29 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NonExclusiveGroup_NoAllowedGroupU
 	require.False(t, got.AutoGrantedGroupAccess)
 }
 
+func TestAdminService_AdminUpdateAPIKeyGroupID_BlockedPublicGroup(t *testing.T) {
+	existing := &APIKey{
+		ID:     1,
+		UserID: 42,
+		Key:    "sk-test",
+		User:   &User{ID: 42, BlockedGroups: []int64{10}},
+	}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{
+		ID:               10,
+		Name:             "Blocked Public",
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+	}}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+
+	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+
+	require.Error(t, err)
+	require.Equal(t, "GROUP_NOT_ALLOWED", infraerrors.Reason(err))
+	require.Nil(t, apiKeyRepo.updated)
+}
+
 func TestAdminService_AdminUpdateAPIKeyGroupID_SubscriptionGroup_Blocked(t *testing.T) {
 	existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test", GroupID: nil}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}

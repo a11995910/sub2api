@@ -1992,6 +1992,39 @@ var (
 			},
 		},
 	}
+	// UserBlockedGroupsColumns holds the columns for the "user_blocked_groups" table.
+	UserBlockedGroupsColumns = []*schema.Column{
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// UserBlockedGroupsTable holds the schema information for the "user_blocked_groups" table.
+	UserBlockedGroupsTable = &schema.Table{
+		Name:       "user_blocked_groups",
+		Columns:    UserBlockedGroupsColumns,
+		PrimaryKey: []*schema.Column{UserBlockedGroupsColumns[1], UserBlockedGroupsColumns[2]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_blocked_groups_users_user",
+				Columns:    []*schema.Column{UserBlockedGroupsColumns[1]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "user_blocked_groups_groups_group",
+				Columns:    []*schema.Column{UserBlockedGroupsColumns[2]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userblockedgroup_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserBlockedGroupsColumns[2]},
+			},
+		},
+	}
 	// UserPlatformQuotasColumns holds the columns for the "user_platform_quotas" table.
 	UserPlatformQuotasColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2168,6 +2201,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserBlockedGroupsTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
 	}
@@ -2320,6 +2354,11 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserBlockedGroupsTable.ForeignKeys[0].RefTable = UsersTable
+	UserBlockedGroupsTable.ForeignKeys[1].RefTable = GroupsTable
+	UserBlockedGroupsTable.Annotation = &entsql.Annotation{
+		Table: "user_blocked_groups",
 	}
 	UserPlatformQuotasTable.ForeignKeys[0].RefTable = UsersTable
 	UserPlatformQuotasTable.Annotation = &entsql.Annotation{

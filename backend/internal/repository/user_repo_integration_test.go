@@ -36,6 +36,7 @@ func (s *UserRepoSuite) SetupTest() {
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_blocked_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
 }
@@ -280,6 +281,31 @@ func (s *UserRepoSuite) TestCreate() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("create@test.com", got.Email)
+}
+
+func (s *UserRepoSuite) TestCreateAndUpdateBlockedGroups() {
+	firstGroup := s.mustCreateGroup("blocked public group one")
+	secondGroup := s.mustCreateGroup("blocked public group two")
+	user := s.mustCreateUser(&service.User{
+		Email:         "blocked-groups@test.com",
+		BlockedGroups: []int64{firstGroup.ID, firstGroup.ID},
+	})
+
+	created, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal([]int64{firstGroup.ID}, created.BlockedGroups)
+
+	created.BlockedGroups = []int64{secondGroup.ID}
+	s.Require().NoError(s.repo.Update(s.ctx, created))
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal([]int64{secondGroup.ID}, updated.BlockedGroups)
+
+	users, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 20})
+	s.Require().NoError(err)
+	s.Require().Len(users, 1)
+	s.Require().Equal([]int64{secondGroup.ID}, users[0].BlockedGroups)
 }
 
 func (s *UserRepoSuite) TestGetByID_NotFound() {

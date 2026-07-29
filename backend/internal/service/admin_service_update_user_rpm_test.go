@@ -4,8 +4,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,4 +68,59 @@ func TestAdminService_UpdateUser_NoInvalidateWhenRPMLimitUnchanged(t *testing.T)
 	})
 	require.NoError(t, err)
 	require.Empty(t, invalidator.userIDs, "只改 username 不应触发认证缓存失效")
+}
+
+func TestAdminService_UpdateUser_SyncsPublicGroupBlacklist(t *testing.T) {
+	base := &userRepoStub{user: &User{ID: 42, Email: "u@example.com", BlockedGroups: []int64{3}}}
+	repo := &rpmUserRepoStub{userRepoStub: base}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		userRepo: repo,
+		groupRepo: &groupRepoStub{groupsByID: map[int64]*Group{
+			7: {ID: 7, SubscriptionType: SubscriptionTypeStandard},
+		}},
+		redeemCodeRepo:       &redeemRepoStub{},
+		authCacheInvalidator: invalidator,
+	}
+	blockedGroups := []int64{7, 7}
+
+	updated, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{BlockedGroups: &blockedGroups})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, updated.BlockedGroups)
+	require.Equal(t, []int64{42}, invalidator.userIDs)
+}
+
+func TestAdminService_UpdateUser_RejectsNonPublicBlockedGroup(t *testing.T) {
+	for name, group := range map[string]*Group{
+		"专属标准分组": {ID: 7, IsExclusive: true, SubscriptionType: SubscriptionTypeStandard},
+		"订阅分组":   {ID: 7, SubscriptionType: SubscriptionTypeSubscription},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := &adminServiceImpl{
+				userRepo:  &userRepoStub{user: &User{ID: 42, Email: "u@example.com"}},
+				groupRepo: &groupRepoStub{groupsByID: map[int64]*Group{7: group}},
+			}
+			blockedGroups := []int64{7}
+
+			_, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{BlockedGroups: &blockedGroups})
+
+			require.Error(t, err)
+			require.Equal(t, "INVALID_BLOCKED_GROUP", infraerrors.Reason(err))
+		})
+	}
+}
+
+func TestAdminService_UpdateUser_PropagatesBlockedGroupRepositoryError(t *testing.T) {
+	repoErr := errors.New("database unavailable")
+	svc := &adminServiceImpl{
+		userRepo:  &userRepoStub{user: &User{ID: 42, Email: "u@example.com"}},
+		groupRepo: &groupRepoStub{getByIDLiteErr: repoErr},
+	}
+	blockedGroups := []int64{7}
+
+	_, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{BlockedGroups: &blockedGroups})
+
+	require.ErrorIs(t, err, repoErr)
+	require.Empty(t, infraerrors.Reason(err))
 }

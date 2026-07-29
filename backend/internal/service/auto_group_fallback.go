@@ -157,6 +157,9 @@ func advanceAutoGroupFallback(
 	if target.Status != StatusActive || target.Platform != source.Platform || target.SubscriptionType != SubscriptionTypeStandard {
 		return currentGroupID, false
 	}
+	if apiKey.User != nil && !apiKey.User.CanBindGroup(target.ID, target.IsExclusive) {
+		return currentGroupID, false
+	}
 
 	state.visited[targetID] = struct{}{}
 	state.hops++

@@ -73,6 +73,7 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		LastUsedAt:         u.LastUsedAt,
 		GroupRates:         u.GroupRates,
 		AllowedGroupAccess: UserGroupAccessMapFromService(u.AllowedGroupAccess),
+		BlockedGroups:      append([]int64{}, u.BlockedGroups...),
 	}
 }
 

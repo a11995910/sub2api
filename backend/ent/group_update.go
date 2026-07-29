@@ -1228,6 +1228,21 @@ func (_u *GroupUpdate) AddAllowedUsers(v ...*User) *GroupUpdate {
 	return _u.AddAllowedUserIDs(ids...)
 }
 
+// AddBlockedUserIDs adds the "blocked_users" edge to the User entity by IDs.
+func (_u *GroupUpdate) AddBlockedUserIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.AddBlockedUserIDs(ids...)
+	return _u
+}
+
+// AddBlockedUsers adds the "blocked_users" edges to the User entity.
+func (_u *GroupUpdate) AddBlockedUsers(v ...*User) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddBlockedUserIDs(ids...)
+}
+
 // Mutation returns the GroupMutation object of the builder.
 func (_u *GroupUpdate) Mutation() *GroupMutation {
 	return _u.mutation
@@ -1357,6 +1372,27 @@ func (_u *GroupUpdate) RemoveAllowedUsers(v ...*User) *GroupUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedUserIDs(ids...)
+}
+
+// ClearBlockedUsers clears all "blocked_users" edges to the User entity.
+func (_u *GroupUpdate) ClearBlockedUsers() *GroupUpdate {
+	_u.mutation.ClearBlockedUsers()
+	return _u
+}
+
+// RemoveBlockedUserIDs removes the "blocked_users" edge to User entities by IDs.
+func (_u *GroupUpdate) RemoveBlockedUserIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.RemoveBlockedUserIDs(ids...)
+	return _u
+}
+
+// RemoveBlockedUsers removes "blocked_users" edges to User entities.
+func (_u *GroupUpdate) RemoveBlockedUsers(v ...*User) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveBlockedUserIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -2079,6 +2115,63 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _u.config, mutation: newUserAllowedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BlockedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.BlockedUsersTable,
+			Columns: group.BlockedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserBlockedGroupCreate{config: _u.config, mutation: newUserBlockedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedBlockedUsersIDs(); len(nodes) > 0 && !_u.mutation.BlockedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.BlockedUsersTable,
+			Columns: group.BlockedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserBlockedGroupCreate{config: _u.config, mutation: newUserBlockedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BlockedUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.BlockedUsersTable,
+			Columns: group.BlockedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserBlockedGroupCreate{config: _u.config, mutation: newUserBlockedGroupMutation(_u.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
@@ -3296,6 +3389,21 @@ func (_u *GroupUpdateOne) AddAllowedUsers(v ...*User) *GroupUpdateOne {
 	return _u.AddAllowedUserIDs(ids...)
 }
 
+// AddBlockedUserIDs adds the "blocked_users" edge to the User entity by IDs.
+func (_u *GroupUpdateOne) AddBlockedUserIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.AddBlockedUserIDs(ids...)
+	return _u
+}
+
+// AddBlockedUsers adds the "blocked_users" edges to the User entity.
+func (_u *GroupUpdateOne) AddBlockedUsers(v ...*User) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddBlockedUserIDs(ids...)
+}
+
 // Mutation returns the GroupMutation object of the builder.
 func (_u *GroupUpdateOne) Mutation() *GroupMutation {
 	return _u.mutation
@@ -3425,6 +3533,27 @@ func (_u *GroupUpdateOne) RemoveAllowedUsers(v ...*User) *GroupUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedUserIDs(ids...)
+}
+
+// ClearBlockedUsers clears all "blocked_users" edges to the User entity.
+func (_u *GroupUpdateOne) ClearBlockedUsers() *GroupUpdateOne {
+	_u.mutation.ClearBlockedUsers()
+	return _u
+}
+
+// RemoveBlockedUserIDs removes the "blocked_users" edge to User entities by IDs.
+func (_u *GroupUpdateOne) RemoveBlockedUserIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.RemoveBlockedUserIDs(ids...)
+	return _u
+}
+
+// RemoveBlockedUsers removes "blocked_users" edges to User entities.
+func (_u *GroupUpdateOne) RemoveBlockedUsers(v ...*User) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveBlockedUserIDs(ids...)
 }
 
 // Where appends a list predicates to the GroupUpdate builder.
@@ -4177,6 +4306,63 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _u.config, mutation: newUserAllowedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BlockedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.BlockedUsersTable,
+			Columns: group.BlockedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserBlockedGroupCreate{config: _u.config, mutation: newUserBlockedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedBlockedUsersIDs(); len(nodes) > 0 && !_u.mutation.BlockedUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.BlockedUsersTable,
+			Columns: group.BlockedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserBlockedGroupCreate{config: _u.config, mutation: newUserBlockedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BlockedUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.BlockedUsersTable,
+			Columns: group.BlockedUsersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserBlockedGroupCreate{config: _u.config, mutation: newUserBlockedGroupMutation(_u.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields

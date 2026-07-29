@@ -1168,6 +1168,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		if group.Status != StatusActive {
 			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
 		}
+		if !group.IsSubscriptionType() && !group.IsExclusive && apiKey.User != nil && !apiKey.User.CanBindGroup(group.ID, false) {
+			return nil, infraerrors.BadRequest("GROUP_NOT_ALLOWED", "target group is blocked for this user")
+		}
 		// 订阅类型分组：用户须持有该分组的有效订阅才可绑定
 		if group.IsSubscriptionType() {
 			if s.userSubRepo == nil {

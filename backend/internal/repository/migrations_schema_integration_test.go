@@ -149,6 +149,9 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	var uagRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_allowed_groups')").Scan(&uagRegclass))
 	require.True(t, uagRegclass.Valid, "expected user_allowed_groups table to exist")
+	var ubgRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_blocked_groups')").Scan(&ubgRegclass))
+	require.True(t, ubgRegclass.Valid, "expected user_blocked_groups table to exist")
 
 	// user_subscriptions: deleted_at for soft delete support (migration 012)
 	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
@@ -166,6 +169,14 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "user_allowed_groups", "expires_at", "timestamp with time zone", 0, true)
 	requireColumn(t, tx, "user_allowed_groups", "source", "character varying", 50, false)
 	requireColumn(t, tx, "user_allowed_groups", "updated_at", "timestamp with time zone", 0, false)
+
+	// user_blocked_groups: 公开标准分组黑名单及级联关系。
+	requireColumn(t, tx, "user_blocked_groups", "user_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_blocked_groups", "group_id", "bigint", 0, false)
+	requireColumn(t, tx, "user_blocked_groups", "created_at", "timestamp with time zone", 0, false)
+	requireIndex(t, tx, "user_blocked_groups", "idx_user_blocked_groups_group_id")
+	requireForeignKeyOnDelete(t, tx, "user_blocked_groups", "user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "user_blocked_groups", "group_id", "groups", "CASCADE")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

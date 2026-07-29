@@ -150,28 +150,47 @@
           <div class="mb-3 flex items-center gap-2">
             <div class="h-1.5 w-1.5 rounded-full bg-green-500"></div>
             <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ t('admin.users.publicGroups') }}</h4>
-            <span class="text-xs text-gray-400">({{ publicGroupConfigs.length }})</span>
+            <span class="text-xs text-gray-400">({{ publicGroupConfigs.filter(c => c.isSelected).length }}/{{ publicGroupConfigs.length }})</span>
           </div>
           <div class="grid gap-3">
             <div
               v-for="config in publicGroupConfigs"
               :key="config.groupId"
-              class="relative overflow-hidden rounded-xl border-2 border-green-200 bg-green-50/50 p-4 dark:border-green-800/50 dark:bg-green-900/10"
+              class="relative overflow-hidden rounded-xl border-2 p-4 transition-all duration-200"
+              :class="config.isSelected
+                ? 'border-green-200 bg-green-50/50 dark:border-green-800/50 dark:bg-green-900/10'
+                : 'border-gray-200 bg-gray-50/80 dark:border-dark-600 dark:bg-dark-800/70'"
+              :data-test="`public-group-${config.groupId}`"
             >
               <div class="flex items-center gap-4">
-                <!-- 复选框（禁用状态） -->
+                <!-- 公开分组复选框：取消选择后写入用户黑名单。 -->
                 <div class="flex-shrink-0">
-                  <div class="flex h-5 w-5 items-center justify-center rounded-md border-2 border-green-400 bg-green-500 dark:border-green-600 dark:bg-green-600">
-                    <svg class="h-full w-full text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
+                  <label class="relative flex h-6 w-6 cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      :checked="config.isSelected"
+                      :data-test="`public-group-checkbox-${config.groupId}`"
+                      class="peer sr-only"
+                      @change="togglePublicGroup(config.groupId)"
+                    />
+                    <div class="h-5 w-5 rounded-md border-2 border-gray-300 transition-all peer-checked:border-green-500 peer-checked:bg-green-500 dark:border-dark-500 peer-checked:dark:border-green-600 peer-checked:dark:bg-green-600">
+                      <svg v-if="config.isSelected" class="h-full w-full text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </label>
                 </div>
 
                 <!-- 分组信息 -->
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
                     <span class="text-base font-semibold text-gray-900 dark:text-white">{{ config.groupName }}</span>
+                    <span
+                      v-if="!config.isSelected"
+                      class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                    >
+                      {{ t('admin.users.blockedGroup') }}
+                    </span>
                   </div>
                   <div class="mt-1.5 flex items-center gap-3 text-sm">
                     <span class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
@@ -193,9 +212,10 @@
                     step="0.001"
                     min="0.001"
                     :value="config.customRate ?? ''"
+                    :disabled="!config.isSelected"
                     @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
                     :placeholder="String(config.defaultRate)"
-                    class="hide-spinner w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
+                    class="hide-spinner w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500 dark:disabled:bg-dark-700/60"
                   />
                 </div>
               </div>
@@ -261,6 +281,7 @@ const appStore = useAppStore()
 const groups = ref<Group[]>([])
 const groupConfigs = ref<GroupRateConfig[]>([])
 const originalGroupRates = ref<Record<number, number>>({}) // 记录原始专属倍率，用于检测删除
+const loadedGroupEligibility = ref<Record<number, boolean>>({})
 const loading = ref(false)
 const submitting = ref(false)
 
@@ -323,14 +344,18 @@ watch(
 const load = async () => {
   loading.value = true
   try {
-    const res = await adminAPI.groups.list(1, 1000)
+    const items = await adminAPI.groups.getAllIncludingInactive()
+    loadedGroupEligibility.value = Object.fromEntries(
+      items.map((g) => [g.id, g.subscription_type === 'standard' && !g.is_exclusive])
+    )
     // 只显示标准类型且活跃的分组
-    groups.value = res.items.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
+    groups.value = items.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
 
     // 初始化配置
     const userAllowedGroups = props.user?.allowed_groups || []
     const userGroupRates = props.user?.group_rates || {}
     const accessByGroup = props.user?.allowed_group_access || {}
+    const blockedGroups = new Set(props.user?.blocked_groups || [])
 
     // 保存原始专属倍率，用于检测删除操作
     originalGroupRates.value = { ...userGroupRates }
@@ -343,8 +368,8 @@ const load = async () => {
       defaultRate: g.rate_multiplier,
       customRate: userGroupRates[g.id] ?? null,
       // 专属分组：检查是否在 allowed_groups 中
-      // 公开分组：始终选中
-      isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : true,
+      // 公开分组：未进入用户黑名单时选中。
+      isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : !blockedGroups.has(g.id),
       accessMode: accessByGroup[g.id]?.expires_at ? 'temporary' : 'permanent',
       expiresAtLocal: toDateTimeLocal(accessByGroup[g.id]?.expires_at),
       source: accessByGroup[g.id]?.source || 'manual',
@@ -360,6 +385,13 @@ const load = async () => {
 const toggleExclusiveGroup = (groupId: number) => {
   const config = groupConfigs.value.find((c) => c.groupId === groupId)
   if (config && config.isExclusive) {
+    config.isSelected = !config.isSelected
+  }
+}
+
+const togglePublicGroup = (groupId: number) => {
+  const config = groupConfigs.value.find((c) => c.groupId === groupId)
+  if (config && !config.isExclusive) {
     config.isSelected = !config.isSelected
   }
 }
@@ -400,6 +432,13 @@ const handleSave = async () => {
   try {
     // 构建 allowed_groups（仅包含专属分组中被勾选的）
     const allowedGroups = groupConfigs.value.filter((c) => c.isExclusive && c.isSelected).map((c) => c.groupId)
+    const visibleGroupIDs = new Set(groupConfigs.value.map((c) => c.groupId))
+    const blockedGroups = [
+      ...(props.user.blocked_groups || []).filter(
+        (groupId) => !visibleGroupIDs.has(groupId) && loadedGroupEligibility.value[groupId] === true
+      ),
+      ...groupConfigs.value.filter((c) => !c.isExclusive && !c.isSelected).map((c) => c.groupId)
+    ]
     const allowedGroupAccess = groupConfigs.value
       .filter((c) => c.isExclusive && c.isSelected)
       .map((c) => ({
@@ -436,6 +475,7 @@ const handleSave = async () => {
 
     await adminAPI.users.update(props.user.id, {
       allowed_groups: allowedGroups,
+      blocked_groups: blockedGroups,
       allowed_group_access: allowedGroupAccess,
       group_rates: Object.keys(groupRates).length > 0 ? groupRates : undefined,
     })

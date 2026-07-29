@@ -86,7 +86,11 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.loadGroupAccessForAPIKeyUsers(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetKeyAndOwnerID 根据 API Key ID 获取其 key 与所有者（用户）ID。
@@ -122,7 +126,7 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		return nil, err
 	}
 	out := apiKeyEntityToService(m)
-	if err := r.loadActiveAllowedGroupsForAPIKeyUsers(ctx, out); err != nil {
+	if err := r.loadGroupAccessForAPIKeyUsers(ctx, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -232,13 +236,13 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		return nil, err
 	}
 	out := apiKeyEntityToService(m)
-	if err := r.loadActiveAllowedGroupsForAPIKeyUsers(ctx, out); err != nil {
+	if err := r.loadGroupAccessForAPIKeyUsers(ctx, out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (r *apiKeyRepository) loadActiveAllowedGroupsForAPIKeyUsers(ctx context.Context, keys ...*service.APIKey) error {
+func (r *apiKeyRepository) loadGroupAccessForAPIKeyUsers(ctx context.Context, keys ...*service.APIKey) error {
 	userIDs := make([]int64, 0, len(keys))
 	seen := make(map[int64]struct{}, len(keys))
 	for _, key := range keys {
@@ -254,7 +258,12 @@ func (r *apiKeyRepository) loadActiveAllowedGroupsForAPIKeyUsers(ctx context.Con
 	if len(userIDs) == 0 {
 		return nil
 	}
-	allowedByUser, err := (&userRepository{client: r.client, sql: r.sql}).loadAllowedGroups(ctx, userIDs)
+	userRepo := &userRepository{client: r.client, sql: r.sql}
+	allowedByUser, err := userRepo.loadAllowedGroups(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+	blockedByUser, err := userRepo.loadBlockedGroups(ctx, userIDs)
 	if err != nil {
 		return err
 	}
@@ -263,6 +272,7 @@ func (r *apiKeyRepository) loadActiveAllowedGroupsForAPIKeyUsers(ctx context.Con
 			continue
 		}
 		key.User.AllowedGroups = allowedByUser[key.User.ID]
+		key.User.BlockedGroups = blockedByUser[key.User.ID]
 	}
 	return nil
 }

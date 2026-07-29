@@ -2718,6 +2718,29 @@ func HasAllowedUsersWith(preds ...predicate.User) predicate.Group {
 	})
 }
 
+// HasBlockedUsers applies the HasEdge predicate on the "blocked_users" edge.
+func HasBlockedUsers() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, BlockedUsersTable, BlockedUsersPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasBlockedUsersWith applies the HasEdge predicate on the "blocked_users" edge with a given conditions (other predicates).
+func HasBlockedUsersWith(preds ...predicate.User) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newBlockedUsersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccountGroups applies the HasEdge predicate on the "account_groups" edge.
 func HasAccountGroups() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
@@ -2756,6 +2779,29 @@ func HasUserAllowedGroups() predicate.Group {
 func HasUserAllowedGroupsWith(preds ...predicate.UserAllowedGroup) predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
 		step := newUserAllowedGroupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasUserBlockedGroups applies the HasEdge predicate on the "user_blocked_groups" edge.
+func HasUserBlockedGroups() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, UserBlockedGroupsTable, UserBlockedGroupsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasUserBlockedGroupsWith applies the HasEdge predicate on the "user_blocked_groups" edge with a given conditions (other predicates).
+func HasUserBlockedGroupsWith(preds ...predicate.UserBlockedGroup) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newUserBlockedGroupsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

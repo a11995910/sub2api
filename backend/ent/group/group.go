@@ -152,10 +152,14 @@ const (
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
 	EdgeAllowedUsers = "allowed_users"
+	// EdgeBlockedUsers holds the string denoting the blocked_users edge name in mutations.
+	EdgeBlockedUsers = "blocked_users"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
+	// EdgeUserBlockedGroups holds the string denoting the user_blocked_groups edge name in mutations.
+	EdgeUserBlockedGroups = "user_blocked_groups"
 	// Table holds the table name of the group in the database.
 	Table = "groups"
 	// APIKeysTable is the table that holds the api_keys relation/edge.
@@ -196,6 +200,11 @@ const (
 	// AllowedUsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	AllowedUsersInverseTable = "users"
+	// BlockedUsersTable is the table that holds the blocked_users relation/edge. The primary key declared below.
+	BlockedUsersTable = "user_blocked_groups"
+	// BlockedUsersInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	BlockedUsersInverseTable = "users"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -210,6 +219,13 @@ const (
 	UserAllowedGroupsInverseTable = "user_allowed_groups"
 	// UserAllowedGroupsColumn is the table column denoting the user_allowed_groups relation/edge.
 	UserAllowedGroupsColumn = "group_id"
+	// UserBlockedGroupsTable is the table that holds the user_blocked_groups relation/edge.
+	UserBlockedGroupsTable = "user_blocked_groups"
+	// UserBlockedGroupsInverseTable is the table name for the UserBlockedGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "userblockedgroup" package.
+	UserBlockedGroupsInverseTable = "user_blocked_groups"
+	// UserBlockedGroupsColumn is the table column denoting the user_blocked_groups relation/edge.
+	UserBlockedGroupsColumn = "group_id"
 )
 
 // Columns holds all SQL columns for group fields.
@@ -286,6 +302,9 @@ var (
 	// AllowedUsersPrimaryKey and AllowedUsersColumn2 are the table columns denoting the
 	// primary key for the allowed_users relation (M2M).
 	AllowedUsersPrimaryKey = []string{"user_id", "group_id"}
+	// BlockedUsersPrimaryKey and BlockedUsersColumn2 are the table columns denoting the
+	// primary key for the blocked_users relation (M2M).
+	BlockedUsersPrimaryKey = []string{"user_id", "group_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -791,6 +810,20 @@ func ByAllowedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByBlockedUsersCount orders the results by blocked_users count.
+func ByBlockedUsersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newBlockedUsersStep(), opts...)
+	}
+}
+
+// ByBlockedUsers orders the results by blocked_users terms.
+func ByBlockedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newBlockedUsersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -816,6 +849,20 @@ func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByUserAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newUserAllowedGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByUserBlockedGroupsCount orders the results by user_blocked_groups count.
+func ByUserBlockedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUserBlockedGroupsStep(), opts...)
+	}
+}
+
+// ByUserBlockedGroups orders the results by user_blocked_groups terms.
+func ByUserBlockedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUserBlockedGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 func newAPIKeysStep() *sqlgraph.Step {
@@ -860,6 +907,13 @@ func newAllowedUsersStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, true, AllowedUsersTable, AllowedUsersPrimaryKey...),
 	)
 }
+func newBlockedUsersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(BlockedUsersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, BlockedUsersTable, BlockedUsersPrimaryKey...),
+	)
+}
 func newAccountGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -872,5 +926,12 @@ func newUserAllowedGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserAllowedGroupsInverseTable, UserAllowedGroupsColumn),
 		sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedGroupsTable, UserAllowedGroupsColumn),
+	)
+}
+func newUserBlockedGroupsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UserBlockedGroupsInverseTable, UserBlockedGroupsColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, UserBlockedGroupsTable, UserBlockedGroupsColumn),
 	)
 }
