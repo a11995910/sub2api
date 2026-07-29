@@ -89,6 +89,14 @@ run_mode: "standard"
 generated_image:
   storage_path: "./data/generated-images"
 
+# Model-test completed videos are cached locally for the same 30-day period as task records.
+# 模型测试台已完成视频本地缓存；保留时间与任务记录一致，为 30 天。
+video_storage:
+  storage_path: "./data/generated-videos"
+  # Maximum bytes accepted for one proxied/cached video (default: 512 MiB).
+  # 单个代理及缓存视频的最大字节数（默认 512 MiB）。
+  max_bytes: 536870912
+
 # =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置

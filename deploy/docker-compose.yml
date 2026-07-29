@@ -50,6 +50,8 @@ services:
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - IMAGE_STORAGE_PATH=${IMAGE_STORAGE_PATH:-/app/data/generated-images}
+      - VIDEO_STORAGE_PATH=${VIDEO_STORAGE_PATH:-/app/data/generated-videos}
+      - VIDEO_STORAGE_MAX_BYTES=${VIDEO_STORAGE_MAX_BYTES:-536870912}
 
       # 异步图片任务的 S3 兼容对象存储；未启用或凭据不完整时接口保持 404。
       - IMAGE_STORAGE_ENABLED=${IMAGE_STORAGE_ENABLED:-false}

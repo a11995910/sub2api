@@ -216,9 +216,11 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 图片模式可上传参考图片。未上传参考图时调用 `/v1/images/generations` 生成新图；上传本地参考图后调用 `/v1/images/edits`，以 multipart 表单提交 `model`、`prompt`、可选 `size`、`n=1`、`response_format=b64_json` 和图片文件。远程参考图可通过 JSON `images[].image_url` 提交到网关；当上游账号为 OpenAI APIKey 类型时，网关会校验远程地址为公网 HTTP/HTTPS 图片地址，并由服务器直接下载图片内容后转成 multipart 文件上传给上游。远程地址不可访问、返回非 2xx、返回 HTML/鉴权页等非图片内容或超过大小限制时，网关返回 `400 invalid_request_error`，不会把本地输入校验失败显示为上游 `502`。开启 `features_config.openai_images_upstream.mode=chat_completions` 的渠道会把图片入口转发到上游 `/v1/chat/completions`：文生图请求发送文本消息，图生图请求发送文本加 `image_url` 多模态消息，保证参考图随请求传递给上游。前端限制最多 4 张参考图，单张不超过 20MB，与后端图片上传单文件限制保持一致。
 
-视频模式支持选择 `1-15` 秒时长；已知计费模型继续按能力显示分辨率，未知模型使用默认选项。测试台只向 `/v1/videos` 创建一次任务，再按返回的 `task_id` 每 5 秒轮询 `/v1/videos/{task_id}`；任务完成后统一通过 `/v1/videos/{task_id}/content` 携带当前 API Key 获取视频 Blob 并播放。超时错误保留任务 ID，失败、取消或超时都不会重新提交创建请求。
+视频模式支持选择 `1-15` 秒时长；已知计费模型继续按能力显示分辨率，未知模型使用默认选项。测试台只向 `/v1/videos` 创建一次任务，再按返回的 `task_id` 每 5 秒轮询 `/v1/videos/{task_id}`；任务完成后通过登录态任务内容接口获取视频 Blob 并播放。同一任务的并发下载会在浏览器内复用同一个请求，成功后清除既有临时加载错误；状态查询失败与视频内容加载失败分别提示。超时错误保留任务 ID，失败、取消或超时都不会重新提交创建请求。
 
-OpenAI 平台账号会先经过现有模型映射，再优先调用上游 `/v1/videos`。协议结果按账号和映射后模型缓存 24 小时；只有明确 `404`、`405` 或 `unsupported_endpoint` 才回退一次旧 Chat Completions 视频协议。业务 `400`、鉴权或额度错误、上游故障和网络超时都不回退，避免重复生成。创建成功先按用户、API Key、分组和任务 ID 绑定原账号，再交付任务并记录一次视频用量；轮询与内容读取不重复扣费。状态响应隐藏上游签名 URL，内容端点优先调用上游 `/content`，缺失时只接受公网 HTTPS 结果 URL，并限制重定向、媒体类型和 `gateway.upstream_response_read_max_bytes` 配置的最大响应体，不提供任意 URL 代理能力。
+OpenAI 平台账号会先经过现有模型映射，再优先调用上游 `/v1/videos`。协议结果按账号和映射后模型缓存 24 小时；只有明确 `404`、`405` 或 `unsupported_endpoint` 才回退一次旧 Chat Completions 视频协议。业务 `400`、鉴权或额度错误、上游故障和网络超时都不回退，避免重复生成。创建成功先按用户、API Key、分组和任务 ID 绑定原账号，再交付任务并记录一次视频用量；轮询与内容读取不重复扣费。状态响应隐藏上游签名 URL，内容端点优先调用上游 `/content`，缺失时只接受公网 HTTPS 结果 URL，并限制重定向、媒体类型和 `video_storage.max_bytes` 配置的最大响应体，不提供任意 URL 代理能力。
+
+模型测试台的完成或失败记录保留 30 天。完成视频第一次通过无 `Range` 的登录态任务内容接口读取时，服务会边代理边写入临时文件，确认响应完整且为 MP4 后再原子发布到 `video_storage.storage_path`；后续读取直接使用本地文件并支持 `Range`，不再依赖原账号处于启用状态或上游临时链接继续有效。Docker 默认目录为 `/app/data/generated-videos`，由现有 `/app/data` 持久卷承载；环境变量为 `VIDEO_STORAGE_PATH` 和 `VIDEO_STORAGE_MAX_BYTES`，默认单文件上限为 512 MiB。用户删除任务记录时同步删除对应视频；后台任务会清理超过 30 天的视频和终态记录。首次读取使用 `Range` 时只做代理而不缓存，完整读取后才会建立本地副本。
 
 测试台按视频模型能力提供两类图片入口：`grok-imagine-video-1.5` 及其版本别名使用 image-to-video 工作流，最多上传 1 张起始图，并以官方 `image.url` 结构提交；标准 `grok-imagine-video` 使用 reference-to-video 工作流，测试台最多上传 4 张参考图，并以 `reference_images[].url` 结构提交，图片用于人物、物品或风格参考，不固定为视频首帧；未知视频模型会禁用图片上传入口。旧客户端使用的 `image.image_url` 会由网关兼容转换。视频图片单张原文件不超过图片上传总限制 20MB；超过 1MB 的图片会在浏览器中提示并自动缩放、转换为 JPEG，压缩到 1MB 以内后再上传。压缩失败时不会提交生成请求。非测试台客户端提交超过 1MB 的内联 data URL 时，网关在账号调度和计费前返回 `413 invalid_request_error`，避免把上游请求体限制显示成 `502`。
 

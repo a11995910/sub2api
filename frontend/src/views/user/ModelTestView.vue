@@ -356,7 +356,10 @@
                   <span :class="videoTaskStatusClass(task.status)" class="inline-flex rounded-md px-2 py-1 text-xs font-medium">
                     {{ videoTaskStatusLabel(task.status) }}
                   </span>
-                  <p v-if="task.last_poll_error" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                  <p v-if="task.content_error" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                    {{ t('modelTest.videoTasks.contentError') }}
+                  </p>
+                  <p v-else-if="task.last_poll_error" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
                     {{ t('modelTest.videoTasks.pollError') }}
                   </p>
                 </td>
@@ -512,6 +515,7 @@ let runController: AbortController | null = null
 let videoTaskPollTimer: number | null = null
 let videoBlobTaskID = ''
 const gatewayModelRequests = new Map<number, Promise<void>>()
+const videoContentRequests = new Map<string, Promise<Blob>>()
 
 const maxReferenceImages = 4
 const maxReferenceImageSize = 20 * 1024 * 1024
@@ -1299,13 +1303,27 @@ async function syncSelectedVideoTask(task: VideoTestTask): Promise<void> {
   if (videoBlobTaskID === task.id && videoBlobURL.value) return
   clearVideoBlobURL()
   try {
-    const blob = await fetchVideoTestTaskContent(task.id)
+    let request = videoContentRequests.get(task.id)
+    if (!request) {
+      request = fetchVideoTestTaskContent(task.id).finally(() => {
+        if (videoContentRequests.get(task.id) === request) {
+          videoContentRequests.delete(task.id)
+        }
+      })
+      videoContentRequests.set(task.id, request)
+    }
+    const blob = await request
+    if (selectedVideoTaskID.value !== task.id || selectedKind.value !== 'video') return
+    if (videoBlobTaskID === task.id && videoBlobURL.value) return
     videoBlobURL.value = URL.createObjectURL(blob)
     videoBlobTaskID = task.id
+    const current = videoTasks.value.find((item) => item.id === task.id) || task
+    replaceVideoTask({ ...current, content_error: undefined, last_poll_error: undefined })
   } catch (err: unknown) {
+    const current = videoTasks.value.find((item) => item.id === task.id) || task
     replaceVideoTask({
-      ...task,
-      last_poll_error: extractApiErrorMessage(err, t('modelTest.videoTasks.pollError')),
+      ...current,
+      content_error: extractApiErrorMessage(err, t('modelTest.videoTasks.contentError')),
     })
   }
 }

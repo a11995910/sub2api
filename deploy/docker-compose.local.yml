@@ -54,6 +54,8 @@ services:
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - IMAGE_STORAGE_PATH=${IMAGE_STORAGE_PATH:-/app/data/generated-images}
+      - VIDEO_STORAGE_PATH=${VIDEO_STORAGE_PATH:-/app/data/generated-videos}
+      - VIDEO_STORAGE_MAX_BYTES=${VIDEO_STORAGE_MAX_BYTES:-536870912}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
 
       # =======================================================================

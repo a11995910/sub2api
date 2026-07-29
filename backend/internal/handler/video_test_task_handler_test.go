@@ -26,14 +26,14 @@ func TestVideoTestTaskHandlerRefreshUpdatesSuccessfulStatus(t *testing.T) {
 	gateway := &videoTestTaskGatewayStub{statusResult: &service.OpenAIForwardResult{
 		VideoStatus: "processing", VideoProgress: &progress, VideoResponseJSON: json.RawMessage(`{"status":"processing"}`),
 	}}
-	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway)
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway, nil)
 	c, recorder := newVideoTaskHandlerContext(http.MethodPost, "/api/v1/model-test/video-tasks/local-1/refresh", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
 	h.Refresh(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, service.VideoTestTaskStatusInProgress, jsonPathString(t, recorder.Body.Bytes(), "status"))
+	require.Equal(t, service.VideoTestTaskStatusInProgress, videoTaskJSONPathString(t, recorder.Body.Bytes(), "status"))
 	require.Equal(t, 1, gateway.statusCalls)
 }
 
@@ -42,7 +42,7 @@ func TestVideoTestTaskHandlerListReturnsOnlyCurrentUserTasks(t *testing.T) {
 		service.VideoTestTask{ID: "mine", UserID: 7, Status: service.VideoTestTaskStatusQueued},
 		service.VideoTestTask{ID: "other", UserID: 8, Status: service.VideoTestTaskStatusQueued},
 	)
-	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{}, nil)
 	c, recorder := newVideoTaskHandlerContext(http.MethodGet, "/api/v1/model-test/video-tasks?page=1&page_size=20", 7)
 
 	h.List(c)
@@ -61,20 +61,20 @@ func TestVideoTestTaskHandlerRefreshErrorKeepsTaskWaiting(t *testing.T) {
 		UpstreamTaskID: "upstream-1", Status: service.VideoTestTaskStatusInProgress,
 	})
 	gateway := &videoTestTaskGatewayStub{statusErr: errors.New("upstream timeout")}
-	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway)
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway, nil)
 	c, recorder := newVideoTaskHandlerContext(http.MethodPost, "/api/v1/model-test/video-tasks/local-1/refresh", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
 	h.Refresh(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, service.VideoTestTaskStatusInProgress, jsonPathString(t, recorder.Body.Bytes(), "status"))
-	require.Equal(t, "upstream timeout", jsonPathString(t, recorder.Body.Bytes(), "last_poll_error"))
+	require.Equal(t, service.VideoTestTaskStatusInProgress, videoTaskJSONPathString(t, recorder.Body.Bytes(), "status"))
+	require.Equal(t, "upstream timeout", videoTaskJSONPathString(t, recorder.Body.Bytes(), "last_poll_error"))
 }
 
 func TestVideoTestTaskHandlerRejectsOtherUsersTask(t *testing.T) {
 	store := newHandlerVideoTaskStore(service.VideoTestTask{ID: "local-1", UserID: 8, Status: service.VideoTestTaskStatusQueued})
-	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{}, nil)
 	c, recorder := newVideoTaskHandlerContext(http.MethodPost, "/api/v1/model-test/video-tasks/local-1/refresh", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
@@ -89,7 +89,7 @@ func TestVideoTestTaskHandlerContentProxiesRangeOnlyAfterCompletion(t *testing.T
 		UpstreamTaskID: "upstream-1", Status: service.VideoTestTaskStatusCompleted,
 	})
 	gateway := &videoTestTaskGatewayStub{}
-	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway)
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway, nil)
 	c, recorder := newVideoTaskHandlerContext(http.MethodGet, "/api/v1/model-test/video-tasks/local-1/content", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 	c.Request.Header.Set("Range", "bytes=0-3")
@@ -101,9 +101,47 @@ func TestVideoTestTaskHandlerContentProxiesRangeOnlyAfterCompletion(t *testing.T
 	require.Equal(t, "bytes=0-3", gateway.contentRange)
 }
 
+func TestVideoTestTaskHandlerCachesCompletedVideoAndServesRangeLocally(t *testing.T) {
+	store := newHandlerVideoTaskStore(service.VideoTestTask{
+		ID: "local-1", UserID: 7, AccountID: 17, Platform: service.PlatformOpenAI,
+		UpstreamTaskID: "upstream-1", Status: service.VideoTestTaskStatusCompleted,
+	})
+	contentStore := service.NewVideoTestTaskContentStore(service.VideoTestTaskContentStoreConfig{
+		Directory: t.TempDir(), MaxBytes: 1 << 20,
+	})
+	mp4 := []byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 2, 0, 'm', 'p', '4', '2', 'i', 's', 'o', 'm'}
+	gateway := &videoTestTaskGatewayStub{
+		contentStatus: http.StatusOK,
+		contentType:   "application/octet-stream",
+		contentBody:   mp4,
+	}
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), gateway, contentStore)
+	c, recorder := newVideoTaskHandlerContext(http.MethodGet, "/api/v1/model-test/video-tasks/local-1/content", 7)
+	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
+
+	h.Content(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, mp4, recorder.Body.Bytes())
+	require.Equal(t, 1, gateway.contentCalls)
+	_, err := contentStore.Resolve("local-1", time.Now().UTC())
+	require.NoError(t, err)
+
+	gateway.resolveErr = errors.New("upstream account disabled")
+	c, recorder = newVideoTaskHandlerContext(http.MethodGet, "/api/v1/model-test/video-tasks/local-1/content", 7)
+	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
+	c.Request.Header.Set("Range", "bytes=4-7")
+
+	h.Content(c)
+
+	require.Equal(t, http.StatusPartialContent, recorder.Code)
+	require.Equal(t, []byte("ftyp"), recorder.Body.Bytes())
+	require.Equal(t, 1, gateway.contentCalls)
+}
+
 func TestVideoTestTaskHandlerDeleteIsOwnerScoped(t *testing.T) {
 	store := newHandlerVideoTaskStore(service.VideoTestTask{ID: "local-1", UserID: 7, Status: service.VideoTestTaskStatusQueued})
-	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{})
+	h := NewVideoTestTaskHandler(service.NewVideoTestTaskService(store), &videoTestTaskGatewayStub{}, nil)
 	c, recorder := newVideoTaskHandlerContext(http.MethodDelete, "/api/v1/model-test/video-tasks/local-1", 7)
 	c.Params = gin.Params{{Key: "id", Value: "local-1"}}
 
@@ -115,13 +153,21 @@ func TestVideoTestTaskHandlerDeleteIsOwnerScoped(t *testing.T) {
 }
 
 type videoTestTaskGatewayStub struct {
-	statusResult *service.OpenAIForwardResult
-	statusErr    error
-	statusCalls  int
-	contentRange string
+	statusResult  *service.OpenAIForwardResult
+	statusErr     error
+	statusCalls   int
+	contentRange  string
+	contentStatus int
+	contentType   string
+	contentBody   []byte
+	contentCalls  int
+	resolveErr    error
 }
 
 func (s *videoTestTaskGatewayStub) ResolveVideoTestTaskStoredAccount(context.Context, int64, string) (*service.Account, error) {
+	if s.resolveErr != nil {
+		return nil, s.resolveErr
+	}
 	return &service.Account{ID: 17, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}, nil
 }
 
@@ -131,8 +177,21 @@ func (s *videoTestTaskGatewayStub) ForwardOpenAIVideoStatus(_ context.Context, _
 }
 
 func (s *videoTestTaskGatewayStub) ForwardOpenAIVideoContent(_ context.Context, c *gin.Context, _ *service.Account, _ string) (*service.OpenAIForwardResult, error) {
+	s.contentCalls++
 	s.contentRange = c.GetHeader("Range")
-	c.Data(http.StatusPartialContent, "video/mp4", []byte("test"))
+	status := s.contentStatus
+	if status == 0 {
+		status = http.StatusPartialContent
+	}
+	body := s.contentBody
+	if len(body) == 0 {
+		body = []byte("test")
+	}
+	contentType := s.contentType
+	if contentType == "" {
+		contentType = "video/mp4"
+	}
+	c.Data(status, contentType, body)
 	return &service.OpenAIForwardResult{}, nil
 }
 
@@ -149,7 +208,7 @@ func newVideoTaskHandlerContext(method, path string, userID int64) (*gin.Context
 	return c, recorder
 }
 
-func jsonPathString(t *testing.T, body []byte, key string) string {
+func videoTaskJSONPathString(t *testing.T, body []byte, key string) string {
 	t.Helper()
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(body, &payload))

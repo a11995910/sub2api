@@ -18,6 +18,7 @@ export interface VideoTestTask {
   response?: unknown
   error_message?: string
   last_poll_error?: string
+  content_error?: string
   last_polled_at?: string
   completed_at?: string
   failed_at?: string

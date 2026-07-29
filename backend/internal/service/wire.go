@@ -66,8 +66,15 @@ func ProvideGeneratedImageCleanupService(store *GeneratedImageStore) *GeneratedI
 	return svc
 }
 
-func ProvideVideoTestTaskCleanupService(store VideoTestTaskStore) *VideoTestTaskCleanupService {
-	svc := NewVideoTestTaskCleanupService(store)
+func ProvideVideoTestTaskContentStore(cfg *config.Config) *VideoTestTaskContentStore {
+	return NewVideoTestTaskContentStore(VideoTestTaskContentStoreConfig{
+		Directory: cfg.VideoStorage.StoragePath,
+		MaxBytes:  cfg.VideoStorage.MaxBytes,
+	})
+}
+
+func ProvideVideoTestTaskCleanupService(store VideoTestTaskStore, content *VideoTestTaskContentStore) *VideoTestTaskCleanupService {
+	svc := NewVideoTestTaskCleanupService(store, content)
 	svc.Start()
 	return svc
 }
@@ -733,6 +740,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGeneratedImageStore,
 	ProvideGeneratedImageCleanupService,
 	NewVideoTestTaskService,
+	ProvideVideoTestTaskContentStore,
 	ProvideVideoTestTaskCleanupService,
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),

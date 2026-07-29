@@ -1377,6 +1377,7 @@ export default {
       empty: 'No video tasks yet',
       submitSuccess: 'Video task submitted',
       pollError: 'Status is temporarily unavailable; still waiting',
+      contentError: 'Video is temporarily unavailable; click to retry',
       delete: 'Delete task record',
       columns: {
         status: 'Status',

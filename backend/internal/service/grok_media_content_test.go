@@ -144,6 +144,29 @@ func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T
 	require.True(t, IsResponseCommitted(c))
 }
 
+func TestForwardGrokMediaContentLimitsChunkedBody(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{
+		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
+			StatusCode:    http.StatusOK,
+			Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+			Body:          io.NopCloser(strings.NewReader("12345")),
+			ContentLength: -1,
+		}},
+	}
+	cfg := &config.Config{}
+	cfg.VideoStorage.MaxBytes = 4
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
+
+	_, err := svc.ForwardGrokMedia(
+		context.Background(), c, grokMediaContentTestAccount(),
+		GrokMediaEndpointVideoContent, "task-1", nil, "",
+	)
+
+	require.ErrorIs(t, err, ErrUpstreamResponseBodyTooLarge)
+	require.Equal(t, "1234", recorder.Body.String())
+}
+
 func TestForwardGrokMediaContentPreservesRangeNotSatisfiable(t *testing.T) {
 	upstream := &grokMediaContentUpstreamStub{
 		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {

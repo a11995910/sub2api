@@ -98,11 +98,18 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	GeneratedImage          GeneratedImageConfig          `mapstructure:"generated_image"`
+	VideoStorage            VideoStorageConfig            `mapstructure:"video_storage"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 }
 
 type GeneratedImageConfig struct {
 	StoragePath string `mapstructure:"storage_path"`
+}
+
+// VideoStorageConfig 控制模型测试台已完成视频的本地持久化。
+type VideoStorageConfig struct {
+	StoragePath string `mapstructure:"storage_path"`
+	MaxBytes    int64  `mapstructure:"max_bytes"`
 }
 
 type LogConfig struct {
@@ -1661,6 +1668,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	_ = viper.BindEnv("generated_image.storage_path", "IMAGE_STORAGE_PATH")
+	_ = viper.BindEnv("video_storage.storage_path", "VIDEO_STORAGE_PATH")
+	_ = viper.BindEnv("video_storage.max_bytes", "VIDEO_STORAGE_MAX_BYTES")
 	imageStorageEnvBindings := []struct {
 		configKey string
 		envKey    string
@@ -2317,6 +2326,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
+	viper.SetDefault("video_storage.storage_path", "data/generated-videos")
+	viper.SetDefault("video_storage.max_bytes", int64(512*1024*1024))
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
@@ -3074,6 +3085,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")
+	}
+	if c.VideoStorage.MaxBytes <= 0 {
+		return fmt.Errorf("video_storage.max_bytes must be positive")
 	}
 	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")

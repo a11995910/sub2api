@@ -1204,6 +1204,7 @@ describe('ModelTestView', () => {
         prompt: '生成海浪视频',
         reference_image_count: 0,
         status: 'completed',
+        last_poll_error: 'temporary content download failure',
         response: {
           status: 'completed',
           url: '/videos/video-request-123/content',
@@ -1222,8 +1223,10 @@ describe('ModelTestView', () => {
     await flushPromises()
 
     expect(fetchVideoTestTaskContent).toHaveBeenCalledWith('local-completed')
+    expect(fetchVideoTestTaskContent).toHaveBeenCalledTimes(1)
     expect(window.URL.createObjectURL).toHaveBeenCalledWith(videoBlob)
     expect(wrapper.find('video').attributes('src')).toBe('blob:model-test-reference')
+    expect(wrapper.text()).not.toContain('暂时无法查询，仍在等待')
 
     wrapper.unmount()
     expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:model-test-reference')

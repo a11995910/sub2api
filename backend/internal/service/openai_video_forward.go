@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -180,7 +181,7 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoContent(
 	if parseErr != nil || (!strings.HasPrefix(strings.ToLower(mediaType), "video/") && mediaType != "application/octet-stream") {
 		return nil, fmt.Errorf("video upstream returned unsupported content type %q", contentType)
 	}
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	maxBytes := resolveVideoContentReadLimit(s.cfg)
 	if resp.ContentLength > maxBytes {
 		return nil, fmt.Errorf("video upstream content exceeds size limit")
 	}
@@ -194,6 +195,13 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoContent(
 		ResponseHeaders:  resp.Header.Clone(),
 		Duration:         time.Since(startTime),
 	}, nil
+}
+
+func resolveVideoContentReadLimit(cfg *config.Config) int64 {
+	if cfg != nil && cfg.VideoStorage.MaxBytes > 0 {
+		return cfg.VideoStorage.MaxBytes
+	}
+	return defaultVideoTestTaskContentMaxBytes
 }
 
 func (s *OpenAIGatewayService) sendOpenAIVideoLookup(
@@ -362,6 +370,9 @@ func writeOpenAIVideoContentResponse(c *gin.Context, resp *http.Response, maxByt
 		if value := strings.TrimSpace(resp.Header.Get(name)); value != "" {
 			c.Header(name, value)
 		}
+	}
+	if strings.TrimSpace(c.Writer.Header().Get("Content-Type")) == "" {
+		c.Header("Content-Type", "application/octet-stream")
 	}
 	if strings.TrimSpace(c.Writer.Header().Get("Content-Length")) == "" && resp.ContentLength >= 0 {
 		c.Header("Content-Length", fmt.Sprintf("%d", resp.ContentLength))

@@ -97,7 +97,7 @@ func TestVideoTestTaskServiceRecordAcceptedAndResolveAccount(t *testing.T) {
 func TestVideoTestTaskCleanupDeletesOnlyExpiredTerminalCutoff(t *testing.T) {
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	store := newMemoryVideoTestTaskStore()
-	cleanup := NewVideoTestTaskCleanupServiceWithOptions(store, func() time.Time { return now }, time.Hour, 30*24*time.Hour)
+	cleanup := NewVideoTestTaskCleanupServiceWithOptions(store, nil, func() time.Time { return now }, time.Hour, 30*24*time.Hour)
 
 	deleted, err := cleanup.runOnce(context.Background())
 	require.NoError(t, err)

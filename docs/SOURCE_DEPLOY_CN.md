@@ -34,6 +34,21 @@
 
 升级后验证：选择 URL 默认传输方式的测试分组发起一次 `/v1/images/generations` 请求，确认 `data[0].url` 使用当前 API 域名、无需 API Key 可访问，并检查容器日志中没有 `generated_image.cleanup_failed` 或图片存储错误。回滚前无需迁移数据库数据；旧版本会忽略本地图片文件，但应保留目录至少 24 小时，避免已发放链接提前失效。
 
+## 模型测试台视频本地存储
+
+模型测试台任务完成后，登录态内容接口第一次完整读取视频时会把 MP4 原子缓存到 `VIDEO_STORAGE_PATH`。Docker 默认值为 `/app/data/generated-videos`，位于既有 `/app/data` 持久卷内；staging 和 prod 使用各自的 `/opt/sub2api/data/<环境>/app`，视频数据不会跨环境复用。`VIDEO_STORAGE_MAX_BYTES` 控制单个代理及缓存视频的最大字节数，默认 `536870912`（512 MiB）。
+
+视频缓存与完成/失败任务记录采用相同的 30 天保留期。已缓存视频支持 `Range`，即使原创建账号后续停用或上游临时地址失效仍可播放；用户删除任务记录时同步删除文件，后台清理器会删除过期视频和遗留临时文件。首次请求携带 `Range` 时不会缓存不完整内容，浏览器完成一次无 `Range` 下载后才发布本地文件。
+
+部署前及上线后需要确认：
+
+- `VIDEO_STORAGE_PATH` 位于持久化挂载内，容器运行用户具有创建、写入、重命名和删除权限。
+- 磁盘余量能够承载最近 30 天的测试台视频总量；单文件上限调大时同步评估总容量，不能只考虑内存，因为代理采用流式写盘。
+- staging 和 prod 的路径及宿主目录保持隔离；多实例部署需要共享同一个视频目录，否则不同实例无法读取彼此缓存。
+- 完成任务第一次播放后，目录内出现 MP4 文件；随后暂停或拖动播放器时返回 `206 Partial Content`，容器日志中没有 `video_test_task.content_cache_failed`、`video_test_task.content_cache_start_failed` 或清理错误。
+
+回滚到不支持视频缓存的旧镜像时不需要迁移数据库；旧版本会忽略缓存目录。为避免重新依赖上游临时内容，确认不再回滚后再按 30 天保留期清理该目录。
+
 ## 管理端 Server-Timing
 
 `server.enable_server_timing` 控制管理端请求的 `Server-Timing` 响应头，环境变量名为 `ENABLE_SERVER_TIMING`，默认关闭。Docker Compose 已透传该变量；staging 和 prod 应分别在各自 `.env` 中配置，不能依赖另一环境的值。

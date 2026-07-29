@@ -1381,6 +1381,7 @@ export default {
       empty: '暂无视频任务',
       submitSuccess: '视频任务已提交',
       pollError: '暂时无法查询，仍在等待',
+      contentError: '视频暂时无法加载，请点击重试',
       delete: '删除任务记录',
       columns: {
         status: '状态',

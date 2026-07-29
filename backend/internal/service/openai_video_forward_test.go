@@ -496,7 +496,7 @@ func TestForwardOpenAIVideoContentLimitsChunkedBody(t *testing.T) {
 		ContentLength: -1,
 	}}
 	cfg := rawChatCompletionsTestConfig()
-	cfg.Gateway.UpstreamResponseReadMaxBytes = 4
+	cfg.VideoStorage.MaxBytes = 4
 	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
 
 	_, err := svc.ForwardOpenAIVideoContent(context.Background(), c, openAIVideoForwardTestAccount(), "task-1")

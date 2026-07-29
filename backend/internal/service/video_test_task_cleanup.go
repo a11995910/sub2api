@@ -15,19 +15,21 @@ const (
 )
 
 type VideoTestTaskCleanupService struct {
-	store     VideoTestTaskStore
-	now       func() time.Time
-	interval  time.Duration
-	retention time.Duration
+	store        VideoTestTaskStore
+	contentStore *VideoTestTaskContentStore
+	now          func() time.Time
+	interval     time.Duration
+	retention    time.Duration
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-func NewVideoTestTaskCleanupService(store VideoTestTaskStore) *VideoTestTaskCleanupService {
+func NewVideoTestTaskCleanupService(store VideoTestTaskStore, contentStore *VideoTestTaskContentStore) *VideoTestTaskCleanupService {
 	return NewVideoTestTaskCleanupServiceWithOptions(
 		store,
+		contentStore,
 		func() time.Time { return time.Now().UTC() },
 		defaultVideoTestTaskCleanupInterval,
 		defaultVideoTestTaskRetention,
@@ -36,11 +38,12 @@ func NewVideoTestTaskCleanupService(store VideoTestTaskStore) *VideoTestTaskClea
 
 func NewVideoTestTaskCleanupServiceWithOptions(
 	store VideoTestTaskStore,
+	contentStore *VideoTestTaskContentStore,
 	now func() time.Time,
 	interval time.Duration,
 	retention time.Duration,
 ) *VideoTestTaskCleanupService {
-	return &VideoTestTaskCleanupService{store: store, now: now, interval: interval, retention: retention}
+	return &VideoTestTaskCleanupService{store: store, contentStore: contentStore, now: now, interval: interval, retention: retention}
 }
 
 func (s *VideoTestTaskCleanupService) Start() {
@@ -88,7 +91,18 @@ func (s *VideoTestTaskCleanupService) Stop() {
 }
 
 func (s *VideoTestTaskCleanupService) runOnce(ctx context.Context) (int64, error) {
-	return s.store.DeleteExpiredTerminal(ctx, s.now().UTC().Add(-s.retention))
+	now := s.now().UTC()
+	deleted, err := s.store.DeleteExpiredTerminal(ctx, now.Add(-s.retention))
+	if err != nil {
+		return 0, err
+	}
+	if s.contentStore != nil {
+		_, contentErr := s.contentStore.Cleanup(now)
+		if contentErr != nil {
+			return deleted, contentErr
+		}
+	}
+	return deleted, nil
 }
 
 func (s *VideoTestTaskCleanupService) logRun(ctx context.Context) {

@@ -744,7 +744,11 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	}
 
 	s.updateGrokUsageFromResponse(ctx, account, contentResp.Header, contentResp.StatusCode)
-	if err := writeGrokMediaContentResponse(c, contentResp); err != nil {
+	maxBytes := resolveVideoContentReadLimit(s.cfg)
+	if contentResp.ContentLength > maxBytes {
+		return nil, fmt.Errorf("video upstream content exceeds size limit")
+	}
+	if err := writeOpenAIVideoContentResponse(c, contentResp, maxBytes); err != nil {
 		return nil, err
 	}
 	return &OpenAIForwardResult{
@@ -1171,34 +1175,6 @@ func writeGrokMediaResponse(c *gin.Context, resp *http.Response, body []byte, fi
 		contentType = "application/json"
 	}
 	c.Data(resp.StatusCode, contentType, body)
-}
-
-func writeGrokMediaContentResponse(c *gin.Context, resp *http.Response) error {
-	if c == nil || resp == nil || resp.Body == nil {
-		return fmt.Errorf("grok media content response is incomplete")
-	}
-
-	for _, name := range []string{
-		"Content-Type",
-		"Content-Length",
-		"Content-Range",
-		"Accept-Ranges",
-		"Content-Disposition",
-	} {
-		if value := strings.TrimSpace(resp.Header.Get(name)); value != "" {
-			c.Header(name, value)
-		}
-	}
-	if strings.TrimSpace(c.Writer.Header().Get("Content-Length")) == "" && resp.ContentLength >= 0 {
-		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
-	}
-	if strings.TrimSpace(c.Writer.Header().Get("Content-Type")) == "" {
-		c.Header("Content-Type", "application/octet-stream")
-	}
-	c.Status(resp.StatusCode)
-	MarkResponseCommitted(c)
-	_, err := io.Copy(c.Writer, resp.Body)
-	return err
 }
 
 func rewriteGrokMediaVideoContentURLs(body []byte, requestID, proxyURL string) []byte {
