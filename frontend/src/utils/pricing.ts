@@ -1,24 +1,28 @@
 import { i18n } from '@/i18n'
 
-function formatPriceNumber(value: number): string {
-  return value.toPrecision(10).replace(/\.?0+$/, '')
+function formatPriceNumber(value: number, minFractionDigits = 0): string {
+  let s = value.toPrecision(10).replace(/\.?0+$/, '')
+  if (minFractionDigits > 0 && !s.includes('e')) {
+    const dot = s.indexOf('.')
+    const digits = dot === -1 ? 0 : s.length - dot - 1
+    if (digits < minFractionDigits) {
+      s = (dot === -1 ? `${s}.` : s) + '0'.repeat(minFractionDigits - digits)
+    }
+  }
+  return s
 }
 
 /**
- * formatScaled formats a per-token (or per-request) 灵石 price scaled by `scale`.
- *
- *   formatScaled(0.000003, 1_000_000) → "3 灵石"     // per 1M tokens
- *   formatScaled(0.5,        1)        → "0.5 灵石"   // per request
- *   formatScaled(null,       1_000_000) → "-"
- *
- * Uses toPrecision(10) then strips trailing zeros to avoid IEEE 754 display noise.
+ * 按比例格式化灵石价格，并追加当前语言配置的货币名称。
+ * `minFractionDigits` 用于价格表保留最少的小数位数；更长的有效小数不会被截断。
  */
-export function formatScaled(value: number | null, scale: number): string {
+export function formatScaled(value: number | null, scale: number, minFractionDigits = 0): string {
   if (value == null) return '-'
-  return `${formatPriceNumber(value * scale)} ${i18n.global.t('common.currencyName')}`
+  return `${formatPriceNumber(value * scale, minFractionDigits)} ${i18n.global.t('common.currencyName')}`
 }
 
-export function formatUSDScaled(value: number | null, scale: number): string {
+/** 按比例格式化美元价格，供需要固定展示 USD 的官方参考价使用。 */
+export function formatUSDScaled(value: number | null, scale: number, minFractionDigits = 0): string {
   if (value == null) return '-'
-  return `$${formatPriceNumber(value * scale)}`
+  return `$${formatPriceNumber(value * scale, minFractionDigits)}`
 }

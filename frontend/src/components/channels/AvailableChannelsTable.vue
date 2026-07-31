@@ -1,7 +1,7 @@
 <template>
   <!-- .table-wrapper 是 TablePageLayout 滚动链的挂载点：外层 .table-scroll-container
        负责卡片外观并 overflow-hidden，本层接收 overflow-y-auto 才能在内容超高时滚动。 -->
-  <div class="table-wrapper">
+  <div class="table-wrapper h-full overflow-y-auto p-4">
     <table
       data-testid="desktop-channels"
       class="!hidden w-full table-fixed border-collapse text-sm lg:!table"

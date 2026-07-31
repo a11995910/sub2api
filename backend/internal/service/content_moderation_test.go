@@ -188,7 +188,7 @@ func (r *contentModerationTestUserRepo) GetFirstAdmin(ctx context.Context) (*Use
 	panic("unexpected GetFirstAdmin call")
 }
 
-func (r *contentModerationTestUserRepo) Update(ctx context.Context, user *User) error {
+func (r *contentModerationTestUserRepo) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	if user == nil {
 		return nil
 	}
@@ -244,6 +244,14 @@ func (r *contentModerationTestUserRepo) AddBalance(ctx context.Context, id int64
 
 func (r *contentModerationTestUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	panic("unexpected DeductBalance call")
+}
+
+func (r *contentModerationTestUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (r *contentModerationTestUserRepo) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 
 func (r *contentModerationTestUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {

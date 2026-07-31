@@ -130,6 +130,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	if paymentCfg == nil {
 		paymentCfg = &service.PaymentConfig{}
 	}
+	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
@@ -141,6 +142,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		InvitationCodeEnabled:                                  settings.InvitationCodeEnabled,
 		TotpEnabled:                                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
+		PasskeyEnabled:                                         settings.PasskeyEnabled,
+		PasskeyConfigured:                                      passkeyConfigured,
+		PasskeyRPID:                                            passkeyRPID,
+		PasskeyRPOrigins:                                       passkeyRPOrigins,
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
 		StepUpEnabled:                                          settings.StepUpEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
@@ -365,6 +370,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
+		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
+		ModelPlazaDescription: settings.ModelPlazaDescription,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
@@ -500,6 +509,7 @@ type UpdateSettingsRequest struct {
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
+	PasskeyEnabled                   *bool                        `json:"passkey_enabled"`          // Passkey 登录（省略=保持现值）
 	SessionBindingEnabled            *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
 	StepUpEnabled                    *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
 	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
@@ -794,6 +804,11 @@ type UpdateSettingsRequest struct {
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
+	// Model Plaza feature switches + description
+	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription *string `json:"model_plaza_description"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
 
@@ -934,6 +949,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	stepUpEnabled := previousSettings.StepUpEnabled
 	if req.StepUpEnabled != nil {
 		stepUpEnabled = *req.StepUpEnabled
+	}
+	passkeyEnabled := previousSettings.PasskeyEnabled
+	if req.PasskeyEnabled != nil {
+		passkeyEnabled = *req.PasskeyEnabled
+	}
+	if passkeyEnabled {
+		configured, _, _ := h.settingService.PasskeyConfiguration()
+		if !configured {
+			response.BadRequest(c, "Passkey sign-in requires a valid WebAuthn RP ID and allowed HTTPS origins in the deployment configuration")
+			return
+		}
 	}
 	if stepUpEnabled && !previousSettings.StepUpEnabled {
 		if !h.ensureActorTotpForStepUp(c) {
@@ -1803,6 +1829,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
+		PasskeyEnabled:                   passkeyEnabled,
 		SessionBindingEnabled:            sessionBindingEnabled,
 		StepUpEnabled:                    stepUpEnabled,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
@@ -2171,6 +2198,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AvailableChannelsEnabled
 			}
 			return previousSettings.AvailableChannelsEnabled
+		}(),
+		ModelPlazaEnabled: func() bool {
+			if req.ModelPlazaEnabled != nil {
+				return *req.ModelPlazaEnabled
+			}
+			return previousSettings.ModelPlazaEnabled
+		}(),
+		ModelPlazaRequireAuth: func() bool {
+			if req.ModelPlazaRequireAuth != nil {
+				return *req.ModelPlazaRequireAuth
+			}
+			return previousSettings.ModelPlazaRequireAuth
+		}(),
+		ModelPlazaDescription: func() string {
+			if req.ModelPlazaDescription != nil {
+				return *req.ModelPlazaDescription
+			}
+			return previousSettings.ModelPlazaDescription
 		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
@@ -2565,6 +2610,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
+		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,
+		ModelPlazaDescription: updatedSettings.ModelPlazaDescription,
+
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
@@ -2660,6 +2709,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
+	}
+	if before.PasskeyEnabled != after.PasskeyEnabled {
+		changed = append(changed, "passkey_enabled")
 	}
 	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
 		changed = append(changed, "login_agreement_enabled")
@@ -3150,6 +3202,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+	}
+	if before.ModelPlazaEnabled != after.ModelPlazaEnabled {
+		changed = append(changed, "model_plaza_enabled")
+	}
+	if before.ModelPlazaRequireAuth != after.ModelPlazaRequireAuth {
+		changed = append(changed, "model_plaza_require_auth")
+	}
+	if before.ModelPlazaDescription != after.ModelPlazaDescription {
+		changed = append(changed, "model_plaza_description")
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
