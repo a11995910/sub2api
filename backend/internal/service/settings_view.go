@@ -143,6 +143,7 @@ type SystemSettings struct {
 	QuickLinkText               string
 	QuickLinkURL                string
 	HomeContent                 string
+	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -320,6 +321,7 @@ type PublicSettings struct {
 	QuickLinkText                    string
 	QuickLinkURL                     string
 	HomeContent                      string
+	CompactHomeEnabled               bool
 	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool

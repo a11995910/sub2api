@@ -233,6 +233,16 @@ func (s *settingsGroupReaderStub) GetByID(ctx context.Context, id int64) (*Group
 	return nil, ErrGroupNotFound
 }
 
+func TestSettingService_UpdateSettings_PersistsCompactHomeEnabled(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{CompactHomeEnabled: true})
+
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyCompactHomeEnabled])
+}
+
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	groupReader := &settingsGroupReaderStub{

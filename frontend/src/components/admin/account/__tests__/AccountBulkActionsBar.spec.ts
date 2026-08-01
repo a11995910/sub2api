@@ -13,11 +13,18 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+const selectionProps = {
+  totalResults: 45,
+  selectingAll: false,
+  allResultsSelected: false
+}
+
 describe('AccountBulkActionsBar', () => {
   it('选中账号时只展示已选账号批量编辑入口', async () => {
     const wrapper = mount(AccountBulkActionsBar, {
       props: {
-        selectedIds: [1, 2]
+        selectedIds: [1, 2],
+        ...selectionProps
       }
     })
 
@@ -38,7 +45,8 @@ describe('AccountBulkActionsBar', () => {
   it('未选中账号时展示筛选结果批量更新入口', async () => {
     const wrapper = mount(AccountBulkActionsBar, {
       props: {
-        selectedIds: []
+        selectedIds: [],
+        ...selectionProps
       }
     })
 
@@ -54,5 +62,39 @@ describe('AccountBulkActionsBar', () => {
 
     expect(wrapper.emitted('edit-filtered')).toHaveLength(1)
     expect(wrapper.emitted('edit-selected')).toBeUndefined()
+  })
+
+  it('未选中当前页账号时也可以选择全部筛选结果', async () => {
+    const wrapper = mount(AccountBulkActionsBar, {
+      props: {
+        selectedIds: [],
+        ...selectionProps
+      }
+    })
+
+    const button = wrapper.findAll('button').find(item =>
+      item.text().includes('admin.accounts.bulkActions.selectAllResults')
+    )
+
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    expect(wrapper.emitted('select-all-results')).toHaveLength(1)
+  })
+
+  it('保留上游余额探测批量操作', async () => {
+    const wrapper = mount(AccountBulkActionsBar, {
+      props: {
+        selectedIds: [1],
+        ...selectionProps
+      }
+    })
+
+    const button = wrapper.findAll('button').find(item =>
+      item.text().includes('admin.accounts.bulkActions.probeUpstreamBilling')
+    )
+
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    expect(wrapper.emitted('probe-upstream-billing')).toHaveLength(1)
   })
 })
