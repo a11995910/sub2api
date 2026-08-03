@@ -1,0 +1,19 @@
+root = "."
+tmp_dir = "/tmp/sub2api-air"
+
+[build]
+cmd = "go build -o /tmp/sub2api-air/server ./cmd/server"
+entrypoint = ["/tmp/sub2api-air/server"]
+include_ext = ["go", "json", "yaml", "yml"]
+exclude_dir = ["bin", "data", "internal/web/dist", "vendor"]
+exclude_regex = ["_test\\.go"]
+exclude_unchanged = true
+poll = true
+poll_interval = 1000
+delay = 500
+stop_on_error = true
+send_interrupt = true
+
+[log]
+time = true
+main_only = false

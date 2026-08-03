@@ -14,6 +14,48 @@
 
 ## 二、本地环境配置
 
+### Docker 热更新开发环境
+
+本机不需要安装 Go、PostgreSQL 或 Redis。开发栈由 Docker Compose 提供，
+后端使用 Air 监听 Go 源码，前端使用 Vite 热更新；数据库、缓存和依赖缓存均使用
+`sub2api-dev` 项目的独立命名卷，根目录 `docs` 以只读方式挂载给前端，
+不会复用生产或其他本地容器。
+
+首次启动前创建本地开发凭据：
+
+```powershell
+cd deploy
+Copy-Item dev.env.example dev.env
+# 将 dev.env 中的占位值替换为随机值；该文件被 Git 忽略。
+docker compose -f docker-compose.dev.yml up --build -d
+```
+
+若 Docker Hub 不稳定，可在 `deploy/.env` 中通过 `SUB2API_GO_IMAGE` 和
+`SUB2API_NODE_IMAGE` 指定本机已有的兼容开发镜像；未设置时仍使用官方镜像。
+
+访问地址：
+
+- 前端：`http://127.0.0.1:3001`
+- 后端健康检查：`http://127.0.0.1:8080/health`
+
+常用命令：
+
+```powershell
+# 查看服务状态和日志
+docker compose -f docker-compose.dev.yml ps
+docker compose -f docker-compose.dev.yml logs -f backend frontend
+
+# 在容器中运行测试
+docker compose -f docker-compose.dev.yml exec backend go test -tags=unit ./...
+docker compose -f docker-compose.dev.yml exec frontend pnpm test:run
+
+# 停止服务；命名卷和开发数据保留
+docker compose -f docker-compose.dev.yml down
+
+# 明确需要重置全部开发数据时才执行
+docker compose -f docker-compose.dev.yml down -v
+```
+
 ### PostgreSQL 16 (Windows 服务)
 
 | 配置项 | 值 |

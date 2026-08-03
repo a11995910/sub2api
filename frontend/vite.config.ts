@@ -82,6 +82,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
+  const usePolling = env.VITE_DEV_USE_POLLING === 'true'
 
   return {
     plugins: [
@@ -161,6 +162,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: devPort,
+      watch: usePolling ? { usePolling: true, interval: 1000 } : undefined,
       proxy: {
         '/api': {
           target: backendUrl,
