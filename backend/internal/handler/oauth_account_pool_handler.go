@@ -31,5 +31,6 @@ func (h *OAuthAccountPoolHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, dto.OAuthAccountPoolFromService(pool))
+	role, _ := middleware2.GetUserRoleFromContext(c)
+	response.Success(c, dto.OAuthAccountPoolFromService(pool, role == service.RoleAdmin))
 }

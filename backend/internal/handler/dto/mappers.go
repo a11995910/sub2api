@@ -217,7 +217,30 @@ func oauthAccountPoolWindowFromService(window *service.UsageProgress) *OAuthAcco
 	}
 }
 
-func OAuthAccountPoolFromService(pool *service.OAuthAccountPool) *OAuthAccountPool {
+func maskOAuthAccountIdentifier(identifier string) string {
+	if identifier == "" {
+		return ""
+	}
+
+	localPart := identifier
+	domainPart := ""
+	if at := strings.LastIndex(identifier, "@"); at >= 0 {
+		localPart = identifier[:at]
+		domainPart = identifier[at:]
+	}
+	localRunes := []rune(localPart)
+	if len(localRunes) == 0 {
+		return strings.Repeat("*", len([]rune(identifier)))
+	}
+
+	visibleCount := 4
+	if len(localRunes) <= visibleCount {
+		visibleCount = len(localRunes) - 1
+	}
+	return string(localRunes[:visibleCount]) + strings.Repeat("*", len(localRunes)-visibleCount) + domainPart
+}
+
+func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealIdentifiers bool) *OAuthAccountPool {
 	if pool == nil {
 		return nil
 	}
@@ -241,8 +264,12 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool) *OAuthAccountPo
 		}
 		for j := range pool.Groups[i].Accounts {
 			item := &pool.Groups[i].Accounts[j]
+			identifier := item.Identifier
+			if !revealIdentifiers {
+				identifier = maskOAuthAccountIdentifier(identifier)
+			}
 			account := OAuthAccountPoolAccount{
-				Identifier:         item.Identifier,
+				Identifier:         identifier,
 				PlanType:           item.PlanType,
 				CurrentConcurrency: item.CurrentConcurrency,
 				Concurrency:        item.Concurrency,
@@ -839,7 +866,6 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ImageSizeBreakdown:        l.ImageSizeBreakdown,
 		MediaType:                 l.MediaType,
 		UserAgent:                 l.UserAgent,
-		IPAddress:                 l.IPAddress,
 		SessionID:                 l.SessionID,
 		CacheTTLOverridden:        l.CacheTTLOverridden,
 		BillingMode:               l.BillingMode,

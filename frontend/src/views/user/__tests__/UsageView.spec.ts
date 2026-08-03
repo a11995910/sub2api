@@ -209,6 +209,9 @@ describe('user UsageView', () => {
     expect((wrapper.vm as any).visibleColumns).toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'oauth_account' })]),
     )
+    expect((wrapper.vm as any).visibleColumns).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'ip_address' })]),
+    )
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {
@@ -241,8 +244,8 @@ describe('user UsageView', () => {
     }))
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
-    expect(csvContent).toContain('IP Address')
-    expect(csvContent).toContain('203.0.113.10')
+    expect(csvContent).not.toContain('IP Address')
+    expect(csvContent).not.toContain('203.0.113.10')
     expect(csvContent).toContain('Billed Cost')
     expect(csvContent).toContain('Original Cost')
     expect(csvContent).not.toContain('Upstream Endpoint')

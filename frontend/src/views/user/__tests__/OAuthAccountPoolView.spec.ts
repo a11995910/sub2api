@@ -80,7 +80,7 @@ describe('OAuthAccountPoolView', () => {
         summary: { account_count: 1, requests: 120, tokens: 12000 },
         accounts: [
           {
-            identifier: 'owner@example.com',
+            identifier: '1072******@qq.com',
             plan_type: 'Pro 20x',
             current_concurrency: 6,
             concurrency: 15,
@@ -103,8 +103,9 @@ describe('OAuthAccountPoolView', () => {
 
     expect(wrapper.text()).toContain('公开分组')
     expect(wrapper.text()).toContain('1 个账号')
-    expect(wrapper.text()).toContain('owner@example.com')
     expect(wrapper.text()).toContain('Pro 20x')
+    expect(wrapper.text()).toContain('1072******@qq.com')
+    expect(wrapper.text()).not.toContain('1072688154@qq.com')
     expect(wrapper.text()).toContain('5 小时')
     expect(wrapper.text()).toContain('7 天')
     expect(wrapper.text()).toContain('12.0K')

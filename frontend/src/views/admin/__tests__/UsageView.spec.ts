@@ -186,6 +186,18 @@ describe('admin UsageView route filters', () => {
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('route-user@test.com')
   })
 
+  it('removes the IP column from administrator usage records', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+
+    expect((wrapper.vm as any).visibleColumns).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'ip_address' })]),
+    )
+    expect((wrapper.vm as any).toggleableColumns).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'ip_address' })]),
+    )
+  })
+
   it('does not apply a stale routed user label after user_id changes', async () => {
     routeQuery.user_id = '42'
     let resolveLookup!: (user: { id: number; email: string }) => void
