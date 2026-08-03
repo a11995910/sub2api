@@ -212,6 +212,10 @@ describe('user UsageView', () => {
     expect((wrapper.vm as any).visibleColumns).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'ip_address' })]),
     )
+    expect((wrapper.vm as any).errVisibleColumnKeys).not.toContain('client_ip')
+    expect((wrapper.vm as any).errToggleableColumns).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'client_ip' })]),
+    )
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {

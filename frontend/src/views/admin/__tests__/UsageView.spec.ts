@@ -186,7 +186,7 @@ describe('admin UsageView route filters', () => {
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('route-user@test.com')
   })
 
-  it('removes the IP column from administrator usage records', async () => {
+  it('removes the IP column from all administrator usage record views', async () => {
     const wrapper = mountRouteFilteredUsageView()
     await flushPromises()
 
@@ -195,6 +195,10 @@ describe('admin UsageView route filters', () => {
     )
     expect((wrapper.vm as any).toggleableColumns).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'ip_address' })]),
+    )
+    expect((wrapper.vm as any).errVisibleColumnKeys).not.toContain('client_ip')
+    expect((wrapper.vm as any).errToggleableColumns).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'client_ip' })]),
     )
   })
 

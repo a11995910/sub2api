@@ -16,7 +16,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
 const TooltipStub = { template: '<div><slot /></div>' }
 const PaginationStub = { template: '<div class="pagination-stub" />' }
 
-function mountTable(row: Partial<OpsErrorLog>) {
+function mountTable(row: Partial<OpsErrorLog>, visibleColumnKeys?: string[]) {
   const base = {
     id: 1,
     created_at: '2026-06-05T23:59:50Z',
@@ -39,8 +39,14 @@ function mountTable(row: Partial<OpsErrorLog>) {
   } as OpsErrorLog
 
   return mount(OpsErrorLogTable, {
-    props: { rows: [base], total: 1, loading: false, page: 1, pageSize: 20 },
-    global: { stubs: { 'el-tooltip': TooltipStub, Pagination: PaginationStub } },
+    props: { rows: [base], total: 1, loading: false, page: 1, pageSize: 20, visibleColumnKeys },
+    global: {
+      stubs: {
+        'el-tooltip': TooltipStub,
+        Pagination: PaginationStub,
+        IpGeoBatchToolbar: { template: '<div data-test="ip-geo-toolbar" />' },
+      },
+    },
   })
 }
 
@@ -72,6 +78,15 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
 
     expect(wrapper.text()).toContain('old-key')
     expect(wrapper.text()).toContain('admin.ops.errorLog.keyDeletedBadge')
+  })
+
+  it('hides the IP toolbar when the IP column is excluded', () => {
+    const wrapper = mountTable(
+      { client_ip: '203.0.113.10' },
+      ['user', 'status', 'created_at', 'actions'],
+    )
+
+    expect(wrapper.find('[data-test="ip-geo-toolbar"]').exists()).toBe(false)
   })
 })
 

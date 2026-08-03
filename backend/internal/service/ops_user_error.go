@@ -6,9 +6,8 @@ import "time"
 // 严禁包含 account / api_key_prefix / upstream_endpoint / user_email 等
 // 敏感或内部字段。注：message（网关标准化错误描述）与 key_name
 // （用户自有 API Key 名称，KeysView 中本就可见）经产品决策对该用户开放；
-// client_ip / user_agent / group_name / request_type / stream 均为该用户
-// 自己请求的属性，经产品决策（2026-07-03）开放，
-// 与用量明细已向用户展示自身 ip_address/user_agent/分组/类型 的口径对齐；
+// user_agent / group_name / request_type / stream 均为该用户自己的请求属性；
+// client_ip 属于敏感网络信息，不得通过用户接口返回；
 // error_body 仅在详情接口（GetUserErrorRequestDetail）按归属校验后返回。
 type UserErrorRequest struct {
 	ID              int64     `json:"id"`
@@ -21,7 +20,6 @@ type UserErrorRequest struct {
 	Message         string    `json:"message"`
 	KeyName         string    `json:"key_name"`
 	KeyDeleted      bool      `json:"key_deleted"`
-	ClientIP        string    `json:"client_ip,omitempty"`
 	GroupName       string    `json:"group_name,omitempty"`
 	RequestType     *int16    `json:"request_type,omitempty"`
 	Stream          bool      `json:"stream"`
@@ -98,10 +96,6 @@ func ToUserErrorRequest(e *OpsErrorLog) *UserErrorRequest {
 	if model == "" {
 		model = e.Model
 	}
-	clientIP := ""
-	if e.ClientIP != nil {
-		clientIP = *e.ClientIP
-	}
 	return &UserErrorRequest{
 		ID:              e.ID,
 		CreatedAt:       e.CreatedAt,
@@ -113,7 +107,6 @@ func ToUserErrorRequest(e *OpsErrorLog) *UserErrorRequest {
 		Message:         e.Message,
 		KeyName:         e.APIKeyName,
 		KeyDeleted:      e.APIKeyDeleted,
-		ClientIP:        clientIP,
 		GroupName:       e.GroupName,
 		RequestType:     e.RequestType,
 		Stream:          e.Stream,

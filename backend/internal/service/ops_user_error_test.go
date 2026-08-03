@@ -150,10 +150,7 @@ func TestToUserErrorRequestDetail_WhitelistAndRedacts(t *testing.T) {
 		t.Errorf("UpstreamStatusCode mismatch")
 	}
 
-	// client_ip / user_agent / group_name / stream 经产品决策开放（与用量明细口径对齐）
-	if out.ClientIP != "1.2.3.4" {
-		t.Errorf("want client_ip=1.2.3.4, got %q", out.ClientIP)
-	}
+	// user_agent / group_name / stream 仍开放，client_ip 必须在序列化边界移除。
 	if out.UserAgent != "codex_cli_rs/0.125.0" {
 		t.Errorf("want user_agent=codex_cli_rs/0.125.0, got %q", out.UserAgent)
 	}
@@ -170,7 +167,7 @@ func TestToUserErrorRequestDetail_WhitelistAndRedacts(t *testing.T) {
 		t.Fatalf("json.Marshal failed: %v", err)
 	}
 	raw := string(b)
-	for _, forbidden := range []string{"user_email", "upstream_endpoint"} {
+	for _, forbidden := range []string{"user_email", "upstream_endpoint", "client_ip"} {
 		if strings.Contains(raw, forbidden) {
 			t.Errorf("sensitive field %q leaked in JSON output: %s", forbidden, raw)
 		}

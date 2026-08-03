@@ -2069,7 +2069,6 @@ export interface UserErrorRequest {
   message: string
   key_name: string
   key_deleted: boolean
-  client_ip?: string
   group_name?: string
   request_type?: number
   stream?: boolean

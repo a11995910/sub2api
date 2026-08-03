@@ -205,7 +205,6 @@
         @sort="onErrorSort"
         @update:page="onErrorPage"
         @update:pageSize="onErrorPageSize"
-        @ipGeoBatchFailed="handleIpGeoBatchFailed"
       />
     </div>
   </AppLayout>
@@ -745,7 +744,6 @@ const errAllColumns = computed<Column[]>(() => [
   { key: 'key_name', label: t('usage.errors.keyName') },
   { key: 'model', label: t('usage.errors.model') },
   { key: 'endpoint', label: t('usage.errors.endpoint') },
-  { key: 'client_ip', label: 'IP' },
   { key: 'group', label: t('admin.usage.group') },
   { key: 'type', label: t('usage.type') },
   { key: 'platform', label: t('usage.errors.platform') },

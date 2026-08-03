@@ -1,7 +1,11 @@
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden" :class="flat ? '' : 'card'">
-      <IpGeoBatchToolbar :ips="rows.map((r) => r.client_ip)" @failed="emit('ipGeoBatchFailed')" />
+      <IpGeoBatchToolbar
+        v-if="columns.some((column) => column.key === 'client_ip')"
+        :ips="rows.map((r) => r.client_ip)"
+        @failed="emit('ipGeoBatchFailed')"
+      />
 
       <DataTable
         :columns="columns"
