@@ -16,8 +16,10 @@ export interface OAuthAccountPoolAccountStats {
   total: OAuthAccountPoolRequestTokenStats
 }
 
-export interface OAuthAccountPoolSummary extends OAuthAccountPoolRequestTokenStats {
+export interface OAuthAccountPoolSummary {
   account_count: number
+  requests?: number
+  tokens?: number
 }
 
 export interface OAuthAccountPoolAccount {
@@ -29,7 +31,7 @@ export interface OAuthAccountPoolAccount {
     five_hour: OAuthAccountPoolWindow | null
     seven_day: OAuthAccountPoolWindow | null
   }
-  stats: OAuthAccountPoolAccountStats
+  stats?: OAuthAccountPoolAccountStats
 }
 
 export interface OAuthAccountPoolGroup {

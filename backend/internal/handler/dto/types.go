@@ -237,9 +237,9 @@ type OAuthAccountPoolAccountStats struct {
 }
 
 type OAuthAccountPoolSummary struct {
-	AccountCount int   `json:"account_count"`
-	Requests     int64 `json:"requests"`
-	Tokens       int64 `json:"tokens"`
+	AccountCount int    `json:"account_count"`
+	Requests     *int64 `json:"requests,omitempty"`
+	Tokens       *int64 `json:"tokens,omitempty"`
 }
 
 type OAuthAccountPoolAccount struct {
@@ -251,7 +251,7 @@ type OAuthAccountPoolAccount struct {
 		FiveHour *OAuthAccountPoolWindow `json:"five_hour"`
 		SevenDay *OAuthAccountPoolWindow `json:"seven_day"`
 	} `json:"usage"`
-	Stats OAuthAccountPoolAccountStats `json:"stats"`
+	Stats *OAuthAccountPoolAccountStats `json:"stats,omitempty"`
 }
 
 type OAuthAccountPoolGroup struct {

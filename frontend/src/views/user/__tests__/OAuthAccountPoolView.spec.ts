@@ -4,12 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import OAuthAccountPoolView from '../OAuthAccountPoolView.vue'
 
-const { getPool } = vi.hoisted(() => ({
+const { getPool, authStore } = vi.hoisted(() => ({
   getPool: vi.fn(),
+  authStore: { isAdmin: false },
 }))
 
 vi.mock('@/api', () => ({
   oauthAccountPoolAPI: { get: getPool },
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authStore,
 }))
 
 const messages: Record<string, string> = {
@@ -53,6 +58,31 @@ const OAuthUsageWindowsStub = defineComponent({
   template: '<div data-testid="oauth-usage">{{ usage.five_hour?.utilization ?? emptyText }}</div>',
 })
 
+const buildPoolResponse = () => ({
+  summary: { account_count: 1, requests: 120, tokens: 12000 },
+  groups: [{
+    name: '公开分组',
+    summary: { account_count: 1, requests: 120, tokens: 12000 },
+    accounts: [
+      {
+        identifier: '1072******@qq.com',
+        plan_type: 'Pro 20x',
+        current_concurrency: 6,
+        concurrency: 15,
+        usage: {
+          five_hour: { utilization: 24, resets_at: '2026-07-28T10:00:00Z' },
+          seven_day: null,
+        },
+        stats: {
+          five_hour: { requests: 5, tokens: 500 },
+          seven_day: { requests: 70, tokens: 7000 },
+          total: { requests: 120, tokens: 12000 },
+        },
+      },
+    ],
+  }],
+})
+
 const mountView = () => mount(OAuthAccountPoolView, {
   global: {
     stubs: {
@@ -70,33 +100,11 @@ const mountView = () => mount(OAuthAccountPoolView, {
 describe('OAuthAccountPoolView', () => {
   beforeEach(() => {
     getPool.mockReset()
+    authStore.isAdmin = false
   })
 
-  it('按分组展示真实账号、套餐、窗口统计与累计汇总，不显示自定义名称', async () => {
-    getPool.mockResolvedValue({
-      summary: { account_count: 1, requests: 120, tokens: 12000 },
-      groups: [{
-        name: '公开分组',
-        summary: { account_count: 1, requests: 120, tokens: 12000 },
-        accounts: [
-          {
-            identifier: '1072******@qq.com',
-            plan_type: 'Pro 20x',
-            current_concurrency: 6,
-            concurrency: 15,
-            usage: {
-              five_hour: { utilization: 24, resets_at: '2026-07-28T10:00:00Z' },
-              seven_day: null,
-            },
-            stats: {
-              five_hour: { requests: 5, tokens: 500 },
-              seven_day: { requests: 70, tokens: 7000 },
-              total: { requests: 120, tokens: 12000 },
-            },
-          },
-        ],
-      }],
-    })
+  it('普通用户只展示账号、套餐、并发与额度状态，不展示请求和 Token 统计', async () => {
+    getPool.mockResolvedValue(buildPoolResponse())
 
     const wrapper = mountView()
     await flushPromises()
@@ -106,15 +114,37 @@ describe('OAuthAccountPoolView', () => {
     expect(wrapper.text()).toContain('Pro 20x')
     expect(wrapper.text()).toContain('1072******@qq.com')
     expect(wrapper.text()).not.toContain('1072688154@qq.com')
-    expect(wrapper.text()).toContain('5 小时')
-    expect(wrapper.text()).toContain('7 天')
-    expect(wrapper.text()).toContain('12.0K')
+    expect(wrapper.text()).not.toContain('总请求次数')
+    expect(wrapper.text()).not.toContain('总 Token 用量')
+    expect(wrapper.text()).not.toContain('请求次数')
+    expect(wrapper.text()).not.toContain('Token 用量')
+    expect(wrapper.text()).not.toContain('5 小时')
+    expect(wrapper.text()).not.toContain('7 天')
+    expect(wrapper.text()).not.toContain('12.0K')
     expect(wrapper.text()).not.toContain('Pro 正价')
     expect(wrapper.get('[data-testid="account-concurrency"]').text()).toContain('6/15')
     expect(wrapper.get('[data-testid="oauth-usage"]').text()).toBe('24')
-    expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('120')
+    expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('可见账号')
+    expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('1')
     expect(wrapper.text()).not.toContain('account_id')
     expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('管理员继续展示请求和 Token 统计', async () => {
+    authStore.isAdmin = true
+    getPool.mockResolvedValue(buildPoolResponse())
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('总请求次数')
+    expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('120')
+    expect(wrapper.text()).toContain('总 Token 用量')
+    expect(wrapper.text()).toContain('请求次数')
+    expect(wrapper.text()).toContain('Token 用量')
+    expect(wrapper.text()).toContain('5 小时')
+    expect(wrapper.text()).toContain('7 天')
+    expect(wrapper.text()).toContain('12.0K')
   })
 
   it('空响应展示统一空状态', async () => {

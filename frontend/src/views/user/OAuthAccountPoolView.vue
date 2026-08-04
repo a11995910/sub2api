@@ -2,8 +2,11 @@
   <AppLayout>
     <div class="space-y-8">
       <div v-if="loading" class="space-y-8" aria-busy="true">
-        <div class="grid grid-cols-3 divide-x divide-gray-200 border-y border-gray-200 py-4 dark:divide-dark-700 dark:border-dark-700">
-          <div v-for="item in 3" :key="item" class="space-y-2 px-4 first:pl-0">
+        <div
+          class="grid divide-x divide-gray-200 border-y border-gray-200 py-4 dark:divide-dark-700 dark:border-dark-700"
+          :class="authStore.isAdmin ? 'grid-cols-3' : 'grid-cols-1'"
+        >
+          <div v-for="item in authStore.isAdmin ? 3 : 1" :key="item" class="space-y-2 px-4 first:pl-0">
             <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
             <div class="h-6 w-24 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           </div>
@@ -14,7 +17,8 @@
             <div
               v-for="cardIndex in 2"
               :key="cardIndex"
-              class="h-72 animate-pulse rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+              class="animate-pulse rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+              :class="authStore.isAdmin ? 'h-72' : 'h-48'"
             ></div>
           </div>
         </section>
@@ -43,7 +47,8 @@
       <div v-else class="space-y-8">
         <dl
           data-testid="pool-summary"
-          class="grid grid-cols-3 divide-x divide-gray-200 border-y border-gray-200 py-4 dark:divide-dark-700 dark:border-dark-700"
+          class="grid divide-x divide-gray-200 border-y border-gray-200 py-4 dark:divide-dark-700 dark:border-dark-700"
+          :class="authStore.isAdmin ? 'grid-cols-3' : 'grid-cols-1'"
         >
           <div class="min-w-0 px-3 first:pl-0 sm:px-5">
             <dt class="text-xs text-gray-500 dark:text-gray-400">
@@ -53,20 +58,20 @@
               {{ formatRequests(summary.account_count) }}
             </dd>
           </div>
-          <div class="min-w-0 px-3 sm:px-5">
+          <div v-if="authStore.isAdmin" class="min-w-0 px-3 sm:px-5">
             <dt class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('oauthAccountPool.totalRequests') }}
             </dt>
             <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
-              {{ formatRequests(summary.requests) }}
+              {{ formatRequests(summary.requests ?? 0) }}
             </dd>
           </div>
-          <div class="min-w-0 px-3 sm:px-5">
+          <div v-if="authStore.isAdmin" class="min-w-0 px-3 sm:px-5">
             <dt class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('oauthAccountPool.totalTokens') }}
             </dt>
             <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
-              {{ formatTokens(summary.tokens) }}
+              {{ formatTokens(summary.tokens ?? 0) }}
             </dd>
           </div>
         </dl>
@@ -85,9 +90,12 @@
                 {{ t('oauthAccountPool.accountCount', { count: group.summary.account_count }) }}
               </span>
             </div>
-            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              <span>{{ t('oauthAccountPool.totalRequests') }} {{ formatRequests(group.summary.requests) }}</span>
-              <span>{{ t('oauthAccountPool.totalTokens') }} {{ formatTokens(group.summary.tokens) }}</span>
+            <div
+              v-if="authStore.isAdmin"
+              class="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-gray-500 dark:text-gray-400"
+            >
+              <span>{{ t('oauthAccountPool.totalRequests') }} {{ formatRequests(group.summary.requests ?? 0) }}</span>
+              <span>{{ t('oauthAccountPool.totalTokens') }} {{ formatTokens(group.summary.tokens ?? 0) }}</span>
             </div>
           </div>
 
@@ -95,7 +103,8 @@
             <article
               v-for="(account, accountIndex) in group.accounts"
               :key="`${account.identifier}-${accountIndex}`"
-              class="min-h-72 rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800"
+              class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800"
+              :class="{ 'min-h-72': authStore.isAdmin }"
             >
               <div class="flex min-w-0 items-start justify-between gap-3">
                 <div class="flex min-w-0 items-start gap-2">
@@ -123,7 +132,10 @@
                 </div>
               </div>
 
-              <div class="mt-5 border-y border-gray-100 py-2 dark:border-dark-700/80">
+              <div
+                v-if="authStore.isAdmin && account.stats"
+                class="mt-5 border-y border-gray-100 py-2 dark:border-dark-700/80"
+              >
                 <div class="grid grid-cols-[minmax(3.75rem,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 px-1 text-[11px] text-gray-400 dark:text-gray-500">
                   <span></span>
                   <span class="text-right">{{ t('oauthAccountPool.requests') }}</span>
@@ -176,9 +188,11 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OAuthUsageWindows from '@/components/account/OAuthUsageWindows.vue'
 import AccountConcurrencyBadge from '@/components/account/AccountConcurrencyBadge.vue'
+import { useAuthStore } from '@/stores/auth'
 import { formatCompactNumber } from '@/utils/format'
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 const groups = ref<OAuthAccountPoolGroup[]>([])
 const summary = ref<OAuthAccountPoolSummary>({ account_count: 0, requests: 0, tokens: 0 })
 const loading = ref(true)
@@ -187,11 +201,14 @@ const error = ref(false)
 const formatRequests = (value: number) => formatCompactNumber(value, { allowBillions: false })
 const formatTokens = (value: number) => formatCompactNumber(value)
 
-const accountStatRows = (account: OAuthAccountPoolAccount) => [
-  { label: t('oauthAccountPool.period5h'), stats: account.stats.five_hour },
-  { label: t('oauthAccountPool.period7d'), stats: account.stats.seven_day },
-  { label: t('oauthAccountPool.cumulative'), stats: account.stats.total },
-]
+const accountStatRows = (account: OAuthAccountPoolAccount) => {
+  if (!account.stats) return []
+  return [
+    { label: t('oauthAccountPool.period5h'), stats: account.stats.five_hour },
+    { label: t('oauthAccountPool.period7d'), stats: account.stats.seven_day },
+    { label: t('oauthAccountPool.cumulative'), stats: account.stats.total },
+  ]
+}
 
 const planBadgeClass = (planType: string) => {
   switch (planType) {

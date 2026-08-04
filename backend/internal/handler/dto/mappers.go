@@ -240,7 +240,7 @@ func maskOAuthAccountIdentifier(identifier string) string {
 	return string(localRunes[:visibleCount]) + strings.Repeat("*", len(localRunes)-visibleCount) + domainPart
 }
 
-func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealIdentifiers bool) *OAuthAccountPool {
+func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealSensitiveDetails bool) *OAuthAccountPool {
 	if pool == nil {
 		return nil
 	}
@@ -248,9 +248,11 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealIdentifie
 		Groups: make([]OAuthAccountPoolGroup, 0, len(pool.Groups)),
 		Summary: OAuthAccountPoolSummary{
 			AccountCount: pool.Summary.AccountCount,
-			Requests:     pool.Summary.Requests,
-			Tokens:       pool.Summary.Tokens,
 		},
+	}
+	if revealSensitiveDetails {
+		out.Summary.Requests = &pool.Summary.Requests
+		out.Summary.Tokens = &pool.Summary.Tokens
 	}
 	for i := range pool.Groups {
 		group := OAuthAccountPoolGroup{
@@ -258,14 +260,16 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealIdentifie
 			Accounts: make([]OAuthAccountPoolAccount, 0, len(pool.Groups[i].Accounts)),
 			Summary: OAuthAccountPoolSummary{
 				AccountCount: pool.Groups[i].Summary.AccountCount,
-				Requests:     pool.Groups[i].Summary.Requests,
-				Tokens:       pool.Groups[i].Summary.Tokens,
 			},
+		}
+		if revealSensitiveDetails {
+			group.Summary.Requests = &pool.Groups[i].Summary.Requests
+			group.Summary.Tokens = &pool.Groups[i].Summary.Tokens
 		}
 		for j := range pool.Groups[i].Accounts {
 			item := &pool.Groups[i].Accounts[j]
 			identifier := item.Identifier
-			if !revealIdentifiers {
+			if !revealSensitiveDetails {
 				identifier = maskOAuthAccountIdentifier(identifier)
 			}
 			account := OAuthAccountPoolAccount{
@@ -273,11 +277,13 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealIdentifie
 				PlanType:           item.PlanType,
 				CurrentConcurrency: item.CurrentConcurrency,
 				Concurrency:        item.Concurrency,
-				Stats: OAuthAccountPoolAccountStats{
+			}
+			if revealSensitiveDetails {
+				account.Stats = &OAuthAccountPoolAccountStats{
 					FiveHour: OAuthAccountPoolRequestTokenStats(item.Stats.FiveHour),
 					SevenDay: OAuthAccountPoolRequestTokenStats(item.Stats.SevenDay),
 					Total:    OAuthAccountPoolRequestTokenStats(item.Stats.Total),
-				},
+				}
 			}
 			account.Usage.FiveHour = oauthAccountPoolWindowFromService(item.FiveHour)
 			account.Usage.SevenDay = oauthAccountPoolWindowFromService(item.SevenDay)
