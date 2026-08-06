@@ -20,6 +20,19 @@
 - 验证通过后按保留策略清理 Docker 构建缓存和无回滚价值的旧镜像，不得删除当前镜像、最近回滚镜像或业务数据卷。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
 
+## GitHub Actions Runner
+
+正式 VPS 当前注册了一个仓库级 self-hosted Runner：
+
+- 服务目录：`/opt/actions-runner`
+- systemd 服务：`actions.runner.a11995910-sub2api.sub2api-vps.service`
+- Runner 标签：`self-hosted`、`linux`、`sub2api-staging`、`sub2api-prod`
+- 运行用户：`root`（因构建需要 Docker、root-only 运行配置和生产门禁脚本）
+
+该 Runner 只承接仓库中的 staging/prod 手动工作流，不承接 Pull Request 构建。Runner 空闲时资源占用很低，Docker 构建期间由 staging workflow 的磁盘、内存、负载门禁和构建锁控制。Runner 上线不等于生产发布；prod 仍必须通过 staging 结果校验并等待用户明确口头确认。
+
+Runner 注册 token 是一次性凭据，注册完成后失效；长期 GitHub Token 只保存在 AstrBot 运行时配置中，不写入仓库或日志。若 Runner 服务异常，先执行 `systemctl status actions.runner.a11995910-sub2api.sub2api-vps.service` 和 `journalctl -u actions.runner.a11995910-sub2api.sub2api-vps.service`，不得直接删除 `/opt/actions-runner` 或重置 Runner。
+
 ## 图片 URL 本地存储
 
 分组选择 URL 图片响应后，服务会把最终图片写入 `IMAGE_STORAGE_PATH`。Docker 默认值为 `/app/data/generated-images`，该目录位于既有 `/app/data` 持久卷内；staging 和 prod 必须使用彼此独立的数据卷或宿主目录。
