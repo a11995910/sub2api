@@ -73,10 +73,20 @@
 - `/opt/sub2api/repo` 必须始终检出 `main`，staging 和 prod 都只允许使用 `origin/main`。任何功能分支或同步分支都必须在本地验证并合并、推送到 `main` 后，才允许进入 VPS staging；VPS 上禁止检出或构建其他分支。prod 切换仍必须等待用户明确口头确认。
 - 每次构建必须使用 `deploy/Dockerfile` 在正式 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
 - Docker 构建必须传入可追溯版本信息，至少包含 `COMMIT=$(git rev-parse --short=12 HEAD)` 和 `DATE=$(git show -s --format=%cI HEAD)`。
+- 仓库 `deploy/release-prod` 是 `/opt/sub2api/scripts/release-prod` 的唯一受版本控制来源；安装或升级时必须从已推送的 `origin/main` 复制并设置为 `root:root`、`0700`，不得在 VPS 上直接手写简化发布脚本。
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
 - `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在正式 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
 - 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。
 - 上游同步可先在本地独立同步分支中解决冲突并完成本地验证，例如 `sync/upstream-YYYYMMDD`；随后必须先合并并推送到 `main`、删除同步分支，再由正式 VPS 的隔离 staging 构建该 `main` commit。禁止让 VPS 拉取同步分支，也禁止跳过 staging 直接切换 prod。
+
+当前源码远端与上游关系必须保持清晰：
+
+- `origin` 是当前定制仓库 `https://github.com/a11995910/sub2api.git`，本地 `main` 和正式 VPS 都以它的 `main` 为发布来源。
+- `upstream` 是官方上游仓库 `https://github.com/Wei-Shaw/sub2api.git`，只用于本地同步和对照，不得让正式 VPS 直接拉取或构建 `upstream/main`。
+- 首次同步前应检查 `git remote -v`；缺少 `upstream` 时执行 `git remote add upstream https://github.com/Wei-Shaw/sub2api.git`。
+- 同步顺序固定为：`git fetch upstream --prune` -> 创建 `sync/upstream-YYYYMMDD` -> 合并 `upstream/main` -> 本地测试 -> 合并回 `main` -> 推送 `origin/main`。
+- 本仓库历史中的 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169）是该同步方式的依据；后续同步应保留同样的可追溯合并记录。
+- `deploy/install.sh`、`deploy/docker-deploy.sh` 和默认 `weishaw/sub2api:latest` 属于官方通用部署链路，不得当作当前定制 VPS 的生产发布入口。
 
 正式 VPS staging 构建示例：
 

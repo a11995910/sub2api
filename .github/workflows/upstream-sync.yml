@@ -1,0 +1,156 @@
+name: Upstream Sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      UPSTREAM_REPO: Wei-Shaw/sub2api
+      SYNC_BRANCH: sync/upstream-${{ github.run_id }}
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure Git remotes
+        id: merge
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags origin main
+          git fetch --no-tags upstream main
+
+          base_sha="$(git rev-parse origin/main)"
+          upstream_sha="$(git rev-parse upstream/main)"
+          git switch --create "$SYNC_BRANCH" "origin/main"
+          git merge --no-ff upstream/main -m "merge: 同步官方上游主线"
+          merged_sha="$(git rev-parse HEAD)"
+
+          {
+            echo "base_sha=$base_sha"
+            echo "upstream_sha=$upstream_sha"
+            echo "merged_sha=$merged_sha"
+          } >> "$GITHUB_OUTPUT"
+
+          git status --short
+          git log --oneline --decorate -5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify Go version
+        run: go version | grep -q 'go1.26.5'
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: make test-unit
+
+      - name: Backend integration tests
+        working-directory: backend
+        run: make test-integration
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend checks
+        run: make test-frontend
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.9
+          args: --timeout=30m
+          working-directory: backend
+
+      - name: Push tested merge to current main
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
+          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+          MERGED_SHA: ${{ steps.merge.outputs.merged_sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$BASE_SHA"
+          git push origin "HEAD:main"
+
+          {
+            echo "## 上游同步完成"
+            echo "- 官方上游 commit: `$UPSTREAM_SHA`"
+            echo "- 合并后 commit: `$MERGED_SHA`"
+            echo "- 已推送: `origin/main`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write sync result
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
+          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+          MERGED_SHA: ${{ steps.merge.outputs.merged_sha }}
+        run: |
+          set -Eeuo pipefail
+          result="$RUNNER_TEMP/upstream-sync-result.json"
+          python3 - "$result" <<'PY'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timezone
+
+          result = {
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "status": os.environ.get("JOB_STATUS", "unknown"),
+              "base_sha": os.environ.get("BASE_SHA", ""),
+              "upstream_sha": os.environ.get("UPSTREAM_SHA", ""),
+              "merged_sha": os.environ.get("MERGED_SHA", ""),
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "completed_at": datetime.now(timezone.utc).isoformat(),
+          }
+          with open(sys.argv[1], "w", encoding="utf-8") as handle:
+              json.dump(result, handle, ensure_ascii=False, indent=2)
+              handle.write("\n")
+          PY
+
+      - name: Upload sync result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upstream-sync-${{ github.run_id }}
+          path: ${{ runner.temp }}/upstream-sync-result.json
+          if-no-files-found: ignore
+          retention-days: 14

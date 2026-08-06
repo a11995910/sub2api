@@ -1,0 +1,159 @@
+name: Staging Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full 40-character commit from origin/main to verify
+        required: true
+        type: string
+      sync_run_id:
+        description: Upstream sync workflow run id
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sub2api-staging
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: [self-hosted, linux, sub2api-staging]
+    timeout-minutes: 45
+    env:
+      REPO_DIR: /opt/sub2api/repo
+      ENV_FILE: /opt/sub2api/env/staging/.env
+      COMPOSE_BASE: /opt/sub2api/repo/deploy/docker-compose.yml
+      COMPOSE_OVERRIDE: /opt/sub2api/compose/staging/docker-compose.yml
+      STATE_DIR: /opt/sub2api/state
+      TARGET_COMMIT: ${{ inputs.commit }}
+      SYNC_RUN_ID: ${{ inputs.sync_run_id }}
+    steps:
+      - name: Verify staging runner prerequisites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -d "$REPO_DIR"
+          test -f "$ENV_FILE"
+          test -f "$COMPOSE_BASE"
+          test -f "$COMPOSE_OVERRIDE"
+          test -x /opt/sub2api/scripts/update-sub2api-image
+          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+          mkdir -p "$STATE_DIR"
+
+      - name: Pull exact origin/main commit
+        id: source
+        shell: bash
+        working-directory: /opt/sub2api/repo
+        run: |
+          set -Eeuo pipefail
+          test -z "$(git status --porcelain)"
+          git fetch origin
+          git switch main
+          git pull --ff-only origin main
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+
+          commit="$(git rev-parse HEAD)"
+          short_commit="$(git rev-parse --short=12 HEAD)"
+          date="$(git show -s --format=%cI HEAD)"
+          {
+            echo "commit=$commit"
+            echo "short_commit=$short_commit"
+            echo "date=$date"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build staging image
+        id: image
+        shell: bash
+        working-directory: /opt/sub2api/repo
+        env:
+          COMMIT: ${{ steps.source.outputs.short_commit }}
+          DATE: ${{ steps.source.outputs.date }}
+        run: |
+          set -Eeuo pipefail
+          target_image="sub2api:staging-$COMMIT"
+          docker buildx build \
+            -f deploy/Dockerfile \
+            --build-arg COMMIT="$COMMIT" \
+            --build-arg DATE="$DATE" \
+            -t "$target_image" \
+            --load .
+          version_output="$(docker run --rm "$target_image" --version)"
+          printf '%s\n' "$version_output"
+          test "$(printf '%s\n' "$version_output" | grep -F "commit: $COMMIT" | wc -l)" -eq 1
+          echo "target_image=$target_image" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and verify staging
+        shell: bash
+        env:
+          TARGET_IMAGE: ${{ steps.image.outputs.target_image }}
+        run: |
+          set -Eeuo pipefail
+          /opt/sub2api/scripts/update-sub2api-image "$ENV_FILE" "$TARGET_IMAGE" staging
+
+          compose_staging() {
+            docker compose -p sub2api-staging \
+              --env-file "$ENV_FILE" \
+              -f "$COMPOSE_BASE" \
+              -f "$COMPOSE_OVERRIDE" "$@"
+          }
+
+          compose_staging config -q
+          resolved_images="$(compose_staging config --images)"
+          test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$TARGET_IMAGE" || true)" -eq 1
+          compose_staging up -d
+          container_id="$(compose_staging ps -q sub2api)"
+          test -n "$container_id"
+          test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$TARGET_IMAGE"
+          compose_staging ps
+          curl --fail --silent --show-error --max-time 15 -o /dev/null http://127.0.0.1:18080/health
+
+      - name: Record staging verification result
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+          SHORT_COMMIT: ${{ steps.source.outputs.short_commit }}
+          DATE: ${{ steps.source.outputs.date }}
+          TARGET_IMAGE: ${{ steps.image.outputs.target_image }}
+        run: |
+          set -Eeuo pipefail
+          result="$RUNNER_TEMP/staging-result.json"
+          python3 - "$result" <<'PY'
+          import json
+          import os
+          import sys
+          from datetime import datetime, timezone
+
+          status = os.environ.get("JOB_STATUS", "unknown")
+          payload = {
+              "environment": "staging",
+              "status": "verified" if status == "success" else "failed",
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "sync_run_id": os.environ.get("SYNC_RUN_ID", ""),
+              "commit": os.environ.get("COMMIT", ""),
+              "short_commit": os.environ.get("SHORT_COMMIT", ""),
+              "date": os.environ.get("DATE", ""),
+              "image": os.environ.get("TARGET_IMAGE", ""),
+              "verified_at": datetime.now(timezone.utc).isoformat(),
+          }
+          with open(sys.argv[1], "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, ensure_ascii=False, indent=2)
+              handle.write("\n")
+          PY
+          # 结果文件只包含 commit/run ID，不含凭据；允许 prod runner 读取以复核同一 commit。
+          install -m 0644 "$result" "$STATE_DIR/staging-result.json"
+
+      - name: Upload staging result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-result.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# 该脚本必须安装为正式 VPS 的 root-only 文件：
+# /opt/sub2api/scripts/release-prod
+# GitHub Actions 只负责传递已验证 commit，所有生产门禁在此执行。
+
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  printf '%s\n' 'release-prod 必须由 root 执行。' >&2
+  exit 1
+fi
+
+if [[ $# -ne 4 ]]; then
+  printf '用法：%s <prod.env> <target-image> <target-commit> <staging-run-id>\n' "$0" >&2
+  exit 2
+fi
+
+env_file="$1"
+target_image="$2"
+target_commit="$3"
+staging_run_id="$4"
+repo_dir=/opt/sub2api/repo
+base_compose="$repo_dir/deploy/docker-compose.yml"
+prod_override=/opt/sub2api/compose/prod/docker-compose.yml
+scripts_dir=/opt/sub2api/scripts
+backup_dir=/opt/sub2api/backups
+staging_result=/opt/sub2api/state/staging-result.json
+
+[[ "$target_commit" =~ ^[0-9a-f]{40}$ ]]
+[[ "$target_image" =~ ^sub2api:prod-[0-9a-f]{12}$ ]]
+[[ "$staging_run_id" =~ ^[0-9]+$ ]]
+test -d "$repo_dir"
+test -f "$env_file"
+test -f "$base_compose"
+test -f "$prod_override"
+test -f "$staging_result"
+test "$(grep -c '^SUB2API_IMAGE=' "$env_file")" -eq 1
+test -x "$scripts_dir/update-sub2api-image"
+test -x "$scripts_dir/assert-no-account-stats-video-pricing"
+test -x "$scripts_dir/assert-no-explicit-video-pricing"
+test -x "$scripts_dir/assert-no-user-scoped-openai-fast-policy"
+test -x "$scripts_dir/snapshot-openai-fast-policy"
+
+cd "$repo_dir"
+test "$(git branch --show-current)" = main
+test -z "$(git status --porcelain)"
+test "$(git rev-parse HEAD)" = "$target_commit"
+
+python3 - "$staging_result" "$target_commit" "$staging_run_id" <<'PY'
+import json
+import sys
+
+result_path, target_commit, staging_run_id = sys.argv[1:]
+with open(result_path, encoding="utf-8") as handle:
+    result = json.load(handle)
+if result.get("environment") != "staging":
+    raise SystemExit("staging result environment mismatch")
+if result.get("status") != "verified":
+    raise SystemExit("staging result is not verified")
+if result.get("commit") != target_commit:
+    raise SystemExit("staging result commit mismatch")
+if str(result.get("run_id")) != staging_run_id:
+    raise SystemExit("staging result run id mismatch")
+PY
+
+short_commit="$(git rev-parse --short=12 HEAD)"
+commit_date="$(git show -s --format=%cI HEAD)"
+expected_image="sub2api:prod-$short_commit"
+test "$target_image" = "$expected_image"
+
+compose_prod() {
+  docker compose -p sub2api-prod \
+    --env-file "$env_file" \
+    -f "$base_compose" \
+    -f "$prod_override" "$@"
+}
+
+version_at_least() {
+  local current="$1" required="$2"
+  local current_major current_minor current_patch
+  local required_major required_minor required_patch
+  IFS=. read -r current_major current_minor current_patch <<< "$current"
+  IFS=. read -r required_major required_minor required_patch <<< "$required"
+  (( current_major > required_major )) ||
+    (( current_major == required_major && current_minor > required_minor )) ||
+    (( current_major == required_major && current_minor == required_minor && current_patch >= required_patch ))
+}
+
+version_has_capability() {
+  local version_output="$1" capability="$2" capabilities
+  capabilities="$(printf '%s\n' "$version_output" | sed -nE 's/.*capabilities: ([^)]+)\).*/\1/p')"
+  test -n "$capabilities"
+  printf '%s\n' "$capabilities" | tr ',' '\n' | \
+    sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -Fqx "$capability"
+}
+
+parse_version() {
+  printf '%s\n' "$1" | sed -nE 's/.*Sub2API ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p'
+}
+
+parse_commit() {
+  printf '%s\n' "$1" | sed -nE 's/.*commit: ([0-9a-f]{12}).*/\1/p'
+}
+
+ensure_target_image() {
+  if ! docker image inspect "$target_image" >/dev/null 2>&1; then
+    staging_image="sub2api:staging-$short_commit"
+    if docker image inspect "$staging_image" >/dev/null 2>&1; then
+      docker tag "$staging_image" "$target_image"
+    else
+      docker buildx build \
+        -f deploy/Dockerfile \
+        --build-arg COMMIT="$short_commit" \
+        --build-arg DATE="$commit_date" \
+        -t "$target_image" \
+        --load .
+    fi
+  fi
+  target_version_output="$(docker run --rm "$target_image" --version)"
+  test "$(printf '%s\n' "$target_version_output" | wc -l)" -eq 1
+  test "$(parse_commit "$target_version_output")" = "$short_commit"
+  version_has_capability "$target_version_output" explicit_video_pricing_per_second
+}
+
+compose_prod config -q
+ensure_target_image
+
+current_container_id="$(compose_prod ps -q sub2api)"
+test -n "$current_container_id"
+previous_original_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
+previous_image_id="$(docker inspect --format '{{.Image}}' "$current_container_id")"
+test -n "$previous_original_image"
+test -n "$previous_image_id"
+previous_version_output="$(docker exec "$current_container_id" /app/sub2api --version)"
+test "$(printf '%s\n' "$previous_version_output" | wc -l)" -eq 1
+previous_version="$(parse_version "$previous_version_output")"
+previous_commit_short="$(parse_commit "$previous_version_output")"
+test -n "$previous_version"
+test -n "$previous_commit_short"
+previous_commit="$(git rev-parse "$previous_commit_short^{commit}")"
+test "${previous_commit:0:12}" = "$previous_commit_short"
+
+previous_supports_fast_policy_user_ids=0
+if version_at_least "$previous_version" 0.1.151; then
+  previous_supports_fast_policy_user_ids=1
+fi
+previous_supports_explicit_video_pricing=0
+case "$previous_commit" in
+  a08a958be9a29594692ab87f74c9227504c09d27|7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6)
+    previous_supports_explicit_video_pricing=1
+    ;;
+  *)
+    if version_has_capability "$previous_version_output" explicit_video_pricing_per_second; then
+      previous_supports_explicit_video_pricing=1
+    fi
+    ;;
+esac
+
+timestamp="$(date +%Y%m%d-%H%M%S)"
+previous_image="sub2api:rollback-${timestamp}-${previous_commit_short}"
+release_record="$backup_dir/prod-release-before-${timestamp}.txt"
+pricing_backup="$backup_dir/prod-pricing-before-${timestamp}.dump"
+database_backup="$backup_dir/prod-database-before-${timestamp}.dump"
+fast_policy_backup="$backup_dir/prod-fast-policy-before-${timestamp}.txt"
+umask 077
+mkdir -p "$backup_dir"
+
+rollback_tag_created=0
+release_started=0
+restore_previous_release() {
+  local rc="$1"
+  set +e
+  rm -f -- "$release_record"
+  if [[ "$release_started" -eq 1 ]]; then
+    "$scripts_dir/update-sub2api-image" "$env_file" "$previous_image" prod-abort
+    compose_prod up -d --no-deps sub2api
+  fi
+  if [[ "$rollback_tag_created" -eq 1 ]]; then
+    docker image rm "$previous_image" >/dev/null 2>&1 || true
+  fi
+  exit "$rc"
+}
+trap 'restore_previous_release "$?"' ERR
+
+"$scripts_dir/assert-no-account-stats-video-pricing" "$env_file"
+if [[ "$previous_supports_explicit_video_pricing" -eq 0 ]]; then
+  "$scripts_dir/assert-no-explicit-video-pricing" "$env_file"
+fi
+
+compose_prod exec -T postgres sh -c \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+  </dev/null > "$database_backup"
+test -s "$database_backup"
+chmod 0600 "$database_backup"
+
+compose_prod exec -T postgres sh -c \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --data-only --table=channel_model_pricing --table=channel_pricing_intervals --table=channel_account_stats_model_pricing --table=channel_account_stats_pricing_intervals' \
+  </dev/null > "$pricing_backup"
+test -s "$pricing_backup"
+chmod 0600 "$pricing_backup"
+"$scripts_dir/snapshot-openai-fast-policy" "$env_file" "$fast_policy_backup"
+
+docker tag "$previous_image_id" "$previous_image"
+rollback_tag_created=1
+test "$(docker image inspect --format '{{.Id}}' "$previous_image")" = "$previous_image_id"
+
+{
+  printf 'previous_image=%s\n' "$previous_image"
+  printf 'previous_original_image=%s\n' "$previous_original_image"
+  printf 'previous_image_id=%s\n' "$previous_image_id"
+  printf 'previous_version=%s\n' "$previous_version"
+  printf 'previous_commit=%s\n' "$previous_commit"
+  printf 'previous_supports_fast_policy_user_ids=%s\n' "$previous_supports_fast_policy_user_ids"
+  printf 'previous_supports_explicit_video_pricing=%s\n' "$previous_supports_explicit_video_pricing"
+  printf 'target_commit=%s\n' "$target_commit"
+  printf 'staging_run_id=%s\n' "$staging_run_id"
+  printf 'database_backup=%s\n' "$database_backup"
+  printf 'pricing_backup=%s\n' "$pricing_backup"
+  printf 'fast_policy_backup=%s\n' "$fast_policy_backup"
+} > "$release_record"
+chmod 0600 "$release_record"
+
+"$scripts_dir/update-sub2api-image" "$env_file" "$target_image" prod
+release_started=1
+compose_prod config -q
+resolved_images="$(compose_prod config --images)"
+test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$target_image" || true)" -eq 1
+compose_prod up -d
+container_id="$(compose_prod ps -q sub2api)"
+test -n "$container_id"
+test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
+compose_prod ps
+curl --fail --silent --show-error --max-time 15 -o /dev/null http://127.0.0.1:8080/health
+compose_prod logs --tail=200 sub2api
+
+trap - ERR
+release_started=0
+
+# 只保留最近两份专用回滚 tag；当前 prod tag 和业务数据不清理。
+mapfile -t rollback_tags < <(
+  docker images --format '{{.Repository}}:{{.Tag}}' --filter 'reference=sub2api:rollback-*' | sort -r
+)
+for ((i = 2; i < ${#rollback_tags[@]}; i++)); do
+  docker image rm "${rollback_tags[$i]}" >/dev/null 2>&1 || true
+done
+
+printf 'prod 发布成功：commit=%s image=%s staging_run_id=%s\n' "$target_commit" "$target_image" "$staging_run_id"

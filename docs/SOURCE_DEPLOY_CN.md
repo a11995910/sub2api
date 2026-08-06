@@ -74,6 +74,8 @@
 ## 源码仓库
 
 - GitHub：`git@github.com:a11995910/sub2api.git`
+- 官方上游：`https://github.com/Wei-Shaw/sub2api.git`
+- 本地远端约定：`origin` 指向当前定制仓库，`upstream` 指向官方上游；正式 VPS 只使用 `origin/main`。
 - 主分支：`main`
 - 长期开发分支：无；项目不使用 `dev`
 - 本地开发完成后，提交并推送到 GitHub：
@@ -90,7 +92,7 @@ git push origin main
 本地开发完成后，必须先提交并推送。生产产物不在本地构建；正式 VPS 从已推送的 Git commit 构建镜像：
 
 ```bash
-cd /Users/wangjun/Documents/GitHub/sub2api
+cd /path/to/sub2api
 git status --short
 git add 本次相关文件
 git commit -m "说明本次修改"
@@ -113,6 +115,30 @@ git log -1 --oneline
 | 构建策略 | VPS 拉取已推送源码并使用 `deploy/Dockerfile` 本机构建镜像 |
 
 项目不存在独立测试 VPS。所有预发布验证均在正式 VPS 的隔离 staging 中完成；staging 与 prod 不得共享 compose project、环境文件、数据库、Redis、数据目录或宿主机端口。完整运行拓扑见 `docs/VPS_MIGRATION_CN.md`。
+
+### root-only 生产发布脚本
+
+仓库中的 `deploy/release-prod` 是 GitHub Actions 生产工作流调用的门禁脚本。它必须以
+`root:root`、`0700` 安装在正式 VPS 的 `/opt/sub2api/scripts/release-prod`，不能让普通用户
+直接执行或把脚本复制到 GitHub runner 的工作目录。脚本只接受已通过 staging 的完整 commit、
+目标镜像 tag 和 staging workflow run ID，并且会在切换 prod 前完成数据库/定价备份、旧镜像
+回滚 tag、策略快照和 `.env` 原子更新；任何失败都会恢复旧镜像与旧配置。
+
+首次安装或脚本升级必须先确认本地改动已提交并推送到 `origin/main`，再在正式 VPS 的干净
+`/opt/sub2api/repo` 中执行：
+
+```bash
+cd /opt/sub2api/repo
+git fetch origin
+git switch main
+git pull --ff-only origin main
+install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release-prod
+sha256sum deploy/release-prod /opt/sub2api/scripts/release-prod
+```
+
+安装后应由 root 做一次只读门禁检查，确认依赖脚本、prod compose、`.env` 和 Docker 权限均
+存在；不要用占位参数执行发布脚本。GitHub Actions 的 `sub2api-prod` runner 只调用该脚本，
+不得把数据库备份、定价门禁或回滚逻辑复制到 workflow YAML 中。
 
 ## 正式 VPS 镜像化部署流程
 
@@ -832,13 +858,38 @@ Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查�
 
 ### 上游同步
 
-上游同步不直接进入 prod。同步流程必须先建立独立分支，例如：
+当前仓库的上游同步依据历史提交 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169），采用“本地同步分支 -> 本地验证 -> 合并回当前 fork 的 `main`”方式。上游同步不直接进入 prod。首次同步前若本地没有 `upstream` remote，应先执行：
 
 ```bash
-git switch -c sync/upstream-YYYYMMDD
+git remote get-url upstream >/dev/null 2>&1 || \
+  git remote add upstream https://github.com/Wei-Shaw/sub2api.git
 ```
 
-解决冲突并完成本地验证后，必须先把同步结果合并并推送到 `main`，删除本地和远端同步分支，再由正式 VPS 的隔离 staging 拉取该 `main` commit。VPS 不得检出同步分支；staging 验证通过并取得用户明确口头确认后，prod 只能切换到同一个已验证 commit。
+同步流程必须先确保当前 `main` 已推送并建立独立分支：
+
+```bash
+git switch main
+git fetch origin
+git pull --ff-only origin main
+git fetch upstream --prune
+sync_branch="sync/upstream-$(date +%Y%m%d)"
+git switch -c "$sync_branch"
+git merge --no-ff upstream/main -m "merge: 同步官方上游主线"
+```
+
+解决冲突并完成本地验证后，必须先把同步结果合并并推送到当前 fork 的 `main`：
+
+```bash
+# 将 sync/upstream-YYYYMMDD 替换为前一步实际创建的同步分支名
+git switch main
+git merge --no-ff sync/upstream-YYYYMMDD -m "merge: 合并上游同步结果"
+git push origin main
+git branch -d sync/upstream-YYYYMMDD
+```
+
+同步分支不得推送到 VPS，也不得让 VPS 检出或构建同步分支。正式 VPS 只能从已推送的 `origin/main` 拉取该 commit；staging 验证通过并取得用户明确口头确认后，prod 只能切换到同一个已验证 commit。
+
+仓库内的 `deploy/install.sh`、`deploy/docker-deploy.sh` 和默认 `weishaw/sub2api:latest` 属于官方通用部署链路，默认指向 `Wei-Shaw/sub2api`；它们不承载当前 fork 的定制生产发布，不得替代本节的 staging/prod 流程。
 
 ## 线上域名与 Nginx
 

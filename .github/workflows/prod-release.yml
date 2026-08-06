@@ -1,0 +1,101 @@
+name: Prod Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full 40-character verified commit to release
+        required: true
+        type: string
+      staging_run_id:
+        description: Staging verification workflow run id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sub2api-prod
+  cancel-in-progress: false
+
+jobs:
+  release:
+    environment: production
+    runs-on: [self-hosted, linux, sub2api-prod]
+    timeout-minutes: 45
+    env:
+      REPO_DIR: /opt/sub2api/repo
+      ENV_FILE: /opt/sub2api/env/prod/.env
+      STAGING_RESULT: /opt/sub2api/state/staging-result.json
+      TARGET_COMMIT: ${{ inputs.commit }}
+      STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+    steps:
+      - name: Verify production runner prerequisites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -d "$REPO_DIR"
+          test -f "$ENV_FILE"
+          test -f "$STAGING_RESULT"
+          test -x /opt/sub2api/scripts/release-prod
+          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+
+      - name: Verify exact origin/main commit
+        shell: bash
+        working-directory: /opt/sub2api/repo
+        run: |
+          set -Eeuo pipefail
+          test -z "$(git status --porcelain)"
+          git fetch origin
+          git switch main
+          git pull --ff-only origin main
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+
+      - name: Verify staging result
+        shell: bash
+        env:
+          RESULT_FILE: ${{ env.STAGING_RESULT }}
+        run: |
+          set -Eeuo pipefail
+          python3 - "$RESULT_FILE" "$TARGET_COMMIT" "$STAGING_RUN_ID" <<'PY'
+          import json
+          import sys
+
+          result_path, target_commit, staging_run_id = sys.argv[1:]
+          with open(result_path, encoding="utf-8") as handle:
+              result = json.load(handle)
+
+          if result.get("environment") != "staging":
+              raise SystemExit("staging result has an unexpected environment")
+          if result.get("status") != "verified":
+              raise SystemExit("staging result is not verified")
+          if result.get("commit") != target_commit:
+              raise SystemExit("staging verified commit does not match target commit")
+          if result.get("run_id") != staging_run_id:
+              raise SystemExit("staging workflow run id does not match")
+          PY
+
+      - name: Release through root-only production gate
+        shell: bash
+        working-directory: /opt/sub2api/repo
+        run: |
+          set -Eeuo pipefail
+          short_commit="$(git rev-parse --short=12 HEAD)"
+          target_image="sub2api:prod-$short_commit"
+          /opt/sub2api/scripts/release-prod \
+            "$ENV_FILE" \
+            "$target_image" \
+            "$TARGET_COMMIT" \
+            "$STAGING_RUN_ID"
+
+      - name: Verify production health
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl --fail --silent --show-error --max-time 15 -o /dev/null http://127.0.0.1:8080/health
+          {
+            echo "## 生产发布完成"
+            echo "- commit: `$TARGET_COMMIT`"
+            echo "- staging run: `$STAGING_RUN_ID`"
+          } >> "$GITHUB_STEP_SUMMARY"

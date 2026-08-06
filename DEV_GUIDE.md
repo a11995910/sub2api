@@ -7,10 +7,18 @@
 | 项目 | 说明 |
 |------|------|
 | **上游仓库** | Wei-Shaw/sub2api |
-| **Fork 仓库** | bayma888/sub2api-bmai |
+| **当前 Fork 仓库** | a11995910/sub2api |
 | **技术栈** | Go 后端 (Ent ORM + Gin) + Vue3 前端 (pnpm) |
 | **数据库** | PostgreSQL 16 + Redis |
 | **包管理** | 后端: go modules, 前端: **pnpm**（不是 npm） |
+
+### 当前仓库与部署边界
+
+- `origin` 指向当前定制仓库 `https://github.com/a11995910/sub2api.git`，`main` 是唯一长期分支和发布来源。
+- `upstream` 指向官方仓库 `https://github.com/Wei-Shaw/sub2api.git`，只在本地同步，不直接用于正式 VPS 构建。
+- 本仓库历史上通过 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169）把官方变更合并进本地 `main`，再继续保留本地定制提交。
+- 当前生产链路是“本地验证并推送 `origin/main` -> VPS 拉取 `main` -> VPS 使用 `deploy/Dockerfile` 构建带 commit 的 staging 镜像 -> `18080` 验证 -> 明确确认后以同一 commit 切换 prod `8080`”。
+- `deploy/install.sh`、`deploy/docker-deploy.sh` 和 `weishaw/sub2api:latest` 是官方通用安装/镜像链路，不会自动包含当前 fork 的定制提交；除非明确要部署官方版本，否则不要用于当前生产环境。
 
 ## 二、本地环境配置
 
@@ -76,8 +84,8 @@ docker compose -f docker-compose.dev.yml down -v
 ### 开发工具
 
 ```bash
-# golangci-lint v2.7
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.7
+# golangci-lint v2.9
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.9
 
 # pnpm (前端包管理)
 npm install -g pnpm
@@ -89,13 +97,42 @@ npm install -g pnpm
 
 | Workflow | 触发条件 | 检查内容 |
 |----------|----------|----------|
-| **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.7 |
+| **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.9 |
 | **security-scan.yml** | push, pull_request, 每周一 | govulncheck + gosec + pnpm audit |
 | **release.yml** | tag `v*` | 构建发布（PR 不触发） |
+| **upstream-sync.yml** | 手动触发 | 合并 `upstream/main`，通过后才推送 `origin/main` |
+| **staging-verify.yml** | AstrBot 触发 | 在正式 VPS 隔离 staging 构建并验证指定 `main` commit |
+| **prod-release.yml** | AstrBot 触发 + GitHub `production` 环境确认 | 只发布已验证的同一 commit |
+
+上游同步、staging 和 prod 工作流不直接由 VPS 上的通用定时任务执行。AstrBot 只作为飞书
+控制面调用 GitHub Actions；实际合并、测试、镜像构建和发布仍在 GitHub runner/正式 VPS
+执行。生产工作流要求正式 VPS 预先安装 root-only `/opt/sub2api/scripts/release-prod`，
+详见 [`docs/SOURCE_DEPLOY_CN.md`](docs/SOURCE_DEPLOY_CN.md) 的发布脚本章节。
+
+### AstrBot 飞书控制面
+
+AstrBot（`120.26.44.145`）安装独立插件 `sub2api_version_monitor`，不修改通用定时任务
+调度器核心。插件默认轮询 `Wei-Shaw/sub2api/main` 与 `a11995910/sub2api/main`，并通过
+GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认后 prod 发布”。
+
+飞书命令：
+
+```text
+/sub2api status      # 查看上游、fork、workflow 和 verified_commit
+/sub2api sync        # 管理员触发上游合并与测试
+/sub2api publish     # 管理员发布最近一次 staging 已验证 commit
+```
+
+插件配置至少需要当前仓库 fine-grained GitHub token（Actions read/write、Contents read/write）
+和飞书管理员 sender ID；通知群 `chat_id` 可显式配置，留空时尝试复用通用调度器的目标群。
+首次上线前先用 `/查ID` 获取管理员 sender ID，再用 `/sub2api status` 验证公开版本轮询；未
+配置 token 或管理员 ID 时，`sync`/`publish` 必须拒绝执行。prod workflow 的 GitHub
+`production` Environment 仍是独立的人工确认门禁，AstrBot 命令不能绕过它。
 
 ### CI 要求
 
-- Go 版本必须是 **1.25.7**
+- Go 版本必须是 **1.26.5**（以 `backend/go.mod` 和 GitHub Actions 为准）
+- golangci-lint 使用 **v2.9**（以 `.github/workflows/backend-ci.yml` 为准）
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
 ### 本地测试命令
@@ -306,14 +343,30 @@ psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
 ### Git 操作
 
 ```bash
-# 同步上游
-git fetch upstream
-git checkout main
-git merge upstream/main
+# 首次配置官方上游（仅需执行一次）
+git remote get-url upstream >/dev/null 2>&1 || \
+  git remote add upstream https://github.com/Wei-Shaw/sub2api.git
+
+# 同步官方上游；临时分支不得进入 VPS
+git status --short
+git switch main
+git fetch origin
+git pull --ff-only origin main
+git fetch upstream --prune
+git log --oneline main..upstream/main
+sync_branch="sync/upstream-$(date +%Y%m%d)"
+git switch -c "$sync_branch"
+git merge --no-ff upstream/main -m "merge: 同步官方上游主线"
+
+# 解决冲突后执行本地测试，再合并回 main 并推送当前 fork
+make test
+git switch main
+git merge --no-ff "$sync_branch" -m "merge: 合并上游同步结果"
 git push origin main
+git branch -d "$sync_branch"
 
 # 创建功能分支
-git checkout -b feature/xxx
+git switch -c feature/xxx
 
 # Rebase 到最新 main
 git fetch upstream
@@ -355,7 +408,7 @@ golangci-lint run ./...
 ## 六、项目结构速览
 
 ```
-sub2api-bmai/
+sub2api/
 ├── backend/
 │   ├── cmd/server/          # 主程序入口
 │   ├── ent/                 # Ent ORM 生成代码
