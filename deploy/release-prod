@@ -75,6 +75,9 @@ compose_prod() {
     -f "$prod_override" "$@"
 }
 
+exec 9>/var/lock/sub2api-build.lock
+flock -n 9
+
 version_at_least() {
   local current="$1" required="$2"
   local current_major current_minor current_patch
