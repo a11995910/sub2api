@@ -115,6 +115,19 @@ AstrBot（`120.26.44.145`）安装独立插件 `sub2api_version_monitor`，不�
 调度器核心。插件默认轮询 `Wei-Shaw/sub2api/main` 与 `a11995910/sub2api/main`，并通过
 GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认后 prod 发布”。
 
+当官方上游与当前 fork 不一致时，插件按轮询周期发送一张飞书版本卡片，并复用调度器的
+群和两位成员 ID。卡片会列出官方领先提交数（跨 fork 历史无法直接比较时显示“至少”）、
+上游最近提交摘要和链接，并提供两个按钮：
+
+- **更新版本**：校验按钮中的上游 commit 仍是当前版本后，触发既有 `upstream-sync.yml`，
+  后续自动进入测试和 staging；管理员权限仍由飞书 sender ID 白名单控制。
+- **暂时不更新**：记录当前上游 commit，后续轮询不重复提醒；只有官方出现更高 commit
+  才会再次发送卡片。旧卡片在上游已变化后会被拒绝，避免误操作。
+
+按钮回调由 AstrBot Lark 适配器转换为 `/sub2api button:...` 命令，版本监控插件负责权限、
+过期校验和状态持久化。若卡片接口不可用，会降级为带 @ 的普通飞书消息，仍可使用
+`/sub2api sync` 或 `/sub2api publish` 完成流程。
+
 飞书命令：
 
 ```text
