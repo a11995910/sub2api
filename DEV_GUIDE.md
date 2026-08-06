@@ -141,6 +141,8 @@ GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认
 首次上线前先用 `/查ID` 获取管理员 sender ID，再用 `/sub2api status` 验证公开版本轮询；未
 配置 token 或管理员 ID 时，`sync`/`publish` 必须拒绝执行。prod workflow 的 GitHub
 `production` Environment 仍是独立的人工确认门禁，AstrBot 命令不能绕过它。
+GitHub 公共 API 有匿名速率限制；要保持定时轮询、精确计算领先提交数和读取提交明细，必须
+配置 token。token 缺失或额度耗尽时插件只保留上次状态，不会把 API 错误当成版本更新通知。
 
 ### CI 要求
 
