@@ -121,9 +121,10 @@ GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认
 上游最近提交摘要和链接，并提供两个按钮：
 
 - **更新版本**：第一次点击只校验按钮中的上游 commit、管理员身份和任务状态，并发送
-  10 分钟有效的二次确认卡片；只有同一发起人再次确认后才触发既有
-  `upstream-sync.yml`，后续自动进入测试和 staging。确认、取消和过期状态都不会绕过
-  上游 SHA 校验；重复点击不会创建第二个同步任务。
+  10 分钟有效的二次确认卡片；只有同一发起人再次确认后才在 AstrBot 临时工作区启动 AI
+  三方合并。AI 合并完成后先发送报告，只有发起人点击“继续提交”才推送临时分支并触发
+  `ai-merge-verify.yml`。验证通过后创建 PR，PR 合并 `main` 后才触发 staging。确认、取消、
+  过期和上游 SHA 变化都不会推送分支；重复点击不会创建第二个任务。
 - **暂时不更新**：记录当前上游 commit，删除当前版本卡片，后续轮询不重复提醒；只有官方出现
   更高 commit 才会再次发送卡片。旧卡片在上游已变化后会被拒绝，避免误操作。
 - **卡片清理**：版本监控只管理配置的通知群，并保存当前卡片消息 ID。发送新卡片成功后删除旧卡片；
@@ -143,7 +144,7 @@ AI 不能直接推送 `main`、修改正式 VPS 或触发 prod。
 
 ```text
 /sub2api status      # 查看上游、fork、workflow 和 verified_commit
-/sub2api sync        # 管理员触发上游合并与测试
+/sub2api sync        # 管理员固定当前上游 SHA 并启动 AstrBot AI 合并；仍需确认报告才推送
 /sub2api publish     # 管理员发布最近一次 staging 已验证 commit
 ```
 
@@ -373,23 +374,15 @@ psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
 git remote get-url upstream >/dev/null 2>&1 || \
   git remote add upstream https://github.com/Wei-Shaw/sub2api.git
 
-# 同步官方上游；临时分支不得进入 VPS
+# 只读检查官方上游；正式同步必须从 AstrBot/飞书发起
 git status --short
 git switch main
 git fetch origin
 git pull --ff-only origin main
 git fetch upstream --prune
 git log --oneline main..upstream/main
-sync_branch="sync/upstream-$(date +%Y%m%d)"
-git switch -c "$sync_branch"
-git merge --no-ff upstream/main -m "merge: 同步官方上游主线"
 
-# 解决冲突后执行本地测试，再合并回 main 并推送当前 fork
-make test
-git switch main
-git merge --no-ff "$sync_branch" -m "merge: 合并上游同步结果"
-git push origin main
-git branch -d "$sync_branch"
+# 管理员在飞书群中发送 `/sub2api sync`；AI 报告确认前不会推送 GitHub
 
 # 创建功能分支
 git switch -c feature/xxx

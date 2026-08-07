@@ -24,6 +24,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  deployment-scripts:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      TARGET_COMMIT: ${{ inputs.commit }}
+    steps:
+      - name: Checkout AI merge branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Verify exact commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+
+      - name: Check deployment scripts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /bin/bash -n deploy/apple-container.sh
+          /bin/bash deploy/tests/apple-container-test.sh
+          /bin/sh deploy/tests/docker-compose-security-test.sh
+          /bin/sh deploy/tests/docker-runtime-resources-test.sh
+          /bin/sh deploy/test-caddyfile-cache.sh
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 60

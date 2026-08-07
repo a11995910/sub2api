@@ -9,6 +9,8 @@ services:
         GOLANG_IMAGE: ${SUB2API_GO_IMAGE:-golang:1.26.5-alpine}
     init: true
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - dev.env
     environment:

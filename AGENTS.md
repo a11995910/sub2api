@@ -77,15 +77,15 @@
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
 - `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在正式 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
 - 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。
-- 上游同步可先在本地独立同步分支中解决冲突并完成本地验证，例如 `sync/upstream-YYYYMMDD`；随后必须先合并并推送到 `main`、删除同步分支，再由正式 VPS 的隔离 staging 构建该 `main` commit。禁止让 VPS 拉取同步分支，也禁止跳过 staging 直接切换 prod。
+- 上游同步必须由 AstrBot 固定待同步的上游 SHA，在 AstrBot 临时工作区执行 Git 三方合并；双方共同修改的冲突文件交给已配置 AI 按 `.github/upstream-merge-rules.yml` 生成候选结果。AI 只能生成候选合并 commit 和报告，不能直接推送 `main`、操作正式 VPS 或触发 prod。
+- 用户确认 AI 合并报告后，AstrBot 只允许推送 `sync/ai-merge-*` 临时分支并触发 `ai-merge-verify.yml`。验证通过后创建 PR，PR 经人工审核并合并 `main` 后才允许 staging；临时分支完成后必须删除。禁止让 VPS 拉取或构建临时分支，也禁止跳过 staging 直接切换 prod。
 
 当前源码远端与上游关系必须保持清晰：
 
 - `origin` 是当前定制仓库 `https://github.com/a11995910/sub2api.git`，本地 `main` 和正式 VPS 都以它的 `main` 为发布来源。
-- `upstream` 是官方上游仓库 `https://github.com/Wei-Shaw/sub2api.git`，只用于本地同步和对照，不得让正式 VPS 直接拉取或构建 `upstream/main`。
-- 首次同步前应检查 `git remote -v`；缺少 `upstream` 时执行 `git remote add upstream https://github.com/Wei-Shaw/sub2api.git`。
-- 同步顺序固定为：`git fetch upstream --prune` -> 创建 `sync/upstream-YYYYMMDD` -> 合并 `upstream/main` -> 本地测试 -> 合并回 `main` -> 推送 `origin/main`。
-- 本仓库历史中的 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169）是该同步方式的依据；后续同步应保留同样的可追溯合并记录。
+- `upstream` 是官方上游仓库 `https://github.com/Wei-Shaw/sub2api.git`，只用于版本对照和 AstrBot 临时工作区三方合并，不得让正式 VPS 直接拉取或构建 `upstream/main`。
+- 上游同步顺序固定为：版本监听 -> 管理员二次确认且 SHA 未变化 -> AstrBot AI 三方合并 -> 飞书合并报告 -> 发起人确认继续 -> 推送 `sync/ai-merge-*` -> `ai-merge-verify.yml` -> PR 人工审核并合并 `main` -> staging -> 用户明确确认 prod。
+- 本仓库历史中的 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169）证明历史同步采用合并提交并保留定制；当前自动化仍必须保留可追溯合并记录，但不得绕过 AI 报告、GitHub 验证和 PR 门禁。
 - `deploy/install.sh`、`deploy/docker-deploy.sh` 和默认 `weishaw/sub2api:latest` 属于官方通用部署链路，不得当作当前定制 VPS 的生产发布入口。
 
 正式 VPS staging 构建示例：

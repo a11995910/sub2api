@@ -6,9 +6,10 @@ cd "$repo_root"
 
 check_application_security_opt() {
   file=$1
+  service=$2
   count=$(
-    awk '
-      $0 == "  sub2api:" {
+    awk -v service="$service" '
+      $0 == "  " service ":" {
         in_application = 1
         next
       }
@@ -32,13 +33,9 @@ check_application_security_opt() {
   fi
 }
 
-for compose_file in \
-  deploy/docker-compose.yml \
-  deploy/docker-compose.local.yml \
-  deploy/docker-compose.standalone.yml \
-  deploy/docker-compose.dev.yml
-do
-  check_application_security_opt "$compose_file"
-done
+check_application_security_opt deploy/docker-compose.yml sub2api
+check_application_security_opt deploy/docker-compose.local.yml sub2api
+check_application_security_opt deploy/docker-compose.standalone.yml sub2api
+check_application_security_opt deploy/docker-compose.dev.yml backend
 
 printf 'docker compose security test passed\n'

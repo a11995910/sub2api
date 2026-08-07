@@ -871,36 +871,26 @@ Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查�
 
 ### 上游同步
 
-当前仓库的上游同步依据历史提交 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169），采用“本地同步分支 -> 本地验证 -> 合并回当前 fork 的 `main`”方式。上游同步不直接进入 prod。首次同步前若本地没有 `upstream` remote，应先执行：
+当前仓库的上游同步依据历史提交 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169），继续使用可追溯的 Git 合并记录并保留本地定制。当前执行入口已迁移到 AstrBot（`120.26.44.145`）的 `sub2api_version_monitor` 插件；旧 `upstream-sync.yml` 已禁用，不得用它或本地脚本直接覆盖 `main`。
 
-```bash
-git remote get-url upstream >/dev/null 2>&1 || \
-  git remote add upstream https://github.com/Wei-Shaw/sub2api.git
+固定流程如下：
+
+1. AstrBot 轮询 `Wei-Shaw/sub2api/main` 与当前 fork 的 `main`，发现上游领先后在飞书发送版本卡片。
+2. 管理员点击更新并完成二次确认；确认时必须校验管理员、nonce、有效期和上游 SHA。AstrBot 随后固定该 SHA，在自己的临时工作区执行三方合并。
+3. 只把双方共同修改的冲突文件交给当前会话 AI，按 `.github/upstream-merge-rules.yml` 保留当前定制并合并上游独有功能。上游 SHA 已变化、冲突标记残留或 `git diff --check` 失败时必须停止。
+4. AstrBot 在飞书发送 AI 合并摘要、冲突决策和 diff 统计。发起人点击“继续提交”前，不得向 GitHub 推送任何分支。
+5. 确认后只推送 `sync/ai-merge-*` 临时分支，并从该分支 ref 触发 `ai-merge-verify.yml`。GitHub 完成后端单元/集成测试、前端检查、lint 和部署脚本检查；通过后创建 PR。
+6. PR 必须人工审核并合并 `main`。合并后删除临时分支，AstrBot 才触发正式 VPS 的隔离 staging。staging 通过后报告 commit 和风险，prod 仍需用户明确口头确认，并且只能发布同一 commit。
+
+飞书管理员命令：
+
+```text
+/sub2api status
+/sub2api sync
+/sub2api publish
 ```
 
-同步流程必须先确保当前 `main` 已推送并建立独立分支：
-
-```bash
-git switch main
-git fetch origin
-git pull --ff-only origin main
-git fetch upstream --prune
-sync_branch="sync/upstream-$(date +%Y%m%d)"
-git switch -c "$sync_branch"
-git merge --no-ff upstream/main -m "merge: 同步官方上游主线"
-```
-
-解决冲突并完成本地验证后，必须先把同步结果合并并推送到当前 fork 的 `main`：
-
-```bash
-# 将 sync/upstream-YYYYMMDD 替换为前一步实际创建的同步分支名
-git switch main
-git merge --no-ff sync/upstream-YYYYMMDD -m "merge: 合并上游同步结果"
-git push origin main
-git branch -d sync/upstream-YYYYMMDD
-```
-
-同步分支不得推送到 VPS，也不得让 VPS 检出或构建同步分支。正式 VPS 只能从已推送的 `origin/main` 拉取该 commit；staging 验证通过并取得用户明确口头确认后，prod 只能切换到同一个已验证 commit。
+`/sub2api sync` 会固定命令执行时的当前上游 SHA 并启动 AI 合并，但仍必须等待合并报告并由同一发起人确认后才推送临时分支。同步分支不得推送到 VPS，也不得让 VPS 检出或构建；正式 VPS 只能从已推送的 `origin/main` 拉取 PR 合并后的 commit。
 
 仓库内的 `deploy/install.sh`、`deploy/docker-deploy.sh` 和默认 `weishaw/sub2api:latest` 属于官方通用部署链路，默认指向 `Wei-Shaw/sub2api`；它们不承载当前 fork 的定制生产发布，不得替代本节的 staging/prod 流程。
 
