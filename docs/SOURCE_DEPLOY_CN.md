@@ -877,7 +877,10 @@ Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查�
 
 1. AstrBot 轮询 `Wei-Shaw/sub2api/main` 与当前 fork 的 `main`，发现上游领先后在飞书发送版本卡片。
 2. 管理员点击更新并完成二次确认；确认时必须校验管理员、nonce、有效期和上游 SHA。AstrBot 随后固定该 SHA，在自己的临时工作区执行三方合并。
-3. 只把双方共同修改的冲突文件交给当前会话 AI，按 `.github/upstream-merge-rules.yml` 保留当前定制并合并上游独有功能。上游 SHA 已变化、冲突标记残留或 `git diff --check` 失败时必须停止。
+3. AstrBot 在临时工作区启动受限 Agent。Agent 只能通过工作区工具查看冲突状态、按行读取
+   base/current/upstream/working 版本、应用统一 diff 和执行合并检查；不会把全部冲突文件一次性
+   放入提示词，也没有任意 shell、GitHub 推送、VPS 或 prod 权限。按 `.github/upstream-merge-rules.yml`
+   保留当前定制并合并上游独有功能。上游 SHA 已变化、冲突标记残留或 `git diff --check` 失败时必须停止。
 4. AstrBot 在飞书发送 AI 合并摘要、冲突决策和 diff 统计。发起人点击“继续提交”前，不得向 GitHub 推送任何分支。
 5. 确认后只推送 `sync/ai-merge-*` 临时分支，并从该分支 ref 触发 `ai-merge-verify.yml`。GitHub 完成后端单元/集成测试、前端检查、lint 和部署脚本检查；通过后创建 PR。
 6. PR 必须人工审核并合并 `main`。合并后删除临时分支，AstrBot 才触发正式 VPS 的隔离 staging。staging 通过后报告 commit 和风险，prod 仍需用户明确口头确认，并且只能发布同一 commit。

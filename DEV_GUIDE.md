@@ -131,8 +131,9 @@ GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认
   删除失败的消息 ID 会进入待清理队列，不会按群历史批量删除其他消息。
 
 上游同步冲突时不再让 GitHub workflow 直接尝试覆盖定制代码。AstrBot 会在自己的临时工作区重建
-`origin/main` 与 `upstream/main` 的三方合并，把双方共同修改的文件交给当前配置的 AI 模型，按
-`.github/upstream-merge-rules.yml` 生成解决结果。AI 合并完成后只发送报告并等待“继续提交”；确认后
+`origin/main` 与 `upstream/main` 的三方合并，并启动受限 Agent。Agent 只能使用工作区工具按行读取
+冲突版本、应用统一 diff 和执行检查，不能执行任意 shell 或访问 GitHub/VPS；按
+`.github/upstream-merge-rules.yml` 保留当前定制并合并上游独有功能。AI 合并完成后只发送报告并等待“继续提交”；确认后
 推送 `sync/ai-merge-*` 临时分支，触发 `ai-merge-verify.yml`，测试通过后再创建 PR 合并 `main`。
 AI 不能直接推送 `main`、修改正式 VPS 或触发 prod。
 
