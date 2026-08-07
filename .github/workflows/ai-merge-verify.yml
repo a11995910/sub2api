@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+          [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
 
       - name: Check deployment scripts
@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+          [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
           test -f .github/upstream-merge-rules.yml
           if git grep -n -E '^(<<<<<<<|=======|>>>>>>>)'; then

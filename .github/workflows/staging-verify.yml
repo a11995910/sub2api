@@ -45,7 +45,7 @@ jobs:
           test -f "$PROD_ENV_FILE"
           test -f "$PROD_COMPOSE_OVERRIDE"
           test -x /opt/sub2api/scripts/update-sub2api-image
-          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+          [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           command -v flock >/dev/null
           mkdir -p "$STATE_DIR"
 

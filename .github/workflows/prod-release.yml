@@ -39,7 +39,7 @@ jobs:
           test -f "$ENV_FILE"
           test -f "$STAGING_RESULT"
           test -x /opt/sub2api/scripts/release-prod
-          test "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$
+          [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
 
       - name: Verify exact origin/main commit
         shell: bash
