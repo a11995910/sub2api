@@ -100,13 +100,14 @@ npm install -g pnpm
 | **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.9 |
 | **security-scan.yml** | push, pull_request, 每周一 | govulncheck + gosec + pnpm audit |
 | **release.yml** | tag `v*` | 构建发布（PR 不触发） |
-| **upstream-sync.yml** | 手动触发 | 合并 `upstream/main`，通过后才推送 `origin/main` |
+| **upstream-sync.yml** | 已禁用 legacy workflow | 防止绕过 AstrBot AI 合并流程；不会修改 `main` |
+| **ai-merge-verify.yml** | AstrBot 推送临时分支后触发 | 验证 AI 合并分支，不推送 `main` |
 | **staging-verify.yml** | AstrBot 触发 | 在正式 VPS 隔离 staging 构建并验证指定 `main` commit |
 | **prod-release.yml** | AstrBot 触发 + GitHub `production` 环境确认 | 只发布已验证的同一 commit |
 
-上游同步、staging 和 prod 工作流不直接由 VPS 上的通用定时任务执行。AstrBot 只作为飞书
-控制面调用 GitHub Actions；实际合并、测试、镜像构建和发布仍在 GitHub runner/正式 VPS
-执行。生产工作流要求正式 VPS 预先安装 root-only `/opt/sub2api/scripts/release-prod`，
+上游合并由 AstrBot 在临时工作区完成，AI 报告确认后推送临时分支；GitHub 只负责临时分支
+测试、PR 和审计，staging 和 prod 仍在正式 VPS 分阶段执行。上游合并、staging 和 prod
+工作流不直接由 VPS 上的通用定时任务执行。生产工作流要求正式 VPS 预先安装 root-only `/opt/sub2api/scripts/release-prod`，
 详见 [`docs/SOURCE_DEPLOY_CN.md`](docs/SOURCE_DEPLOY_CN.md) 的发布脚本章节。
 
 ### AstrBot 飞书控制面
