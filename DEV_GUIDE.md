@@ -128,6 +128,12 @@ GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认
 - **卡片清理**：版本监控只管理配置的通知群，并保存当前卡片消息 ID。发送新卡片成功后删除旧卡片；
   删除失败的消息 ID 会进入待清理队列，不会按群历史批量删除其他消息。
 
+上游同步冲突时不再让 GitHub workflow 直接尝试覆盖定制代码。AstrBot 会在自己的临时工作区重建
+`origin/main` 与 `upstream/main` 的三方合并，把双方共同修改的文件交给当前配置的 AI 模型，按
+`.github/upstream-merge-rules.yml` 生成解决结果。AI 合并完成后只发送报告并等待“继续提交”；确认后
+推送 `sync/ai-merge-*` 临时分支，触发 `ai-merge-verify.yml`，测试通过后再创建 PR 合并 `main`。
+AI 不能直接推送 `main`、修改正式 VPS 或触发 prod。
+
 按钮回调由 AstrBot Lark 适配器转换为 `/sub2api button:...` 命令，版本监控插件负责权限、
 过期校验和状态持久化。若卡片接口不可用，会降级为带 @ 的普通飞书消息，仍可使用
 `/sub2api sync` 或 `/sub2api publish` 完成流程。

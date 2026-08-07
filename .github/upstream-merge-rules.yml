@@ -1,0 +1,37 @@
+version: 1
+
+# 上游同步的默认策略：只把双方都修改的内容交给 AI，禁止整文件盲选。
+strategy:
+  current_only: keep_current
+  upstream_only: take_upstream
+  both_modified: ai_merge
+  delete_modify: require_human_confirmation
+
+# 这些路径属于当前项目的发布、安全或协作边界，AI 只能分析并提出补丁，不能自动覆盖。
+protected_paths:
+  - AGENTS.md
+  - .github/workflows/**
+  - deploy/**
+  - docs/SOURCE_DEPLOY_CN.md
+  - docs/VPS_MIGRATION_CN.md
+
+# 这些文件必须由源代码重新生成，禁止把生成结果当作唯一冲突解决依据。
+generated_paths:
+  - backend/ent/**
+  - backend/cmd/server/wire_gen.go
+
+# AI 补丁进入 GitHub 验证前必须满足的检查。
+required_checks:
+  - no_conflict_markers
+  - backend_unit
+  - backend_integration
+  - frontend
+  - golangci_lint
+  - deployment_scripts
+
+# 冲突处理只能写入临时同步分支；main 和正式环境不由 AI 直接操作。
+write_policy:
+  branch_prefix: sync/ai-merge-
+  allow_main_push: false
+  allow_prod_operations: false
+  max_repair_attempts: 2
