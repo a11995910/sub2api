@@ -73,7 +73,7 @@ jobs:
           [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
           test -f .github/upstream-merge-rules.yml
-          if git grep -n -E '^(<<<<<<<|=======|>>>>>>>)'; then
+          if git grep -n -E '^(<<<<<<< .+|=======$|>>>>>>> .+)$'; then
             echo '检测到未解决的冲突标记。' >&2
             exit 1
           fi
