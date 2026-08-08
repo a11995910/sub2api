@@ -70,6 +70,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          [[ "$TARGET_BRANCH" =~ ^sync/ai-merge-[0-9a-z-]+$ ]]
           [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
           test -f .github/upstream-merge-rules.yml
@@ -94,6 +95,46 @@ jobs:
 
       - name: Verify Go version
         run: go version | grep -q 'go1.26.5'
+
+      - name: Regenerate Ent and Wire
+        working-directory: backend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          make generate
+
+          mapfile -t generated_changes < <(git diff --name-only)
+          for path in "${generated_changes[@]}"; do
+            case "$path" in
+              backend/ent/*|backend/cmd/server/wire_gen.go) ;;
+              *)
+                echo "生成命令修改了非生成路径：$path" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          git diff --binary -- ent cmd/server/wire_gen.go > "$RUNNER_TEMP/generated.patch"
+          printf '%s\n' "${generated_changes[@]}" > "$RUNNER_TEMP/generated-files.txt"
+          {
+            echo "- generated files changed: ${#generated_changes[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify generated diff
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+
+      - name: Upload generated patch
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/generated.patch
+            ${{ runner.temp }}/generated-files.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Backend unit tests
         working-directory: backend
@@ -128,3 +169,73 @@ jobs:
           version: v2.9
           args: --timeout=30m
           working-directory: backend
+
+  finalize-generated:
+    needs:
+      - deployment-scripts
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TARGET_BRANCH: ${{ inputs.branch }}
+      TARGET_COMMIT: ${{ inputs.commit }}
+    steps:
+      - name: Checkout exact AI merge candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Verify candidate identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$TARGET_BRANCH" =~ ^sync/ai-merge-[0-9a-z-]+$ ]]
+          [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+
+      - name: Download tested generated patch
+        uses: actions/download-artifact@v8
+        with:
+          name: generated-${{ github.run_id }}
+          path: ${{ runner.temp }}/generated
+
+      - name: Validate and commit generated files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$RUNNER_TEMP/generated/generated.patch"
+          manifest="$RUNNER_TEMP/generated/generated-files.txt"
+          test -f "$patch"
+          test -f "$manifest"
+
+          while IFS= read -r path; do
+            test -z "$path" && continue
+            case "$path" in
+              backend/ent/*|backend/cmd/server/wire_gen.go) ;;
+              *)
+                echo "生成补丁包含非生成路径：$path" >&2
+                exit 1
+                ;;
+            esac
+          done < "$manifest"
+
+          if test -s "$patch"; then
+            git apply --check --binary "$patch"
+            git apply --index --binary "$patch"
+            git config user.name sub2api-generate
+            git config user.email sub2api-generate@localhost
+            git commit -m 'chore: 重新生成 Ent 与 Wire'
+            git push origin "HEAD:$TARGET_BRANCH"
+          fi
+
+          generated_commit="$(git rev-parse HEAD)"
+          remote_commit="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$remote_commit" = "$generated_commit"
+          {
+            echo "## 生成结果提交"
+            echo "- candidate: \`$TARGET_COMMIT\`"
+            echo "- verified branch head: \`$generated_commit\`"
+          } >> "$GITHUB_STEP_SUMMARY"
