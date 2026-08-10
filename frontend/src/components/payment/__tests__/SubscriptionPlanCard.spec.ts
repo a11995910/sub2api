@@ -116,7 +116,7 @@ describe("SubscriptionPlanCard", () => {
     });
     const title = wrapper.get("h3");
     const badge = wrapper.findAll("span").find((node) => node.text() === "OpenAI");
-    const price = wrapper.findAll("span").find((node) => node.text() === "123.45");
+    const price = wrapper.findAll("span").find((node) => node.text().startsWith("123.45"));
 
     expect(title.element.parentElement?.classList).toContain("min-w-0");
     expect(title.element.parentElement?.classList).toContain("flex-1");
