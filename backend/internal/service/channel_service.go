@@ -586,10 +586,10 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	if !lk.channel.RestrictModels {
 		return false
 	}
-	// 没有任何渠道定价时，RestrictModels 不能把所有模型误判为不允许。
-	// 这类渠道应继续使用全局 LiteLLM/fallback 定价；只有存在至少一条
-	// 当前分组和平台的定价（含通配符）时，定价列表才作为模型白名单。
-	if !hasPricingForGroupPlatform(lk.channel, lk.platform) {
+	// 渠道完全没有配置模型定价时继续使用全局 LiteLLM/fallback 定价。
+	// 一旦渠道存在定价，平台必须严格隔离；不能因当前平台没有自己的
+	// 定价条目而把其他平台已配置的模型误判为允许。
+	if !hasAnyChannelModelPricing(lk.channel) {
 		return false
 	}
 	modelLower := strings.ToLower(model)
@@ -600,12 +600,12 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	return true
 }
 
-func hasPricingForGroupPlatform(channel *Channel, groupPlatform string) bool {
+func hasAnyChannelModelPricing(channel *Channel) bool {
 	if channel == nil {
 		return false
 	}
 	for _, pricing := range channel.ModelPricing {
-		if isPlatformPricingMatch(groupPlatform, pricing.Platform) && len(pricing.Models) > 0 {
+		if len(pricing.Models) > 0 {
 			return true
 		}
 	}

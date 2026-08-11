@@ -694,7 +694,11 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	contentURL, err := grokMediaSignedVideoContentURL(statusBody, requestID)
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-		return nil, err
+		clientMessage := "invalid video URL returned by upstream"
+		setOpsUpstreamError(c, http.StatusBadGateway, clientMessage, "")
+		MarkResponseCommitted(c)
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", clientMessage)
+		return nil, fmt.Errorf("%s: %w", clientMessage, err)
 	}
 	signedContent := contentURL != ""
 	if !signedContent {
@@ -715,7 +719,7 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
 	}
-	contentReq.Header.Set("Accept", "*/*")
+	contentReq.Header.Set("Accept", "video/mp4,video/*;q=0.9")
 	if c != nil {
 		if rangeHeader := strings.TrimSpace(c.GetHeader("Range")); rangeHeader != "" {
 			contentReq.Header.Set("Range", rangeHeader)

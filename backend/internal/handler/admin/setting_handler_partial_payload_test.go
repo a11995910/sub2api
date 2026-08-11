@@ -3,6 +3,8 @@
 package admin
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"testing"
 
@@ -19,11 +21,23 @@ import (
 
 func TestUpdateSettingsPartialPayloadKeepsUnsentKeys(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
-		service.SettingKeySiteName:         "Example Gateway",
-		service.SettingKeySiteSubtitle:     "Example Gateway Platform",
-		service.SettingKeySMTPHost:         "smtp.example.com",
-		service.SettingKeySMTPFrom:         "noreply@example.com",
-		service.SettingKeyTurnstileEnabled: "true",
+		service.SettingKeySiteName:                         "Example Gateway",
+		service.SettingKeySiteSubtitle:                     "Example Gateway Platform",
+		service.SettingKeySMTPHost:                         "smtp.example.com",
+		service.SettingKeySMTPFrom:                         "noreply@example.com",
+		service.SettingKeySMTPFallbacks:                    `[{"host":"backup.example.com","port":465,"username":"backup","password":"secret","from_email":"backup@example.com","from_name":"Backup","use_tls":true}]`,
+		service.SettingKeyTurnstileEnabled:                 "true",
+		service.SettingKeyQuickLinkEnabled:                 "true",
+		service.SettingKeyQuickLinkText:                    "帮助中心",
+		service.SettingKeyQuickLinkURL:                     "https://help.example.com",
+		service.SettingKeyAffiliateSubscriptionRewardGroup: "9",
+		service.SettingKeyAffiliateSubscriptionRewardDays:  "7",
+		service.SettingKeyCheckinEnabled:                   "true",
+		service.SettingKeyCheckinContent:                   "每日签到",
+		service.SettingKeyCheckinDailyReward:               "1.50000000",
+		service.SettingKeyCheckinExtraReward4:              "4.00000000",
+		service.SettingKeyCheckinExtraReward16:             "16.00000000",
+		service.SettingKeyAPIKeyDefaultGroupID:             "12",
 	})
 
 	rec := doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
@@ -37,6 +51,75 @@ func TestUpdateSettingsPartialPayloadKeepsUnsentKeys(t *testing.T) {
 	require.Equal(t, "smtp.example.com", repo.values[service.SettingKeySMTPHost])
 	require.Equal(t, "noreply@example.com", repo.values[service.SettingKeySMTPFrom])
 	require.Equal(t, "true", repo.values[service.SettingKeyTurnstileEnabled])
+	require.JSONEq(t, `[{"host":"backup.example.com","port":465,"username":"backup","password":"secret","from_email":"backup@example.com","from_name":"Backup","use_tls":true}]`, repo.values[service.SettingKeySMTPFallbacks])
+	require.Equal(t, "true", repo.values[service.SettingKeyQuickLinkEnabled])
+	require.Equal(t, "帮助中心", repo.values[service.SettingKeyQuickLinkText])
+	require.Equal(t, "https://help.example.com", repo.values[service.SettingKeyQuickLinkURL])
+	require.Equal(t, "9", repo.values[service.SettingKeyAffiliateSubscriptionRewardGroup])
+	require.Equal(t, "7", repo.values[service.SettingKeyAffiliateSubscriptionRewardDays])
+	require.Equal(t, "true", repo.values[service.SettingKeyCheckinEnabled])
+	require.Equal(t, "每日签到", repo.values[service.SettingKeyCheckinContent])
+	require.Equal(t, "1.50000000", repo.values[service.SettingKeyCheckinDailyReward])
+	require.Equal(t, "4.00000000", repo.values[service.SettingKeyCheckinExtraReward4])
+	require.Equal(t, "16.00000000", repo.values[service.SettingKeyCheckinExtraReward16])
+	require.Equal(t, "12", repo.values[service.SettingKeyAPIKeyDefaultGroupID])
+}
+
+func TestUpdateSettingsPartialPayloadAuditUsesPersistedValues(t *testing.T) {
+	h, _ := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeySMTPFallbacks: `[{"host":"backup.example.com","port":465,"username":"backup","password":"secret","from_email":"backup@example.com","from_name":"Backup","use_tls":true}]`,
+	})
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	rec := doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, logs.String(), "risk_control_enabled")
+	require.NotContains(t, logs.String(), "smtp_fallbacks")
+}
+
+func TestUpdateSettingsWritesPreservedCustomFields(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"smtp_fallbacks": []map[string]any{{
+			"host":       "backup.example.com",
+			"port":       465,
+			"username":   "backup",
+			"password":   "secret",
+			"from_email": "backup@example.com",
+			"from_name":  "Backup",
+			"use_tls":    true,
+		}},
+		"quick_link_enabled":                     true,
+		"quick_link_text":                        "帮助中心",
+		"quick_link_url":                         "https://help.example.com",
+		"affiliate_subscription_reward_group_id": 9,
+		"affiliate_subscription_reward_days":     7,
+		"checkin_enabled":                        true,
+		"checkin_content":                        " 每日签到 ",
+		"checkin_daily_reward":                   1.5,
+		"checkin_extra_reward_4":                 4.0,
+		"checkin_extra_reward_16":                16.0,
+		"api_key_default_group_id":               12,
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `[{"host":"backup.example.com","port":465,"username":"backup","password":"secret","from_email":"backup@example.com","from_name":"Backup","use_tls":true}]`, repo.values[service.SettingKeySMTPFallbacks])
+	require.Equal(t, "true", repo.values[service.SettingKeyQuickLinkEnabled])
+	require.Equal(t, "帮助中心", repo.values[service.SettingKeyQuickLinkText])
+	require.Equal(t, "https://help.example.com", repo.values[service.SettingKeyQuickLinkURL])
+	require.Equal(t, "9", repo.values[service.SettingKeyAffiliateSubscriptionRewardGroup])
+	require.Equal(t, "7", repo.values[service.SettingKeyAffiliateSubscriptionRewardDays])
+	require.Equal(t, "true", repo.values[service.SettingKeyCheckinEnabled])
+	require.Equal(t, "每日签到", repo.values[service.SettingKeyCheckinContent])
+	require.Equal(t, "1.50000000", repo.values[service.SettingKeyCheckinDailyReward])
+	require.Equal(t, "4.00000000", repo.values[service.SettingKeyCheckinExtraReward4])
+	require.Equal(t, "16.00000000", repo.values[service.SettingKeyCheckinExtraReward16])
+	require.Equal(t, "12", repo.values[service.SettingKeyAPIKeyDefaultGroupID])
 }
 
 // A full payload keeps whole-document semantics: fields explicitly set to their

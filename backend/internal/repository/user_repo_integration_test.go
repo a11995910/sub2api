@@ -105,7 +105,7 @@ func (s *UserRepoSuite) mustCreateSubscription(userID, groupID int64, mutate fun
 func (s *UserRepoSuite) TestGrantTemporaryAllowedGroup_AccumulatesAndReadPathFiltersExpired() {
 	user := s.mustCreateUser(&service.User{Email: "temporary-group@test.com"})
 	group := s.mustCreateGroup("temporary reward group")
-	now := time.Date(2026, 6, 7, 10, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	firstOrderID := int64(101)
 
 	first, err := s.repo.GrantTemporaryAllowedGroup(s.ctx, service.TemporaryAllowedGroupGrantInput{
@@ -168,7 +168,7 @@ func (s *UserRepoSuite) TestUpdateAllowedGroups_PreservesExistingTemporaryAccess
 	s.Require().NoError(err)
 
 	user.AllowedGroups = []int64{group.ID}
-	s.Require().NoError(s.repo.Update(s.ctx, user))
+	s.Require().NoError(s.repo.Update(s.ctx, user, service.UserUpdateFields{AllowedGroups: true}))
 
 	meta, err := s.repo.ListActiveUserGroupAccessMeta(s.ctx, user.ID)
 	s.Require().NoError(err)
@@ -297,7 +297,7 @@ func (s *UserRepoSuite) TestCreateAndUpdateBlockedGroups() {
 	s.Require().Equal([]int64{firstGroup.ID}, created.BlockedGroups)
 
 	created.BlockedGroups = []int64{secondGroup.ID}
-	s.Require().NoError(s.repo.Update(s.ctx, created))
+	s.Require().NoError(s.repo.Update(s.ctx, created, service.UserUpdateFields{BlockedGroups: true}))
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
@@ -369,7 +369,7 @@ func (s *UserRepoSuite) TestUpdateRejectsDemotingLastActiveAdminWhenAnotherAdmin
 	})
 
 	activeAdmin.Role = service.RoleUser
-	err := s.repo.Update(s.ctx, activeAdmin)
+	err := s.repo.Update(s.ctx, activeAdmin, service.UserUpdateFields{Role: true})
 	s.Require().EqualError(err, "cannot demote the last admin user")
 
 	stored, getErr := s.repo.GetByID(s.ctx, activeAdmin.ID)
@@ -402,7 +402,7 @@ func (s *UserRepoSuite) TestUpdateConcurrentActiveAdminDemotionsLeaveOneActiveAd
 		go func() {
 			defer waitGroup.Done()
 			<-start
-			errors <- s.repo.Update(context.Background(), admin)
+			errors <- s.repo.Update(context.Background(), admin, service.UserUpdateFields{Role: true})
 		}()
 	}
 
@@ -672,9 +672,11 @@ func (s *UserRepoSuite) TestUpdateBalance() {
 }
 
 func (s *UserRepoSuite) TestAddBalanceDoesNotIncreaseTotalRecharged() {
-	user := s.mustCreateUser(&service.User{Email: "gift-balance@test.com", Balance: 10, TotalRecharged: 20})
+	user := s.mustCreateUser(&service.User{Email: "gift-balance@test.com", Balance: 10})
+	_, err := s.client.User.UpdateOneID(user.ID).SetTotalRecharged(20).Save(s.ctx)
+	s.Require().NoError(err)
 
-	err := s.repo.AddBalance(s.ctx, user.ID, 2.5)
+	err = s.repo.AddBalance(s.ctx, user.ID, 2.5)
 	s.Require().NoError(err, "AddBalance")
 
 	got, err := s.repo.GetByID(s.ctx, user.ID)

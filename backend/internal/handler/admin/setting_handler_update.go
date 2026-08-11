@@ -41,13 +41,14 @@ type UpdateSettingsRequest struct {
 	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
 
 	// 邮件服务设置
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPFrom     string `json:"smtp_from_email"`
-	SMTPFromName string `json:"smtp_from_name"`
-	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost      string                      `json:"smtp_host"`
+	SMTPPort      int                         `json:"smtp_port"`
+	SMTPUsername  string                      `json:"smtp_username"`
+	SMTPPassword  string                      `json:"smtp_password"`
+	SMTPFrom      string                      `json:"smtp_from_email"`
+	SMTPFromName  string                      `json:"smtp_from_name"`
+	SMTPUseTLS    bool                        `json:"smtp_use_tls"`
+	SMTPFallbacks []SMTPFallbackConfigRequest `json:"smtp_fallbacks"`
 
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
@@ -158,6 +159,9 @@ type UpdateSettingsRequest struct {
 	APIBaseURL                  string                `json:"api_base_url"`
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
+	QuickLinkEnabled            bool                  `json:"quick_link_enabled"`
+	QuickLinkText               string                `json:"quick_link_text"`
+	QuickLinkURL                string                `json:"quick_link_url"`
 	HomeContent                 string                `json:"home_content"`
 	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
@@ -176,8 +180,16 @@ type UpdateSettingsRequest struct {
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
+	AffiliateSubscriptionRewardGroupID        *int64                            `json:"affiliate_subscription_reward_group_id"`
+	AffiliateSubscriptionRewardDays           *int                              `json:"affiliate_subscription_reward_days"`
+	CheckinEnabled                            *bool                             `json:"checkin_enabled"`
+	CheckinContent                            *string                           `json:"checkin_content"`
+	CheckinDailyReward                        *float64                          `json:"checkin_daily_reward"`
+	CheckinExtraReward4                       *float64                          `json:"checkin_extra_reward_4"`
+	CheckinExtraReward16                      *float64                          `json:"checkin_extra_reward_16"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
+	APIKeyDefaultGroupID                      *int64                            `json:"api_key_default_group_id"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
 	AuthSourceDefaultEmailConcurrency         *int                              `json:"auth_source_default_email_concurrency"`
 	AuthSourceDefaultEmailSubscriptions       *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_email_subscriptions"`
@@ -364,6 +376,55 @@ type UpdateSettingsRequest struct {
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
 
 	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
+}
+
+type SMTPFallbackConfigRequest struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from_email"`
+	FromName string `json:"from_name"`
+	UseTLS   bool   `json:"use_tls"`
+}
+
+func smtpFallbacksToDTO(items []service.SMTPFallbackConfig) []dto.SMTPFallbackConfig {
+	result := make([]dto.SMTPFallbackConfig, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.SMTPFallbackConfig{
+			Host:               item.Host,
+			Port:               item.Port,
+			Username:           item.Username,
+			PasswordConfigured: item.Password != "",
+			From:               item.From,
+			FromName:           item.FromName,
+			UseTLS:             item.UseTLS,
+		})
+	}
+	return result
+}
+
+func smtpFallbacksToService(items []SMTPFallbackConfigRequest, previous []service.SMTPFallbackConfig) []service.SMTPFallbackConfig {
+	result := make([]service.SMTPFallbackConfig, 0, len(items))
+	for i, item := range items {
+		password := strings.TrimSpace(item.Password)
+		if password == "" && i < len(previous) &&
+			strings.TrimSpace(item.Host) == previous[i].Host &&
+			strings.TrimSpace(item.Username) == previous[i].Username &&
+			strings.TrimSpace(item.From) == previous[i].From {
+			password = previous[i].Password
+		}
+		result = append(result, service.SMTPFallbackConfig{
+			Host:     strings.TrimSpace(item.Host),
+			Port:     item.Port,
+			Username: strings.TrimSpace(item.Username),
+			Password: password,
+			From:     strings.TrimSpace(item.From),
+			FromName: strings.TrimSpace(item.FromName),
+			UseTLS:   item.UseTLS,
+		})
+	}
+	return service.NormalizeSMTPFallbacks(result)
 }
 
 // UpdateSettings 更新系统设置
@@ -579,6 +640,31 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.AdminRechargeRebateEnabled != nil {
 		adminRechargeRebateEnabled = *req.AdminRechargeRebateEnabled
 	}
+	affiliateSubscriptionRewardGroupID := previousSettings.AffiliateSubscriptionRewardGroupID
+	if req.AffiliateSubscriptionRewardGroupID != nil {
+		affiliateSubscriptionRewardGroupID = *req.AffiliateSubscriptionRewardGroupID
+	}
+	if affiliateSubscriptionRewardGroupID < 0 {
+		affiliateSubscriptionRewardGroupID = service.AffiliateSubscriptionRewardGroupDefault
+	}
+	affiliateSubscriptionRewardDays := previousSettings.AffiliateSubscriptionRewardDays
+	if req.AffiliateSubscriptionRewardDays != nil {
+		affiliateSubscriptionRewardDays = *req.AffiliateSubscriptionRewardDays
+	}
+	if affiliateSubscriptionRewardDays < 0 {
+		affiliateSubscriptionRewardDays = service.AffiliateSubscriptionRewardDaysDefault
+	}
+	if affiliateSubscriptionRewardDays > service.AffiliateSubscriptionRewardDaysMax {
+		affiliateSubscriptionRewardDays = service.AffiliateSubscriptionRewardDaysMax
+	}
+	checkinEnabled := boolValueOrDefault(req.CheckinEnabled, previousSettings.CheckinEnabled)
+	checkinContent := previousSettings.CheckinContent
+	if req.CheckinContent != nil {
+		checkinContent = strings.TrimSpace(*req.CheckinContent)
+	}
+	checkinDailyReward := float64ValueOrDefault(req.CheckinDailyReward, previousSettings.CheckinDailyReward)
+	checkinExtraReward4 := float64ValueOrDefault(req.CheckinExtraReward4, previousSettings.CheckinExtraReward4)
+	checkinExtraReward16 := float64ValueOrDefault(req.CheckinExtraReward16, previousSettings.CheckinExtraReward16)
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
 		req.TableDefaultPageSize = previousSettings.TableDefaultPageSize
@@ -1501,6 +1587,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                         req.SMTPFrom,
 		SMTPFromName:                     req.SMTPFromName,
 		SMTPUseTLS:                       req.SMTPUseTLS,
+		SMTPFallbacks:                    smtpFallbacksToService(req.SMTPFallbacks, previousSettings.SMTPFallbacks),
 		TurnstileEnabled:                 req.TurnstileEnabled,
 		TurnstileSiteKey:                 req.TurnstileSiteKey,
 		TurnstileSecretKey:               req.TurnstileSecretKey,
@@ -1597,6 +1684,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIBaseURL:                             req.APIBaseURL,
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
+		QuickLinkEnabled:                       req.QuickLinkEnabled,
+		QuickLinkText:                          req.QuickLinkText,
+		QuickLinkURL:                           req.QuickLinkURL,
 		HomeContent:                            req.HomeContent,
 		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
@@ -1613,19 +1703,32 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
+		AffiliateSubscriptionRewardGroupID:     affiliateSubscriptionRewardGroupID,
+		AffiliateSubscriptionRewardDays:        affiliateSubscriptionRewardDays,
+		CheckinEnabled:                         checkinEnabled,
+		CheckinContent:                         checkinContent,
+		CheckinDailyReward:                     checkinDailyReward,
+		CheckinExtraReward4:                    checkinExtraReward4,
+		CheckinExtraReward16:                   checkinExtraReward16,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
-		EnableModelFallback:                    req.EnableModelFallback,
-		FallbackModelAnthropic:                 req.FallbackModelAnthropic,
-		FallbackModelOpenAI:                    req.FallbackModelOpenAI,
-		FallbackModelGemini:                    req.FallbackModelGemini,
-		FallbackModelAntigravity:               req.FallbackModelAntigravity,
-		EnableIdentityPatch:                    req.EnableIdentityPatch,
-		IdentityPatchPrompt:                    req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:                   req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:                     req.BackendModeEnabled,
+		APIKeyDefaultGroupID: func() int64 {
+			if req.APIKeyDefaultGroupID != nil {
+				return *req.APIKeyDefaultGroupID
+			}
+			return previousSettings.APIKeyDefaultGroupID
+		}(),
+		EnableModelFallback:         req.EnableModelFallback,
+		FallbackModelAnthropic:      req.FallbackModelAnthropic,
+		FallbackModelOpenAI:         req.FallbackModelOpenAI,
+		FallbackModelGemini:         req.FallbackModelGemini,
+		FallbackModelAntigravity:    req.FallbackModelAntigravity,
+		EnableIdentityPatch:         req.EnableIdentityPatch,
+		IdentityPatchPrompt:         req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:        req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:          req.BackendModeEnabled,
 		AllowUserViewErrorRequests: func() bool {
 			if req.AllowUserViewErrorRequests != nil {
 				return *req.AllowUserViewErrorRequests
@@ -2031,8 +2134,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
-	h.auditSettingsUpdate(c, previousSettings, settings, previousAuthSourceDefaults, authSourceDefaults, auditReq)
-
 	// 重新获取设置返回
 	updatedSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -2045,6 +2146,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.auditSettingsUpdate(c, previousSettings, updatedSettings, previousAuthSourceDefaults, updatedAuthSourceDefaults, auditReq)
 	updatedDefaultSubscriptions := make([]dto.DefaultSubscriptionSetting, 0, len(updatedSettings.DefaultSubscriptions))
 	for _, sub := range updatedSettings.DefaultSubscriptions {
 		updatedDefaultSubscriptions = append(updatedDefaultSubscriptions, dto.DefaultSubscriptionSetting{
@@ -2091,6 +2193,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                                               updatedSettings.SMTPFrom,
 		SMTPFromName:                                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                                             updatedSettings.SMTPUseTLS,
+		SMTPFallbacks:                                          smtpFallbacksToDTO(updatedSettings.SMTPFallbacks),
 		TurnstileEnabled:                                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           updatedSettings.TurnstileSecretKeyConfigured,
@@ -2182,6 +2285,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIBaseURL:                                             updatedSettings.APIBaseURL,
 		ContactInfo:                                            updatedSettings.ContactInfo,
 		DocURL:                                                 updatedSettings.DocURL,
+		QuickLinkEnabled:                                       updatedSettings.QuickLinkEnabled,
+		QuickLinkText:                                          updatedSettings.QuickLinkText,
+		QuickLinkURL:                                           updatedSettings.QuickLinkURL,
 		HomeContent:                                            updatedSettings.HomeContent,
 		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
@@ -2198,8 +2304,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:                           updatedSettings.AffiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
+		AffiliateSubscriptionRewardGroupID:                     updatedSettings.AffiliateSubscriptionRewardGroupID,
+		AffiliateSubscriptionRewardDays:                        updatedSettings.AffiliateSubscriptionRewardDays,
+		CheckinEnabled:                                         updatedSettings.CheckinEnabled,
+		CheckinContent:                                         updatedSettings.CheckinContent,
+		CheckinDailyReward:                                     updatedSettings.CheckinDailyReward,
+		CheckinExtraReward4:                                    updatedSettings.CheckinExtraReward4,
+		CheckinExtraReward16:                                   updatedSettings.CheckinExtraReward16,
 		DefaultUserRPMLimit:                                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                                   updatedDefaultSubscriptions,
+		APIKeyDefaultGroupID:                                   updatedSettings.APIKeyDefaultGroupID,
 		EnableModelFallback:                                    updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:                                 updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                                    updatedSettings.FallbackModelOpenAI,
@@ -2235,6 +2349,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CodexCLIOnlyWhitelist:                                  updatedSettings.CodexCLIOnlyWhitelist,
 		CodexCLIOnlyAllowAppServerClients:                      updatedSettings.CodexCLIOnlyAllowAppServerClients,
 		CodexCLIOnlyEngineFingerprintSignals:                   updatedSettings.CodexCLIOnlyEngineFingerprintSignals,
+		WebSearchEmulationEnabled:                              updatedSettings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:                       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:                        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:                      updatedSettings.PaymentVisibleMethodAlipayEnabled,

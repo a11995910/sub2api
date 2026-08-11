@@ -98,6 +98,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.SMTPUseTLS != after.SMTPUseTLS {
 		changed = append(changed, "smtp_use_tls")
 	}
+	if !equalSMTPFallbacks(before.SMTPFallbacks, after.SMTPFallbacks) {
+		changed = append(changed, "smtp_fallbacks")
+	}
 	if before.TurnstileEnabled != after.TurnstileEnabled {
 		changed = append(changed, "turnstile_enabled")
 	}
@@ -332,6 +335,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
 	}
+	if before.QuickLinkEnabled != after.QuickLinkEnabled {
+		changed = append(changed, service.SettingKeyQuickLinkEnabled)
+	}
+	if before.QuickLinkText != after.QuickLinkText {
+		changed = append(changed, service.SettingKeyQuickLinkText)
+	}
+	if before.QuickLinkURL != after.QuickLinkURL {
+		changed = append(changed, service.SettingKeyQuickLinkURL)
+	}
 	if before.HomeContent != after.HomeContent {
 		changed = append(changed, "home_content")
 	}
@@ -362,8 +374,32 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AdminRechargeRebateEnabled != after.AdminRechargeRebateEnabled {
 		changed = append(changed, "affiliate_admin_recharge_enabled")
 	}
+	if before.AffiliateSubscriptionRewardGroupID != after.AffiliateSubscriptionRewardGroupID {
+		changed = append(changed, "affiliate_subscription_reward_group_id")
+	}
+	if before.AffiliateSubscriptionRewardDays != after.AffiliateSubscriptionRewardDays {
+		changed = append(changed, "affiliate_subscription_reward_days")
+	}
+	if before.CheckinEnabled != after.CheckinEnabled {
+		changed = append(changed, "checkin_enabled")
+	}
+	if before.CheckinContent != after.CheckinContent {
+		changed = append(changed, "checkin_content")
+	}
+	if before.CheckinDailyReward != after.CheckinDailyReward {
+		changed = append(changed, "checkin_daily_reward")
+	}
+	if before.CheckinExtraReward4 != after.CheckinExtraReward4 {
+		changed = append(changed, "checkin_extra_reward_4")
+	}
+	if before.CheckinExtraReward16 != after.CheckinExtraReward16 {
+		changed = append(changed, "checkin_extra_reward_16")
+	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
+	}
+	if before.APIKeyDefaultGroupID != after.APIKeyDefaultGroupID {
+		changed = append(changed, "api_key_default_group_id")
 	}
 	if before.EnableModelFallback != after.EnableModelFallback {
 		changed = append(changed, "enable_model_fallback")
@@ -777,6 +813,24 @@ func equalNotifyEmailEntries(a, b []service.NotifyEmailEntry) bool {
 	}
 	for i := range a {
 		if a[i].Email != b[i].Email || a[i].Verified != b[i].Verified || a[i].Disabled != b[i].Disabled {
+			return false
+		}
+	}
+	return true
+}
+
+func equalSMTPFallbacks(a, b []service.SMTPFallbackConfig) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Host != b[i].Host ||
+			a[i].Port != b[i].Port ||
+			a[i].Username != b[i].Username ||
+			a[i].Password != b[i].Password ||
+			a[i].From != b[i].From ||
+			a[i].FromName != b[i].FromName ||
+			a[i].UseTLS != b[i].UseTLS {
 			return false
 		}
 	}

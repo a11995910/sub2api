@@ -93,6 +93,24 @@ func TestDiffSettings_DetectsCompactHomeChange(t *testing.T) {
 	require.Contains(t, changed, service.SettingKeyCompactHomeEnabled)
 }
 
+func TestDiffSettings_DetectsQuickLinkChanges(t *testing.T) {
+	changed := diffSettings(
+		&service.SystemSettings{},
+		&service.SystemSettings{
+			QuickLinkEnabled: true,
+			QuickLinkText:    "帮助中心",
+			QuickLinkURL:     "https://help.example.com",
+		},
+		nil,
+		nil,
+		UpdateSettingsRequest{},
+	)
+
+	require.Contains(t, changed, service.SettingKeyQuickLinkEnabled)
+	require.Contains(t, changed, service.SettingKeyQuickLinkText)
+	require.Contains(t, changed, service.SettingKeyQuickLinkURL)
+}
+
 func TestEqualNullableFloat(t *testing.T) {
 	five := 5.0
 	five2 := 5.0

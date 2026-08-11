@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +21,7 @@ func uniqueTestValue(t *testing.T, prefix string) string {
 
 func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *testing.T) {
 	ctx := context.Background()
-	tx := testEntTx(t)
-	entClient := tx.Client()
+	entClient := testEntClient(t)
 
 	targetGroup, err := entClient.Group.Create().
 		SetName(uniqueTestValue(t, "target-group")).
@@ -33,8 +33,18 @@ func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *te
 		SetStatus(service.StatusActive).
 		Save(ctx)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupCtx := mixins.SkipSoftDelete(context.Background())
+		require.NoError(t, entClient.Group.DeleteOneID(targetGroup.ID).Exec(cleanupCtx))
+		require.NoError(t, entClient.Group.DeleteOneID(otherGroup.ID).Exec(cleanupCtx))
+		_, err := integrationDB.ExecContext(context.Background(),
+			"DELETE FROM scheduler_outbox WHERE group_id = $1 OR group_id = $2",
+			targetGroup.ID, otherGroup.ID,
+		)
+		require.NoError(t, err)
+	})
 
-	repo := newUserRepositoryWithSQL(entClient, tx)
+	repo := newUserRepositoryWithSQL(entClient, integrationDB)
 
 	u1 := &service.User{
 		Email:         uniqueTestValue(t, "u1") + "@example.com",
@@ -45,6 +55,9 @@ func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *te
 		AllowedGroups: []int64{targetGroup.ID, otherGroup.ID},
 	}
 	require.NoError(t, repo.Create(ctx, u1))
+	t.Cleanup(func() {
+		require.NoError(t, entClient.User.DeleteOneID(u1.ID).Exec(mixins.SkipSoftDelete(context.Background())))
+	})
 
 	u2 := &service.User{
 		Email:         uniqueTestValue(t, "u2") + "@example.com",
@@ -55,6 +68,9 @@ func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *te
 		AllowedGroups: []int64{targetGroup.ID},
 	}
 	require.NoError(t, repo.Create(ctx, u2))
+	t.Cleanup(func() {
+		require.NoError(t, entClient.User.DeleteOneID(u2.ID).Exec(mixins.SkipSoftDelete(context.Background())))
+	})
 
 	u3 := &service.User{
 		Email:         uniqueTestValue(t, "u3") + "@example.com",
@@ -65,6 +81,9 @@ func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *te
 		AllowedGroups: []int64{otherGroup.ID},
 	}
 	require.NoError(t, repo.Create(ctx, u3))
+	t.Cleanup(func() {
+		require.NoError(t, entClient.User.DeleteOneID(u3.ID).Exec(mixins.SkipSoftDelete(context.Background())))
+	})
 
 	affected, err := repo.RemoveGroupFromAllowedGroups(ctx, targetGroup.ID)
 	require.NoError(t, err)
@@ -82,8 +101,7 @@ func TestUserRepository_RemoveGroupFromAllowedGroups_RemovesAllOccurrences(t *te
 
 func TestGroupRepository_DeleteCascade_PreservesApiKeyGroupID(t *testing.T) {
 	ctx := context.Background()
-	tx := testEntTx(t)
-	entClient := tx.Client()
+	entClient := testEntClient(t)
 
 	targetGroup, err := entClient.Group.Create().
 		SetName(uniqueTestValue(t, "delete-cascade-target")).
@@ -95,10 +113,20 @@ func TestGroupRepository_DeleteCascade_PreservesApiKeyGroupID(t *testing.T) {
 		SetStatus(service.StatusActive).
 		Save(ctx)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupCtx := mixins.SkipSoftDelete(context.Background())
+		require.NoError(t, entClient.Group.DeleteOneID(targetGroup.ID).Exec(cleanupCtx))
+		require.NoError(t, entClient.Group.DeleteOneID(otherGroup.ID).Exec(cleanupCtx))
+		_, err := integrationDB.ExecContext(context.Background(),
+			"DELETE FROM scheduler_outbox WHERE group_id = $1 OR group_id = $2",
+			targetGroup.ID, otherGroup.ID,
+		)
+		require.NoError(t, err)
+	})
 
-	userRepo := newUserRepositoryWithSQL(entClient, tx)
-	groupRepo := newGroupRepositoryWithSQL(entClient, tx)
-	apiKeyRepo := newAPIKeyRepositoryWithSQL(entClient, tx)
+	userRepo := newUserRepositoryWithSQL(entClient, integrationDB)
+	groupRepo := newGroupRepositoryWithSQL(entClient, integrationDB)
+	apiKeyRepo := newAPIKeyRepositoryWithSQL(entClient, integrationDB)
 
 	u := &service.User{
 		Email:         uniqueTestValue(t, "cascade-user") + "@example.com",
@@ -109,15 +137,27 @@ func TestGroupRepository_DeleteCascade_PreservesApiKeyGroupID(t *testing.T) {
 		AllowedGroups: []int64{targetGroup.ID, otherGroup.ID},
 	}
 	require.NoError(t, userRepo.Create(ctx, u))
+	t.Cleanup(func() {
+		require.NoError(t, entClient.User.DeleteOneID(u.ID).Exec(mixins.SkipSoftDelete(context.Background())))
+	})
 
+	keyValue := uniqueTestValue(t, "sk-test-delete-cascade")
 	key := &service.APIKey{
 		UserID:  u.ID,
-		Key:     uniqueTestValue(t, "sk-test-delete-cascade"),
+		Key:     keyValue,
 		Name:    "test key",
 		GroupID: &targetGroup.ID,
 		Status:  service.StatusActive,
 	}
 	require.NoError(t, apiKeyRepo.Create(ctx, key))
+	t.Cleanup(func() {
+		require.NoError(t, entClient.APIKey.DeleteOneID(key.ID).Exec(mixins.SkipSoftDelete(context.Background())))
+		_, err := integrationDB.ExecContext(context.Background(),
+			"DELETE FROM auth_cache_invalidation_outbox WHERE cache_key = encode(sha256(convert_to($1, 'UTF8')), 'hex')",
+			keyValue,
+		)
+		require.NoError(t, err)
+	})
 
 	_, err = groupRepo.DeleteCascade(ctx, targetGroup.ID)
 	require.NoError(t, err)

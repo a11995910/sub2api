@@ -106,7 +106,7 @@ func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing
 	require.Equal(t, "https://relay.example/v1/videos/task-1/content", upstream.requests[1].URL.String())
 	require.Equal(t, "Bearer upstream-key", upstream.requests[1].Header.Get("Authorization"))
 	require.Equal(t, "bytes=0-12", upstream.requests[1].Header.Get("Range"))
-	require.Equal(t, "*/*", upstream.requests[1].Header.Get("Accept"))
+	require.Equal(t, "video/mp4,video/*;q=0.9", upstream.requests[1].Header.Get("Accept"))
 	require.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
 	require.Equal(t, "13", recorder.Header().Get("Content-Length"))
 	require.Equal(t, "bytes 0-12/100", recorder.Header().Get("Content-Range"))
