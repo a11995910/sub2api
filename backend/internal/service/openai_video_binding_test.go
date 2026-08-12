@@ -46,6 +46,22 @@ func (s *videoBindingCacheStub) DeleteSessionAccountID(_ context.Context, groupI
 	return nil
 }
 
+func (s *videoBindingCacheStub) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+
+func (s *videoBindingCacheStub) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *videoBindingCacheStub) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *videoBindingCacheStub) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
 func TestVideoTaskSessionHashIsScopedToOwner(t *testing.T) {
 	base := VideoTaskSessionHash("task-1", 10, 20)
 	require.NotEmpty(t, base)

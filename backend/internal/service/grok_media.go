@@ -1347,8 +1347,7 @@ func (r GrokMediaRequestInfo) HasInputImage() bool {
 	return r.HasStartingImage() || len(r.ReferenceImageURLs) > 0
 }
 
-// NormalizeGrokMediaModelForEndpoint resolves the built-in upstream model alias
-// for a media endpoint before account-level model mapping and scheduling.
+// NormalizeGrokMediaModelForEndpoint 在账号级模型映射和调度前，解析媒体端点的内置上游模型别名。
 func NormalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
 	model = strings.TrimSpace(model)
 	switch endpoint {
@@ -1357,9 +1356,9 @@ func NormalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string
 			return "grok-imagine-image-quality"
 		}
 	case GrokMediaEndpointVideosGenerations:
-		if strings.HasPrefix(strings.ToLower(model), "grok-imagine-video-1.5") && !hasInputImage {
-			return "grok-imagine-video"
-		}
+		// 1.5 模型缺少起始图时仍保留请求模型，由上游返回明确的参数错误；
+		// 禁止静默切换模型，避免模型映射与计费口径发生变化。
+		_ = hasInputImage
 	}
 	return model
 }
