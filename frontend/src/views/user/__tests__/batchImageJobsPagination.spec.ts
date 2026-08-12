@@ -25,4 +25,3 @@ describe('batch image job list pagination', () => {
     })
   })
 })
-

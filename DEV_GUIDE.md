@@ -84,7 +84,7 @@ docker compose -f docker-compose.dev.yml down -v
 ### 开发工具
 
 ```bash
-# golangci-lint v2.9
+# golangci-lint（CI 用 v2.9，本地建议装同一版以免版本差异带来的噪音）
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.9
 
 # pnpm (前端包管理)
@@ -159,7 +159,7 @@ GitHub 公共 API 有匿名速率限制；要保持定时轮询、精确计算�
 
 ### CI 要求
 
-- Go 版本必须是 **1.26.5**（以 `backend/go.mod` 和 GitHub Actions 为准）
+- Go 版本必须是 **1.26.5**：三个 workflow 都用 `go-version-file: backend/go.mod` 取版本，随后硬断言 `go version | grep -q 'go1.26.5'`。升级 Go 时要同时改 `backend/go.mod` 和 `backend-ci.yml`（两处）、`release.yml`、`security-scan.yml` 里的这句断言，否则 CI 会在版本校验步骤直接失败。
 - golangci-lint 使用 **v2.9**（以 `.github/workflows/backend-ci.yml` 为准）
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 

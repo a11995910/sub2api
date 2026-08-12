@@ -114,6 +114,7 @@ func TestBufferRawChatCompletions_SeedanceTransformsVideoResponse(t *testing.T) 
 	result, err := (&OpenAIGatewayService{}).bufferRawChatCompletions(
 		c,
 		resp,
+		rawChatCompletionsTestAccount(),
 		"dreamina-seedance-2-0-mini-ep",
 		"dreamina-seedance-2-0-mini-ep",
 		"dreamina-seedance-2-0-mini-ep",
