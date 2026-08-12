@@ -188,6 +188,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionSeed)
 	boundLookupAccountID := int64(0)
+	var lookupBillingTask *service.VideoTaskBilling
 	if endpoint.IsVideoLookupRequest() {
 		sessionHash = service.GrokMediaVideoRequestSessionHash(requestID, subject.UserID, apiKey.ID)
 		boundLookupAccountID, err = h.gatewayService.ResolveGrokMediaVideoRequestAccount(
@@ -197,6 +198,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			reqLog.Info("grok_media.video_lookup_owner_binding_missing", zap.Error(err))
 			h.errorResponse(c, http.StatusNotFound, "not_found_error", "Video request not found")
 			return
+		}
+		if endpoint == service.GrokMediaEndpointVideoStatus && h.videoTaskBilling != nil {
+			lookupBillingTask, err = h.videoTaskBilling.ResolveOwnedTask(c.Request.Context(), service.PlatformGrok, requestID, subject.UserID, apiKey.ID)
+			if err != nil && !errors.Is(err, service.ErrVideoTaskBillingNotFound) {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Video task billing lookup failed")
+				return
+			}
 		}
 	}
 	// Grok 媒体（图片/视频生成与视频查询）按媒体倍率计费，不在 token 利润门
@@ -335,6 +343,22 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
+		var billingTask *service.VideoTaskBilling
+		if endpoint == service.GrokMediaEndpointVideosGenerations {
+			mapping := service.ChannelMappingResult{MappedModel: account.GetMappedModel(routingModel)}
+			billingTask, err = h.reserveOpenAIVideoTask(c, apiKey, account, subscription, mapping, routingModel, time.Time{}, body)
+			if err != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				status, code, message, retryAfter := billingErrorDetails(err)
+				if retryAfter > 0 {
+					c.Header("Retry-After", strconv.Itoa(retryAfter))
+				}
+				h.errorResponse(c, status, code, message)
+				return
+			}
+		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -352,8 +376,32 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
+		if lookupBillingTask != nil {
+			outcome := service.ClassifyVideoTaskResult(result)
+			if err != nil {
+				outcome = service.VideoTaskOutcome{Status: service.VideoTaskStatusUnknown, ErrorMessage: err.Error()}
+			}
+			ctx, cancel := detachedVideoBillingContext(c)
+			billingErr := h.videoTaskBilling.ApplyOutcome(ctx, lookupBillingTask, outcome)
+			cancel()
+			if billingErr != nil {
+				reqLog.Error("grok_media.billing_lookup_observation_failed", zap.Int64("billing_task_id", lookupBillingTask.ID), zap.Error(billingErr))
+			}
+		}
 
 		if err != nil {
+			if billingTask != nil {
+				if billingErr := h.observeOpenAIVideoSubmissionError(c, billingTask, err); billingErr != nil {
+					reqLog.Error("grok_media.billing_submission_error_failed", zap.Int64("billing_task_id", billingTask.ID), zap.Error(billingErr))
+				}
+				var failoverErr *service.UpstreamFailoverError
+				if errors.As(err, &failoverErr) && c.Writer.Size() == writerSizeBeforeForward {
+					h.handleFailoverExhausted(c, failoverErr, false)
+				} else if !service.IsResponseCommitted(c) && c.Writer.Size() == writerSizeBeforeForward {
+					h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+				}
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if failoverClientGone(c) {
@@ -426,6 +474,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			)
 			return
 		}
+		if billingTask != nil {
+			if billingErr := h.observeOpenAIVideoCreated(c, billingTask, result); billingErr != nil {
+				reqLog.Error("grok_media.billing_created_observation_failed", zap.Int64("billing_task_id", billingTask.ID), zap.Error(billingErr))
+			}
+		}
 
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, grokMediaScheduleModel(account, routingModel, result), true, nil)
 		if endpoint.IsGenerationRequest() && strings.TrimSpace(result.ResponseID) != "" {
@@ -439,7 +492,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				)
 			}
 		}
-		if shouldRecordGrokMediaUsage(endpoint, requestModel) {
+		if billingTask == nil && shouldRecordGrokMediaUsage(endpoint, requestModel) {
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
 		}
 		reqLog.Debug("grok_media.request_completed",

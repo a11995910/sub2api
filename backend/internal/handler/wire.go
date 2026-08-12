@@ -127,13 +127,16 @@ func ProvideOpenAIGatewayHandler(
 	generatedImageStore *service.GeneratedImageStore,
 	grokQuotaService *service.GrokQuotaService,
 	videoTestTasks *service.VideoTestTaskService,
+	videoTaskBilling *service.VideoTaskBillingService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetVideoTestTaskService(videoTestTasks)
+	gatewayService.SetVideoTaskBillingService(videoTaskBilling)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, generatedImageStore, cfg)
 	h.securityAuditCoordinator = coordinator
+	h.videoTaskBilling = videoTaskBilling
 	h.grokMediaEligibilityProber = grokQuotaService
 	return h
 }

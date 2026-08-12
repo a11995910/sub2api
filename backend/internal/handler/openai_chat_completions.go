@@ -239,6 +239,18 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		billingTask, reserveErr := h.reserveOpenAIVideoTask(c, apiKey, account, subscription, channelMapping, reqModel, pricingAt, body)
+		if reserveErr != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			status, code, message, retryAfter := billingErrorDetails(reserveErr)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			h.handleStreamingAwareError(c, status, code, message, streamStarted)
+			return
+		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -265,6 +277,23 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if billingTask != nil {
+				if billingErr := h.observeOpenAIVideoSubmissionError(c, billingTask, err); billingErr != nil {
+					reqLog.Error("openai_video.billing_submission_error_failed", zap.Int64("billing_task_id", billingTask.ID), zap.Error(billingErr))
+				}
+				var failoverErr *service.UpstreamFailoverError
+				if errors.As(err, &failoverErr) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+					if c.Writer.Size() == writerSizeBeforeForward {
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+					}
+				} else if !openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err) {
+					if !h.ensureOpenAIStreamReadErrorResponse(c, err, streamStarted) {
+						h.ensureForwardErrorResponse(c, streamStarted)
+					}
+				}
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
@@ -349,6 +378,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			}
 		}
+		if billingTask != nil {
+			if billingErr := h.observeOpenAIVideoCreated(c, billingTask, result); billingErr != nil {
+				reqLog.Error("openai_video.billing_created_observation_failed", zap.Int64("billing_task_id", billingTask.ID), zap.Error(billingErr))
+			}
+		}
 		if result != nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, result.FirstTokenMs)
 		} else {
@@ -363,34 +397,36 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		sessionID := service.ExtractClientSessionID(c)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				APIKeyService:      h.apiKeyService,
-				QuotaPlatform:      quotaPlatform,
-				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
-				PricingAt:          pricingAt,
-				CyberBlocked:       cyberBlocked,
-			}); err != nil {
-				logger.L().With(
-					zap.String("component", "handler.openai_gateway.chat_completions"),
-					zap.Int64("user_id", subject.UserID),
-					zap.Int64("api_key_id", apiKey.ID),
-					zap.Any("group_id", apiKey.GroupID),
-					zap.String("model", reqModel),
-					zap.Int64("account_id", account.ID),
-				).Error("openai_chat_completions.record_usage_failed", zap.Error(err))
-			}
-		})
+		if billingTask == nil {
+			h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
+				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+					Result:             result,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					InboundEndpoint:    inboundEndpoint,
+					UpstreamEndpoint:   upstreamEndpoint,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					APIKeyService:      h.apiKeyService,
+					QuotaPlatform:      quotaPlatform,
+					SessionID:          sessionID,
+					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+					PricingAt:          pricingAt,
+					CyberBlocked:       cyberBlocked,
+				}); err != nil {
+					logger.L().With(
+						zap.String("component", "handler.openai_gateway.chat_completions"),
+						zap.Int64("user_id", subject.UserID),
+						zap.Int64("api_key_id", apiKey.ID),
+						zap.Any("group_id", apiKey.GroupID),
+						zap.String("model", reqModel),
+						zap.Int64("account_id", account.ID),
+					).Error("openai_chat_completions.record_usage_failed", zap.Error(err))
+				}
+			})
+		}
 		reqLog.Debug("openai_chat_completions.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),

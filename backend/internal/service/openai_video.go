@@ -38,6 +38,7 @@ type OpenAIVideoContext struct {
 	APIKeyID            int64
 	GroupID             int64
 	AccountID           int64
+	BillingTaskID       int64
 	BindTask            bool
 	RecordModelTestTask bool
 }
@@ -61,6 +62,20 @@ func openAIVideoContextFromGin(c *gin.Context) (OpenAIVideoContext, bool) {
 	}
 	meta, ok := value.(OpenAIVideoContext)
 	return meta, ok && strings.TrimSpace(meta.Model) != ""
+}
+
+func OpenAIVideoContextFromGin(c *gin.Context) (OpenAIVideoContext, bool) {
+	return openAIVideoContextFromGin(c)
+}
+
+func SetOpenAIVideoBillingTask(c *gin.Context, billingTaskID int64) bool {
+	meta, ok := openAIVideoContextFromGin(c)
+	if !ok || billingTaskID <= 0 {
+		return false
+	}
+	meta.BillingTaskID = billingTaskID
+	SetOpenAIVideoContext(c, meta)
+	return true
 }
 
 // HasOpenAIVideoContext 供共用 Chat handler 选择视频审核与账号能力。
@@ -188,7 +203,7 @@ func ParseOpenAIVideoResult(body []byte) (OpenAIVideoResult, error) {
 		Status: NormalizeOpenAIVideoStatus(firstGJSONVideoString(body, "status", "data.status", "state", "data.state")),
 		VideoURL: firstValidOpenAIVideoURL(body,
 			"metadata.url", "video_url", "result_url", "url", "video_urls.0", "videos.0.url",
-			"data.metadata.url", "data.video_url", "data.result_url", "data.url", "data.video_urls.0", "data.videos.0.url"),
+			"data.metadata.url", "data.video_url", "data.result_url", "data.url", "data.0.url", "data.video_urls.0", "data.videos.0.url"),
 		ErrorMessage: firstGJSONVideoString(body, "error.message", "data.error.message", "message", "detail"),
 	}
 	progressText := firstGJSONVideoString(body, "progress", "data.progress")
@@ -214,7 +229,7 @@ func NormalizeOpenAIVideoStatus(status string) string {
 		return "in_progress"
 	case "completed", "succeeded", "success", "done":
 		return "completed"
-	case "failed", "error", "cancelled", "canceled":
+	case "failed", "error", "cancelled", "canceled", "expired":
 		return "failed"
 	default:
 		return status

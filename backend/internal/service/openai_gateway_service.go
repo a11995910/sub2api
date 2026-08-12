@@ -279,11 +279,12 @@ type OpenAIForwardResult struct {
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
 	// VideoInputImageCount 是视频请求实际携带的参考图数量，仅作为请求元数据保留，不参与计费。
-	VideoInputImageCount int
-	VideoStatus          string
-	VideoProgress        *float64
-	VideoErrorMessage    string
-	VideoResponseJSON    json.RawMessage
+	VideoInputImageCount   int
+	VideoStatus            string
+	VideoProgress          *float64
+	VideoErrorMessage      string
+	VideoResponseJSON      json.RawMessage
+	VideoArtifactAvailable bool
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
 	WebSearchCalls int
@@ -436,6 +437,7 @@ type OpenAIGatewayService struct {
 	generatedImageStore   *GeneratedImageStore
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	videoTestTaskService  *VideoTestTaskService
+	videoTaskBilling      *VideoTaskBillingService
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
 
@@ -480,6 +482,12 @@ func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore
 func (s *OpenAIGatewayService) SetVideoTestTaskService(tasks *VideoTestTaskService) {
 	if s != nil {
 		s.videoTestTaskService = tasks
+	}
+}
+
+func (s *OpenAIGatewayService) SetVideoTaskBillingService(billing *VideoTaskBillingService) {
+	if s != nil {
+		s.videoTaskBilling = billing
 	}
 }
 

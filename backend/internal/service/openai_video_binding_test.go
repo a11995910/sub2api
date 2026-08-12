@@ -106,3 +106,21 @@ func TestResolveVideoTaskAccountFallsBackToPersistentTestTaskAndRebindsCache(t *
 	_, err = svc.ResolveVideoTaskAccount(context.Background(), &groupID, "task-persisted", 11, 20)
 	require.Error(t, err)
 }
+
+func TestResolveVideoTaskAccountFallsBackToBillingLedgerBeforeModelTestStore(t *testing.T) {
+	cache := &videoBindingCacheStub{}
+	billing := NewVideoTaskBillingService(&fakeVideoTaskBillingRepo{task: &VideoTaskBilling{
+		Platform: PlatformOpenAI, UpstreamTaskID: "task-billed", UserID: 10, APIKeyID: 20, GroupID: ptrVideoInt64(7), AccountID: 30,
+	}}, nil, nil)
+	svc := &OpenAIGatewayService{cache: cache}
+	svc.SetVideoTaskBillingService(billing)
+	groupID := int64(7)
+
+	accountID, err := svc.ResolveVideoTaskAccount(context.Background(), &groupID, "task-billed", 10, 20)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(30), accountID)
+	require.NotEmpty(t, cache.values)
+	_, err = svc.ResolveVideoTaskAccount(context.Background(), &groupID, "task-billed", 11, 20)
+	require.Error(t, err)
+}

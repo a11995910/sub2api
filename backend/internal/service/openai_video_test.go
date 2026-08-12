@@ -18,6 +18,18 @@ func TestOpenAIVideoContextCanBeDetectedByHandler(t *testing.T) {
 	require.True(t, HasOpenAIVideoContext(c))
 }
 
+func TestSetOpenAIVideoBillingTaskKeepsExistingRequestMetadata(t *testing.T) {
+	c, _ := gin.CreateTestContext(nil)
+	SetOpenAIVideoContext(c, OpenAIVideoContext{Model: "future-motion-pro", UserID: 7, APIKeyID: 11})
+
+	require.True(t, SetOpenAIVideoBillingTask(c, 19))
+	meta, ok := OpenAIVideoContextFromGin(c)
+
+	require.True(t, ok)
+	require.Equal(t, int64(19), meta.BillingTaskID)
+	require.Equal(t, int64(7), meta.UserID)
+}
+
 func TestAccountSupportsOpenAIVideoEndpointCapability(t *testing.T) {
 	apiKey := &Account{
 		Platform: PlatformOpenAI,
@@ -112,12 +124,25 @@ func TestParseOpenAIVideoResultSupportsAliasesAndClampsProgress(t *testing.T) {
 	require.Equal(t, "https://cdn.test/result.webm", result.VideoURL)
 }
 
+func TestParseOpenAIVideoResultReadsDocumentedDataArrayArtifact(t *testing.T) {
+	result, err := ParseOpenAIVideoResult([]byte(`{
+		"id":"task-3",
+		"status":"completed",
+		"data":[{"url":"https://api.test/v1/videos/task-3/content"}]
+	}`))
+
+	require.NoError(t, err)
+	require.Equal(t, "completed", result.Status)
+	require.Equal(t, "https://api.test/v1/videos/task-3/content", result.VideoURL)
+}
+
 func TestNormalizeOpenAIVideoStatus(t *testing.T) {
 	tests := map[string]string{
 		"pending":    "queued",
 		"RUNNING":    "in_progress",
 		"succeeded":  "completed",
 		"cancelled":  "failed",
+		"expired":    "failed",
 		"unexpected": "unexpected",
 	}
 	for input, expected := range tests {

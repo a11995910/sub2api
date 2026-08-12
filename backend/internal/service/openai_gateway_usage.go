@@ -39,6 +39,9 @@ type OpenAIRecordUsageInput struct {
 	PricingAt time.Time
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
+	// BalanceAlreadyHeld is only used by deferred async video settlement.
+	// The task ledger already moved the charge into users.frozen_balance.
+	BalanceAlreadyHeld bool
 	ChannelUsageFields
 }
 
@@ -408,6 +411,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			Subscription:          subscription,
 			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling,
+			BalanceAlreadyHeld:    input.BalanceAlreadyHeld,
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
 			Platform:              quotaPlatform,
@@ -640,6 +644,36 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 
 	return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+}
+
+func (s *OpenAIGatewayService) EstimateVideoCost(
+	ctx context.Context,
+	apiKey *APIKey,
+	model, resolution string,
+	durationSeconds int,
+) (*CostBreakdown, error) {
+	if s == nil || s.billingService == nil || apiKey == nil || strings.TrimSpace(model) == "" {
+		return nil, errors.New("video pricing is unavailable")
+	}
+	baseMultiplier := 1.0
+	if s.cfg != nil {
+		baseMultiplier = s.cfg.Default.RateMultiplier
+	}
+	if apiKey.GroupID != nil && apiKey.Group != nil {
+		baseMultiplier = s.ResolveUserGroupRateMultiplier(ctx, apiKey.UserID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+	}
+	result := &OpenAIForwardResult{
+		Model:                strings.TrimSpace(model),
+		BillingModel:         strings.TrimSpace(model),
+		VideoCount:           1,
+		VideoResolution:      resolution,
+		VideoDurationSeconds: durationSeconds,
+	}
+	cost := s.calculateOpenAIVideoCost(ctx, result.BillingModel, apiKey, result, resolveVideoRateMultiplier(apiKey, baseMultiplier))
+	if cost == nil {
+		return nil, errors.New("video pricing is unavailable")
+	}
+	return cost, nil
 }
 
 func (s *OpenAIGatewayService) apiKeyWithFreshGroupMediaPricing(ctx context.Context, apiKey *APIKey) *APIKey {

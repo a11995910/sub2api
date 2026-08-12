@@ -107,6 +107,7 @@ func provideCleanup(
 	antigravityOAuth *service.AntigravityOAuthService,
 	grokOAuth *service.GrokOAuthService,
 	openAIGateway *service.OpenAIGatewayService,
+	videoTaskReconciliation *service.VideoTaskReconciliationService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
@@ -128,6 +129,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"VideoTaskReconciliationService", func() error {
+				if videoTaskReconciliation != nil {
+					videoTaskReconciliation.Stop()
+				}
+				return nil
+			}},
 			{"OpsIngressRejectAggregator", func() error {
 				if opsIngressReject != nil {
 					opsIngressReject.Stop()

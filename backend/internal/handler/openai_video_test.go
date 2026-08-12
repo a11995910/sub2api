@@ -99,3 +99,20 @@ func TestIsModelTestVideoRequestRequiresExactInternalMarker(t *testing.T) {
 		require.Equal(t, tc.want, isModelTestVideoRequest(c), tc.value)
 	}
 }
+
+func TestShouldReserveOpenAIVideoBillingOnlyForOrdinaryBalanceRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(7)
+	apiKey := &service.APIKey{ID: 20, GroupID: &groupID, Group: &service.Group{ID: groupID}}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model"})
+
+	require.True(t, shouldReserveOpenAIVideoBilling(c, apiKey, nil))
+
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model", RecordModelTestTask: true})
+	require.False(t, shouldReserveOpenAIVideoBilling(c, apiKey, nil))
+
+	apiKey.Group.SubscriptionType = service.SubscriptionTypeSubscription
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model"})
+	require.False(t, shouldReserveOpenAIVideoBilling(c, apiKey, &service.UserSubscription{}))
+}

@@ -113,6 +113,8 @@ func TestForwardOpenAIVideoCreateUsesVideosEndpointAndMappedModel(t *testing.T) 
 	require.Equal(t, 1, result.VideoCount)
 	require.Equal(t, "720p", result.VideoResolution)
 	require.Equal(t, 5, result.VideoDurationSeconds)
+	require.Equal(t, "queued", result.VideoStatus)
+	require.JSONEq(t, `{"id":"task-1","model":"dreamina-seedance-2-0-ep","object":"video","progress":0,"status":"queued","task_id":"task-1"}`, string(result.VideoResponseJSON))
 	require.Equal(t, "/v1/videos", result.UpstreamEndpoint)
 
 	require.Equal(t, "http://video-upstream.example/v1/videos", upstream.lastReq.URL.String())
@@ -251,6 +253,9 @@ func TestForwardOpenAIVideoCreateFallsBackOnlyForUnsupportedEndpoint(t *testing.
 	require.Equal(t, "completed", gjson.Get(recorder.Body.String(), "status").String())
 	require.Equal(t, "https://cdn.test/result.mp4", gjson.Get(recorder.Body.String(), "url").String())
 	require.Equal(t, "chat-video-1", result.ResponseID)
+	require.Equal(t, "completed", result.VideoStatus)
+	require.True(t, result.VideoArtifactAvailable)
+	require.Contains(t, string(result.VideoResponseJSON), "https://cdn.test/result.mp4")
 }
 
 func TestForwardOpenAIVideoCreatePersistsMarkedChatFallbackAsCompleted(t *testing.T) {
@@ -298,8 +303,25 @@ func TestForwardOpenAIVideoCreateDoesNotFallbackOnUpstreamFailure(t *testing.T) 
 
 	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
 	require.Error(t, err)
+	require.True(t, IsVideoTaskSubmissionUncertain(err))
 	require.Len(t, upstream.requests, 1)
 	require.Zero(t, cache.setCalls)
+}
+
+func TestForwardOpenAIVideoCreateMissingTaskIDIsSubmissionUnknown(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","duration":5}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"status":"queued"}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: &videoProtocolGatewayCacheStub{}, httpUpstream: upstream}
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
+
+	require.Error(t, err)
+	require.True(t, IsVideoTaskSubmissionUncertain(err))
 }
 
 func TestForwardOpenAIVideoCreateCachesVideosOnBusinessValidationError(t *testing.T) {
@@ -315,6 +337,7 @@ func TestForwardOpenAIVideoCreateCachesVideosOnBusinessValidationError(t *testin
 
 	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
 	require.Error(t, err)
+	require.False(t, IsVideoTaskSubmissionUncertain(err))
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, OpenAIVideoProtocolVideos, cache.protocols[cache.protocolKey(88, "jing-video-2-pro")])
 }
@@ -342,6 +365,37 @@ func TestForwardOpenAIVideoStatusNormalizesCompletedResponse(t *testing.T) {
 	require.Equal(t, "completed", gjson.Get(recorder.Body.String(), "status").String())
 	require.Equal(t, "/v1/videos/task-1/content", gjson.Get(recorder.Body.String(), "url").String())
 	require.NotContains(t, recorder.Body.String(), "signed.test")
+}
+
+func TestQueryOpenAIVideoTaskDoesNotRequireGinContext(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"id":"task-worker","status":"completed","url":"https://cdn.test/video.mp4"}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.QueryOpenAIVideoTask(context.Background(), openAIVideoForwardTestAccount(), "task-worker")
+
+	require.NoError(t, err)
+	require.Equal(t, "completed", result.VideoStatus)
+	require.True(t, result.VideoArtifactAvailable)
+	require.Contains(t, string(result.VideoResponseJSON), "https://cdn.test/video.mp4")
+}
+
+func TestQueryOpenAIVideoTaskReturnsLookupErrorForServerFailure(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"error":{"message":"temporarily unavailable"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	_, err := svc.QueryOpenAIVideoTask(context.Background(), openAIVideoForwardTestAccount(), "task-worker")
+
+	var lookupErr *OpenAIVideoLookupError
+	require.ErrorAs(t, err, &lookupErr)
+	require.Equal(t, http.StatusBadGateway, lookupErr.StatusCode)
 }
 
 func TestForwardOpenAIVideoContentProxiesVideoAndRange(t *testing.T) {

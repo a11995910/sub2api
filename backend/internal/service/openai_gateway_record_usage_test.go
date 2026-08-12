@@ -1309,6 +1309,30 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedToken
 	require.InDelta(t, expectedCost.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-10)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_PreheldVideoSkipsSecondBalanceDeduction(t *testing.T) {
+	price := 0.08
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, nil, nil, nil)
+	quotaService := &openAIRecordUsageAPIKeyQuotaStub{}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "video_task:9:capture", Model: "video-model", VideoCount: 1,
+			VideoResolution: "720p", VideoDurationSeconds: 10, Duration: time.Second,
+		},
+		APIKey: &APIKey{ID: 11, Quota: 100, Group: &Group{VideoPrice720P: &price}},
+		User:   &User{ID: 7}, Account: &Account{ID: 17}, BalanceAlreadyHeld: true, APIKeyService: quotaService,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Zero(t, billingRepo.lastCmd.BalanceCost)
+	require.Greater(t, billingRepo.lastCmd.APIKeyQuotaCost, 0.0)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Greater(t, usageRepo.lastLog.ActualCost, 0.0)
+}
+
 func TestNormalizeOpenAIServiceTier(t *testing.T) {
 	t.Run("fast maps to priority", func(t *testing.T) {
 		got := normalizeOpenAIServiceTier(" fast ")

@@ -34,6 +34,7 @@ type OpenAIGatewayHandler struct {
 	billingCacheService        *service.BillingCacheService
 	apiKeyService              *service.APIKeyService
 	usageRecordWorkerPool      *service.UsageRecordWorkerPool
+	videoTaskBilling           *service.VideoTaskBillingService
 	errorPassthroughService    *service.ErrorPassthroughService
 	contentModerationService   *service.ContentModerationService
 	securityAuditCoordinator   *securityaudit.Coordinator

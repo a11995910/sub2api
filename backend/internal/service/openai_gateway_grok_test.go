@@ -1502,6 +1502,13 @@ func TestForwardGrokMediaVideoStatusUsesGETWithoutBody(t *testing.T) {
 	require.Equal(t, "xai-video-req", result.RequestID)
 }
 
+func TestGrokMediaVideoArtifactAvailableRecognizesNestedVideoURL(t *testing.T) {
+	require.True(t, grokMediaVideoArtifactAvailable([]byte(`{"status":"completed","video":{"url":"https://cdn.test/video.mp4"}}`)))
+	require.True(t, grokMediaVideoArtifactAvailable([]byte(`{"status":"completed","video":{"url":"/v1/videos/task-1/content"}}`)))
+	require.False(t, grokMediaVideoArtifactAvailable([]byte(`{"status":"completed"}`)))
+	require.False(t, grokMediaVideoArtifactAvailable([]byte(`{"status":"completed","video":{"url":"javascript:alert(1)"}}`)))
+}
+
 func TestForwardGrokMediaVideoContentUsesBoundAccountProxyChain(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)

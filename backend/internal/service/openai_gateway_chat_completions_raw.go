@@ -599,6 +599,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		result.VideoResolution = videoMeta.Resolution
 		result.VideoDurationSeconds = videoMeta.DurationSeconds
 		result.VideoInputImageCount = videoMeta.ReferenceImageCount
+		result.VideoStatus = "completed"
+		result.VideoResponseJSON = append(json.RawMessage(nil), respBody...)
+		result.VideoArtifactAvailable = strings.TrimSpace(seedanceResult.VideoURL) != ""
 	}
 	return result, nil
 }

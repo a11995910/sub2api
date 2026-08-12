@@ -22,6 +22,20 @@ import (
 
 const openAIVideoProtocolCacheTTL = 24 * time.Hour
 
+type OpenAIVideoLookupError struct {
+	StatusCode int
+	Message    string
+	Body       json.RawMessage
+	Headers    http.Header
+}
+
+func (e *OpenAIVideoLookupError) Error() string {
+	if e == nil || e.Message == "" {
+		return "video upstream lookup failed"
+	}
+	return e.Message
+}
+
 func (s *OpenAIGatewayService) ForwardOpenAIVideoCreate(
 	ctx context.Context,
 	c *gin.Context,
@@ -60,16 +74,53 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoStatus(
 	account *Account,
 	taskID string,
 ) (*OpenAIForwardResult, error) {
+	result, err := s.QueryOpenAIVideoTask(ctx, account, taskID)
+	if err != nil {
+		var lookupErr *OpenAIVideoLookupError
+		if errors.As(err, &lookupErr) {
+			writeChatCompletionsError(c, lookupErr.StatusCode, "upstream_error", lookupErr.Message)
+		}
+		return nil, err
+	}
+	progress := 0
+	if result.VideoProgress != nil {
+		progress = int(*result.VideoProgress)
+	}
+	response := map[string]any{
+		"id":       result.ResponseID,
+		"task_id":  result.ResponseID,
+		"object":   "video",
+		"model":    result.Model,
+		"status":   result.VideoStatus,
+		"progress": progress,
+	}
+	if result.VideoStatus == "completed" {
+		response["url"] = grokMediaContentProxyURL(c, result.ResponseID)
+	}
+	if result.VideoStatus == "failed" && result.VideoErrorMessage != "" {
+		response["error"] = map[string]string{"type": "generation_failed", "message": result.VideoErrorMessage}
+	}
+	normalized, err := json.Marshal(response)
+	if err != nil {
+		return nil, fmt.Errorf("encode video status response: %w", err)
+	}
+	if shouldWriteOpenAIVideoResponse(c) {
+		writeGrokMediaResponse(c, &http.Response{StatusCode: http.StatusOK, Header: result.ResponseHeaders}, normalized, s.responseHeaderFilter)
+	}
+	return result, nil
+}
+
+func (s *OpenAIGatewayService) QueryOpenAIVideoTask(ctx context.Context, account *Account, taskID string) (*OpenAIForwardResult, error) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
 		return nil, fmt.Errorf("video task_id is required")
 	}
-	resp, startTime, err := s.sendOpenAIVideoLookup(ctx, c, account, "/"+url.PathEscape(taskID), "application/json", false)
+	resp, startTime, err := s.sendOpenAIVideoLookup(ctx, nil, account, "/"+url.PathEscape(taskID), "application/json", false)
 	if err != nil {
 		return nil, err
 	}
 	defer func(body io.ReadCloser) { _ = body.Close() }(resp.Body)
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, nil, openAITooLargeError)
 	if err != nil {
 		return nil, err
 	}
@@ -78,8 +129,12 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoStatus(
 		if message == "" {
 			message = fmt.Sprintf("video upstream returned status %d", resp.StatusCode)
 		}
-		writeChatCompletionsError(c, resp.StatusCode, "upstream_error", message)
-		return nil, errors.New(message)
+		return nil, &OpenAIVideoLookupError{
+			StatusCode: resp.StatusCode,
+			Message:    message,
+			Body:       append(json.RawMessage(nil), body...),
+			Headers:    resp.Header.Clone(),
+		}
 	}
 	videoResult, err := ParseOpenAIVideoResult(body)
 	if err != nil {
@@ -88,42 +143,19 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoStatus(
 	if videoResult.TaskID == "" {
 		videoResult.TaskID = taskID
 	}
-	response := map[string]any{
-		"id":       videoResult.TaskID,
-		"task_id":  videoResult.TaskID,
-		"object":   "video",
-		"model":    videoResult.Model,
-		"status":   videoResult.Status,
-		"progress": videoResult.Progress,
-	}
-	if videoResult.Status == "completed" {
-		response["url"] = grokMediaContentProxyURL(c, videoResult.TaskID)
-	}
-	if videoResult.Status == "failed" && videoResult.ErrorMessage != "" {
-		response["error"] = map[string]string{
-			"type":    "generation_failed",
-			"message": videoResult.ErrorMessage,
-		}
-	}
-	normalized, err := json.Marshal(response)
-	if err != nil {
-		return nil, fmt.Errorf("encode video status response: %w", err)
-	}
-	if shouldWriteOpenAIVideoResponse(c) {
-		writeGrokMediaResponse(c, resp, normalized, s.responseHeaderFilter)
-	}
 	progress := float64(videoResult.Progress)
 	return &OpenAIForwardResult{
-		RequestID:         firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
-		ResponseID:        videoResult.TaskID,
-		Model:             videoResult.Model,
-		UpstreamEndpoint:  "/v1/videos/{task_id}",
-		ResponseHeaders:   resp.Header.Clone(),
-		Duration:          time.Since(startTime),
-		VideoStatus:       videoResult.Status,
-		VideoProgress:     &progress,
-		VideoErrorMessage: videoResult.ErrorMessage,
-		VideoResponseJSON: append(json.RawMessage(nil), normalized...),
+		RequestID:              firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
+		ResponseID:             videoResult.TaskID,
+		Model:                  videoResult.Model,
+		UpstreamEndpoint:       "/v1/videos/{task_id}",
+		ResponseHeaders:        resp.Header.Clone(),
+		Duration:               time.Since(startTime),
+		VideoStatus:            videoResult.Status,
+		VideoProgress:          &progress,
+		VideoErrorMessage:      videoResult.ErrorMessage,
+		VideoResponseJSON:      append(json.RawMessage(nil), body...),
+		VideoArtifactAvailable: strings.TrimSpace(videoResult.VideoURL) != "",
 	}, nil
 }
 
@@ -512,12 +544,12 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
-		return nil, false, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+		return nil, false, videoTaskErrorAfterSubmission(s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return nil, false, err
+		return nil, false, videoTaskErrorAfterSubmission(err)
 	}
 	if resp.StatusCode >= 400 {
 		if IsOpenAIVideoEndpointUnsupported(resp.StatusCode, respBody) {
@@ -540,11 +572,11 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 
 	videoResult, err := ParseOpenAIVideoResult(respBody)
 	if err != nil {
-		return nil, false, err
+		return nil, false, videoTaskErrorAfterSubmission(err)
 	}
 	if strings.TrimSpace(videoResult.TaskID) == "" {
 		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Video upstream response did not include task_id")
-		return nil, false, fmt.Errorf("video upstream response did not include task_id")
+		return nil, false, videoTaskErrorAfterSubmission(fmt.Errorf("video upstream response did not include task_id"))
 	}
 	if videoResult.Status == "" {
 		videoResult.Status = "queued"
@@ -553,7 +585,7 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 		groupID := videoMeta.GroupID
 		if err := s.BindVideoTaskAccount(ctx, &groupID, videoResult.TaskID, videoMeta.UserID, videoMeta.APIKeyID, account.ID); err != nil {
 			writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to bind video task")
-			return nil, false, fmt.Errorf("bind video task: %w", err)
+			return nil, false, videoTaskErrorAfterSubmission(fmt.Errorf("bind video task: %w", err))
 		}
 		if videoMeta.RecordModelTestTask && s.videoTestTaskService != nil {
 			progress := float64(videoResult.Progress)
@@ -610,6 +642,9 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 		VideoResolution:      requestInfo.Resolution,
 		VideoDurationSeconds: requestInfo.DurationSeconds,
 		VideoInputImageCount: len(requestInfo.ImageURLs),
+		VideoStatus:          videoResult.Status,
+		VideoErrorMessage:    videoResult.ErrorMessage,
+		VideoResponseJSON:    append(json.RawMessage(nil), normalizedResponse...),
 	}, false, nil
 }
 
@@ -640,7 +675,7 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoViaChatCompletions(
 		result.UpstreamModel = upstreamModel
 		result.UpstreamEndpoint = "/v1/chat/completions"
 	}
-	return result, err
+	return result, videoTaskErrorAfterSubmission(err)
 }
 
 func BuildOpenAIVideoChatRequest(request OpenAIVideoRequest, upstreamModel string) ([]byte, error) {
@@ -708,7 +743,7 @@ func (s *OpenAIGatewayService) ResolveOpenAIVideoTaskAccount(
 	taskID string,
 	userID, apiKeyID int64,
 ) (*Account, error) {
-	accountID, err := s.ResolveVideoTaskAccount(ctx, groupID, taskID, userID, apiKeyID)
+	accountID, err := s.resolveVideoTaskAccount(ctx, groupID, taskID, userID, apiKeyID, PlatformOpenAI)
 	if err != nil {
 		return nil, err
 	}

@@ -149,6 +149,7 @@ docs/*
 !docs/VPS_MIGRATION_CN.md
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/ASYNC_IMAGE_TASKS_CN.md
+!docs/VIDEO_TASK_BILLING_CN.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

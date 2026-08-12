@@ -79,6 +79,7 @@ type postUsageBillingParams struct {
 	Subscription          *UserSubscription
 	RequestPayloadHash    string
 	IsSubscriptionBill    bool
+	BalanceAlreadyHeld    bool
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
@@ -146,7 +147,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
 			}
 		}
-	} else {
+	} else if !p.BalanceAlreadyHeld {
 		if cost.ActualCost > 0 {
 			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
 				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
@@ -272,7 +273,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
-	} else if p.Cost.ActualCost > 0 {
+	} else if p.Cost.ActualCost > 0 && !p.BalanceAlreadyHeld {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
 
