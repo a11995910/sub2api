@@ -502,6 +502,17 @@ export default {
       failedToLoadUsages: '加载使用记录失败'
     },
 
+    videoTaskReviews: {
+      title: '异常视频任务',
+      description: '核对上游结果并处理待确认的视频冻结账单',
+      loadFailed: '加载异常视频任务失败', actionFailed: '处理异常视频任务失败', actionSuccess: '处理完成', recheckSuccess: '重新核对完成',
+      detailTitle: '异常视频任务详情', reasonHint: '请填写上游控制台、账单或工单等核对依据。该内容将随管理操作进入审计日志。',
+      reasonPlaceholder: '填写核对时间、结果和可追溯依据', reasonRequired: '必须填写核对依据', pollError: '最近轮询错误',
+      filters: { search: '综合搜索', searchPlaceholder: '邮箱、用户名、Key 名称、请求 ID 或上游任务 ID', userId: '用户 ID', apiKeyId: 'Key ID', accountId: '上游账号 ID', platform: '平台', model: '模型', taskStatus: '任务状态', billingStatus: '账务状态' },
+      columns: { user: '用户', task: '任务标识', model: '模型与参数', cost: '冻结金额', status: '状态 / 轮询次数', updatedAt: '更新时间' },
+      actions: { recheck: '重新核对', confirmFailed: '确认失败并释放', confirmSucceeded: '确认成功并结算' }
+    },
+
     // Usage Records
     usage: {
       title: '使用记录',

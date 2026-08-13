@@ -42,6 +42,8 @@ type OpenAIRecordUsageInput struct {
 	// BalanceAlreadyHeld is only used by deferred async video settlement.
 	// The task ledger already moved the charge into users.frozen_balance.
 	BalanceAlreadyHeld bool
+	// PrecalculatedCost preserves the create-time price for deferred video settlement.
+	PrecalculatedCost *CostBreakdown
 	ChannelUsageFields
 }
 
@@ -219,19 +221,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	}
 	longContextBillingEnabled := billingAccount.IsOpenAILongContextBillingEnabled()
-	cost, err = s.calculateOpenAIRecordUsageCost(
-		ctx,
-		result,
-		apiKey,
-		billingModels,
-		multiplier,
-		imageMultiplier,
-		videoMultiplier,
-		baseMultiplier,
-		tokens,
-		serviceTier,
-		longContextBillingEnabled,
-	)
+	if input.PrecalculatedCost != nil {
+		snapshot := *input.PrecalculatedCost
+		cost = &snapshot
+	} else {
+		cost, err = s.calculateOpenAIRecordUsageCost(
+			ctx, result, apiKey, billingModels, multiplier, imageMultiplier, videoMultiplier,
+			baseMultiplier, tokens, serviceTier, longContextBillingEnabled,
+		)
+	}
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err

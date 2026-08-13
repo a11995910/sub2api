@@ -611,6 +611,33 @@ func TestDeleteAccount_CascadeToShadow(t *testing.T) {
 	require.False(t, ok, "shadow account should be cascade-deleted")
 }
 
+func TestDeleteAccount_RejectsUnresolvedShadowVideoBillingBeforeCascade(t *testing.T) {
+	ctx := context.Background()
+	repo := newSparkShadowRepoStub()
+	guard := &videoTaskDeletionGuardStub{unresolvedAccounts: make(map[int64]bool)}
+	svc := &adminServiceImpl{accountRepo: repo, videoTaskDeletionGuard: guard}
+
+	parent := &Account{
+		Name:        "guard-parent",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Credentials: map[string]any{"chatgpt_account_id": "org-guard"},
+	}
+	require.NoError(t, repo.Create(ctx, parent))
+	shadow, err := svc.CreateShadow(ctx, parent.ID, ShadowOptions{Name: "guard-shadow"})
+	require.NoError(t, err)
+	guard.unresolvedAccounts[shadow.ID] = true
+
+	err = svc.DeleteAccount(ctx, parent.ID)
+
+	require.Error(t, err)
+	require.Equal(t, "VIDEO_TASK_BILLING_PENDING", infraerrors.Reason(err))
+	require.Equal(t, [][]int64{{parent.ID, shadow.ID}}, guard.checkedAccountIDs)
+	require.Contains(t, repo.accounts, parent.ID)
+	require.Contains(t, repo.accounts, shadow.ID)
+}
+
 // TestUpdateAccount_PropagatesProxyToShadow verifies that updating a parent
 // account's ProxyID propagates the new value to its spark shadow.
 func TestUpdateAccount_PropagatesProxyToShadow(t *testing.T) {

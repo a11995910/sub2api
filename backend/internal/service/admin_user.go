@@ -449,30 +449,33 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
-
-	apiKeys, err := s.listUserAPIKeysForDeletion(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	if s.entClient != nil {
+	var apiKeys []APIKey
+	deleteUser := func() error {
+		var err error
+		apiKeys, err = s.listUserAPIKeysForDeletion(ctx, id)
+		if err != nil {
+			return err
+		}
+		if s.entClient == nil {
+			return s.deleteUserWithAPIKeys(ctx, id, apiKeys)
+		}
 		tx, err := s.entClient.Tx(ctx)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = tx.Rollback() }()
-
-		opCtx := dbent.NewTxContext(ctx, tx)
-		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys); err != nil {
+		if err := s.deleteUserWithAPIKeys(dbent.NewTxContext(ctx, tx), id, apiKeys); err != nil {
 			return err
 		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
+		return tx.Commit()
+	}
+	if s.videoTaskDeletionGuard != nil {
+		err = s.videoTaskDeletionGuard.WithUserDeletionGuard(ctx, id, deleteUser)
 	} else {
-		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys); err != nil {
-			return err
-		}
+		err = deleteUser()
+	}
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
 	}
 
 	if s.authCacheInvalidator != nil {

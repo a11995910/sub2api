@@ -37,6 +37,41 @@ type userRepoStub struct {
 	domainLimitedCreates int
 }
 
+type videoTaskDeletionGuardStub struct {
+	unresolvedUsers    map[int64]bool
+	unresolvedAccounts map[int64]bool
+	checkedUserIDs     []int64
+	checkedAccountIDs  [][]int64
+	deleteCalls        int
+	err                error
+}
+
+func (s *videoTaskDeletionGuardStub) WithUserDeletionGuard(_ context.Context, userID int64, deleteFunc func() error) error {
+	s.checkedUserIDs = append(s.checkedUserIDs, userID)
+	if s.err != nil {
+		return s.err
+	}
+	if s.unresolvedUsers[userID] {
+		return ErrVideoTaskBillingPending
+	}
+	s.deleteCalls++
+	return deleteFunc()
+}
+
+func (s *videoTaskDeletionGuardStub) WithAccountDeletionGuard(_ context.Context, accountIDs []int64, deleteFunc func() error) error {
+	s.checkedAccountIDs = append(s.checkedAccountIDs, append([]int64(nil), accountIDs...))
+	if s.err != nil {
+		return s.err
+	}
+	for _, accountID := range accountIDs {
+		if s.unresolvedAccounts[accountID] {
+			return ErrVideoTaskBillingPending
+		}
+	}
+	s.deleteCalls++
+	return deleteFunc()
+}
+
 func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string) (int, error) {
 	if s.domainCountErr != nil {
 		return 0, s.domainCountErr
@@ -705,6 +740,26 @@ func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
 	require.Equal(t, []int64{11, 12}, apiKeyRepo.deletedIDs)
 	require.ElementsMatch(t, []string{"sk-user-1", "sk-user-2"}, invalidator.keys)
 	require.Equal(t, []int64{7}, invalidator.userIDs)
+}
+
+func TestAdminService_DeleteUser_RejectsUnresolvedVideoBilling(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
+	apiKeyRepo := &apiKeyRepoStub{allowListByUserID: true}
+	guard := &videoTaskDeletionGuardStub{unresolvedUsers: map[int64]bool{7: true}}
+	svc := &adminServiceImpl{
+		userRepo:               repo,
+		apiKeyRepo:             apiKeyRepo,
+		videoTaskDeletionGuard: guard,
+	}
+
+	err := svc.DeleteUser(context.Background(), 7)
+
+	require.Error(t, err)
+	require.Equal(t, "VIDEO_TASK_BILLING_PENDING", infraerrors.Reason(err))
+	require.Equal(t, []int64{7}, guard.checkedUserIDs)
+	require.Empty(t, apiKeyRepo.listByUserIDCalls)
+	require.Empty(t, apiKeyRepo.deletedIDs)
+	require.Empty(t, repo.deletedIDs)
 }
 
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {

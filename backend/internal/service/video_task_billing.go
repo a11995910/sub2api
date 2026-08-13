@@ -112,6 +112,11 @@ type VideoTaskBillingRepository interface {
 	Release(ctx context.Context, id int64, reason string) error
 }
 
+type VideoTaskDeletionGuard interface {
+	WithUserDeletionGuard(ctx context.Context, userID int64, deleteFunc func() error) error
+	WithAccountDeletionGuard(ctx context.Context, accountIDs []int64, deleteFunc func() error) error
+}
+
 type VideoTaskOutcome struct {
 	Status       string
 	ResponseJSON json.RawMessage
@@ -157,6 +162,10 @@ type VideoTaskUsageRecorder interface {
 	RecordDeferredVideoUsage(ctx context.Context, task *VideoTaskBilling) error
 }
 
+type VideoTaskBalanceCache interface {
+	InvalidateUserBalance(ctx context.Context, userID int64) error
+}
+
 type VideoTaskCostEstimator interface {
 	EstimateVideoCost(ctx context.Context, apiKey *APIKey, model, resolution string, durationSeconds int) (*CostBreakdown, error)
 }
@@ -181,14 +190,20 @@ type VideoTaskBillingService struct {
 	repo      VideoTaskBillingRepository
 	estimator VideoTaskCostEstimator
 	usage     VideoTaskUsageRecorder
+	cache     VideoTaskBalanceCache
 	now       func() time.Time
 }
 
-func NewVideoTaskBillingService(repo VideoTaskBillingRepository, estimator VideoTaskCostEstimator, usage VideoTaskUsageRecorder) *VideoTaskBillingService {
+func NewVideoTaskBillingService(repo VideoTaskBillingRepository, estimator VideoTaskCostEstimator, usage VideoTaskUsageRecorder, caches ...VideoTaskBalanceCache) *VideoTaskBillingService {
+	var cache VideoTaskBalanceCache
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
 	return &VideoTaskBillingService{
 		repo:      repo,
 		estimator: estimator,
 		usage:     usage,
+		cache:     cache,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -207,19 +222,40 @@ func (s *VideoTaskBillingService) Reserve(ctx context.Context, input VideoTaskRe
 	if cost == nil || cost.ActualCost < 0 {
 		return nil, errors.New("video task estimated cost is invalid")
 	}
+	estimatedCost := QuantizeUsageBillingAmount(cost.ActualCost)
+	costSnapshot := *cost
+	costSnapshot.ActualCost = estimatedCost
+	var usageContext VideoTaskUsageContext
+	if len(input.UsageContextJSON) > 0 {
+		if err := json.Unmarshal(input.UsageContextJSON, &usageContext); err != nil {
+			return nil, fmt.Errorf("decode video task usage context: %w", err)
+		}
+	}
+	usageContext.CostSnapshot = &costSnapshot
+	usageContextJSON, err := json.Marshal(usageContext)
+	if err != nil {
+		return nil, fmt.Errorf("encode video task usage context: %w", err)
+	}
 	now := s.now()
 	task := &VideoTaskBilling{
 		RequestID: input.RequestID, Platform: input.Platform, UserID: input.UserID, APIKeyID: input.APIKeyID,
 		GroupID: input.GroupID, AccountID: input.AccountID, Model: input.Model, UpstreamModel: input.UpstreamModel,
 		Resolution: input.Resolution, DurationSeconds: input.DurationSeconds, ReferenceImageCount: input.ReferenceImageCount,
-		UsageContextJSON: input.UsageContextJSON, EstimatedCost: QuantizeUsageBillingAmount(cost.ActualCost),
+		UsageContextJSON: usageContextJSON, EstimatedCost: estimatedCost,
 		TaskStatus: VideoTaskStatusSubmitting, BillingStatus: VideoTaskBillingReserved,
 		NextPollAt: now, SubmissionDeadline: timePointer(now.Add(2 * time.Minute)),
 	}
 	if err := s.repo.ReserveAndCreate(ctx, task); err != nil {
 		return nil, err
 	}
+	s.invalidateBalance(ctx, task.UserID)
 	return task, nil
+}
+
+func (s *VideoTaskBillingService) invalidateBalance(ctx context.Context, userID int64) {
+	if s != nil && s.cache != nil && userID > 0 {
+		_ = s.cache.InvalidateUserBalance(ctx, userID)
+	}
 }
 
 func timePointer(value time.Time) *time.Time {
@@ -305,7 +341,11 @@ func (s *VideoTaskBillingService) ApplyOutcome(ctx context.Context, task *VideoT
 		if err := s.usage.RecordDeferredVideoUsage(ctx, task); err != nil {
 			return err
 		}
-		return s.repo.Capture(ctx, task.ID, task.EstimatedCost)
+		err := s.repo.Capture(ctx, task.ID, task.EstimatedCost)
+		if err == nil {
+			s.invalidateBalance(ctx, task.UserID)
+		}
+		return err
 	}
 	switch outcome.Status {
 	case VideoTaskStatusPending, VideoTaskStatusProcessing, VideoTaskStatusUnknown, VideoTaskStatusCompleted, VideoTaskStatusFailed:
@@ -329,9 +369,17 @@ func (s *VideoTaskBillingService) ApplyOutcome(ctx context.Context, task *VideoT
 		if err := s.usage.RecordDeferredVideoUsage(ctx, settling); err != nil {
 			return err
 		}
-		return s.repo.Capture(ctx, settling.ID, settling.EstimatedCost)
+		err = s.repo.Capture(ctx, settling.ID, settling.EstimatedCost)
+		if err == nil {
+			s.invalidateBalance(ctx, settling.UserID)
+		}
+		return err
 	case VideoTaskStatusFailed:
-		return s.repo.Release(ctx, updated.ID, outcome.ErrorMessage)
+		err = s.repo.Release(ctx, updated.ID, outcome.ErrorMessage)
+		if err == nil {
+			s.invalidateBalance(ctx, updated.UserID)
+		}
+		return err
 	default:
 		return nil
 	}

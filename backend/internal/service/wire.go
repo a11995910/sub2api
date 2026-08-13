@@ -774,8 +774,9 @@ func ProvideVideoTaskBillingService(
 	repo VideoTaskBillingRepository,
 	gateway *OpenAIGatewayService,
 	usage *VideoTaskUsageService,
+	billingCache *BillingCacheService,
 ) *VideoTaskBillingService {
-	return NewVideoTaskBillingService(repo, gateway, usage)
+	return NewVideoTaskBillingService(repo, gateway, usage, billingCache)
 }
 
 func ProvideVideoTaskReconciliationService(
@@ -786,6 +787,15 @@ func ProvideVideoTaskReconciliationService(
 	svc := NewVideoTaskReconciliationService(billing, gateway, accounts)
 	svc.Start()
 	return svc
+}
+
+func ProvideVideoTaskReviewService(
+	repo VideoTaskReviewRepository,
+	billing *VideoTaskBillingService,
+	gateway *OpenAIGatewayService,
+	accounts AccountRepository,
+) *VideoTaskReviewService {
+	return NewVideoTaskReviewService(repo, billing, gateway, accounts)
 }
 
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.
@@ -835,6 +845,7 @@ var ProviderSet = wire.NewSet(
 	ProvideVideoTaskUsageService,
 	ProvideVideoTaskBillingService,
 	ProvideVideoTaskReconciliationService,
+	ProvideVideoTaskReviewService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,

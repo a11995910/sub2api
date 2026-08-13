@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -54,6 +55,131 @@ func TestVideoTaskBillingRepositoryGetByTaskScopesPlatformAndTaskID(t *testing.T
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestVideoTaskDeletionGuardRejectsUnresolvedUserBeforeDelete(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskUserLockNamespace, id: 7})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT EXISTS.*FROM video_task_billings.*billing_status IN \(\$1, \$2, \$3\).*user_id = \$4`).
+		WithArgs(service.VideoTaskBillingReserved, service.VideoTaskBillingSettling, service.VideoTaskBillingManualReview, int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	guard := NewVideoTaskDeletionGuardRepository(db)
+	deleteCalled := false
+	err = guard.WithUserDeletionGuard(context.Background(), 7, func() error {
+		deleteCalled = true
+		return nil
+	})
+
+	require.ErrorIs(t, err, service.ErrVideoTaskBillingPending)
+	require.False(t, deleteCalled)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVideoTaskDeletionGuardLocksParentAndShadowBeforeDelete(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskAccountLockNamespace, id: 17})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskAccountLockNamespace, id: 18})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT EXISTS.*FROM video_task_billings.*billing_status IN \(\$1, \$2, \$3\).*account_id IN \(\$4, \$5\)`).
+		WithArgs(service.VideoTaskBillingReserved, service.VideoTaskBillingSettling, service.VideoTaskBillingManualReview, int64(17), int64(18)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectRollback()
+
+	guard := NewVideoTaskDeletionGuardRepository(db)
+	deleteCalled := false
+	err = guard.WithAccountDeletionGuard(context.Background(), []int64{18, 17, 18}, func() error {
+		deleteCalled = true
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.True(t, deleteCalled)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVideoTaskDeletionGuardDoesNotReportRollbackFailureAfterDelete(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskUserLockNamespace, id: 7})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT EXISTS.*FROM video_task_billings.*user_id = \$4`).
+		WithArgs(service.VideoTaskBillingReserved, service.VideoTaskBillingSettling, service.VideoTaskBillingManualReview, int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectRollback().WillReturnError(errors.New("connection already closed"))
+
+	guard := NewVideoTaskDeletionGuardRepository(db)
+	deleteCalled := false
+	err = guard.WithUserDeletionGuard(context.Background(), 7, func() error {
+		deleteCalled = true
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.True(t, deleteCalled)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVideoTaskBillingRepositoryBeginManualSettlementAcceptsReservedUnknown(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC()
+	mock.ExpectQuery(`(?s)UPDATE video_task_billings.*WHERE id=\$1 AND \(billing_status=\$5 OR \(billing_status=\$6 AND task_status=\$7\)\).*RETURNING`).
+		WithArgs(
+			int64(9), service.VideoTaskStatusCompleted, service.VideoTaskBillingSettling, "人工核对确认成功",
+			service.VideoTaskBillingManualReview, service.VideoTaskBillingReserved, service.VideoTaskStatusUnknown,
+		).
+		WillReturnRows(videoTaskBillingRows().AddRow(
+			int64(9), "request-1", "upstream-video-1", "openai", int64(7), int64(11), int64(13), int64(17),
+			"video-model", "video-model", 1.25, nil, service.VideoTaskStatusCompleted, service.VideoTaskBillingSettling,
+			[]byte(`{"status":"completed","url":"https://example.com/video.mp4"}`), 2, now, now,
+			"人工核对确认成功", nil, now, nil, now, now, "720p", 8, 0, []byte(`{}`),
+		))
+
+	repo := NewVideoTaskBillingRepository(db)
+	reviewRepo, ok := repo.(service.VideoTaskReviewRepository)
+	require.True(t, ok)
+	task, err := reviewRepo.BeginManualSettlement(context.Background(), 9, "人工核对确认成功")
+
+	require.NoError(t, err)
+	require.Equal(t, service.VideoTaskBillingSettling, task.BillingStatus)
+	require.Equal(t, service.VideoTaskStatusCompleted, task.TaskStatus)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVideoTaskBillingRepositoryReleaseReviewedFailureRejectsProcessingUnderLock(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`(?s)FROM video_task_billings.*WHERE id = \$1.*FOR UPDATE`).
+		WithArgs(int64(9)).
+		WillReturnRows(videoTaskBillingRows().AddRow(
+			int64(9), "request-1", "upstream-video-1", "openai", int64(7), int64(11), int64(13), int64(17),
+			"video-model", "video-model", 1.25, nil, service.VideoTaskStatusProcessing, service.VideoTaskBillingReserved,
+			[]byte(`{"status":"processing"}`), 2, now, now, "", nil, nil, nil, now, now, "720p", 8, 0, []byte(`{}`),
+		))
+	mock.ExpectRollback()
+
+	repo := NewVideoTaskReviewRepository(db)
+	_, err = repo.ReleaseReviewedFailure(context.Background(), 9, "人工确认失败")
+
+	require.ErrorIs(t, err, service.ErrVideoTaskBillingInvalidState)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestVideoTaskBillingRepositoryReserveAndCreateMovesBalanceBeforeInsert(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -61,6 +187,10 @@ func TestVideoTaskBillingRepositoryReserveAndCreateMovesBalanceBeforeInsert(t *t
 
 	now := time.Now().UTC()
 	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskUserLockNamespace, id: 7})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskAccountLockNamespace, id: 17})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT 1 FROM users WHERE id = \$1 AND deleted_at IS NULL`).WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(`(?s)SELECT 1 FROM accounts WHERE id = \$1 AND deleted_at IS NULL`).WithArgs(int64(17)).WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
 	mock.ExpectQuery(`(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1.*WHERE id = \$2.*balance >= \$1\s+RETURNING balance, frozen_balance`).
 		WithArgs(1.25, int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"}).AddRow(8.75, 1.25))
@@ -91,17 +221,37 @@ func TestVideoTaskBillingRepositoryReserveAndCreateRejectsInsufficientBalance(t 
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskUserLockNamespace, id: 7})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskAccountLockNamespace, id: 17})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT 1 FROM users WHERE id = \$1 AND deleted_at IS NULL`).WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(`(?s)SELECT 1 FROM accounts WHERE id = \$1 AND deleted_at IS NULL`).WithArgs(int64(17)).WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
 	mock.ExpectQuery(`(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1.*WHERE id = \$2.*balance >= \$1\s+RETURNING balance, frozen_balance`).
 		WithArgs(2.5, int64(7)).
 		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery(`(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`).
-		WithArgs(int64(7)).
-		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
 	mock.ExpectRollback()
 
 	task := &service.VideoTaskBilling{RequestID: "request-1", UserID: 7, APIKeyID: 11, AccountID: 17, EstimatedCost: 2.5}
 	repo := NewVideoTaskBillingRepository(db)
 	require.ErrorIs(t, repo.ReserveAndCreate(context.Background(), task), service.ErrBatchImageInsufficientBalance)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVideoTaskBillingRepositoryReserveRejectsDeletedAccountBeforeHoldingBalance(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskUserLockNamespace, id: 7})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`SELECT pg_advisory_xact_lock\(\$1\)`).WithArgs(videoTaskSubjectLockKey(videoTaskSubjectLock{namespace: videoTaskAccountLockNamespace, id: 17})).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT 1 FROM users WHERE id = \$1 AND deleted_at IS NULL`).WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(`(?s)SELECT 1 FROM accounts WHERE id = \$1 AND deleted_at IS NULL`).WithArgs(int64(17)).WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	task := &service.VideoTaskBilling{RequestID: "request-1", UserID: 7, APIKeyID: 11, AccountID: 17, EstimatedCost: 2.5}
+	repo := NewVideoTaskBillingRepository(db)
+
+	require.ErrorIs(t, repo.ReserveAndCreate(context.Background(), task), service.ErrAccountNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -17,6 +17,7 @@ type VideoTaskUsageContext struct {
 	RequestPayloadHash string
 	QuotaPlatform      string
 	PricingAt          time.Time
+	CostSnapshot       *CostBreakdown
 	ChannelUsageFields
 }
 
@@ -49,6 +50,15 @@ func (s *VideoTaskUsageService) RecordDeferredVideoUsage(ctx context.Context, ta
 		return errors.New("video task usage service is unavailable")
 	}
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, task.APIKeyID)
+	deletedAPIKey := false
+	if err != nil {
+		if repo, ok := s.apiKeyRepo.(interface {
+			GetByIDIncludingDeleted(context.Context, int64) (*APIKey, error)
+		}); ok {
+			apiKey, err = repo.GetByIDIncludingDeleted(ctx, task.APIKeyID)
+			deletedAPIKey = err == nil
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -63,15 +73,25 @@ func (s *VideoTaskUsageService) RecordDeferredVideoUsage(ctx context.Context, ta
 	if apiKey == nil || user == nil || account == nil || apiKey.ID != task.APIKeyID || apiKey.UserID != task.UserID || user.ID != task.UserID || account.ID != task.AccountID {
 		return fmt.Errorf("video task billing ownership mismatch")
 	}
-	if task.GroupID != nil && (apiKey.GroupID == nil || *apiKey.GroupID != *task.GroupID) {
-		return fmt.Errorf("video task billing group mismatch")
-	}
+	apiKey.GroupID = task.GroupID
+	apiKey.Group = nil
 	apiKey.User = user
+	if deletedAPIKey {
+		apiKey.Quota = 0
+		apiKey.RateLimit5h, apiKey.RateLimit1d, apiKey.RateLimit7d = 0, 0, 0
+		apiKey.Usage5h, apiKey.Usage1d, apiKey.Usage7d = 0, 0, 0
+	}
 
 	var usageContext VideoTaskUsageContext
 	if len(task.UsageContextJSON) > 0 {
 		if err := json.Unmarshal(task.UsageContextJSON, &usageContext); err != nil {
 			return fmt.Errorf("decode video task usage context: %w", err)
+		}
+	}
+	precalculatedCost := usageContext.CostSnapshot
+	if precalculatedCost == nil {
+		precalculatedCost = &CostBreakdown{
+			TotalCost: task.EstimatedCost, ActualCost: task.EstimatedCost, BillingMode: string(BillingModeVideo),
 		}
 	}
 	return s.recorder.RecordUsage(ctx, &OpenAIRecordUsageInput{
@@ -102,6 +122,7 @@ func (s *VideoTaskUsageService) RecordDeferredVideoUsage(ctx context.Context, ta
 		QuotaPlatform:      usageContext.QuotaPlatform,
 		PricingAt:          usageContext.PricingAt,
 		BalanceAlreadyHeld: true,
+		PrecalculatedCost:  precalculatedCost,
 		ChannelUsageFields: usageContext.ChannelUsageFields,
 	})
 }

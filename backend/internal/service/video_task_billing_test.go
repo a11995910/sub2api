@@ -81,7 +81,8 @@ func TestVideoTaskBillingServiceApplyUnknownDoesNotOverwriteSettlingCompletion(t
 func TestVideoTaskBillingServiceReservePricesBeforeCreatingHold(t *testing.T) {
 	repo := &fakeVideoTaskBillingRepo{}
 	estimator := &fakeVideoTaskCostEstimator{cost: &CostBreakdown{ActualCost: 1.25}}
-	svc := NewVideoTaskBillingService(repo, estimator, nil)
+	cache := &fakeVideoTaskBalanceCache{}
+	svc := NewVideoTaskBillingService(repo, estimator, nil, cache)
 
 	task, err := svc.Reserve(context.Background(), VideoTaskReserveInput{
 		RequestID: "request-1", Platform: PlatformOpenAI, UserID: 7, APIKeyID: 11, GroupID: ptrVideoInt64(13), AccountID: 17,
@@ -94,6 +95,38 @@ func TestVideoTaskBillingServiceReservePricesBeforeCreatingHold(t *testing.T) {
 	require.InDelta(t, 1.25, task.EstimatedCost, 0.000001)
 	require.True(t, task.SubmissionDeadline.After(time.Now().UTC()))
 	require.Equal(t, 1, estimator.calls)
+	require.Equal(t, []int64{7}, cache.invalidatedUserIDs)
+}
+
+func TestVideoTaskBillingServiceReserveStoresQuantizedActualCostSnapshot(t *testing.T) {
+	repo := &fakeVideoTaskBillingRepo{}
+	estimator := &fakeVideoTaskCostEstimator{cost: &CostBreakdown{TotalCost: 0.0000625, ActualCost: 0.000078125, BillingMode: string(BillingModeVideo)}}
+	svc := NewVideoTaskBillingService(repo, estimator, nil)
+
+	task, err := svc.Reserve(context.Background(), VideoTaskReserveInput{
+		RequestID: "request-quantized", Platform: PlatformOpenAI, UserID: 7, APIKeyID: 11, AccountID: 17,
+		APIKey: &APIKey{ID: 11}, Model: "video-model", Resolution: "720p", DurationSeconds: 8,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 0.00007813, task.EstimatedCost)
+	var usageContext VideoTaskUsageContext
+	require.NoError(t, json.Unmarshal(task.UsageContextJSON, &usageContext))
+	require.NotNil(t, usageContext.CostSnapshot)
+	require.Equal(t, task.EstimatedCost, usageContext.CostSnapshot.ActualCost)
+	require.Equal(t, 0.0000625, usageContext.CostSnapshot.TotalCost)
+}
+
+func TestVideoTaskBillingServiceApplyFailedInvalidatesBalanceCache(t *testing.T) {
+	task := &VideoTaskBilling{ID: 9, UserID: 7, EstimatedCost: 1.25, TaskStatus: VideoTaskStatusProcessing, BillingStatus: VideoTaskBillingReserved}
+	repo := &fakeVideoTaskBillingRepo{task: task}
+	cache := &fakeVideoTaskBalanceCache{}
+	svc := NewVideoTaskBillingService(repo, nil, &fakeVideoTaskUsageRecorder{}, cache)
+
+	err := svc.ApplyOutcome(context.Background(), task, VideoTaskOutcome{Status: VideoTaskStatusFailed, ErrorMessage: "generation failed"})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, cache.invalidatedUserIDs)
 }
 
 func TestVideoTaskBillingServiceObserveCreatedAttachesPendingTask(t *testing.T) {
@@ -188,7 +221,7 @@ func TestVideoTaskUsageServiceRebuildsPreheldUsageFromDurableIDs(t *testing.T) {
 	svc := NewVideoTaskUsageService(recorder, apiKeys, users, accounts, nil)
 
 	err = svc.RecordDeferredVideoUsage(context.Background(), &VideoTaskBilling{
-		ID: 9, UserID: 7, APIKeyID: 11, AccountID: 17, UpstreamTaskID: "upstream-1",
+		ID: 9, UserID: 7, APIKeyID: 11, AccountID: 17, UpstreamTaskID: "upstream-1", EstimatedCost: 1.25,
 		Model: "video-model", UpstreamModel: "upstream-video-model", Resolution: "720p", DurationSeconds: 10,
 		ReferenceImageCount: 1, UsageContextJSON: usageContext,
 	})
@@ -198,8 +231,55 @@ func TestVideoTaskUsageServiceRebuildsPreheldUsageFromDurableIDs(t *testing.T) {
 	require.Equal(t, "video_task:9:capture", recorder.input.Result.RequestID)
 	require.Equal(t, 1, recorder.input.Result.VideoCount)
 	require.True(t, recorder.input.BalanceAlreadyHeld)
+	require.NotNil(t, recorder.input.PrecalculatedCost)
+	require.InDelta(t, 1.25, recorder.input.PrecalculatedCost.ActualCost, 0.000001)
 	require.Equal(t, "test-client", recorder.input.UserAgent)
 	require.Equal(t, "payload-hash", recorder.input.RequestPayloadHash)
+}
+
+func TestVideoTaskUsageServiceUsesSnapshotGroupAfterAPIKeyMoves(t *testing.T) {
+	oldGroupID := int64(13)
+	newGroupID := int64(14)
+	recorder := &fakeDeferredOpenAIUsageRecorder{}
+	apiKeys := &fakeVideoTaskAPIKeyRepo{key: &APIKey{ID: 11, UserID: 7, GroupID: &newGroupID, Group: &Group{ID: newGroupID}}}
+	svc := NewVideoTaskUsageService(recorder, apiKeys, &fakeVideoTaskUserRepo{user: &User{ID: 7}}, &fakeVideoTaskAccountRepo{account: &Account{ID: 17}}, nil)
+
+	err := svc.RecordDeferredVideoUsage(context.Background(), &VideoTaskBilling{
+		ID: 9, UserID: 7, APIKeyID: 11, GroupID: &oldGroupID, AccountID: 17,
+		Model: "video-model", Resolution: "720p", DurationSeconds: 10, EstimatedCost: 1.25,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, oldGroupID, *recorder.input.APIKey.GroupID)
+	require.Nil(t, recorder.input.APIKey.Group)
+	require.InDelta(t, 1.25, recorder.input.PrecalculatedCost.ActualCost, 0.000001)
+}
+
+func TestVideoTaskUsageServiceUsesSoftDeletedAPIKeySnapshot(t *testing.T) {
+	groupID := int64(13)
+	recorder := &fakeDeferredOpenAIUsageRecorder{}
+	apiKeys := &fakeVideoTaskAPIKeyRepo{key: &APIKey{ID: 11, UserID: 7, GroupID: &groupID, Quota: 10, RateLimit5h: 5}, activeErr: ErrAPIKeyNotFound}
+	svc := NewVideoTaskUsageService(recorder, apiKeys, &fakeVideoTaskUserRepo{user: &User{ID: 7}}, &fakeVideoTaskAccountRepo{account: &Account{ID: 17}}, nil)
+
+	err := svc.RecordDeferredVideoUsage(context.Background(), &VideoTaskBilling{
+		ID: 9, UserID: 7, APIKeyID: 11, GroupID: &groupID, AccountID: 17,
+		Model: "video-model", Resolution: "720p", DurationSeconds: 10, EstimatedCost: 1.25,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, apiKeys.deletedLookupCalls)
+	require.Equal(t, int64(11), recorder.input.APIKey.ID)
+	require.Zero(t, recorder.input.APIKey.Quota)
+	require.False(t, recorder.input.APIKey.HasRateLimits())
+}
+
+type fakeVideoTaskBalanceCache struct {
+	invalidatedUserIDs []int64
+}
+
+func (c *fakeVideoTaskBalanceCache) InvalidateUserBalance(_ context.Context, userID int64) error {
+	c.invalidatedUserIDs = append(c.invalidatedUserIDs, userID)
+	return nil
 }
 
 type fakeVideoTaskBillingRepo struct {
@@ -296,10 +376,17 @@ func (r *fakeDeferredOpenAIUsageRecorder) RecordUsage(_ context.Context, input *
 
 type fakeVideoTaskAPIKeyRepo struct {
 	APIKeyRepository
-	key *APIKey
+	key                *APIKey
+	activeErr          error
+	deletedLookupCalls int
 }
 
 func (r *fakeVideoTaskAPIKeyRepo) GetByID(_ context.Context, _ int64) (*APIKey, error) {
+	return r.key, r.activeErr
+}
+
+func (r *fakeVideoTaskAPIKeyRepo) GetByIDIncludingDeleted(_ context.Context, _ int64) (*APIKey, error) {
+	r.deletedLookupCalls++
 	return r.key, nil
 }
 
