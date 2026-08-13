@@ -81,6 +81,8 @@ var ProviderSet = wire.NewSet(
 	NewCreativeDrawingRepository,
 	NewVideoTestTaskRepository,
 	NewVideoTaskBillingRepository,
+	NewVideoTaskReviewRepository,
+	NewVideoTaskDeletionGuardRepository,
 	NewPromoCodeRepository,
 	NewAnnouncementRepository,
 	NewAnnouncementReadRepository,

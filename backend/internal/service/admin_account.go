@@ -1200,20 +1200,28 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
-	// 级联删除 spark 影子账号（先删影子，再删母账号）
 	shadows, err := s.accountRepo.ListShadowsByParent(ctx, id)
 	if err != nil {
 		return fmt.Errorf("list spark shadows for cascade delete: %w", err)
 	}
+	accountIDs := make([]int64, 1, len(shadows)+1)
+	accountIDs[0] = id
 	for _, shadow := range shadows {
-		if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
-			return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
+		accountIDs = append(accountIDs, shadow.ID)
+	}
+	deleteAccounts := func() error {
+		// 级联删除 spark 影子账号（先删影子，再删母账号）
+		for _, shadow := range shadows {
+			if err := s.accountRepo.Delete(ctx, shadow.ID); err != nil {
+				return fmt.Errorf("cascade delete spark shadow %d: %w", shadow.ID, err)
+			}
 		}
+		return s.accountRepo.Delete(ctx, id)
 	}
-	if err := s.accountRepo.Delete(ctx, id); err != nil {
-		return err
+	if s.videoTaskDeletionGuard != nil {
+		return s.videoTaskDeletionGuard.WithAccountDeletionGuard(ctx, accountIDs, deleteAccounts)
 	}
-	return nil
+	return deleteAccounts()
 }
 
 func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error) {

@@ -87,6 +87,7 @@ func RegisterAdminRoutes(
 
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
+		registerVideoTaskReviewRoutes(admin, h)
 
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
@@ -124,6 +125,16 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerVideoTaskReviewRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	reviews := admin.Group("/video-task-reviews")
+	{
+		reviews.GET("", h.Admin.VideoTaskReview.List)
+		reviews.POST("/:id/recheck", h.Admin.VideoTaskReview.Recheck)
+		reviews.POST("/:id/confirm-failed", h.Admin.VideoTaskReview.ConfirmFailed)
+		reviews.POST("/:id/confirm-succeeded", h.Admin.VideoTaskReview.ConfirmSucceeded)
 	}
 }
 

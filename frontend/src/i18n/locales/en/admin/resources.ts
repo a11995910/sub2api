@@ -505,6 +505,17 @@ export default {
       failedToLoadUsages: 'Failed to load usage records'
     },
 
+    videoTaskReviews: {
+      title: 'Abnormal Video Tasks',
+      description: 'Verify upstream results and resolve held video charges',
+      loadFailed: 'Failed to load abnormal video tasks', actionFailed: 'Failed to process video task', actionSuccess: 'Task processed', recheckSuccess: 'Recheck completed',
+      detailTitle: 'Video Task Details', reasonHint: 'Enter traceable evidence from the upstream console, billing record, or support ticket. The admin audit log records this operation.',
+      reasonPlaceholder: 'Enter verification time, result, and evidence', reasonRequired: 'Verification evidence is required', pollError: 'Latest Poll Error',
+      filters: { search: 'Search', searchPlaceholder: 'Email, username, key name, request ID, or upstream task ID', userId: 'User ID', apiKeyId: 'Key ID', accountId: 'Upstream Account ID', platform: 'Platform', model: 'Model', taskStatus: 'Task Status', billingStatus: 'Billing Status' },
+      columns: { user: 'User', task: 'Task IDs', model: 'Model and Parameters', cost: 'Held Amount', status: 'Status / Polls', updatedAt: 'Updated' },
+      actions: { recheck: 'Recheck', confirmFailed: 'Confirm Failed and Release', confirmSucceeded: 'Confirm Success and Settle' }
+    },
+
     // Usage Records
     usage: {
       title: 'Usage Records',
