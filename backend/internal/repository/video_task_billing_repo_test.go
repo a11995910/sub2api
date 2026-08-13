@@ -393,7 +393,7 @@ func TestVideoTaskBillingRepositoryClaimDueUsesLeaseAndSkipLocked(t *testing.T) 
 	defer func() { _ = db.Close() }()
 
 	now := time.Now().UTC()
-	mock.ExpectQuery(`(?s)WITH candidates AS \(.*billing_status = \$1.*task_status IN \(\$2, \$3, \$4\).*next_poll_at <= NOW\(\).*claimed_until IS NULL OR claimed_until < NOW\(\).*FOR UPDATE SKIP LOCKED.*UPDATE video_task_billings AS tasks.*SET claimed_until = NOW\(\) \+ \(\$6 \* INTERVAL '1 second'\).*RETURNING`).
+	mock.ExpectQuery(`(?s)WITH candidates AS \(.*billing_status = \$1.*task_status IN \(\$2, \$3, \$4\).*next_poll_at <= NOW\(\).*claimed_until IS NULL OR claimed_until < NOW\(\).*FOR UPDATE SKIP LOCKED.*UPDATE video_task_billings AS tasks.*SET claimed_until = NOW\(\) \+ \(\$6 \* INTERVAL '1 second'\).*RETURNING tasks\.id`).
 		WithArgs(service.VideoTaskBillingReserved, service.VideoTaskStatusPending, service.VideoTaskStatusProcessing, service.VideoTaskStatusUnknown, 10, int64(45), service.VideoTaskStatusSubmitting, service.VideoTaskBillingSettling, service.VideoTaskStatusCompleted).
 		WillReturnRows(videoTaskBillingRows().AddRow(
 			int64(9), "request-1", "upstream-video-1", "openai", int64(7), int64(11), int64(13), int64(17),

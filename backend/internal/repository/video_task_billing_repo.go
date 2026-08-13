@@ -499,7 +499,7 @@ func (r *videoTaskBillingRepository) ClaimDue(ctx context.Context, limit int, le
 			updated_at = NOW()
 		FROM candidates
 		WHERE tasks.id = candidates.id
-		RETURNING `+videoTaskBillingColumnsSQL(),
+		RETURNING `+videoTaskBillingColumnsSQLWithPrefix("tasks."),
 		service.VideoTaskBillingReserved, service.VideoTaskStatusPending, service.VideoTaskStatusProcessing,
 		service.VideoTaskStatusUnknown, limit, leaseSeconds, service.VideoTaskStatusSubmitting,
 		service.VideoTaskBillingSettling, service.VideoTaskStatusCompleted)
