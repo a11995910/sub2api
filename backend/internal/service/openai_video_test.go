@@ -46,6 +46,40 @@ func TestAccountSupportsOpenAIVideoEndpointCapability(t *testing.T) {
 	require.False(t, grok.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityVideos))
 }
 
+func TestResolveOpenAIVideoRequestProfile(t *testing.T) {
+	tests := []struct {
+		name       string
+		baseURL    string
+		configured string
+		expected   OpenAIVideoRequestProfile
+	}{
+		{name: "auto cangyuan", baseURL: "https://ai.cangyuansuanli.cn/v1", expected: OpenAIVideoRequestProfileUnifiedJSON},
+		{name: "auto vip cangyuan", baseURL: "https://vip-api.cangyuansuanli.cn/v1", configured: "auto", expected: OpenAIVideoRequestProfileUnifiedJSON},
+		{name: "hostname is case insensitive", baseURL: "https://AI.CANGYUANSUANLI.CN/v1", expected: OpenAIVideoRequestProfileUnifiedJSON},
+		{name: "similar hostname stays legacy", baseURL: "https://ai.cangyuansuanli.cn.evil.example/v1", expected: OpenAIVideoRequestProfileLegacy},
+		{name: "unknown host stays legacy", baseURL: "https://video.example.com/v1", expected: OpenAIVideoRequestProfileLegacy},
+		{name: "invalid url stays legacy", baseURL: "://bad-url", expected: OpenAIVideoRequestProfileLegacy},
+		{name: "explicit unified overrides host", baseURL: "https://video.example.com/v1", configured: "unified_json", expected: OpenAIVideoRequestProfileUnifiedJSON},
+		{name: "explicit legacy overrides cangyuan", baseURL: "https://ai.cangyuansuanli.cn/v1", configured: "legacy", expected: OpenAIVideoRequestProfileLegacy},
+		{name: "unknown configured value stays legacy", baseURL: "https://ai.cangyuansuanli.cn/v1", configured: "unified-json", expected: OpenAIVideoRequestProfileLegacy},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"base_url": tt.baseURL,
+				},
+			}
+			if tt.configured != "" {
+				account.Credentials["video_request_profile"] = tt.configured
+			}
+			require.Equal(t, tt.expected, ResolveOpenAIVideoRequestProfile(account))
+		})
+	}
+}
+
 func TestNormalizeOpenAIVideoCreateBodyUsesMappedModelAndStringSeconds(t *testing.T) {
 	body, req, err := NormalizeOpenAIVideoCreateBody([]byte(`{
 		"model":"dreamina-seedance-2-0-ep",
@@ -94,6 +128,67 @@ func TestNormalizeOpenAIVideoCreateBodyValidatesRequiredFields(t *testing.T) {
 
 	_, _, err = NormalizeOpenAIVideoCreateBody([]byte(`{"model":"video"}`), "mapped")
 	require.ErrorContains(t, err, "prompt is required")
+}
+
+func TestParseOpenAIVideoCreateBodyKeepsUnifiedFields(t *testing.T) {
+	payload, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"dreamina-seedance-2-0-ep",
+		"prompt":"雨夜城市",
+		"duration":5,
+		"resolution":"720p",
+		"aspect_ratio":"16:9",
+		"reference_image_urls":["https://cdn.test/a.png"]
+	}`))
+
+	require.NoError(t, err)
+	require.Equal(t, "16:9", req.AspectRatio)
+	require.Equal(t, 5, req.DurationSeconds)
+	require.Equal(t, []string{"https://cdn.test/a.png"}, req.ImageURLs)
+	require.Equal(t, float64(5), payload["duration"])
+}
+
+func TestBuildUnifiedOpenAIVideoCreateBodyUsesOnlyStandardFields(t *testing.T) {
+	payload, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-model",
+		"prompt":"角色转身",
+		"seconds":"6",
+		"resolution":"720p",
+		"size":"9:16",
+		"image":{"url":"https://cdn.test/start.png"},
+		"image_urls":["https://cdn.test/a.png"],
+		"reference_image_urls":["https://cdn.test/a.png","https://cdn.test/b.png"],
+		"reference_images":[{"url":"https://cdn.test/c.png"}]
+	}`))
+	require.NoError(t, err)
+
+	body, err := BuildUnifiedOpenAIVideoCreateBody(payload, req, "upstream-model")
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model":"upstream-model",
+		"prompt":"角色转身",
+		"duration":6,
+		"resolution":"720p",
+		"aspect_ratio":"9:16",
+		"reference_image_urls":[
+			"https://cdn.test/a.png",
+			"https://cdn.test/b.png",
+			"https://cdn.test/start.png",
+			"https://cdn.test/c.png"
+		]
+	}`, string(body))
+	for _, field := range []string{"seconds", "size", "image_urls", "reference_images", "image"} {
+		require.False(t, gjson.GetBytes(body, field).Exists(), field)
+	}
+}
+
+func TestBuildUnifiedOpenAIVideoCreateBodyRejectsUnknownTopLevelField(t *testing.T) {
+	payload, req, err := ParseOpenAIVideoCreateBody([]byte(`{"model":"video","prompt":"x","duration":5,"watermark":true}`))
+	require.NoError(t, err)
+
+	_, err = BuildUnifiedOpenAIVideoCreateBody(payload, req, "video")
+
+	require.ErrorContains(t, err, `unsupported video field "watermark"`)
 }
 
 func TestParseOpenAIVideoResultNormalizesTaskStatusProgressAndURL(t *testing.T) {

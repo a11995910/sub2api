@@ -540,17 +540,17 @@ default:
   rate_multiplier: 1.0
 ```
 
-### OpenAI-Compatible Asynchronous Video API
+### OpenAI 兼容异步视频 API
 
-OpenAI-platform groups support a model-name-independent asynchronous video workflow. Existing account model mappings still apply, so a public model name can map to an upstream name such as `jing-video-2-pro`; protocol selection does not depend on Seedance, Jing, Kling, Veo, Sora, or other model-name prefixes.
+OpenAI 平台分组支持与模型名称无关的异步视频流程。现有账号模型映射继续生效，因此公开模型名可以映射为 `jing-video-2-pro` 等上游模型名；请求协议不依赖 Seedance、即梦、Kling、Veo、Sora 等模型名前缀。
 
-Public endpoints:
+公开端点：
 
-- `POST /v1/videos` creates a task. `POST /v1/videos/generations` remains available as a compatibility alias, along with the equivalent paths without `/v1`.
-- `GET /v1/videos/{task_id}` returns one of `queued`, `in_progress`, `completed`, or `failed`.
-- `GET /v1/videos/{task_id}/content` proxies the video through the account bound at creation time and supports `Range` requests.
+- `POST /v1/videos` 创建任务；`POST /v1/videos/generations` 及不带 `/v1` 的等价路径继续作为兼容别名。
+- `GET /v1/videos/{task_id}` 返回 `queued`、`in_progress`、`completed` 或 `failed`。
+- `GET /v1/videos/{task_id}/content` 使用创建时绑定的账号代理视频内容，并支持 `Range` 请求。
 
-Create requests require `model` and `prompt`. Optional fields include `resolution`, `duration` or `seconds`, `image.url`, `image_urls`, `reference_image_urls`, and `reference_images[].url`. The gateway merges compatible image fields, normalizes the upstream duration to a string `seconds` value, and applies account model mapping before forwarding:
+创建请求必须包含 `model` 和 `prompt`。新客户端推荐统一使用 `duration`、`aspect_ratio`、`resolution` 和 `reference_image_urls`；历史字段 `seconds`、`size`、`image_urls`、`reference_images[].url`、`image.url` 继续作为兼容别名。网关会合并兼容图片字段，并在应用账号模型映射后按账号请求协议构造上游 JSON：
 
 ```bash
 curl -X POST https://your-domain.example/v1/videos \
@@ -558,15 +558,23 @@ curl -X POST https://your-domain.example/v1/videos \
   -H "Content-Type: application/json" \
   -d '{
     "model": "future-motion-pro",
-    "prompt": "Cinematic shot of a neon street in the rain, slow push in",
+    "prompt": "雨夜霓虹街道，镜头缓慢向前推进",
+    "duration": 5,
+    "aspect_ratio": "16:9",
     "resolution": "720p",
-    "duration": 5
+    "reference_image_urls": ["https://example.com/reference.png"]
   }'
 ```
 
-An unknown protocol first tries the upstream `/v1/videos` endpoint and caches the result by account and mapped model. The gateway falls back once to the legacy Chat Completions video protocol only for an explicit `404`, `405`, or `unsupported_endpoint` response that proves no task was created. Validation `400` responses, `401`, `403`, `429`, `5xx`, timeouts, and disconnects never trigger fallback, preventing duplicate billable tasks. A successful create records one video usage item; status and content reads are not billed again.
+账号可通过 `credentials.video_request_profile` 选择视频出站协议：
 
-Task reads are isolated by user, API key, group, and task ID, and always use the original account. Completed status responses expose only the local content endpoint instead of the upstream signed URL. If an upstream lacks `/content`, the gateway accepts only a public HTTPS result URL from status and still enforces redirect, media-type, and response-size limits.
+- `auto`：默认值；仅在 `base_url` 的 hostname 精确等于 `ai.cangyuansuanli.cn` 或 `vip-api.cangyuansuanli.cn` 时使用统一 JSON，其他主机保持历史协议。
+- `unified_json`：显式使用统一 JSON，适用于沧元自定义域名或其代理网关。
+- `legacy`：强制使用现有 `seconds`、`image_urls` 历史协议。
+
+统一 JSON 分支只向上游发送文档支持的标准字段，未知顶层字段会在上游调用前返回 400；创建 POST 失败后不会切换字段协议或 Chat Completions 重试。非沧元账号继续沿用原端点探测：未知端点协议先尝试 `/v1/videos`，只有明确的 `404`、`405` 或 `unsupported_endpoint` 能证明任务未创建时才回退一次 Chat Completions。校验 400、401、403、429、5xx、超时和断连不会触发回退，避免重复计费任务。创建成功只记录一次视频用量，状态查询和内容读取不重复计费。
+
+任务查询按用户、API Key、分组和任务 ID 隔离，并始终使用创建任务的原账号。完成状态只暴露本站内容端点，不直接返回上游签名 URL；上游没有 `/content` 时，网关也只接受状态响应中的公开 HTTPS 结果 URL，并继续执行重定向、媒体类型和响应大小校验。
 
 ### Sora Status (Temporarily Unavailable)
 

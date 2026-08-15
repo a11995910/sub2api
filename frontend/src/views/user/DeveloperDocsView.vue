@@ -221,6 +221,12 @@
               </li>
             </ol>
 
+            <h3 class="mt-9 text-xl font-semibold text-gray-950 dark:text-white">统一 JSON 请求</h3>
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">OpenAI 兼容视频账号推荐使用标准客户字段；网关会根据账号配置选择沧元统一 JSON 或历史上游协议。</p>
+            <CodeSnippet class="mt-5" label="POST /v1/videos" :code="unifiedVideoCode" />
+
+            <h3 class="mt-9 text-xl font-semibold text-gray-950 dark:text-white">Grok 图片输入</h3>
+
             <div class="mt-6 overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
               <table class="w-full min-w-[44rem] text-left text-sm">
                 <thead class="bg-gray-100 text-gray-700 dark:bg-dark-800 dark:text-dark-200"><tr><th class="px-4 py-3 font-semibold">模型</th><th class="px-4 py-3 font-semibold">图片输入</th><th class="px-4 py-3 font-semibold">限制</th></tr></thead>
@@ -337,7 +343,7 @@ const imageFields = [
 ]
 
 const videoSteps = [
-  { title: '创建任务', description: 'POST /v1/videos/generations，保存返回的 request_id。' },
+  { title: '创建任务', description: 'POST /v1/videos，保存返回的 request_id；/v1/videos/generations 仍是兼容别名。' },
   { title: '轮询状态', description: 'GET /v1/videos/{request_id}，直到 completed、succeeded、success 或 done。' },
   { title: '读取内容', description: 'GET /v1/videos/{request_id}/content，携带原 API Key 下载 MP4。' }
 ]
@@ -444,6 +450,20 @@ const remoteImageEditCode = computed(() => `curl "$BASE_URL/v1/images/edits" \\
       {"image_url": "https://example.com/source.png"}
     ],
     "response_format": "url"
+  }'`)
+
+const unifiedVideoCode = computed(() => `curl "$BASE_URL/v1/videos" \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "future-motion-pro",
+    "prompt": "雨夜霓虹街道，镜头缓慢向前推进",
+    "duration": 5,
+    "aspect_ratio": "16:9",
+    "resolution": "720p",
+    "reference_image_urls": [
+      "https://example.com/reference.png"
+    ]
   }'`)
 
 const standardVideoCode = computed(() => `curl "$BASE_URL/v1/videos/generations" \\

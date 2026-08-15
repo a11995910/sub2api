@@ -66,17 +66,18 @@ func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64
 	return c.rdb.Del(ctx, key).Err()
 }
 
-func buildOpenAIVideoProtocolKey(accountID int64, mappedModel string) (string, error) {
+func buildOpenAIVideoProtocolKey(accountID int64, mappedModel string, requestProfile service.OpenAIVideoRequestProfile) (string, error) {
 	mappedModel = strings.TrimSpace(mappedModel)
-	if accountID <= 0 || mappedModel == "" {
+	if accountID <= 0 || mappedModel == "" ||
+		(requestProfile != service.OpenAIVideoRequestProfileLegacy && requestProfile != service.OpenAIVideoRequestProfileUnifiedJSON) {
 		return "", fmt.Errorf("invalid video protocol cache key")
 	}
-	digest := sha256.Sum256([]byte(strings.ToLower(mappedModel)))
+	digest := sha256.Sum256([]byte(strings.ToLower(mappedModel) + "\x00" + string(requestProfile)))
 	return fmt.Sprintf("%s%d:%x", openAIVideoProtocolPrefix, accountID, digest[:12]), nil
 }
 
-func (c *gatewayCache) GetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) (service.OpenAIVideoProtocol, error) {
-	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel)
+func (c *gatewayCache) GetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile service.OpenAIVideoRequestProfile) (service.OpenAIVideoProtocol, error) {
+	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel, requestProfile)
 	if err != nil {
 		return "", err
 	}
@@ -95,21 +96,22 @@ func (c *gatewayCache) SetOpenAIVideoProtocol(
 	ctx context.Context,
 	accountID int64,
 	mappedModel string,
+	requestProfile service.OpenAIVideoRequestProfile,
 	protocol service.OpenAIVideoProtocol,
 	ttl time.Duration,
 ) error {
 	if protocol != service.OpenAIVideoProtocolVideos && protocol != service.OpenAIVideoProtocolChatCompletions {
 		return fmt.Errorf("invalid video protocol %q", protocol)
 	}
-	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel)
+	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel, requestProfile)
 	if err != nil {
 		return err
 	}
 	return c.rdb.Set(ctx, key, string(protocol), ttl).Err()
 }
 
-func (c *gatewayCache) DeleteOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) error {
-	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel)
+func (c *gatewayCache) DeleteOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile service.OpenAIVideoRequestProfile) error {
+	key, err := buildOpenAIVideoProtocolKey(accountID, mappedModel, requestProfile)
 	if err != nil {
 		return err
 	}

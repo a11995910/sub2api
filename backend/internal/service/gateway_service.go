@@ -533,9 +533,9 @@ const (
 
 // OpenAIVideoProtocolCache 是 GatewayCache 的可选扩展，不要求既有测试缓存实现。
 type OpenAIVideoProtocolCache interface {
-	GetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) (OpenAIVideoProtocol, error)
-	SetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, protocol OpenAIVideoProtocol, ttl time.Duration) error
-	DeleteOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) error
+	GetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile) (OpenAIVideoProtocol, error)
+	SetOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile, protocol OpenAIVideoProtocol, ttl time.Duration) error
+	DeleteOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile) error
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil

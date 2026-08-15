@@ -48,23 +48,36 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoCreate(
 	}
 	requestedModel := strings.TrimSpace(firstGJSONVideoString(body, "model"))
 	upstreamModel := resolveOpenAIForwardModel(account, requestedModel, defaultMappedModel)
-	normalizedBody, requestInfo, err := NormalizeOpenAIVideoCreateBody(body, upstreamModel)
+	payload, requestInfo, err := ParseOpenAIVideoCreateBody(body)
+	if err != nil {
+		return nil, err
+	}
+	requestProfile := ResolveOpenAIVideoRequestProfile(account)
+	var upstreamBody []byte
+	if requestProfile == OpenAIVideoRequestProfileUnifiedJSON {
+		upstreamBody, err = BuildUnifiedOpenAIVideoCreateBody(payload, requestInfo, upstreamModel)
+	} else {
+		upstreamBody, _, err = NormalizeOpenAIVideoCreateBody(body, upstreamModel)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	protocol := s.getCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel)
-	if protocol == OpenAIVideoProtocolChatCompletions {
-		return s.forwardOpenAIVideoViaChatCompletions(ctx, c, account, requestInfo, requestedModel, upstreamModel)
+	allowEndpointFallback := requestProfile == OpenAIVideoRequestProfileLegacy
+	if allowEndpointFallback {
+		protocol := s.getCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, requestProfile)
+		if protocol == OpenAIVideoProtocolChatCompletions {
+			return s.forwardOpenAIVideoViaChatCompletions(ctx, c, account, requestInfo, requestedModel, upstreamModel)
+		}
 	}
 
 	result, endpointUnsupported, err := s.forwardOpenAIVideoCreateTask(
-		ctx, c, account, normalizedBody, requestInfo, requestedModel, upstreamModel,
+		ctx, c, account, upstreamBody, requestInfo, requestedModel, upstreamModel, requestProfile, allowEndpointFallback,
 	)
 	if !endpointUnsupported {
 		return result, err
 	}
-	s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, OpenAIVideoProtocolChatCompletions)
+	s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, requestProfile, OpenAIVideoProtocolChatCompletions)
 	return s.forwardOpenAIVideoViaChatCompletions(ctx, c, account, requestInfo, requestedModel, upstreamModel)
 }
 
@@ -514,6 +527,8 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 	requestInfo OpenAIVideoRequest,
 	requestedModel string,
 	upstreamModel string,
+	requestProfile OpenAIVideoRequestProfile,
+	allowEndpointFallback bool,
 ) (*OpenAIForwardResult, bool, error) {
 	token := strings.TrimSpace(account.GetOpenAIApiKey())
 	if token == "" {
@@ -552,11 +567,11 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 		return nil, false, videoTaskErrorAfterSubmission(err)
 	}
 	if resp.StatusCode >= 400 {
-		if IsOpenAIVideoEndpointUnsupported(resp.StatusCode, respBody) {
+		if allowEndpointFallback && IsOpenAIVideoEndpointUnsupported(resp.StatusCode, respBody) {
 			return nil, true, nil
 		}
 		if resp.StatusCode == http.StatusBadRequest {
-			s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, OpenAIVideoProtocolVideos)
+			s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, requestProfile, OpenAIVideoProtocolVideos)
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
@@ -627,7 +642,7 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 	c.Header("Content-Type", "application/json")
 	c.Status(http.StatusOK)
 	_, _ = c.Writer.Write(normalizedResponse)
-	s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, OpenAIVideoProtocolVideos)
+	s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, requestProfile, OpenAIVideoProtocolVideos)
 	SetActualOpenAIUpstreamEndpoint(c, "/v1/videos")
 	return &OpenAIForwardResult{
 		RequestID:            firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
@@ -717,24 +732,24 @@ func (s *OpenAIGatewayService) openAIVideoTargetURL(account *Account, suffix str
 	return buildOpenAIEndpointURL(validatedURL, "/v1/videos"+suffix), nil
 }
 
-func (s *OpenAIGatewayService) getCachedOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string) OpenAIVideoProtocol {
+func (s *OpenAIGatewayService) getCachedOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile) OpenAIVideoProtocol {
 	cache, ok := s.cache.(OpenAIVideoProtocolCache)
 	if !ok || cache == nil {
 		return ""
 	}
-	protocol, err := cache.GetOpenAIVideoProtocol(ctx, accountID, mappedModel)
+	protocol, err := cache.GetOpenAIVideoProtocol(ctx, accountID, mappedModel, requestProfile)
 	if err != nil {
 		return ""
 	}
 	return protocol
 }
 
-func (s *OpenAIGatewayService) setCachedOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, protocol OpenAIVideoProtocol) {
+func (s *OpenAIGatewayService) setCachedOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile, protocol OpenAIVideoProtocol) {
 	cache, ok := s.cache.(OpenAIVideoProtocolCache)
 	if !ok || cache == nil {
 		return
 	}
-	_ = cache.SetOpenAIVideoProtocol(ctx, accountID, mappedModel, protocol, openAIVideoProtocolCacheTTL)
+	_ = cache.SetOpenAIVideoProtocol(ctx, accountID, mappedModel, requestProfile, protocol, openAIVideoProtocolCacheTTL)
 }
 
 func (s *OpenAIGatewayService) ResolveOpenAIVideoTaskAccount(

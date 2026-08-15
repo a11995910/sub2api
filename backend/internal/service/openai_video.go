@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -15,8 +16,45 @@ type OpenAIVideoRequest struct {
 	Model           string
 	Prompt          string
 	Resolution      string
+	AspectRatio     string
 	DurationSeconds int
 	ImageURLs       []string
+}
+
+type OpenAIVideoRequestProfile string
+
+const (
+	OpenAIVideoRequestProfileAuto        OpenAIVideoRequestProfile = "auto"
+	OpenAIVideoRequestProfileUnifiedJSON OpenAIVideoRequestProfile = "unified_json"
+	OpenAIVideoRequestProfileLegacy      OpenAIVideoRequestProfile = "legacy"
+)
+
+func ResolveOpenAIVideoRequestProfile(account *Account) OpenAIVideoRequestProfile {
+	if account == nil {
+		return OpenAIVideoRequestProfileLegacy
+	}
+	configured := strings.ToLower(strings.TrimSpace(account.GetCredential("video_request_profile")))
+	switch OpenAIVideoRequestProfile(configured) {
+	case OpenAIVideoRequestProfileUnifiedJSON:
+		return OpenAIVideoRequestProfileUnifiedJSON
+	case OpenAIVideoRequestProfileLegacy:
+		return OpenAIVideoRequestProfileLegacy
+	case "", OpenAIVideoRequestProfileAuto:
+		// 继续精确识别官方主机。
+	default:
+		return OpenAIVideoRequestProfileLegacy
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	if err != nil {
+		return OpenAIVideoRequestProfileLegacy
+	}
+	switch strings.ToLower(parsed.Hostname()) {
+	case "ai.cangyuansuanli.cn", "vip-api.cangyuansuanli.cn":
+		return OpenAIVideoRequestProfileUnifiedJSON
+	default:
+		return OpenAIVideoRequestProfileLegacy
+	}
 }
 
 type OpenAIVideoResult struct {
@@ -99,16 +137,17 @@ func shouldWriteOpenAIVideoResponse(c *gin.Context) bool {
 	return !ok || !suppressed
 }
 
-func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, OpenAIVideoRequest, error) {
+func ParseOpenAIVideoCreateBody(body []byte) (map[string]any, OpenAIVideoRequest, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, OpenAIVideoRequest{}, fmt.Errorf("decode video request: %w", err)
 	}
 
 	request := OpenAIVideoRequest{
-		Model:      strings.TrimSpace(stringValue(payload["model"])),
-		Prompt:     strings.TrimSpace(stringValue(payload["prompt"])),
-		Resolution: strings.ToLower(strings.TrimSpace(stringValue(payload["resolution"]))),
+		Model:       strings.TrimSpace(stringValue(payload["model"])),
+		Prompt:      strings.TrimSpace(stringValue(payload["prompt"])),
+		Resolution:  strings.ToLower(strings.TrimSpace(stringValue(payload["resolution"]))),
+		AspectRatio: strings.TrimSpace(stringValue(payload["aspect_ratio"])),
 	}
 	if request.Model == "" {
 		return nil, OpenAIVideoRequest{}, fmt.Errorf("model is required")
@@ -118,6 +157,9 @@ func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, Op
 	}
 	if request.Resolution == "" {
 		request.Resolution = VideoBillingResolution720P
+	}
+	if request.AspectRatio == "" {
+		request.AspectRatio = strings.TrimSpace(stringValue(payload["size"]))
 	}
 
 	request.DurationSeconds = openAIVideoInt(payload["duration"])
@@ -132,6 +174,14 @@ func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, Op
 	}
 
 	request.ImageURLs = collectOpenAIVideoImageURLs(payload)
+	return payload, request, nil
+}
+
+func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, OpenAIVideoRequest, error) {
+	payload, request, err := ParseOpenAIVideoCreateBody(body)
+	if err != nil {
+		return nil, OpenAIVideoRequest{}, err
+	}
 	upstreamModel := strings.TrimSpace(mappedModel)
 	if upstreamModel == "" {
 		upstreamModel = request.Model
@@ -155,6 +205,48 @@ func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, Op
 		return nil, OpenAIVideoRequest{}, fmt.Errorf("encode video request: %w", err)
 	}
 	return normalized, request, nil
+}
+
+var openAIVideoUnifiedAcceptedFields = map[string]struct{}{
+	"model": {}, "prompt": {}, "duration": {}, "seconds": {},
+	"resolution": {}, "aspect_ratio": {}, "size": {},
+	"reference_image_urls": {}, "image_urls": {},
+	"reference_images": {}, "image": {},
+}
+
+func BuildUnifiedOpenAIVideoCreateBody(payload map[string]any, request OpenAIVideoRequest, mappedModel string) ([]byte, error) {
+	unknown := make([]string, 0)
+	for field := range payload {
+		if _, ok := openAIVideoUnifiedAcceptedFields[field]; !ok {
+			unknown = append(unknown, field)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return nil, fmt.Errorf("unsupported video field %q", unknown[0])
+	}
+
+	upstreamModel := strings.TrimSpace(mappedModel)
+	if upstreamModel == "" {
+		upstreamModel = request.Model
+	}
+	body := map[string]any{
+		"model":      upstreamModel,
+		"prompt":     request.Prompt,
+		"duration":   request.DurationSeconds,
+		"resolution": request.Resolution,
+	}
+	if request.AspectRatio != "" {
+		body["aspect_ratio"] = request.AspectRatio
+	}
+	if len(request.ImageURLs) > 0 {
+		body["reference_image_urls"] = request.ImageURLs
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encode video request: %w", err)
+	}
+	return encoded, nil
 }
 
 func collectOpenAIVideoImageURLs(payload map[string]any) []string {

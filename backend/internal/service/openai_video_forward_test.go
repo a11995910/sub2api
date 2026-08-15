@@ -39,29 +39,29 @@ func (s *videoProtocolGatewayCacheStub) SetSessionAccountID(
 	return s.videoBindingCacheStub.SetSessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
 }
 
-func (s *videoProtocolGatewayCacheStub) protocolKey(accountID int64, model string) string {
-	return strconv.FormatInt(accountID, 10) + ":" + model
+func (s *videoProtocolGatewayCacheStub) protocolKey(accountID int64, model string, requestProfile OpenAIVideoRequestProfile) string {
+	return strconv.FormatInt(accountID, 10) + ":" + model + ":" + string(requestProfile)
 }
 
-func (s *videoProtocolGatewayCacheStub) GetOpenAIVideoProtocol(_ context.Context, accountID int64, model string) (OpenAIVideoProtocol, error) {
-	protocol, ok := s.protocols[s.protocolKey(accountID, model)]
+func (s *videoProtocolGatewayCacheStub) GetOpenAIVideoProtocol(_ context.Context, accountID int64, model string, requestProfile OpenAIVideoRequestProfile) (OpenAIVideoProtocol, error) {
+	protocol, ok := s.protocols[s.protocolKey(accountID, model, requestProfile)]
 	if !ok {
 		return "", redis.Nil
 	}
 	return protocol, nil
 }
 
-func (s *videoProtocolGatewayCacheStub) SetOpenAIVideoProtocol(_ context.Context, accountID int64, model string, protocol OpenAIVideoProtocol, _ time.Duration) error {
+func (s *videoProtocolGatewayCacheStub) SetOpenAIVideoProtocol(_ context.Context, accountID int64, model string, requestProfile OpenAIVideoRequestProfile, protocol OpenAIVideoProtocol, _ time.Duration) error {
 	if s.protocols == nil {
 		s.protocols = make(map[string]OpenAIVideoProtocol)
 	}
-	s.protocols[s.protocolKey(accountID, model)] = protocol
+	s.protocols[s.protocolKey(accountID, model, requestProfile)] = protocol
 	s.setCalls++
 	return nil
 }
 
-func (s *videoProtocolGatewayCacheStub) DeleteOpenAIVideoProtocol(_ context.Context, accountID int64, model string) error {
-	delete(s.protocols, s.protocolKey(accountID, model))
+func (s *videoProtocolGatewayCacheStub) DeleteOpenAIVideoProtocol(_ context.Context, accountID int64, model string, requestProfile OpenAIVideoRequestProfile) error {
+	delete(s.protocols, s.protocolKey(accountID, model, requestProfile))
 	return nil
 }
 
@@ -124,7 +124,72 @@ func TestForwardOpenAIVideoCreateUsesVideosEndpointAndMappedModel(t *testing.T) 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "task-1", gjson.Get(recorder.Body.String(), "task_id").String())
 	require.Equal(t, "dreamina-seedance-2-0-ep", gjson.Get(recorder.Body.String(), "model").String())
-	require.Equal(t, OpenAIVideoProtocolVideos, cache.protocols[cache.protocolKey(account.ID, "jing-video-2-pro")])
+	require.Equal(t, OpenAIVideoProtocolVideos, cache.protocols[cache.protocolKey(account.ID, "jing-video-2-pro", OpenAIVideoRequestProfileLegacy)])
+}
+
+func TestForwardOpenAIVideoCreateUsesUnifiedJSONForCangyuan(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","duration":5,"resolution":"720p","aspect_ratio":"16:9","reference_image_urls":["https://cdn.test/a.png"]}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"id":"task-cangyuan","status":"queued"}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: &videoProtocolGatewayCacheStub{}, httpUpstream: upstream}
+	account := openAIVideoForwardTestAccount()
+	account.Credentials["base_url"] = "https://ai.cangyuansuanli.cn/v1"
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, account, body, "")
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, int64(5), gjson.GetBytes(upstream.lastBody, "duration").Int())
+	require.Equal(t, "16:9", gjson.GetBytes(upstream.lastBody, "aspect_ratio").String())
+	require.Equal(t, "https://cdn.test/a.png", gjson.GetBytes(upstream.lastBody, "reference_image_urls.0").String())
+	for _, field := range []string{"seconds", "size", "image_urls", "reference_images", "image"} {
+		require.False(t, gjson.GetBytes(upstream.lastBody, field).Exists(), field)
+	}
+}
+
+func TestForwardOpenAIVideoCreateKeepsLegacyFieldsForUnknownHost(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","duration":5,"aspect_ratio":"16:9","reference_image_urls":["https://cdn.test/a.png"]}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString(`{"id":"task-legacy","status":"queued"}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: &videoProtocolGatewayCacheStub{}, httpUpstream: upstream}
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
+
+	require.NoError(t, err)
+	require.Equal(t, "5", gjson.GetBytes(upstream.lastBody, "seconds").String())
+	require.Equal(t, "https://cdn.test/a.png", gjson.GetBytes(upstream.lastBody, "image_urls.0").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "duration").Exists())
+}
+
+func TestForwardOpenAIVideoCreateDoesNotFallbackUnifiedJSON(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusNotFound, http.StatusTooManyRequests, http.StatusBadGateway} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"x","duration":5}`)
+			c, _ := openAIVideoForwardTestContext(body)
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: status,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(bytes.NewBufferString(`{"error":{"message":"upstream rejected request"}}`)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: &videoProtocolGatewayCacheStub{}, httpUpstream: upstream}
+			account := openAIVideoForwardTestAccount()
+			account.Credentials["base_url"] = "https://ai.cangyuansuanli.cn/v1"
+
+			_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, account, body, "")
+
+			require.Error(t, err)
+			require.Len(t, upstream.requests, 1)
+			require.Equal(t, "/v1/videos", upstream.requests[0].URL.Path)
+		})
+	}
 }
 
 func TestForwardOpenAIVideoCreateBindsTaskBeforeReturning(t *testing.T) {
@@ -249,7 +314,7 @@ func TestForwardOpenAIVideoCreateFallsBackOnlyForUnsupportedEndpoint(t *testing.
 	require.Equal(t, 2, len(upstream.requests))
 	require.Equal(t, "/v1/videos", upstream.requests[0].URL.Path)
 	require.Equal(t, "/v1/chat/completions", upstream.requests[1].URL.Path)
-	require.Equal(t, OpenAIVideoProtocolChatCompletions, cache.protocols[cache.protocolKey(88, "jing-video-2-pro")])
+	require.Equal(t, OpenAIVideoProtocolChatCompletions, cache.protocols[cache.protocolKey(88, "jing-video-2-pro", OpenAIVideoRequestProfileLegacy)])
 	require.Equal(t, "completed", gjson.Get(recorder.Body.String(), "status").String())
 	require.Equal(t, "https://cdn.test/result.mp4", gjson.Get(recorder.Body.String(), "url").String())
 	require.Equal(t, "chat-video-1", result.ResponseID)
@@ -339,7 +404,7 @@ func TestForwardOpenAIVideoCreateCachesVideosOnBusinessValidationError(t *testin
 	require.Error(t, err)
 	require.False(t, IsVideoTaskSubmissionUncertain(err))
 	require.Len(t, upstream.requests, 1)
-	require.Equal(t, OpenAIVideoProtocolVideos, cache.protocols[cache.protocolKey(88, "jing-video-2-pro")])
+	require.Equal(t, OpenAIVideoProtocolVideos, cache.protocols[cache.protocolKey(88, "jing-video-2-pro", OpenAIVideoRequestProfileLegacy)])
 }
 
 func TestForwardOpenAIVideoStatusNormalizesCompletedResponse(t *testing.T) {

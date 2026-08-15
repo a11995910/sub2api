@@ -18,7 +18,7 @@ func (h *OpenAIGatewayHandler) OpenAIVideoGeneration(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
-	normalizedBody, requestInfo, err := service.NormalizeOpenAIVideoCreateBody(body, "")
+	_, requestInfo, err := service.ParseOpenAIVideoCreateBody(body)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
@@ -43,8 +43,8 @@ func (h *OpenAIGatewayHandler) OpenAIVideoGeneration(c *gin.Context) {
 	}
 	videoContext.BindTask = videoContext.UserID > 0 && videoContext.APIKeyID > 0
 	service.SetOpenAIVideoContext(c, videoContext)
-	c.Request.Body = io.NopCloser(bytes.NewReader(normalizedBody))
-	c.Request.ContentLength = int64(len(normalizedBody))
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	c.Request.ContentLength = int64(len(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	h.ChatCompletions(c)
 }
