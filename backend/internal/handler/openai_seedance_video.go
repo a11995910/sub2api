@@ -61,6 +61,17 @@ func shouldReserveOpenAIVideoBilling(c *gin.Context, apiKey *service.APIKey, sub
 	return subscription == nil || apiKey.Group == nil || !apiKey.Group.IsSubscriptionType()
 }
 
+func (h *OpenAIGatewayHandler) validateOpenAIVideoRequestForAccount(c *gin.Context, account *service.Account, body []byte, streamStarted bool) bool {
+	if !service.HasOpenAIVideoContext(c) {
+		return true
+	}
+	if err := service.ValidateOpenAIVideoCreateBodyForAccount(account, body); err != nil {
+		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", err.Error(), streamStarted)
+		return false
+	}
+	return true
+}
+
 // SeedanceVideoGeneration 保留旧调用点，实际进入通用 OpenAI 视频实现。
 func (h *OpenAIGatewayHandler) SeedanceVideoGeneration(c *gin.Context) {
 	h.OpenAIVideoGeneration(c)

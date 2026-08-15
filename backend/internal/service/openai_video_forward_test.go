@@ -192,6 +192,46 @@ func TestForwardOpenAIVideoCreateDoesNotFallbackUnifiedJSON(t *testing.T) {
 	}
 }
 
+func TestForwardOpenAIVideoCreateUnifiedHTTPFailuresStopAccountRetry(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusBadGateway} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"x","duration":5}`)
+			c, _ := openAIVideoForwardTestContext(body)
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: status,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(bytes.NewBufferString(`{"error":{"message":"upstream rejected request"}}`)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: &videoProtocolGatewayCacheStub{}, httpUpstream: upstream}
+			account := openAIVideoForwardTestAccount()
+			account.Credentials["base_url"] = "https://ai.cangyuansuanli.cn/v1"
+
+			_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, account, body, "")
+
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.False(t, failoverErr.ShouldRetryNextAccount())
+			require.Len(t, upstream.requests, 1)
+		})
+	}
+}
+
+func TestForwardOpenAIVideoCreateUnifiedTransportFailureStopsAccountRetry(t *testing.T) {
+	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"x","duration":5}`)
+	c, _ := openAIVideoForwardTestContext(body)
+	upstream := &httpUpstreamRecorder{err: errors.New("connection reset")}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), cache: &videoProtocolGatewayCacheStub{}, httpUpstream: upstream}
+	account := openAIVideoForwardTestAccount()
+	account.Credentials["base_url"] = "https://ai.cangyuansuanli.cn/v1"
+
+	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, account, body, "")
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.False(t, failoverErr.ShouldRetryNextAccount())
+	require.Len(t, upstream.requests, 1)
+}
+
 func TestForwardOpenAIVideoCreateBindsTaskBeforeReturning(t *testing.T) {
 	body := []byte(`{"model":"dreamina-seedance-2-0-ep","prompt":"雨夜城市","duration":5}`)
 	c, _ := openAIVideoForwardTestContext(body)
@@ -369,6 +409,9 @@ func TestForwardOpenAIVideoCreateDoesNotFallbackOnUpstreamFailure(t *testing.T) 
 	_, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, openAIVideoForwardTestAccount(), body, "")
 	require.Error(t, err)
 	require.True(t, IsVideoTaskSubmissionUncertain(err))
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
 	require.Len(t, upstream.requests, 1)
 	require.Zero(t, cache.setCalls)
 }

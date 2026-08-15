@@ -559,7 +559,9 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
-		return nil, false, videoTaskErrorAfterSubmission(s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false))
+		upstreamErr := s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+		stopUnifiedOpenAIVideoAccountFailover(upstreamErr, requestProfile)
+		return nil, false, videoTaskErrorAfterSubmission(upstreamErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
@@ -576,6 +578,7 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 		if failoverErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); failoverErr != nil {
+			stopUnifiedOpenAIVideoAccountFailover(failoverErr, requestProfile)
 			return nil, false, failoverErr
 		}
 		if upstreamMsg == "" {
@@ -718,6 +721,16 @@ func BuildOpenAIVideoChatRequest(request OpenAIVideoRequest, upstreamModel strin
 		}},
 		"stream": false,
 	})
+}
+
+func stopUnifiedOpenAIVideoAccountFailover(err error, requestProfile OpenAIVideoRequestProfile) {
+	if requestProfile != OpenAIVideoRequestProfileUnifiedJSON {
+		return
+	}
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) {
+		failoverErr.NextAccountAction = NextAccountStop
+	}
 }
 
 func (s *OpenAIGatewayService) openAIVideoTargetURL(account *Account, suffix string) (string, error) {

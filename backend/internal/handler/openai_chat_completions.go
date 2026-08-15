@@ -239,6 +239,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		if !h.validateOpenAIVideoRequestForAccount(c, account, forwardBody, streamStarted) {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			return
+		}
 		billingTask, reserveErr := h.reserveOpenAIVideoTask(c, apiKey, account, subscription, channelMapping, reqModel, pricingAt, body)
 		if reserveErr != nil {
 			if accountReleaseFunc != nil {

@@ -249,6 +249,18 @@ func BuildUnifiedOpenAIVideoCreateBody(payload map[string]any, request OpenAIVid
 	return encoded, nil
 }
 
+func ValidateOpenAIVideoCreateBodyForAccount(account *Account, body []byte) error {
+	if ResolveOpenAIVideoRequestProfile(account) != OpenAIVideoRequestProfileUnifiedJSON {
+		return nil
+	}
+	payload, request, err := ParseOpenAIVideoCreateBody(body)
+	if err != nil {
+		return err
+	}
+	_, err = BuildUnifiedOpenAIVideoCreateBody(payload, request, request.Model)
+	return err
+}
+
 func collectOpenAIVideoImageURLs(payload map[string]any) []string {
 	urls := make([]string, 0, 4)
 	seen := make(map[string]struct{})

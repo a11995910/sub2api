@@ -116,3 +116,47 @@ func TestShouldReserveOpenAIVideoBillingOnlyForOrdinaryBalanceRequests(t *testin
 	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model"})
 	require.False(t, shouldReserveOpenAIVideoBilling(c, apiKey, &service.UserSubscription{}))
 }
+
+func TestValidateOpenAIVideoRequestForAccountRejectsUnifiedUnknownFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model"})
+	account := &service.Account{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://ai.cangyuansuanli.cn/v1",
+		},
+	}
+	h := &OpenAIGatewayHandler{}
+
+	valid := h.validateOpenAIVideoRequestForAccount(c, account, []byte(`{"model":"video-model","prompt":"x","watermark":true}`), false)
+
+	require.False(t, valid)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "invalid_request_error")
+	require.Contains(t, recorder.Body.String(), `unsupported video field \"watermark\"`)
+}
+
+func TestValidateOpenAIVideoRequestForAccountKeepsLegacyExtensions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model"})
+	account := &service.Account{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://video.example.com/v1",
+		},
+	}
+	h := &OpenAIGatewayHandler{}
+
+	valid := h.validateOpenAIVideoRequestForAccount(c, account, []byte(`{"model":"video-model","prompt":"x","watermark":true}`), false)
+
+	require.True(t, valid)
+	require.Zero(t, recorder.Body.Len())
+}
