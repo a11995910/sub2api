@@ -222,7 +222,7 @@
             </ol>
 
             <h3 class="mt-9 text-xl font-semibold text-gray-950 dark:text-white">统一 JSON 请求</h3>
-            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">OpenAI 兼容视频账号推荐使用标准客户字段；可变清晰度模型发送 resolution，模型名已固定清晰度时省略。参考图片、视频、音频属于多模态模式，不能和成对的首尾帧字段同时发送。</p>
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">OpenAI 兼容视频账号推荐使用标准客户字段；可变清晰度模型发送 resolution，映射后的模型名已固定清晰度时由网关覆盖客户端值并省略上游字段，不支持声音开关的模型也会省略该字段。参考图片、视频、音频属于多模态模式，不能和成对的首尾帧字段同时发送。只有明确完成且存在成片时才结算，明确失败即使携带结果地址也会释放预留费用。</p>
             <CodeSnippet class="mt-5" label="POST /v1/videos" :code="unifiedVideoCode" />
 
             <h3 class="mt-9 text-xl font-semibold text-gray-950 dark:text-white">Grok 图片输入</h3>

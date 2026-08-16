@@ -183,9 +183,6 @@ func validateCangyuanVideoRequest(request OpenAIVideoRequest, model string, capa
 		return fmt.Errorf("duration must be between %d and %d seconds", capabilities.MinDuration, capabilities.MaxDuration)
 	}
 
-	if capabilities.FixedResolution != "" && request.ResolutionExplicit && request.Resolution != capabilities.FixedResolution {
-		return fmt.Errorf("resolution %s is not supported by %s", request.Resolution, model)
-	}
 	if !capabilities.OmitResolution && len(capabilities.AllowedResolutions) > 0 {
 		resolution := request.Resolution
 		if resolution == "" {
@@ -214,9 +211,6 @@ func validateCangyuanVideoRequest(request OpenAIVideoRequest, model string, capa
 		if len(request.ImageURLs)+len(request.VideoURLs)+len(request.AudioURLs) > 0 {
 			return fmt.Errorf("frame inputs cannot be combined with reference media")
 		}
-	}
-	if knownModel && request.GenerateAudio != nil && capabilities.AudioField == "" {
-		return fmt.Errorf("generate_audio is not supported by %s", model)
 	}
 	return nil
 }

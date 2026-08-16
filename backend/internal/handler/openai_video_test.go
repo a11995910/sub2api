@@ -182,7 +182,7 @@ func TestValidateOpenAIVideoRequestForAccountUpdatesBillingContext(t *testing.T)
 	h := &OpenAIGatewayHandler{}
 
 	valid := h.validateOpenAIVideoRequestForAccount(c, account, []byte(`{
-		"model":"public-video","prompt":"x","duration":30
+		"model":"public-video","prompt":"x","duration":30,"resolution":"720p"
 	}`), false)
 
 	require.True(t, valid)

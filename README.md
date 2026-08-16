@@ -578,7 +578,7 @@ curl -X POST https://your-domain.example/v1/videos \
   }'
 ```
 
-沧元 Seedance 2.0 可变清晰度型号发送 `resolution`，支持 4–15 秒；模型名包含固定清晰度的 Seedance 2.0/2.5 型号不向上游发送 `resolution`。Seedance 2.5 480p 支持 4–30 秒，720p 支持 4–29 秒。具体素材数量限制由映射后的上游模型决定。
+沧元 Seedance 2.0 可变清晰度型号发送 `resolution`，支持 4–15 秒；模型名包含固定清晰度的 Seedance 2.0/2.5 型号以映射后的模型清晰度为准，即使客户端携带其他清晰度也会覆盖计费上下文并从上游请求省略 `resolution`。`sd8-seedance-2.0` 只接受 5、10、15 秒，通用 `generate_audio` / `audio` 开关不会向上游发送。Seedance 2.5 480p 支持 4–30 秒，720p 支持 4–29 秒。具体素材数量限制由映射后的上游模型决定。
 
 账号可通过 `credentials.video_request_profile` 选择视频出站协议：
 
@@ -586,7 +586,7 @@ curl -X POST https://your-domain.example/v1/videos \
 - `unified_json`：显式使用统一 JSON，适用于沧元自定义域名或其代理网关。
 - `legacy`：强制使用现有 `seconds`、`image_urls` 历史协议。
 
-统一 JSON 分支只向上游发送文档支持的标准字段，未知顶层字段会在上游调用前返回 400；创建 POST 失败后不会切换字段协议或 Chat Completions 重试。非沧元账号继续沿用原端点探测：未知端点协议先尝试 `/v1/videos`，只有明确的 `404`、`405` 或 `unsupported_endpoint` 能证明任务未创建时才回退一次 Chat Completions。校验 400、401、403、429、5xx、超时和断连不会触发回退，避免重复计费任务。异步任务只有在完成且存在可验证成片时才结算；沧元返回失败后会释放预留费用，查询结果暂时无法确认时保持待审核，不会自动重复创建任务。
+统一 JSON 分支只向上游发送文档支持的标准字段，未知顶层字段会在上游调用前返回 400；创建 POST 失败后不会切换字段协议或 Chat Completions 重试。非沧元账号继续沿用原端点探测：未知端点协议先尝试 `/v1/videos`，只有明确的 `404`、`405` 或 `unsupported_endpoint` 能证明任务未创建时才回退一次 Chat Completions。校验 400、401、403、429、5xx、超时和断连不会触发回退，避免重复计费任务。异步任务只有在明确完成且存在可验证成片时才结算；`failed`、`cancelled` 或 `expired` 即使同时携带结果 URL 也会释放预留费用，查询结果暂时无法确认时保持待审核，不会自动重复创建任务。
 
 任务查询按用户、API Key、分组和任务 ID 隔离，并始终使用创建任务的原账号。完成状态只暴露本站内容端点，不直接返回上游签名 URL；上游没有 `/content` 时，网关也只接受状态响应中的公开 HTTPS 结果 URL，并继续执行重定向、媒体类型和响应大小校验。
 

@@ -80,6 +80,34 @@ func TestPrepareUnifiedOpenAIVideoCreateBodyOmitsFixedResolution(t *testing.T) {
 	require.Equal(t, int64(30), gjson.GetBytes(prepared.Body, "duration").Int())
 }
 
+func TestPrepareUnifiedOpenAIVideoCreateBodyCanonicalizesMappedFixedFields(t *testing.T) {
+	payload, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video","prompt":"x","duration":5,
+		"resolution":"720p","generate_audio":true
+	}`))
+	require.NoError(t, err)
+
+	prepared, err := PrepareUnifiedOpenAIVideoCreateBody(payload, req, "sd4-seedance-2.5-480p")
+
+	require.NoError(t, err)
+	require.Equal(t, "480p", prepared.Request.Resolution)
+	require.False(t, gjson.GetBytes(prepared.Body, "resolution").Exists())
+	require.True(t, gjson.GetBytes(prepared.Body, "generate_audio").Bool())
+}
+
+func TestPrepareUnifiedOpenAIVideoCreateBodyDropsUnsupportedSD8AudioSwitch(t *testing.T) {
+	payload, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video","prompt":"x","duration":5,"generate_audio":true
+	}`))
+	require.NoError(t, err)
+
+	prepared, err := PrepareUnifiedOpenAIVideoCreateBody(payload, req, "sd8-seedance-2.0")
+
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(prepared.Body, "generate_audio").Exists())
+	require.False(t, gjson.GetBytes(prepared.Body, "audio").Exists())
+}
+
 func TestPrepareUnifiedOpenAIVideoCreateBodyValidatesModelRules(t *testing.T) {
 	tests := []struct {
 		name, model, body, message string
@@ -89,8 +117,6 @@ func TestPrepareUnifiedOpenAIVideoCreateBodyValidatesModelRules(t *testing.T) {
 		{"sd8 only accepts listed durations", "sd8-seedance-2.0", `{"model":"x","prompt":"x","duration":8}`, "duration must be one of 5, 10, 15 seconds"},
 		{"frame pair is required", "sd4-seedance-2.0", `{"model":"x","prompt":"x","first_image_url":"https://cdn.test/first.png"}`, "first_image_url and last_image_url must be provided together"},
 		{"frames conflict with references", "sd4-seedance-2.0", `{"model":"x","prompt":"x","first_image_url":"https://cdn.test/first.png","last_image_url":"https://cdn.test/last.png","reference_image_urls":["https://cdn.test/a.png"]}`, "frame inputs cannot be combined with reference media"},
-		{"fixed resolution rejects mismatch", "sd4-seedance-2.5-480p", `{"model":"x","prompt":"x","resolution":"720p"}`, "resolution 720p is not supported by sd4-seedance-2.5-480p"},
-		{"sd8 rejects audio switch", "sd8-seedance-2.0", `{"model":"x","prompt":"x","generate_audio":true}`, "generate_audio is not supported by sd8-seedance-2.0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
