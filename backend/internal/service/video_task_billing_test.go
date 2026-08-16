@@ -189,6 +189,59 @@ func TestClassifyVideoTaskResultDoesNotReleaseFailedTaskWithArtifact(t *testing.
 	require.Equal(t, VideoTaskStatusCompleted, outcome.Status)
 }
 
+func TestCangyuanFailedVideoResponseReleasesReservation(t *testing.T) {
+	body := []byte(`{
+		"id":"task-cangyuan-failed",
+		"status":"failed",
+		"error":{"message":"reference video is invalid"}
+	}`)
+	parsed, err := ParseOpenAIVideoResult(body)
+	require.NoError(t, err)
+	outcome := ClassifyVideoTaskResult(&OpenAIForwardResult{
+		VideoStatus:       parsed.Status,
+		VideoErrorMessage: parsed.ErrorMessage,
+		VideoResponseJSON: body,
+	})
+	require.Equal(t, VideoTaskStatusFailed, outcome.Status)
+	require.Equal(t, "reference video is invalid", outcome.ErrorMessage)
+
+	task := &VideoTaskBilling{ID: 9, EstimatedCost: 1.25, TaskStatus: VideoTaskStatusProcessing, BillingStatus: VideoTaskBillingReserved}
+	repo := &fakeVideoTaskBillingRepo{task: task}
+	usage := &fakeVideoTaskUsageRecorder{}
+	svc := NewVideoTaskBillingService(repo, nil, usage)
+
+	require.NoError(t, svc.ApplyOutcome(context.Background(), task, outcome))
+	require.Equal(t, []string{"poll:failed", "release"}, repo.events)
+	require.Empty(t, usage.events)
+	require.Zero(t, repo.capturedCost)
+}
+
+func TestCangyuanCompletedMetadataVideoURLCapturesReservation(t *testing.T) {
+	body := []byte(`{
+		"id":"task-cangyuan-completed",
+		"status":"completed",
+		"metadata":{"video_url":"https://cdn.test/task-cangyuan-completed.mp4"}
+	}`)
+	parsed, err := ParseOpenAIVideoResult(body)
+	require.NoError(t, err)
+	outcome := ClassifyVideoTaskResult(&OpenAIForwardResult{
+		VideoStatus:            parsed.Status,
+		VideoArtifactAvailable: parsed.VideoURL != "",
+		VideoResponseJSON:      body,
+	})
+	require.Equal(t, VideoTaskStatusCompleted, outcome.Status)
+
+	task := &VideoTaskBilling{ID: 9, EstimatedCost: 1.25, TaskStatus: VideoTaskStatusProcessing, BillingStatus: VideoTaskBillingReserved}
+	repo := &fakeVideoTaskBillingRepo{task: task}
+	usage := &fakeVideoTaskUsageRecorder{}
+	svc := NewVideoTaskBillingService(repo, nil, usage)
+
+	require.NoError(t, svc.ApplyOutcome(context.Background(), task, outcome))
+	require.Equal(t, []string{"poll:completed", "settling", "capture"}, repo.events)
+	require.Equal(t, []string{"usage"}, usage.events)
+	require.InDelta(t, 1.25, repo.capturedCost, 0.000001)
+}
+
 func TestVideoTaskSubmissionUncertainIncludesTransportAndServerFailures(t *testing.T) {
 	require.True(t, IsVideoTaskSubmissionUncertain(&UpstreamFailoverError{StatusCode: 429}))
 	require.True(t, IsVideoTaskSubmissionUncertain(&UpstreamFailoverError{StatusCode: 502}))

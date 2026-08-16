@@ -300,6 +300,18 @@ func TestParseOpenAIVideoResultReadsDocumentedDataArrayArtifact(t *testing.T) {
 	require.Equal(t, "https://api.test/v1/videos/task-3/content", result.VideoURL)
 }
 
+func TestParseOpenAIVideoResultReadsMetadataVideoURL(t *testing.T) {
+	result, err := ParseOpenAIVideoResult([]byte(`{
+		"id":"task-4",
+		"status":"completed",
+		"metadata":{"video_url":"https://cdn.test/task-4.mp4"}
+	}`))
+
+	require.NoError(t, err)
+	require.Equal(t, "completed", result.Status)
+	require.Equal(t, "https://cdn.test/task-4.mp4", result.VideoURL)
+}
+
 func TestNormalizeOpenAIVideoStatus(t *testing.T) {
 	tests := map[string]string{
 		"pending":    "queued",

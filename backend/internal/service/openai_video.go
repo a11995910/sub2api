@@ -381,8 +381,8 @@ func ParseOpenAIVideoResult(body []byte) (OpenAIVideoResult, error) {
 		Model:  firstGJSONVideoString(body, "model", "data.model"),
 		Status: NormalizeOpenAIVideoStatus(firstGJSONVideoString(body, "status", "data.status", "state", "data.state")),
 		VideoURL: firstValidOpenAIVideoURL(body,
-			"metadata.url", "video_url", "result_url", "url", "video_urls.0", "videos.0.url",
-			"data.metadata.url", "data.video_url", "data.result_url", "data.url", "data.0.url", "data.video_urls.0", "data.videos.0.url"),
+			"metadata.video_url", "metadata.url", "video_url", "result_url", "url", "video_urls.0", "videos.0.url",
+			"data.metadata.video_url", "data.metadata.url", "data.video_url", "data.result_url", "data.url", "data.0.url", "data.video_urls.0", "data.videos.0.url"),
 		ErrorMessage: firstGJSONVideoString(body, "error.message", "data.error.message", "message", "detail"),
 	}
 	progressText := firstGJSONVideoString(body, "progress", "data.progress")
