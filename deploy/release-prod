@@ -25,6 +25,8 @@ prod_override=/opt/sub2api/compose/prod/docker-compose.yml
 scripts_dir=/opt/sub2api/scripts
 backup_dir=/opt/sub2api/backups
 staging_result=/opt/sub2api/state/staging-result.json
+backup_result=/opt/sub2api/state/prod-backup-result.json
+release_gates="$repo_dir/deploy/release-gates"
 
 [[ "$target_commit" =~ ^[0-9a-f]{40}$ ]]
 [[ "$target_image" =~ ^sub2api:prod-[0-9a-f]{12}$ ]]
@@ -34,6 +36,8 @@ test -f "$env_file"
 test -f "$base_compose"
 test -f "$prod_override"
 test -f "$staging_result"
+test -f "$backup_result"
+test -x "$release_gates"
 test "$(grep -c '^SUB2API_IMAGE=' "$env_file")" -eq 1
 test -x "$scripts_dir/update-sub2api-image"
 test -x "$scripts_dir/assert-no-account-stats-video-pricing"
@@ -62,6 +66,9 @@ if result.get("commit") != target_commit:
 if str(result.get("run_id")) != staging_run_id:
     raise SystemExit("staging result run id mismatch")
 PY
+
+"$release_gates" validate-backup-receipt \
+  "$backup_result" "$target_commit" "$staging_run_id"
 
 short_commit="$(git rev-parse --short=12 HEAD)"
 commit_date="$(git show -s --format=%cI HEAD)"
@@ -130,10 +137,13 @@ ensure_target_image
 
 current_container_id="$(compose_prod ps -q sub2api)"
 test -n "$current_container_id"
-previous_original_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
+previous_container_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
+previous_original_image="$(sed -n 's/^SUB2API_IMAGE=//p' "$env_file")"
 previous_image_id="$(docker inspect --format '{{.Image}}' "$current_container_id")"
+test -n "$previous_container_image"
 test -n "$previous_original_image"
 test -n "$previous_image_id"
+test "$(docker image inspect --format '{{.Id}}' "$previous_original_image")" = "$previous_image_id"
 previous_version_output="$(docker exec "$current_container_id" /app/sub2api --version)"
 test "$(printf '%s\n' "$previous_version_output" | wc -l)" -eq 1
 previous_version="$(parse_version "$previous_version_output")"
@@ -163,7 +173,6 @@ timestamp="$(date +%Y%m%d-%H%M%S)"
 previous_image="sub2api:rollback-${timestamp}-${previous_commit_short}"
 release_record="$backup_dir/prod-release-before-${timestamp}.txt"
 pricing_backup="$backup_dir/prod-pricing-before-${timestamp}.dump"
-database_backup="$backup_dir/prod-database-before-${timestamp}.dump"
 fast_policy_backup="$backup_dir/prod-fast-policy-before-${timestamp}.txt"
 umask 077
 mkdir -p "$backup_dir"
@@ -172,14 +181,26 @@ rollback_tag_created=0
 release_started=0
 restore_previous_release() {
   local rc="$1"
+  local recovery_failed=0 rollback_container_id=""
+  trap - ERR
   set +e
   rm -f -- "$release_record"
   if [[ "$release_started" -eq 1 ]]; then
-    "$scripts_dir/update-sub2api-image" "$env_file" "$previous_image" prod-abort
-    compose_prod up -d --no-deps sub2api
+    test "$(docker image inspect --format '{{.Id}}' "$previous_original_image" 2>/dev/null)" = "$previous_image_id" || recovery_failed=1
+    "$scripts_dir/update-sub2api-image" "$env_file" "$previous_original_image" prod-abort || recovery_failed=1
+    compose_prod up -d --no-deps sub2api || recovery_failed=1
+    rollback_container_id="$(compose_prod ps -q sub2api)"
+    test -n "$rollback_container_id" || recovery_failed=1
+    if [[ -n "$rollback_container_id" ]]; then
+      "$release_gates" wait-container-healthy "$rollback_container_id" 90 2 || recovery_failed=1
+      "$release_gates" wait-http http://127.0.0.1:8080/health 10 1 || recovery_failed=1
+    fi
   fi
-  if [[ "$rollback_tag_created" -eq 1 ]]; then
+  if [[ "$rollback_tag_created" -eq 1 && "$recovery_failed" -eq 0 ]]; then
     docker image rm "$previous_image" >/dev/null 2>&1 || true
+  fi
+  if [[ "$recovery_failed" -ne 0 ]]; then
+    printf '%s\n' '发布失败，且恢复原正式镜像未完全成功；已保留回滚镜像和现场。' >&2
   fi
   exit "$rc"
 }
@@ -189,12 +210,6 @@ trap 'restore_previous_release "$?"' ERR
 if [[ "$previous_supports_explicit_video_pricing" -eq 0 ]]; then
   "$scripts_dir/assert-no-explicit-video-pricing" "$env_file"
 fi
-
-compose_prod exec -T postgres sh -c \
-  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
-  </dev/null > "$database_backup"
-test -s "$database_backup"
-chmod 0600 "$database_backup"
 
 compose_prod exec -T postgres sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --data-only --table=channel_model_pricing --table=channel_pricing_intervals --table=channel_account_stats_model_pricing --table=channel_account_stats_pricing_intervals' \
@@ -210,6 +225,7 @@ test "$(docker image inspect --format '{{.Id}}' "$previous_image")" = "$previous
 {
   printf 'previous_image=%s\n' "$previous_image"
   printf 'previous_original_image=%s\n' "$previous_original_image"
+  printf 'previous_container_image=%s\n' "$previous_container_image"
   printf 'previous_image_id=%s\n' "$previous_image_id"
   printf 'previous_version=%s\n' "$previous_version"
   printf 'previous_commit=%s\n' "$previous_commit"
@@ -217,9 +233,9 @@ test "$(docker image inspect --format '{{.Id}}' "$previous_image")" = "$previous
   printf 'previous_supports_explicit_video_pricing=%s\n' "$previous_supports_explicit_video_pricing"
   printf 'target_commit=%s\n' "$target_commit"
   printf 'staging_run_id=%s\n' "$staging_run_id"
-  printf 'database_backup=%s\n' "$database_backup"
   printf 'pricing_backup=%s\n' "$pricing_backup"
   printf 'fast_policy_backup=%s\n' "$fast_policy_backup"
+  "$release_gates" print-backup-receipt "$backup_result"
 } > "$release_record"
 chmod 0600 "$release_record"
 
@@ -233,7 +249,11 @@ container_id="$(compose_prod ps -q sub2api)"
 test -n "$container_id"
 test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
 compose_prod ps
-curl --fail --silent --show-error --max-time 15 -o /dev/null http://127.0.0.1:8080/health
+if ! "$release_gates" wait-container-healthy "$container_id" 90 2; then
+  compose_prod logs --tail=200 sub2api >&2
+  false
+fi
+"$release_gates" wait-http http://127.0.0.1:8080/health 10 1
 compose_prod logs --tail=200 sub2api
 
 trap - ERR

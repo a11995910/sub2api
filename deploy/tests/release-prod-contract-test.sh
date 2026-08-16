@@ -28,6 +28,11 @@ assert_contains deploy/release-prod '"$scripts_dir/update-sub2api-image" "$env_f
 assert_not_contains deploy/release-prod 'database_backup='
 assert_not_contains deploy/release-prod "'pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Fc'"
 
+if [[ "${RELEASE_PROD_CONTRACT_SCOPE:-all}" == script ]]; then
+  printf 'release prod script contract test passed\n'
+  exit 0
+fi
+
 assert_contains .github/workflows/staging-verify.yml 'deploy/release-gates wait-container-healthy "$container_id" 90 2'
 assert_contains .github/workflows/staging-verify.yml 'deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1'
 assert_contains .github/workflows/prod-release.yml 'BACKUP_RESULT: /opt/sub2api/state/prod-backup-result.json'
