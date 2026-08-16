@@ -159,7 +159,7 @@ GitHub 公共 API 有匿名速率限制；要保持定时轮询、精确计算�
 
 ### CI 要求
 
-- Go 版本必须是 **1.26.5**：三个 workflow 都用 `go-version-file: backend/go.mod` 取版本，随后硬断言 `go version | grep -q 'go1.26.5'`。升级 Go 时要同时改 `backend/go.mod` 和 `backend-ci.yml`（两处）、`release.yml`、`security-scan.yml` 里的这句断言，否则 CI 会在版本校验步骤直接失败。
+- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.26.6**。CI workflow 使用 `go-version-file: backend/go.mod` 取版本并硬断言 `go version`；Docker、开发容器和文档中的固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。升级 Go 时必须同步更新这些固定值，否则 CI 会在版本校验或镜像构建前失败。
 - golangci-lint 使用 **v2.9**（以 `.github/workflows/backend-ci.yml` 为准）
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 

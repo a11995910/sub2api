@@ -50,6 +50,7 @@ jobs:
           /bin/bash deploy/tests/apple-container-test.sh
           /bin/sh deploy/tests/docker-compose-security-test.sh
           /bin/sh deploy/tests/docker-runtime-resources-test.sh
+          /bin/sh deploy/tests/go-toolchain-consistency-test.sh
           /bin/sh deploy/test-caddyfile-cache.sh
 
   verify:
@@ -94,7 +95,7 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       - name: Verify Go version
-        run: go version | grep -q 'go1.26.5'
+        run: go version | grep -q 'go1.26.6'
 
       - name: Regenerate Ent and Wire
         working-directory: backend

@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.dev
       args:
-        GOLANG_IMAGE: ${SUB2API_GO_IMAGE:-golang:1.26.5-alpine}
+        GOLANG_IMAGE: ${SUB2API_GO_IMAGE:-golang:1.26.6-alpine}
     init: true
     restart: unless-stopped
     security_opt:
