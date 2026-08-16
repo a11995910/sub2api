@@ -202,7 +202,10 @@ func ParseOpenAIVideoCreateBody(body []byte) (map[string]any, OpenAIVideoRequest
 		request.GenerateAudio = audio
 	}
 
-	request.ImageURLs = collectOpenAIVideoImageURLs(payload)
+	request.ImageURLs, err = collectOpenAIVideoImageURLs(payload)
+	if err != nil {
+		return nil, OpenAIVideoRequest{}, err
+	}
 	request.VideoURLs, err = collectOpenAIVideoStringArray(payload, "reference_videos")
 	if err != nil {
 		return nil, OpenAIVideoRequest{}, err
@@ -231,6 +234,8 @@ func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, Op
 	payload["resolution"] = request.Resolution
 	payload["seconds"] = strconv.Itoa(request.DurationSeconds)
 	delete(payload, "duration")
+	delete(payload, "image_url")
+	delete(payload, "images")
 	delete(payload, "image")
 	delete(payload, "reference_images")
 	delete(payload, "reference_image_urls")
@@ -292,7 +297,7 @@ func PrepareOpenAIVideoCreateBodyForAccount(account *Account, body []byte) (Open
 	return prepared.Request, nil
 }
 
-func collectOpenAIVideoImageURLs(payload map[string]any) []string {
+func collectOpenAIVideoImageURLs(payload map[string]any) ([]string, error) {
 	urls := make([]string, 0, 4)
 	seen := make(map[string]struct{})
 	appendURL := func(raw string) {
@@ -306,28 +311,62 @@ func collectOpenAIVideoImageURLs(payload map[string]any) []string {
 		seen[raw] = struct{}{}
 		urls = append(urls, raw)
 	}
-	appendValue := func(value any) {
+	imageURL := func(value any) (string, bool) {
 		switch typed := value.(type) {
 		case string:
-			appendURL(typed)
+			return typed, true
 		case map[string]any:
-			appendURL(stringValue(typed["url"]))
+			raw, ok := typed["url"].(string)
+			return raw, ok
+		default:
+			return "", false
 		}
 	}
-	appendArray := func(value any) {
-		items, _ := value.([]any)
-		for _, item := range items {
-			appendValue(item)
+	appendArray := func(field string) error {
+		value, exists := payload[field]
+		if !exists || value == nil {
+			return nil
 		}
+		items, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("%s must be an array", field)
+		}
+		for _, item := range items {
+			raw, valid := imageURL(item)
+			if !valid {
+				return fmt.Errorf("%s must contain strings or url objects", field)
+			}
+			appendURL(raw)
+		}
+		return nil
+	}
+	appendSingle := func(field string) error {
+		value, exists := payload[field]
+		if !exists || value == nil {
+			return nil
+		}
+		raw, valid := imageURL(value)
+		if !valid {
+			return fmt.Errorf("%s must be a string or url object", field)
+		}
+		appendURL(raw)
+		return nil
 	}
 
-	appendArray(payload["images"])
-	appendArray(payload["image_urls"])
-	appendArray(payload["reference_image_urls"])
-	appendValue(payload["image_url"])
-	appendValue(payload["image"])
-	appendArray(payload["reference_images"])
-	return urls
+	for _, field := range []string{"images", "image_urls", "reference_image_urls"} {
+		if err := appendArray(field); err != nil {
+			return nil, err
+		}
+	}
+	for _, field := range []string{"image_url", "image"} {
+		if err := appendSingle(field); err != nil {
+			return nil, err
+		}
+	}
+	if err := appendArray("reference_images"); err != nil {
+		return nil, err
+	}
+	return urls, nil
 }
 
 func collectOpenAIVideoStringArray(payload map[string]any, field string) ([]string, error) {

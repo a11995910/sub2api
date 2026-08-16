@@ -36,8 +36,10 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 		addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err == nil {
-			for _, imageURL := range collectOpenAIVideoImageURLs(payload) {
-				addModerationImage(&images, imageURL)
+			if imageURLs, collectErr := collectOpenAIVideoImageURLs(payload); collectErr == nil {
+				for _, imageURL := range imageURLs {
+					addModerationImage(&images, imageURL)
+				}
 			}
 		}
 	default:

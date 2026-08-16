@@ -106,6 +106,8 @@ func TestNormalizeOpenAIVideoCreateBodyMergesCompatibleImageFields(t *testing.T)
 		"model":"future-motion-pro",
 		"prompt":"角色转身",
 		"seconds":"6",
+		"image_url":"https://cdn.test/image-url.png",
+		"images":["https://cdn.test/images.png"],
 		"image":{"url":"https://cdn.test/start.png"},
 		"image_urls":["https://cdn.test/a.png"],
 		"reference_image_urls":["https://cdn.test/b.png"],
@@ -114,12 +116,16 @@ func TestNormalizeOpenAIVideoCreateBodyMergesCompatibleImageFields(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, 6, req.DurationSeconds)
 	require.Equal(t, []string{
+		"https://cdn.test/images.png",
 		"https://cdn.test/a.png",
 		"https://cdn.test/b.png",
+		"https://cdn.test/image-url.png",
 		"https://cdn.test/start.png",
 		"https://cdn.test/c.png",
 	}, req.ImageURLs)
-	require.Equal(t, int64(4), gjson.GetBytes(body, "image_urls.#").Int())
+	require.Equal(t, int64(6), gjson.GetBytes(body, "image_urls.#").Int())
+	require.False(t, gjson.GetBytes(body, "image_url").Exists())
+	require.False(t, gjson.GetBytes(body, "images").Exists())
 }
 
 func TestNormalizeOpenAIVideoCreateBodyValidatesRequiredFields(t *testing.T) {
@@ -194,6 +200,23 @@ func TestParseOpenAIVideoCreateBodyCollectsAllImageAliases(t *testing.T) {
 		"https://cdn.test/image-object.png",
 		"https://cdn.test/reference-object.png",
 	}, req.ImageURLs)
+}
+
+func TestParseOpenAIVideoCreateBodyRejectsInvalidImageAliases(t *testing.T) {
+	tests := []struct {
+		name, body, message string
+	}{
+		{"reference_image_urls scalar", `{"model":"x","prompt":"x","reference_image_urls":"https://cdn.test/a.png"}`, "reference_image_urls must be an array"},
+		{"images invalid item", `{"model":"x","prompt":"x","images":[123]}`, "images must contain strings or url objects"},
+		{"reference_images invalid url", `{"model":"x","prompt":"x","reference_images":[{"url":123}]}`, "reference_images must contain strings or url objects"},
+		{"image_url invalid type", `{"model":"x","prompt":"x","image_url":123}`, "image_url must be a string or url object"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := ParseOpenAIVideoCreateBody([]byte(tt.body))
+			require.ErrorContains(t, err, tt.message)
+		})
+	}
 }
 
 func TestParseOpenAIVideoCreateBodyRejectsConflictingAliases(t *testing.T) {
