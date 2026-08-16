@@ -184,7 +184,6 @@ restore_previous_release() {
   local recovery_failed=0 rollback_container_id=""
   trap - ERR
   set +e
-  rm -f -- "$release_record"
   if [[ "$release_started" -eq 1 ]]; then
     test "$(docker image inspect --format '{{.Id}}' "$previous_original_image" 2>/dev/null)" = "$previous_image_id" || recovery_failed=1
     "$scripts_dir/update-sub2api-image" "$env_file" "$previous_original_image" prod-abort || recovery_failed=1
@@ -196,10 +195,12 @@ restore_previous_release() {
       "$release_gates" wait-http http://127.0.0.1:8080/health 10 1 || recovery_failed=1
     fi
   fi
-  if [[ "$rollback_tag_created" -eq 1 && "$recovery_failed" -eq 0 ]]; then
-    docker image rm "$previous_image" >/dev/null 2>&1 || true
-  fi
-  if [[ "$recovery_failed" -ne 0 ]]; then
+  if [[ "$recovery_failed" -eq 0 ]]; then
+    rm -f -- "$release_record"
+    if [[ "$rollback_tag_created" -eq 1 ]]; then
+      docker image rm "$previous_image" >/dev/null 2>&1 || true
+    fi
+  else
     printf '%s\n' '发布失败，且恢复原正式镜像未完全成功；已保留回滚镜像和现场。' >&2
   fi
   exit "$rc"

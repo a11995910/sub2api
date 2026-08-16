@@ -25,6 +25,7 @@ assert_contains deploy/release-prod 'backup_result=/opt/sub2api/state/prod-backu
 assert_contains deploy/release-prod 'validate-backup-receipt'
 assert_contains deploy/release-prod 'wait-container-healthy'
 assert_contains deploy/release-prod '"$scripts_dir/update-sub2api-image" "$env_file" "$previous_original_image" prod-abort'
+assert_contains deploy/release-prod 'if [[ "$recovery_failed" -eq 0 ]]; then'
 assert_not_contains deploy/release-prod 'database_backup='
 assert_not_contains deploy/release-prod "'pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Fc'"
 
