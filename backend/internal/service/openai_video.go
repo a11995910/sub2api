@@ -266,15 +266,30 @@ func BuildUnifiedOpenAIVideoCreateBody(payload map[string]any, request OpenAIVid
 }
 
 func ValidateOpenAIVideoCreateBodyForAccount(account *Account, body []byte) error {
-	if ResolveOpenAIVideoRequestProfile(account) != OpenAIVideoRequestProfileUnifiedJSON {
-		return nil
-	}
+	_, err := PrepareOpenAIVideoCreateBodyForAccount(account, body)
+	return err
+}
+
+func PrepareOpenAIVideoCreateBodyForAccount(account *Account, body []byte) (OpenAIVideoRequest, error) {
 	payload, request, err := ParseOpenAIVideoCreateBody(body)
 	if err != nil {
-		return err
+		return OpenAIVideoRequest{}, err
 	}
-	_, err = BuildUnifiedOpenAIVideoCreateBody(payload, request, request.Model)
-	return err
+	if ResolveOpenAIVideoRequestProfile(account) != OpenAIVideoRequestProfileUnifiedJSON {
+		if request.DurationSeconds > 15 {
+			return OpenAIVideoRequest{}, fmt.Errorf("duration must not exceed 15 seconds")
+		}
+		if request.Resolution == "" {
+			request.Resolution = VideoBillingResolution720P
+		}
+		return request, nil
+	}
+	upstreamModel := resolveOpenAIForwardModel(account, request.Model, "")
+	prepared, err := PrepareUnifiedOpenAIVideoCreateBody(payload, request, upstreamModel)
+	if err != nil {
+		return OpenAIVideoRequest{}, err
+	}
+	return prepared.Request, nil
 }
 
 func collectOpenAIVideoImageURLs(payload map[string]any) []string {

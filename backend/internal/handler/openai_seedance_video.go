@@ -65,9 +65,16 @@ func (h *OpenAIGatewayHandler) validateOpenAIVideoRequestForAccount(c *gin.Conte
 	if !service.HasOpenAIVideoContext(c) {
 		return true
 	}
-	if err := service.ValidateOpenAIVideoCreateBodyForAccount(account, body); err != nil {
+	prepared, err := service.PrepareOpenAIVideoCreateBodyForAccount(account, body)
+	if err != nil {
 		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", err.Error(), streamStarted)
 		return false
+	}
+	if meta, ok := service.OpenAIVideoContextFromGin(c); ok {
+		meta.Resolution = prepared.Resolution
+		meta.DurationSeconds = prepared.DurationSeconds
+		meta.ReferenceImageCount = len(prepared.ImageURLs)
+		service.SetOpenAIVideoContext(c, meta)
 	}
 	return true
 }

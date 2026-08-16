@@ -160,3 +160,59 @@ func TestValidateOpenAIVideoRequestForAccountKeepsLegacyExtensions(t *testing.T)
 	require.True(t, valid)
 	require.Zero(t, recorder.Body.Len())
 }
+
+func TestValidateOpenAIVideoRequestForAccountUpdatesBillingContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{
+		Model: "public-video", Resolution: "", DurationSeconds: 30,
+	})
+	account := &service.Account{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://ai.cangyuansuanli.cn/v1",
+			"model_mapping": map[string]any{
+				"public-video": "sd4-seedance-2.5-480p",
+			},
+		},
+	}
+	h := &OpenAIGatewayHandler{}
+
+	valid := h.validateOpenAIVideoRequestForAccount(c, account, []byte(`{
+		"model":"public-video","prompt":"x","duration":30
+	}`), false)
+
+	require.True(t, valid)
+	meta, ok := service.OpenAIVideoContextFromGin(c)
+	require.True(t, ok)
+	require.Equal(t, "480p", meta.Resolution)
+	require.Equal(t, 30, meta.DurationSeconds)
+	require.Zero(t, recorder.Body.Len())
+}
+
+func TestValidateOpenAIVideoRequestForAccountKeepsLegacyDurationLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "video-model"})
+	account := &service.Account{
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://video.example.com/v1",
+		},
+	}
+	h := &OpenAIGatewayHandler{}
+
+	valid := h.validateOpenAIVideoRequestForAccount(c, account, []byte(`{
+		"model":"video-model","prompt":"x","duration":16
+	}`), false)
+
+	require.False(t, valid)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "duration must not exceed 15 seconds")
+}
