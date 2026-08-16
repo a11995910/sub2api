@@ -354,7 +354,7 @@ func (r *videoTaskBillingRepository) ReleaseReviewedFailure(ctx context.Context,
 		return nil, err
 	}
 	if task.BillingStatus != service.VideoTaskBillingManualReview &&
-		!(task.BillingStatus == service.VideoTaskBillingReserved && task.TaskStatus == service.VideoTaskStatusUnknown) {
+		(task.BillingStatus != service.VideoTaskBillingReserved || task.TaskStatus != service.VideoTaskStatusUnknown) {
 		return nil, service.ErrVideoTaskBillingInvalidState
 	}
 	if task.EstimatedCost > 0 {

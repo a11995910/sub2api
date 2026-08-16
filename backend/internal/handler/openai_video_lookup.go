@@ -48,7 +48,7 @@ func (h *OpenAIGatewayHandler) openAIVideoLookup(c *gin.Context, content bool) {
 	}
 	var result *service.OpenAIForwardResult
 	if content {
-		result, err = h.gatewayService.ForwardOpenAIVideoContent(c.Request.Context(), c, account, taskID)
+		_, err = h.gatewayService.ForwardOpenAIVideoContent(c.Request.Context(), c, account, taskID)
 	} else {
 		result, err = h.gatewayService.ForwardOpenAIVideoStatus(c.Request.Context(), c, account, taskID)
 		if billingTask != nil {
