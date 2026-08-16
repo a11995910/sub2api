@@ -9,6 +9,7 @@ import {
 } from '@/constants/channel'
 import {
   isFixedResolutionVideoModel,
+  normalizeVideoDurationForModel,
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
   videoDurationRangeForModel,
@@ -321,6 +322,18 @@ describe('videoDurationRangeForModel', () => {
     ['future-motion-pro', { min: 1, max: 15 }],
   ] as const)('%s 返回对应时长范围', (modelName, expected) => {
     expect(videoDurationRangeForModel(modelName)).toEqual(expected)
+  })
+
+  it.each([
+    [4, 5],
+    [5, 5],
+    [6, 5],
+    [8, 5],
+    [12, 10],
+    [15, 15],
+    [16, 15],
+  ])('sd8 时长 %s 归一化为 %s', (input, expected) => {
+    expect(normalizeVideoDurationForModel('sd8-seedance-2.0', input)).toBe(expected)
   })
 })
 

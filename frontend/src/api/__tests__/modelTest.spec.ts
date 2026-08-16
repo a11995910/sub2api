@@ -192,6 +192,30 @@ describe('modelTest api', () => {
     })
   })
 
+  it('sd8 Seedance 使用文档允许的离散时长', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"task_id":"video-sd8","status":"queued"}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await testVideoGeneration({
+      apiKey: 'sk-test',
+      model: 'sd8-seedance-2.0',
+      prompt: '短镜头',
+      resolution: '720p',
+      duration: 8,
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      model: 'sd8-seedance-2.0',
+      prompt: '短镜头',
+      duration: 5,
+    })
+  })
+
   it('视频内容通过带 API Key 的受限网关接口下载', async () => {
     const videoBlob = new Blob(['video-content'], { type: 'video/mp4' })
     const fetchMock = vi.fn().mockResolvedValue({

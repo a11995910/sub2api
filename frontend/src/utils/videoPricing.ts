@@ -148,6 +148,15 @@ export function videoDurationRangeForModel(modelName: string): VideoDurationRang
   return { min: 1, max: 15 }
 }
 
+export function normalizeVideoDurationForModel(modelName: string, value: number): number {
+  const range = videoDurationRangeForModel(modelName)
+  const duration = Math.max(range.min, Math.min(range.max, Math.floor(Number(value) || range.min)))
+  if (!modelName.trim().toLowerCase().startsWith('sd8-seedance-2.0')) return duration
+  if (duration >= 15) return 15
+  if (duration >= 10) return 10
+  return 5
+}
+
 /**
  * 按运行时计费顺序解析视频报价，并保留历史图片/按次渠道价格的按次语义。
  * `null` 表示价格缺失；数值 `0` 是有效的显式零价，不能继续回退。

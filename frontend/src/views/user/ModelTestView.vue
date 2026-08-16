@@ -431,6 +431,7 @@ import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { filterGroupsByModelAvailability, filterModelsByIntent, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   isFixedResolutionVideoModel,
+  normalizeVideoDurationForModel,
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
   videoDurationRangeForModel,
@@ -827,7 +828,7 @@ watch(availableVideoResolutions, (resolutions) => {
 })
 
 watch(videoDurationRange, (range) => {
-  videoDuration.value = Math.max(range.min, Math.min(range.max, Math.floor(Number(videoDuration.value) || 8)))
+  videoDuration.value = normalizeVideoDurationForModel(selectedModel.value?.name || '', Number(videoDuration.value) || range.min)
 })
 
 watch(
@@ -1398,7 +1399,7 @@ function normalizedMaxTokens(): number {
 function normalizedVideoDuration(): number {
   const parsed = Number(videoDuration.value)
   if (!Number.isFinite(parsed)) return 8
-  return Math.max(videoDurationRange.value.min, Math.min(videoDurationRange.value.max, Math.floor(parsed)))
+  return normalizeVideoDurationForModel(selectedModel.value?.name || '', parsed)
 }
 
 function fileToDataURL(file: File): Promise<string> {
