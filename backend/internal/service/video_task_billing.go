@@ -144,11 +144,7 @@ func ClassifyVideoTaskResult(result *OpenAIForwardResult) VideoTaskOutcome {
 			outcome.ErrorMessage = "video task completed without a verifiable artifact"
 		}
 	case "failed":
-		if result.VideoArtifactAvailable {
-			outcome.Status = VideoTaskStatusCompleted
-		} else {
-			outcome.Status = VideoTaskStatusFailed
-		}
+		outcome.Status = VideoTaskStatusFailed
 	default:
 		outcome.Status = VideoTaskStatusUnknown
 		if outcome.ErrorMessage == "" {

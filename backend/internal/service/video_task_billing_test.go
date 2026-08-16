@@ -179,14 +179,36 @@ func TestClassifyVideoTaskResultRequiresArtifactBeforeCompletion(t *testing.T) {
 	require.Contains(t, outcome.ErrorMessage, "artifact")
 }
 
-func TestClassifyVideoTaskResultDoesNotReleaseFailedTaskWithArtifact(t *testing.T) {
+func TestClassifyVideoTaskResultFailedStatusWinsOverArtifact(t *testing.T) {
 	outcome := ClassifyVideoTaskResult(&OpenAIForwardResult{
 		VideoStatus:            "failed",
 		VideoArtifactAvailable: true,
+		VideoErrorMessage:      "generation failed",
 		VideoResponseJSON:      json.RawMessage(`{"status":"failed","url":"https://example.com/video.mp4"}`),
 	})
 
-	require.Equal(t, VideoTaskStatusCompleted, outcome.Status)
+	require.Equal(t, VideoTaskStatusFailed, outcome.Status)
+	require.Equal(t, "generation failed", outcome.ErrorMessage)
+}
+
+func TestVideoTaskBillingServiceReleasesFailedTaskWithArtifact(t *testing.T) {
+	task := &VideoTaskBilling{
+		ID: 9, EstimatedCost: 1.25,
+		TaskStatus: VideoTaskStatusProcessing, BillingStatus: VideoTaskBillingReserved,
+	}
+	repo := &fakeVideoTaskBillingRepo{task: task}
+	usage := &fakeVideoTaskUsageRecorder{}
+	svc := NewVideoTaskBillingService(repo, nil, usage)
+	outcome := ClassifyVideoTaskResult(&OpenAIForwardResult{
+		VideoStatus:            "failed",
+		VideoArtifactAvailable: true,
+		VideoErrorMessage:      "generation failed",
+	})
+
+	require.NoError(t, svc.ApplyOutcome(context.Background(), task, outcome))
+	require.Equal(t, []string{"poll:failed", "release"}, repo.events)
+	require.Empty(t, usage.events)
+	require.Zero(t, repo.capturedCost)
 }
 
 func TestCangyuanFailedVideoResponseReleasesReservation(t *testing.T) {
