@@ -127,10 +127,12 @@ jobs:
 
       - name: Deploy and verify staging
         shell: bash
+        working-directory: /opt/sub2api/repo
         env:
           TARGET_IMAGE: ${{ steps.image.outputs.target_image }}
         run: |
           set -Eeuo pipefail
+          test -x deploy/release-gates
           /opt/sub2api/scripts/update-sub2api-image "$ENV_FILE" "$TARGET_IMAGE" staging
 
           compose_staging() {
@@ -148,7 +150,8 @@ jobs:
           test -n "$container_id"
           test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$TARGET_IMAGE"
           compose_staging ps
-          curl --fail --silent --show-error --max-time 15 -o /dev/null http://127.0.0.1:18080/health
+          deploy/release-gates wait-container-healthy "$container_id" 90 2
+          deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1
 
       - name: Record staging verification result
         if: always()

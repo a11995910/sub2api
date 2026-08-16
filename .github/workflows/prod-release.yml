@@ -28,6 +28,7 @@ jobs:
       REPO_DIR: /opt/sub2api/repo
       ENV_FILE: /opt/sub2api/env/prod/.env
       STAGING_RESULT: /opt/sub2api/state/staging-result.json
+      BACKUP_RESULT: /opt/sub2api/state/prod-backup-result.json
       TARGET_COMMIT: ${{ inputs.commit }}
       STAGING_RUN_ID: ${{ inputs.staging_run_id }}
     steps:
@@ -38,7 +39,9 @@ jobs:
           test -d "$REPO_DIR"
           test -f "$ENV_FILE"
           test -f "$STAGING_RESULT"
+          test -f "$BACKUP_RESULT"
           test -x /opt/sub2api/scripts/release-prod
+          test -x "$REPO_DIR/deploy/release-gates"
           [[ "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
 
       - name: Verify exact origin/main commit
