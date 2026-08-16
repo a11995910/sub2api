@@ -63,6 +63,7 @@
     staging/
     prod/
   backups/
+  state/
   scripts/
 ```
 
@@ -74,6 +75,10 @@
 - 每次构建必须使用 `deploy/Dockerfile` 在正式 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
 - Docker 构建必须传入可追溯版本信息，至少包含 `COMMIT=$(git rev-parse --short=12 HEAD)` 和 `DATE=$(git show -s --format=%cI HEAD)`。
 - 仓库 `deploy/release-prod` 是 `/opt/sub2api/scripts/release-prod` 的唯一受版本控制来源；安装或升级时必须从已推送的 `origin/main` 复制并设置为 `root:root`、`0700`，不得在 VPS 上直接手写简化发布脚本。
+- 异机备份机只承担 prod 数据库归档，归档目录为 `/opt/sub2api-prod-backup/archives`；正式 VPS 不保存 prod 全库 dump，`deploy/release-prod` 也不得在正式 VPS 创建全库 dump。
+- prod 发布前必须存在 `/opt/sub2api/state/prod-backup-result.json`，并保持 `root:root`、`0600`。凭证必须由已完成 SHA-256、zstd 和 `pg_restore --list` 校验的异机归档生成，绑定目标完整 commit 与 staging run ID，且校验时不得超过两小时。
+- staging 与 prod 切换应用容器后必须先使用 `deploy/release-gates wait-container-healthy` 等待 Docker health 为 `healthy`，再使用 `wait-http` 检查宿主机健康接口；禁止在 `compose up -d` 后立即以单次 `curl` 判定失败。
+- prod 发布失败时必须把 `.env` 恢复为发布前记录的原正式镜像 tag，并确认恢复后的容器与 HTTP 均健康；临时 `sub2api:rollback-*` tag 只能在恢复成功后删除，不得让 `.env` 指向已删除的临时 tag。
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
 - `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在正式 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
 - 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。
@@ -121,14 +126,19 @@ docker compose -p sub2api-staging \
   --env-file /opt/sub2api/env/staging/.env \
   -f /opt/sub2api/repo/deploy/docker-compose.yml \
   -f /opt/sub2api/compose/staging/docker-compose.yml ps
-curl -I http://127.0.0.1:18080/health
+container_id="$(docker compose -p sub2api-staging \
+  --env-file /opt/sub2api/env/staging/.env \
+  -f /opt/sub2api/repo/deploy/docker-compose.yml \
+  -f /opt/sub2api/compose/staging/docker-compose.yml ps -q sub2api)"
+/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 90 2
+/opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1
 docker compose -p sub2api-staging \
   --env-file /opt/sub2api/env/staging/.env \
   -f /opt/sub2api/repo/deploy/docker-compose.yml \
   -f /opt/sub2api/compose/staging/docker-compose.yml logs --tail=200 sub2api
 ```
 
-prod 发布必须在用户明确确认后执行，并使用同一 commit 构建 prod 镜像或复用已验证镜像：
+prod 发布必须在用户明确确认后执行，并使用同一 commit、staging run 和两小时内的异机备份凭证。正式 VPS 只调用受版本控制的 root-only 发布脚本，不复制其内部切换逻辑：
 
 ```bash
 cd /opt/sub2api/repo
@@ -139,18 +149,16 @@ git pull --ff-only origin main
 expected_commit='填写已确认上线的 main commit'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 commit="$(git rev-parse --short=12 HEAD)"
-docker tag "sub2api:staging-$commit" "sub2api:prod-$commit" 2>/dev/null || \
-  docker buildx build -f deploy/Dockerfile -t "sub2api:prod-$commit" --load .
-docker run --rm "sub2api:prod-$commit" --version
-docker compose -p sub2api-prod \
-  --env-file /opt/sub2api/env/prod/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/prod/docker-compose.yml up -d
-docker compose -p sub2api-prod \
-  --env-file /opt/sub2api/env/prod/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/prod/docker-compose.yml ps
-curl -I http://127.0.0.1:8080/health
+staging_run_id='填写对应 staging 验证 run ID'
+test "$(stat -c '%U:%G %a' /opt/sub2api/state/prod-backup-result.json)" = 'root:root 600'
+deploy/release-gates validate-backup-receipt \
+  /opt/sub2api/state/prod-backup-result.json "$expected_commit" "$staging_run_id"
+install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release-prod
+/opt/sub2api/scripts/release-prod \
+  /opt/sub2api/env/prod/.env \
+  "sub2api:prod-$commit" \
+  "$expected_commit" \
+  "$staging_run_id"
 ```
 
 正式 VPS `sub2api` 验证通过后，还必须检查 Nginx/Caddy 反代、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/models`、容器日志和数据库连接。
