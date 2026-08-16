@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -259,42 +258,11 @@ var openAIVideoUnifiedAcceptedFields = map[string]struct{}{
 }
 
 func BuildUnifiedOpenAIVideoCreateBody(payload map[string]any, request OpenAIVideoRequest, mappedModel string) ([]byte, error) {
-	unknown := make([]string, 0)
-	for field := range payload {
-		if _, ok := openAIVideoUnifiedAcceptedFields[field]; !ok {
-			unknown = append(unknown, field)
-		}
-	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
-		return nil, fmt.Errorf("unsupported video field %q", unknown[0])
-	}
-
-	upstreamModel := strings.TrimSpace(mappedModel)
-	if upstreamModel == "" {
-		upstreamModel = request.Model
-	}
-	body := map[string]any{
-		"model":    upstreamModel,
-		"prompt":   request.Prompt,
-		"duration": request.DurationSeconds,
-	}
-	resolution := request.Resolution
-	if resolution == "" {
-		resolution = VideoBillingResolution720P
-	}
-	body["resolution"] = resolution
-	if request.AspectRatio != "" {
-		body["aspect_ratio"] = request.AspectRatio
-	}
-	if len(request.ImageURLs) > 0 {
-		body["reference_image_urls"] = request.ImageURLs
-	}
-	encoded, err := json.Marshal(body)
+	prepared, err := PrepareUnifiedOpenAIVideoCreateBody(payload, request, mappedModel)
 	if err != nil {
-		return nil, fmt.Errorf("encode video request: %w", err)
+		return nil, err
 	}
-	return encoded, nil
+	return prepared.Body, nil
 }
 
 func ValidateOpenAIVideoCreateBodyForAccount(account *Account, body []byte) error {

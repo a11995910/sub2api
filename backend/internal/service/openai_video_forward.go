@@ -55,9 +55,14 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoCreate(
 	requestProfile := ResolveOpenAIVideoRequestProfile(account)
 	var upstreamBody []byte
 	if requestProfile == OpenAIVideoRequestProfileUnifiedJSON {
-		upstreamBody, err = BuildUnifiedOpenAIVideoCreateBody(payload, requestInfo, upstreamModel)
+		prepared, prepareErr := PrepareUnifiedOpenAIVideoCreateBody(payload, requestInfo, upstreamModel)
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		upstreamBody = prepared.Body
+		requestInfo = prepared.Request
 	} else {
-		upstreamBody, _, err = NormalizeOpenAIVideoCreateBody(body, upstreamModel)
+		upstreamBody, requestInfo, err = NormalizeOpenAIVideoCreateBody(body, upstreamModel)
 	}
 	if err != nil {
 		return nil, err
