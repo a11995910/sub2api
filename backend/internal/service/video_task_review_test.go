@@ -79,8 +79,25 @@ func TestVideoTaskReviewRecheckRejectsProcessingReservedTask(t *testing.T) {
 	require.ErrorIs(t, err, ErrVideoTaskBillingInvalidState)
 }
 
+func TestVideoTaskReviewRecheckFailedStatusDoesNotClaimArtifactAbsence(t *testing.T) {
+	task := &VideoTaskBilling{ID: 9, UserID: 7, AccountID: 17, Platform: PlatformOpenAI, UpstreamTaskID: "task-1", TaskStatus: VideoTaskStatusUnknown, BillingStatus: VideoTaskBillingReserved}
+	repo := &fakeVideoTaskReviewRepo{fakeVideoTaskBillingRepo: fakeVideoTaskBillingRepo{task: task}}
+	billing := NewVideoTaskBillingService(repo, nil, &fakeVideoTaskUsageRecorder{})
+	gateway := &fakeVideoTaskQueryGateway{result: &OpenAIForwardResult{
+		VideoStatus:            "failed",
+		VideoArtifactAvailable: true,
+	}}
+	svc := NewVideoTaskReviewService(repo, billing, gateway, &fakeVideoTaskAccountRepo{account: &Account{ID: 17, Platform: PlatformOpenAI}})
+
+	err := svc.Recheck(context.Background(), 9)
+
+	require.NoError(t, err)
+	require.Equal(t, "人工确认失败: 重新核对确认上游明确失败", repo.releaseReason)
+}
+
 type fakeVideoTaskReviewRepo struct {
 	fakeVideoTaskBillingRepo
+	releaseReason string
 }
 
 func (r *fakeVideoTaskReviewRepo) ListReviewTasks(context.Context, VideoTaskReviewFilter) ([]VideoTaskReviewItem, int64, error) {
@@ -102,6 +119,7 @@ func (r *fakeVideoTaskReviewRepo) ReleaseReviewedFailure(_ context.Context, _ in
 		return nil, ErrVideoTaskBillingInvalidState
 	}
 	r.events = append(r.events, "review_release")
+	r.releaseReason = reason
 	r.task.BillingStatus = VideoTaskBillingReleased
 	return r.task, nil
 }

@@ -128,7 +128,7 @@ func (s *VideoTaskReviewService) Recheck(ctx context.Context, id int64) error {
 	case VideoTaskStatusCompleted:
 		return s.ConfirmSucceeded(ctx, id, "重新核对确认上游已生成可用产物")
 	case VideoTaskStatusFailed:
-		return s.ConfirmFailed(ctx, id, "重新核对确认上游明确失败且无产物")
+		return s.ConfirmFailed(ctx, id, "重新核对确认上游明确失败")
 	default:
 		return s.repo.UpdateReviewObservation(ctx, id, outcome)
 	}
