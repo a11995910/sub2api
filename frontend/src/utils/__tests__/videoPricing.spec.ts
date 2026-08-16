@@ -8,8 +8,10 @@ import {
   BILLING_MODE_VIDEO,
 } from '@/constants/channel'
 import {
+  isFixedResolutionVideoModel,
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
+  videoDurationRangeForModel,
   videoResolutionsForModel,
 } from '@/utils/videoPricing'
 
@@ -288,8 +290,37 @@ describe('videoResolutionsForModel', () => {
     'dreamina-seedance-2-0-fast-ep',
     'dreamina-seedance-2-0-mini-ep',
     'dreamina-seedance-2-0-mini-hc',
+    'seedance-2.0-fast',
+    'seedance-2.0-mini',
   ])('%s 仅提供 480p 和 720p', (modelName) => {
     expect(videoResolutionsForModel(modelName)).toEqual(['480p', '720p'])
+  })
+
+  it.each([
+    ['sd4-seedance-2.5-480p', ['480p']],
+    ['seedance-2.5-720p', ['720p']],
+    ['sd7-seedance-2.0-1080p', ['1080p']],
+    ['seedance-2.0', ['720p']],
+  ] as const)('%s 使用模型固定清晰度', (modelName, resolutions) => {
+    expect(videoResolutionsForModel(modelName)).toEqual(resolutions)
+    expect(isFixedResolutionVideoModel(modelName)).toBe(true)
+  })
+
+  it('sd4 Seedance 2.0 使用可选 480p 和 720p', () => {
+    expect(videoResolutionsForModel('sd4-seedance-2.0')).toEqual(['480p', '720p'])
+    expect(isFixedResolutionVideoModel('sd4-seedance-2.0')).toBe(false)
+  })
+})
+
+describe('videoDurationRangeForModel', () => {
+  it.each([
+    ['sd4-seedance-2.5-480p', { min: 4, max: 30 }],
+    ['seedance-2.5-720p', { min: 4, max: 29 }],
+    ['sd4-seedance-2.0-fast', { min: 4, max: 15 }],
+    ['sd8-seedance-2.0', { min: 5, max: 15 }],
+    ['future-motion-pro', { min: 1, max: 15 }],
+  ] as const)('%s 返回对应时长范围', (modelName, expected) => {
+    expect(videoDurationRangeForModel(modelName)).toEqual(expected)
   })
 })
 

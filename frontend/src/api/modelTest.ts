@@ -1,3 +1,5 @@
+import { isFixedResolutionVideoModel, videoDurationRangeForModel } from '@/utils/videoPricing'
+
 /**
  * 模型测试台直接调用 OpenAI 兼容网关。
  *
@@ -220,8 +222,11 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
     model: req.model,
     prompt: req.prompt,
   }
-  if (req.resolution?.trim()) payload.resolution = req.resolution.trim()
-  if (Number.isFinite(req.duration)) payload.duration = Math.max(1, Math.min(15, Math.floor(Number(req.duration))))
+  if (req.resolution?.trim() && !isFixedResolutionVideoModel(req.model)) payload.resolution = req.resolution.trim()
+  if (Number.isFinite(req.duration)) {
+    const range = videoDurationRangeForModel(req.model)
+    payload.duration = Math.max(range.min, Math.min(range.max, Math.floor(Number(req.duration))))
+  }
   const startingImageDataUrl = req.startingImageDataUrl?.trim() || req.imageDataUrl?.trim()
   if (startingImageDataUrl) payload.image = { url: startingImageDataUrl }
   const referenceImageDataUrls = (req.referenceImageDataUrls || [])

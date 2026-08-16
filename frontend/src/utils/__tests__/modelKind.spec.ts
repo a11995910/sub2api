@@ -17,6 +17,15 @@ describe('resolveModelKind', () => {
     })).toBe('video')
   })
 
+  it.each([
+    'sd4-seedance-2.0-fast',
+    'sd7-seedance-2.0-720p',
+    'sd8-seedance-2.0',
+    'seedance-2.5-480p',
+  ])('沧元公开模型 %s 识别为视频', (name) => {
+    expect(resolveModelKind({ name, pricing: null })).toBe('video')
+  })
+
   it('模型名为 Grok 视频时覆盖历史 kind=image', () => {
     expect(resolveModelKind({
       name: 'grok-imagine-video-1.5',

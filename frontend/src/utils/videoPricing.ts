@@ -9,6 +9,11 @@ export type VideoResolution = '480p' | '720p' | '1080p'
 export type VideoBillingUnit = 'second' | 'request'
 export type VideoPriceSource = 'group' | 'channel_interval' | 'channel_default' | 'system_default'
 
+export interface VideoDurationRange {
+  min: number
+  max: number
+}
+
 export interface VideoPriceInput {
   group: UserAvailableGroup
   pricing: UserSupportedModelPricing | null
@@ -104,15 +109,43 @@ function systemDefaultVideoPrice(modelName: string, resolution: VideoResolution)
 
 export function videoResolutionsForModel(modelName: string): VideoResolution[] {
   const normalizedModel = modelName.trim().toLowerCase()
+  if (normalizedModel.includes('seedance-2.5-480p')) return ['480p']
+  if (normalizedModel.includes('seedance-2.5-720p')) return ['720p']
+  if (normalizedModel.includes('seedance-2.0-1080p') || normalizedModel.includes('seedance-2-0-1080p')) return ['1080p']
+  if (normalizedModel.startsWith('sd7-seedance-2.0-720p') || normalizedModel === 'seedance-2.0') return ['720p']
+  if (normalizedModel.startsWith('sd8-seedance-2.0')) return ['720p']
+  if (normalizedModel.startsWith('sd4-seedance-2.0')) return ['480p', '720p']
   if (
     normalizedModel.startsWith('grok-imagine-video-1.5') ||
     (isSeedanceVideoModel(normalizedModel) &&
       !normalizedModel.includes('seedance-2-0-fast') &&
-      !normalizedModel.includes('seedance-2-0-mini'))
+      !normalizedModel.includes('seedance-2-0-mini') &&
+      !normalizedModel.includes('seedance-2.0-fast') &&
+      !normalizedModel.includes('seedance-2.0-mini'))
   ) {
     return ['480p', '720p', '1080p']
   }
   return ['480p', '720p']
+}
+
+export function isFixedResolutionVideoModel(modelName: string): boolean {
+  const normalizedModel = modelName.trim().toLowerCase()
+  return normalizedModel.includes('seedance-2.5-480p') ||
+    normalizedModel.includes('seedance-2.5-720p') ||
+    normalizedModel.includes('seedance-2.0-1080p') ||
+    normalizedModel.includes('seedance-2-0-1080p') ||
+    normalizedModel.startsWith('sd7-seedance-2.0-720p') ||
+    normalizedModel.startsWith('sd8-seedance-2.0') ||
+    normalizedModel === 'seedance-2.0'
+}
+
+export function videoDurationRangeForModel(modelName: string): VideoDurationRange {
+  const normalizedModel = modelName.trim().toLowerCase()
+  if (normalizedModel.includes('seedance-2.5-480p')) return { min: 4, max: 30 }
+  if (normalizedModel.includes('seedance-2.5-720p')) return { min: 4, max: 29 }
+  if (normalizedModel.startsWith('sd8-seedance-2.0')) return { min: 5, max: 15 }
+  if (isSeedanceVideoModel(normalizedModel)) return { min: 4, max: 15 }
+  return { min: 1, max: 15 }
 }
 
 /**

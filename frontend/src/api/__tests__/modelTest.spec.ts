@@ -168,6 +168,30 @@ describe('modelTest api', () => {
     })
   })
 
+  it('Seedance 2.5 固定清晰度模型不发送 resolution 且保留 30 秒', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"task_id":"video-25","status":"queued"}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await testVideoGeneration({
+      apiKey: 'sk-test',
+      model: 'sd4-seedance-2.5-480p',
+      prompt: '长镜头',
+      resolution: '480p',
+      duration: 30,
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      model: 'sd4-seedance-2.5-480p',
+      prompt: '长镜头',
+      duration: 30,
+    })
+  })
+
   it('视频内容通过带 API Key 的受限网关接口下载', async () => {
     const videoBlob = new Blob(['video-content'], { type: 'video/mp4' })
     const fetchMock = vi.fn().mockResolvedValue({

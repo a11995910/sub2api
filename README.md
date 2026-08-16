@@ -560,21 +560,25 @@ OpenAI 平台分组支持与模型名称无关的异步视频流程。现有账�
 - `GET /v1/videos/{task_id}` 返回 `queued`、`in_progress`、`completed` 或 `failed`。
 - `GET /v1/videos/{task_id}/content` 使用创建时绑定的账号代理视频内容，并支持 `Range` 请求。
 
-创建请求必须包含 `model` 和 `prompt`。新客户端推荐统一使用 `duration`、`aspect_ratio`、`resolution` 和 `reference_image_urls`；历史字段 `seconds`、`size`、`image_urls`、`reference_images[].url`、`image.url` 继续作为兼容别名。网关会合并兼容图片字段，并在应用账号模型映射后按账号请求协议构造上游 JSON：
+创建请求必须包含 `model` 和 `prompt`。新客户端推荐统一使用 `duration`、`aspect_ratio`、`resolution`、`generate_audio`、`reference_image_urls`、`reference_videos` 和 `reference_audios`；首尾帧模式使用成对的 `first_image_url`、`last_image_url`，且不能与多模态参考素材同时发送。历史字段 `seconds`、`size`、`audio`、`image_url`、`images`、`image_urls`、`reference_images[].url`、`image.url` 继续作为兼容别名。网关会合并兼容图片字段，并在应用账号模型映射后按账号请求协议构造上游 JSON：
 
 ```bash
 curl -X POST https://your-domain.example/v1/videos \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "future-motion-pro",
+    "model": "seedance-2.5-720p",
     "prompt": "雨夜霓虹街道，镜头缓慢向前推进",
-    "duration": 5,
+    "duration": 8,
     "aspect_ratio": "16:9",
-    "resolution": "720p",
-    "reference_image_urls": ["https://example.com/reference.png"]
+    "generate_audio": true,
+    "reference_image_urls": ["https://example.com/reference.png"],
+    "reference_videos": ["https://example.com/reference.mp4"],
+    "reference_audios": ["https://example.com/reference.mp3"]
   }'
 ```
+
+沧元 Seedance 2.0 可变清晰度型号发送 `resolution`，支持 4–15 秒；模型名包含固定清晰度的 Seedance 2.0/2.5 型号不向上游发送 `resolution`。Seedance 2.5 480p 支持 4–30 秒，720p 支持 4–29 秒。具体素材数量限制由映射后的上游模型决定。
 
 账号可通过 `credentials.video_request_profile` 选择视频出站协议：
 
@@ -582,7 +586,7 @@ curl -X POST https://your-domain.example/v1/videos \
 - `unified_json`：显式使用统一 JSON，适用于沧元自定义域名或其代理网关。
 - `legacy`：强制使用现有 `seconds`、`image_urls` 历史协议。
 
-统一 JSON 分支只向上游发送文档支持的标准字段，未知顶层字段会在上游调用前返回 400；创建 POST 失败后不会切换字段协议或 Chat Completions 重试。非沧元账号继续沿用原端点探测：未知端点协议先尝试 `/v1/videos`，只有明确的 `404`、`405` 或 `unsupported_endpoint` 能证明任务未创建时才回退一次 Chat Completions。校验 400、401、403、429、5xx、超时和断连不会触发回退，避免重复计费任务。创建成功只记录一次视频用量，状态查询和内容读取不重复计费。
+统一 JSON 分支只向上游发送文档支持的标准字段，未知顶层字段会在上游调用前返回 400；创建 POST 失败后不会切换字段协议或 Chat Completions 重试。非沧元账号继续沿用原端点探测：未知端点协议先尝试 `/v1/videos`，只有明确的 `404`、`405` 或 `unsupported_endpoint` 能证明任务未创建时才回退一次 Chat Completions。校验 400、401、403、429、5xx、超时和断连不会触发回退，避免重复计费任务。异步任务只有在完成且存在可验证成片时才结算；沧元返回失败后会释放预留费用，查询结果暂时无法确认时保持待审核，不会自动重复创建任务。
 
 任务查询按用户、API Key、分组和任务 ID 隔离，并始终使用创建任务的原账号。完成状态只暴露本站内容端点，不直接返回上游签名 URL；上游没有 `/content` 时，网关也只接受状态响应中的公开 HTTPS 结果 URL，并继续执行重定向、媒体类型和响应大小校验。
 

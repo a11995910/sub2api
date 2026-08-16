@@ -85,7 +85,10 @@ export function isVideoModelName(name: string): boolean {
 }
 
 export function isSeedanceVideoModel(name: string): boolean {
-  return name.trim().toLowerCase().startsWith('dreamina-seedance-')
+  const normalized = name.trim().toLowerCase()
+  return normalized.startsWith('dreamina-seedance-') ||
+    normalized.startsWith('seedance-') ||
+    /^sd[478]-seedance-/.test(normalized)
 }
 
 function isLegacyOpenAIImageGroup(group: UserAvailableGroup): boolean {

@@ -172,7 +172,7 @@
                 </div>
                 <div>
                   <label class="input-label">{{ t('modelTest.fields.videoDuration') }}</label>
-                  <input v-model.number="videoDuration" type="number" min="1" max="15" class="input" />
+                  <input v-model.number="videoDuration" type="number" :min="videoDurationRange.min" :max="videoDurationRange.max" class="input" />
                 </div>
               </div>
             </div>
@@ -430,8 +430,10 @@ import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { filterGroupsByModelAvailability, filterModelsByIntent, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
+  isFixedResolutionVideoModel,
   normalizeVideoBillingModelName,
   resolveVideoPriceQuote,
+  videoDurationRangeForModel,
   videoResolutionsForModel,
   type VideoBillingUnit,
   type VideoResolution,
@@ -720,6 +722,10 @@ const availableVideoResolutions = computed(() => {
   return videoResolutionsForModel(modelName)
 })
 
+const videoDurationRange = computed(() =>
+  videoDurationRangeForModel(selectedModel.value?.name || ''),
+)
+
 const selectedRateLabel = computed(() => {
   if (!selectedGroup.value) return '-'
   const rate = selectedKind.value === 'image'
@@ -818,6 +824,10 @@ watch(availableVideoResolutions, (resolutions) => {
   if (!resolutions.includes(videoResolution.value)) {
     videoResolution.value = resolutions.includes('720p') ? '720p' : resolutions[0]
   }
+})
+
+watch(videoDurationRange, (range) => {
+  videoDuration.value = Math.max(range.min, Math.min(range.max, Math.floor(Number(videoDuration.value) || 8)))
 })
 
 watch(
@@ -1190,7 +1200,7 @@ async function runTest() {
         apiKey: apiKey.key,
         model: model.name,
         prompt: cleanPrompt,
-        resolution: videoResolution.value,
+        resolution: isFixedResolutionVideoModel(model.name) ? undefined : videoResolution.value,
         duration: normalizedVideoDuration(),
         startingImageDataUrl: videoStartingImageSupported.value && referenceImages.value[0]
           ? await fileToDataURL(referenceImages.value[0].file)
@@ -1388,7 +1398,7 @@ function normalizedMaxTokens(): number {
 function normalizedVideoDuration(): number {
   const parsed = Number(videoDuration.value)
   if (!Number.isFinite(parsed)) return 8
-  return Math.max(1, Math.min(15, Math.floor(parsed)))
+  return Math.max(videoDurationRange.value.min, Math.min(videoDurationRange.value.max, Math.floor(parsed)))
 }
 
 function fileToDataURL(file: File): Promise<string> {

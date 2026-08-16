@@ -222,7 +222,7 @@
             </ol>
 
             <h3 class="mt-9 text-xl font-semibold text-gray-950 dark:text-white">统一 JSON 请求</h3>
-            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">OpenAI 兼容视频账号推荐使用标准客户字段；网关会根据账号配置选择沧元统一 JSON 或历史上游协议。</p>
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">OpenAI 兼容视频账号推荐使用标准客户字段；可变清晰度模型发送 resolution，模型名已固定清晰度时省略。参考图片、视频、音频属于多模态模式，不能和成对的首尾帧字段同时发送。</p>
             <CodeSnippet class="mt-5" label="POST /v1/videos" :code="unifiedVideoCode" />
 
             <h3 class="mt-9 text-xl font-semibold text-gray-950 dark:text-white">Grok 图片输入</h3>
@@ -456,13 +456,19 @@ const unifiedVideoCode = computed(() => `curl "$BASE_URL/v1/videos" \\
   -H "Authorization: Bearer $API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "future-motion-pro",
+    "model": "seedance-2.5-720p",
     "prompt": "雨夜霓虹街道，镜头缓慢向前推进",
-    "duration": 5,
+    "duration": 8,
     "aspect_ratio": "16:9",
-    "resolution": "720p",
+    "generate_audio": true,
     "reference_image_urls": [
       "https://example.com/reference.png"
+    ],
+    "reference_videos": [
+      "https://example.com/reference.mp4"
+    ],
+    "reference_audios": [
+      "https://example.com/reference.mp3"
     ]
   }'`)
 
