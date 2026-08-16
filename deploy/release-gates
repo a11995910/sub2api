@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+usage() {
+  cat <<'EOF'
+用法：
+  release-gates validate-backup-receipt <receipt> <target-commit> <staging-run-id> [now-epoch]
+  release-gates print-backup-receipt <receipt>
+  release-gates wait-container-healthy <container-id> <timeout-seconds> <interval-seconds>
+  release-gates wait-http <url> <timeout-seconds> <interval-seconds>
+EOF
+}
+
+validate_backup_receipt() {
+  if [[ $# -lt 3 || $# -gt 4 ]]; then
+    usage >&2
+    return 2
+  fi
+  local receipt="$1" target_commit="$2" staging_run_id="$3"
+  local now_epoch="${4:-$(date -u +%s)}"
+  local expected_owner_uid="${BACKUP_RECEIPT_OWNER_UID:-0}"
+
+  python3 - "$receipt" "$target_commit" "$staging_run_id" "$now_epoch" "$expected_owner_uid" <<'PY'
+import json
+import os
+import re
+import stat
+import sys
+from datetime import datetime
+
+path, target_commit, staging_run_id, now_epoch_raw, expected_owner_raw = sys.argv[1:]
+if not re.fullmatch(r"[0-9a-f]{40}", target_commit):
+    raise SystemExit("target commit format is invalid")
+if not re.fullmatch(r"[0-9]+", staging_run_id):
+    raise SystemExit("staging run id format is invalid")
+try:
+    now_epoch = int(now_epoch_raw)
+    expected_owner = int(expected_owner_raw)
+except ValueError as exc:
+    raise SystemExit("numeric receipt validation argument is invalid") from exc
+
+try:
+    file_stat = os.lstat(path)
+except FileNotFoundError as exc:
+    raise SystemExit("backup receipt is missing") from exc
+if not stat.S_ISREG(file_stat.st_mode) or stat.S_ISLNK(file_stat.st_mode):
+    raise SystemExit("backup receipt must be a regular file")
+if file_stat.st_uid != expected_owner:
+    raise SystemExit("backup receipt owner mismatch")
+if stat.S_IMODE(file_stat.st_mode) != 0o600:
+    raise SystemExit("backup receipt mode must be 0600")
+
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+required = {
+    "environment",
+    "status",
+    "target_commit",
+    "staging_run_id",
+    "backup_host",
+    "archive",
+    "sha256",
+    "size_bytes",
+    "toc_entries",
+    "zstd_verified",
+    "pg_restore_list_verified",
+    "verified_at",
+}
+if not isinstance(payload, dict) or set(payload) != required:
+    raise SystemExit("backup receipt fields mismatch")
+if payload["environment"] != "prod-backup" or payload["status"] != "verified":
+    raise SystemExit("backup receipt status mismatch")
+if payload["target_commit"] != target_commit:
+    raise SystemExit("backup receipt commit mismatch")
+if str(payload["staging_run_id"]) != staging_run_id:
+    raise SystemExit("backup receipt staging run mismatch")
+if not re.fullmatch(r"[A-Za-z0-9._-]+", str(payload["backup_host"])):
+    raise SystemExit("backup receipt host format is invalid")
+if not re.fullmatch(r"sub2api-prod-[0-9]{8}T[0-9]{6}Z\.dump\.zst", str(payload["archive"])):
+    raise SystemExit("backup receipt archive format is invalid")
+if not re.fullmatch(r"[0-9a-f]{64}", str(payload["sha256"])):
+    raise SystemExit("backup receipt sha256 format is invalid")
+if isinstance(payload["size_bytes"], bool) or not isinstance(payload["size_bytes"], int) or payload["size_bytes"] <= 0:
+    raise SystemExit("backup receipt size is invalid")
+if isinstance(payload["toc_entries"], bool) or not isinstance(payload["toc_entries"], int) or payload["toc_entries"] < 100:
+    raise SystemExit("backup receipt toc count is invalid")
+if payload["zstd_verified"] is not True or payload["pg_restore_list_verified"] is not True:
+    raise SystemExit("backup receipt archive verification is incomplete")
+
+verified_at_raw = payload["verified_at"]
+if not isinstance(verified_at_raw, str):
+    raise SystemExit("backup receipt timestamp is invalid")
+try:
+    verified_at = datetime.fromisoformat(verified_at_raw.replace("Z", "+00:00"))
+except ValueError as exc:
+    raise SystemExit("backup receipt timestamp is invalid") from exc
+if verified_at.tzinfo is None:
+    raise SystemExit("backup receipt timestamp must include timezone")
+age_seconds = now_epoch - int(verified_at.timestamp())
+if age_seconds < 0 or age_seconds > 7200:
+    raise SystemExit("backup receipt is expired or from the future")
+PY
+}
+
+print_backup_receipt() {
+  if [[ $# -ne 1 ]]; then
+    usage >&2
+    return 2
+  fi
+  local receipt="$1"
+  python3 - "$receipt" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+print(f"external_backup_receipt={path}")
+print(f"external_backup_host={payload['backup_host']}")
+print(f"external_backup_archive={payload['archive']}")
+print(f"external_backup_sha256={payload['sha256']}")
+print(f"external_backup_verified_at={payload['verified_at']}")
+PY
+}
+
+validate_wait_arguments() {
+  local timeout_seconds="$1" interval_seconds="$2"
+  [[ "$timeout_seconds" =~ ^[0-9]+$ ]]
+  [[ "$interval_seconds" =~ ^[0-9]+$ ]]
+  (( timeout_seconds > 0 ))
+}
+
+wait_container_healthy() {
+  if [[ $# -ne 3 ]]; then
+    usage >&2
+    return 2
+  fi
+  local container_id="$1" timeout_seconds="$2" interval_seconds="$3"
+  validate_wait_arguments "$timeout_seconds" "$interval_seconds"
+  local started_at="$SECONDS" state
+
+  while (( SECONDS - started_at <= timeout_seconds )); do
+    if ! state="$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id")"; then
+      printf '无法读取容器状态：%s\n' "$container_id" >&2
+      return 1
+    fi
+    case "$state" in
+      running\|healthy)
+        return 0
+        ;;
+      *\|unhealthy|exited\|*|dead\|*|removing\|*)
+        printf '容器未能健康启动：%s state=%s\n' "$container_id" "$state" >&2
+        return 1
+        ;;
+    esac
+    sleep "$interval_seconds"
+  done
+
+  printf '等待容器健康超时：%s timeout=%ss\n' "$container_id" "$timeout_seconds" >&2
+  return 1
+}
+
+wait_http() {
+  if [[ $# -ne 3 ]]; then
+    usage >&2
+    return 2
+  fi
+  local url="$1" timeout_seconds="$2" interval_seconds="$3"
+  validate_wait_arguments "$timeout_seconds" "$interval_seconds"
+  local started_at="$SECONDS"
+
+  while (( SECONDS - started_at <= timeout_seconds )); do
+    if curl --fail --silent --show-error --max-time 5 -o /dev/null "$url"; then
+      return 0
+    fi
+    sleep "$interval_seconds"
+  done
+
+  printf '等待 HTTP 健康检查超时：%s timeout=%ss\n' "$url" "$timeout_seconds" >&2
+  return 1
+}
+
+case "${1:-}" in
+  validate-backup-receipt)
+    shift
+    validate_backup_receipt "$@"
+    ;;
+  print-backup-receipt)
+    shift
+    print_backup_receipt "$@"
+    ;;
+  wait-container-healthy)
+    shift
+    wait_container_healthy "$@"
+    ;;
+  wait-http)
+    shift
+    wait_http "$@"
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
