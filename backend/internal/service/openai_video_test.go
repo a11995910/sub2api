@@ -143,8 +143,77 @@ func TestParseOpenAIVideoCreateBodyKeepsUnifiedFields(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "16:9", req.AspectRatio)
 	require.Equal(t, 5, req.DurationSeconds)
+	require.True(t, req.ResolutionExplicit)
 	require.Equal(t, []string{"https://cdn.test/a.png"}, req.ImageURLs)
 	require.Equal(t, float64(5), payload["duration"])
+}
+
+func TestParseOpenAIVideoCreateBodyKeepsCangyuanMediaFields(t *testing.T) {
+	payload, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video",
+		"prompt":"x",
+		"duration":29,
+		"generate_audio":false,
+		"reference_videos":["https://cdn.test/a.mp4"],
+		"reference_audios":["https://cdn.test/a.mp3"],
+		"first_image_url":"https://cdn.test/first.png",
+		"last_image_url":"https://cdn.test/last.png"
+	}`))
+
+	require.NoError(t, err)
+	require.Equal(t, 29, req.DurationSeconds)
+	require.NotNil(t, req.GenerateAudio)
+	require.False(t, *req.GenerateAudio)
+	require.Equal(t, []string{"https://cdn.test/a.mp4"}, req.VideoURLs)
+	require.Equal(t, []string{"https://cdn.test/a.mp3"}, req.AudioURLs)
+	require.Equal(t, "https://cdn.test/first.png", req.FirstImageURL)
+	require.Equal(t, "https://cdn.test/last.png", req.LastImageURL)
+	require.False(t, req.ResolutionExplicit)
+	require.NotNil(t, payload)
+}
+
+func TestParseOpenAIVideoCreateBodyCollectsAllImageAliases(t *testing.T) {
+	_, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video",
+		"prompt":"x",
+		"image_url":"https://cdn.test/image-url.png",
+		"images":["https://cdn.test/images-a.png","https://cdn.test/shared.png"],
+		"image_urls":["https://cdn.test/image-urls.png","https://cdn.test/shared.png"],
+		"reference_image_urls":["https://cdn.test/reference.png"],
+		"image":{"url":"https://cdn.test/image-object.png"},
+		"reference_images":[{"url":"https://cdn.test/reference-object.png"}]
+	}`))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"https://cdn.test/images-a.png",
+		"https://cdn.test/shared.png",
+		"https://cdn.test/image-urls.png",
+		"https://cdn.test/reference.png",
+		"https://cdn.test/image-url.png",
+		"https://cdn.test/image-object.png",
+		"https://cdn.test/reference-object.png",
+	}, req.ImageURLs)
+}
+
+func TestParseOpenAIVideoCreateBodyRejectsConflictingAliases(t *testing.T) {
+	_, _, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video","prompt":"x","duration":5,"seconds":6
+	}`))
+	require.ErrorContains(t, err, "duration and seconds must match")
+
+	_, _, err = ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video","prompt":"x","generate_audio":true,"audio":false
+	}`))
+	require.ErrorContains(t, err, "generate_audio and audio must match")
+
+	_, req, err := ParseOpenAIVideoCreateBody([]byte(`{
+		"model":"public-video","prompt":"x","duration":5,"seconds":"5","generate_audio":false,"audio":false
+	}`))
+	require.NoError(t, err)
+	require.Equal(t, 5, req.DurationSeconds)
+	require.NotNil(t, req.GenerateAudio)
+	require.False(t, *req.GenerateAudio)
 }
 
 func TestBuildUnifiedOpenAIVideoCreateBodyUsesOnlyStandardFields(t *testing.T) {

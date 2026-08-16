@@ -13,12 +13,18 @@ import (
 )
 
 type OpenAIVideoRequest struct {
-	Model           string
-	Prompt          string
-	Resolution      string
-	AspectRatio     string
-	DurationSeconds int
-	ImageURLs       []string
+	Model              string
+	Prompt             string
+	Resolution         string
+	AspectRatio        string
+	DurationSeconds    int
+	ResolutionExplicit bool
+	GenerateAudio      *bool
+	ImageURLs          []string
+	VideoURLs          []string
+	AudioURLs          []string
+	FirstImageURL      string
+	LastImageURL       string
 }
 
 type OpenAIVideoRequestProfile string
@@ -144,10 +150,13 @@ func ParseOpenAIVideoCreateBody(body []byte) (map[string]any, OpenAIVideoRequest
 	}
 
 	request := OpenAIVideoRequest{
-		Model:       strings.TrimSpace(stringValue(payload["model"])),
-		Prompt:      strings.TrimSpace(stringValue(payload["prompt"])),
-		Resolution:  strings.ToLower(strings.TrimSpace(stringValue(payload["resolution"]))),
-		AspectRatio: strings.TrimSpace(stringValue(payload["aspect_ratio"])),
+		Model:              strings.TrimSpace(stringValue(payload["model"])),
+		Prompt:             strings.TrimSpace(stringValue(payload["prompt"])),
+		Resolution:         strings.ToLower(strings.TrimSpace(stringValue(payload["resolution"]))),
+		AspectRatio:        strings.TrimSpace(stringValue(payload["aspect_ratio"])),
+		ResolutionExplicit: strings.TrimSpace(stringValue(payload["resolution"])) != "",
+		FirstImageURL:      strings.TrimSpace(stringValue(payload["first_image_url"])),
+		LastImageURL:       strings.TrimSpace(stringValue(payload["last_image_url"])),
 	}
 	if request.Model == "" {
 		return nil, OpenAIVideoRequest{}, fmt.Errorf("model is required")
@@ -155,25 +164,54 @@ func ParseOpenAIVideoCreateBody(body []byte) (map[string]any, OpenAIVideoRequest
 	if request.Prompt == "" {
 		return nil, OpenAIVideoRequest{}, fmt.Errorf("prompt is required")
 	}
-	if request.Resolution == "" {
-		request.Resolution = VideoBillingResolution720P
-	}
 	if request.AspectRatio == "" {
 		request.AspectRatio = strings.TrimSpace(stringValue(payload["size"]))
 	}
 
-	request.DurationSeconds = openAIVideoInt(payload["duration"])
-	if request.DurationSeconds <= 0 {
-		request.DurationSeconds = openAIVideoInt(payload["seconds"])
+	duration, hasDuration := payload["duration"]
+	seconds, hasSeconds := payload["seconds"]
+	durationSeconds := openAIVideoInt(duration)
+	secondsValue := openAIVideoInt(seconds)
+	if hasDuration && hasSeconds && durationSeconds != secondsValue {
+		return nil, OpenAIVideoRequest{}, fmt.Errorf("duration and seconds must match")
+	}
+	request.DurationSeconds = durationSeconds
+	if !hasDuration || request.DurationSeconds <= 0 {
+		request.DurationSeconds = secondsValue
 	}
 	if request.DurationSeconds <= 0 {
 		request.DurationSeconds = VideoBillingDefaultDurationSeconds
 	}
-	if request.DurationSeconds > 15 {
-		return nil, OpenAIVideoRequest{}, fmt.Errorf("duration must not exceed 15 seconds")
+	if request.DurationSeconds > 30 {
+		return nil, OpenAIVideoRequest{}, fmt.Errorf("duration must not exceed 30 seconds")
+	}
+
+	generateAudio, hasGenerateAudio, err := openAIVideoOptionalBool(payload, "generate_audio")
+	if err != nil {
+		return nil, OpenAIVideoRequest{}, err
+	}
+	audio, hasAudio, err := openAIVideoOptionalBool(payload, "audio")
+	if err != nil {
+		return nil, OpenAIVideoRequest{}, err
+	}
+	if hasGenerateAudio && hasAudio && *generateAudio != *audio {
+		return nil, OpenAIVideoRequest{}, fmt.Errorf("generate_audio and audio must match")
+	}
+	if hasGenerateAudio {
+		request.GenerateAudio = generateAudio
+	} else if hasAudio {
+		request.GenerateAudio = audio
 	}
 
 	request.ImageURLs = collectOpenAIVideoImageURLs(payload)
+	request.VideoURLs, err = collectOpenAIVideoStringArray(payload, "reference_videos")
+	if err != nil {
+		return nil, OpenAIVideoRequest{}, err
+	}
+	request.AudioURLs, err = collectOpenAIVideoStringArray(payload, "reference_audios")
+	if err != nil {
+		return nil, OpenAIVideoRequest{}, err
+	}
 	return payload, request, nil
 }
 
@@ -185,6 +223,9 @@ func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, Op
 	upstreamModel := strings.TrimSpace(mappedModel)
 	if upstreamModel == "" {
 		upstreamModel = request.Model
+	}
+	if request.Resolution == "" {
+		request.Resolution = VideoBillingResolution720P
 	}
 	payload["model"] = upstreamModel
 	payload["prompt"] = request.Prompt
@@ -210,8 +251,11 @@ func NormalizeOpenAIVideoCreateBody(body []byte, mappedModel string) ([]byte, Op
 var openAIVideoUnifiedAcceptedFields = map[string]struct{}{
 	"model": {}, "prompt": {}, "duration": {}, "seconds": {},
 	"resolution": {}, "aspect_ratio": {}, "size": {},
-	"reference_image_urls": {}, "image_urls": {},
-	"reference_images": {}, "image": {},
+	"generate_audio": {}, "audio": {},
+	"reference_image_urls": {}, "image_urls": {}, "image_url": {},
+	"reference_images": {}, "images": {}, "image": {},
+	"reference_videos": {}, "reference_audios": {},
+	"first_image_url": {}, "last_image_url": {},
 }
 
 func BuildUnifiedOpenAIVideoCreateBody(payload map[string]any, request OpenAIVideoRequest, mappedModel string) ([]byte, error) {
@@ -231,11 +275,15 @@ func BuildUnifiedOpenAIVideoCreateBody(payload map[string]any, request OpenAIVid
 		upstreamModel = request.Model
 	}
 	body := map[string]any{
-		"model":      upstreamModel,
-		"prompt":     request.Prompt,
-		"duration":   request.DurationSeconds,
-		"resolution": request.Resolution,
+		"model":    upstreamModel,
+		"prompt":   request.Prompt,
+		"duration": request.DurationSeconds,
 	}
+	resolution := request.Resolution
+	if resolution == "" {
+		resolution = VideoBillingResolution720P
+	}
+	body["resolution"] = resolution
 	if request.AspectRatio != "" {
 		body["aspect_ratio"] = request.AspectRatio
 	}
@@ -275,25 +323,69 @@ func collectOpenAIVideoImageURLs(payload map[string]any) []string {
 		seen[raw] = struct{}{}
 		urls = append(urls, raw)
 	}
+	appendValue := func(value any) {
+		switch typed := value.(type) {
+		case string:
+			appendURL(typed)
+		case map[string]any:
+			appendURL(stringValue(typed["url"]))
+		}
+	}
 	appendArray := func(value any) {
 		items, _ := value.([]any)
 		for _, item := range items {
-			appendURL(stringValue(item))
+			appendValue(item)
 		}
 	}
 
+	appendArray(payload["images"])
 	appendArray(payload["image_urls"])
 	appendArray(payload["reference_image_urls"])
-	if image, ok := payload["image"].(map[string]any); ok {
-		appendURL(stringValue(image["url"]))
-	}
-	if items, ok := payload["reference_images"].([]any); ok {
-		for _, item := range items {
-			image, _ := item.(map[string]any)
-			appendURL(stringValue(image["url"]))
-		}
-	}
+	appendValue(payload["image_url"])
+	appendValue(payload["image"])
+	appendArray(payload["reference_images"])
 	return urls
+}
+
+func collectOpenAIVideoStringArray(payload map[string]any, field string) ([]string, error) {
+	value, exists := payload[field]
+	if !exists || value == nil {
+		return nil, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array of strings", field)
+	}
+	urls := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		raw, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s must be an array of strings", field)
+		}
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if _, exists := seen[raw]; exists {
+			continue
+		}
+		seen[raw] = struct{}{}
+		urls = append(urls, raw)
+	}
+	return urls, nil
+}
+
+func openAIVideoOptionalBool(payload map[string]any, field string) (*bool, bool, error) {
+	value, exists := payload[field]
+	if !exists {
+		return nil, false, nil
+	}
+	typed, ok := value.(bool)
+	if !ok {
+		return nil, true, fmt.Errorf("%s must be a boolean", field)
+	}
+	return &typed, true, nil
 }
 
 func ParseOpenAIVideoResult(body []byte) (OpenAIVideoResult, error) {
