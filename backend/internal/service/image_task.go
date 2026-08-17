@@ -17,6 +17,9 @@ import (
 const (
 	ImageTaskStatusProcessing = "processing"
 	ImageTaskStatusCompleted  = "completed"
+	ImageTaskStatusQueued     = "queued"
+	ImageTaskStatusRunning    = "running"
+	ImageTaskStatusSucceeded  = "succeeded"
 	ImageTaskStatusFailed     = "failed"
 
 	defaultImageTaskTTL              = 24 * time.Hour
@@ -24,24 +27,38 @@ const (
 )
 
 var (
-	ErrImageTaskNotFound    = infraerrors.New(http.StatusNotFound, "IMAGE_TASK_NOT_FOUND", "image task not found")
-	ErrImageTaskForbidden   = infraerrors.New(http.StatusForbidden, "IMAGE_TASK_FORBIDDEN", "image task does not belong to this API key")
-	ErrImageTaskUnavailable = infraerrors.New(http.StatusServiceUnavailable, "IMAGE_TASK_UNAVAILABLE", "image task storage is unavailable")
+	ErrImageTaskNotFound            = infraerrors.New(http.StatusNotFound, "IMAGE_TASK_NOT_FOUND", "image task not found")
+	ErrImageTaskForbidden           = infraerrors.New(http.StatusForbidden, "IMAGE_TASK_FORBIDDEN", "image task does not belong to this API key")
+	ErrImageTaskUnavailable         = infraerrors.New(http.StatusServiceUnavailable, "IMAGE_TASK_UNAVAILABLE", "image task storage is unavailable")
+	ErrImageTaskIdempotencyConflict = infraerrors.New(
+		http.StatusConflict,
+		"IDEMPOTENCY_CONFLICT",
+		"client_request_id was already used with different request parameters",
+	)
+	ErrImageTaskQueueEmpty = errors.New("image task queue is empty")
+	ErrImageTaskClaimLost  = errors.New("image task execution claim lost")
 )
 
 // ImageTaskRecord is the private Redis representation of an asynchronous image
 // request. Ownership fields are intentionally omitted from the public view.
 type ImageTaskRecord struct {
-	ID          string          `json:"id"`
-	UserID      int64           `json:"user_id"`
-	APIKeyID    int64           `json:"api_key_id"`
-	Status      string          `json:"status"`
-	HTTPStatus  int             `json:"http_status,omitempty"`
-	Result      json.RawMessage `json:"result,omitempty"`
-	Error       json.RawMessage `json:"error,omitempty"`
-	CreatedAt   int64           `json:"created_at"`
-	CompletedAt *int64          `json:"completed_at,omitempty"`
-	ExpiresAt   int64           `json:"expires_at"`
+	ID                 string          `json:"id"`
+	UserID             int64           `json:"user_id"`
+	APIKeyID           int64           `json:"api_key_id"`
+	ClientRequestID    string          `json:"client_request_id,omitempty"`
+	RequestFingerprint string          `json:"request_fingerprint,omitempty"`
+	RequestBody        json.RawMessage `json:"request_body,omitempty"`
+	ContentType        string          `json:"content_type,omitempty"`
+	Platform           string          `json:"platform,omitempty"`
+	ExecutionToken     string          `json:"execution_token,omitempty"`
+	Status             string          `json:"status"`
+	HTTPStatus         int             `json:"http_status,omitempty"`
+	Result             json.RawMessage `json:"result,omitempty"`
+	Error              json.RawMessage `json:"error,omitempty"`
+	CreatedAt          int64           `json:"created_at"`
+	UpdatedAt          int64           `json:"updated_at,omitempty"`
+	CompletedAt        *int64          `json:"completed_at,omitempty"`
+	ExpiresAt          int64           `json:"expires_at"`
 }
 
 // ImageTask is the API-safe task representation returned to callers.
@@ -67,6 +84,19 @@ type ImageTaskOwner struct {
 type ImageTaskStore interface {
 	Save(ctx context.Context, task *ImageTaskRecord, ttl time.Duration) error
 	Get(ctx context.Context, id string) (*ImageTaskRecord, error)
+}
+
+type ImageTaskQueue interface {
+	CreateOrGet(ctx context.Context, task *ImageTaskRecord, ttl time.Duration) (*ImageTaskRecord, bool, error)
+	Reserve(ctx context.Context, executionToken string, now time.Time) (*ImageTaskRecord, error)
+	Heartbeat(ctx context.Context, taskID, executionToken string, now time.Time) error
+	SaveClaim(ctx context.Context, task *ImageTaskRecord, executionToken string, ttl time.Duration) error
+	RecoverStale(ctx context.Context, before, now time.Time, ttl time.Duration) (int, error)
+}
+
+type ImageTaskRepository interface {
+	ImageTaskStore
+	ImageTaskQueue
 }
 
 // ImageStorageResolver reports the currently effective object-storage binding.
@@ -150,6 +180,152 @@ func (s *ImageTaskService) ExecutionTimeout() time.Duration {
 	return s.executionTimeout
 }
 
+func (s *ImageTaskService) CreateGeneration(
+	ctx context.Context,
+	owner ImageTaskOwner,
+	clientRequestID, fingerprint string,
+	requestBody json.RawMessage,
+	contentType, platform string,
+) (*ImageTaskRecord, bool, error) {
+	if s == nil || s.store == nil {
+		return nil, false, ErrImageTaskUnavailable
+	}
+	queue, ok := s.store.(ImageTaskQueue)
+	if !ok {
+		return nil, false, ErrImageTaskUnavailable
+	}
+	now := time.Now().UTC()
+	task := &ImageTaskRecord{
+		ID:                 "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		UserID:             owner.UserID,
+		APIKeyID:           owner.APIKeyID,
+		ClientRequestID:    clientRequestID,
+		RequestFingerprint: fingerprint,
+		RequestBody:        append(json.RawMessage(nil), requestBody...),
+		ContentType:        contentType,
+		Platform:           platform,
+		Status:             ImageTaskStatusQueued,
+		CreatedAt:          now.Unix(),
+		UpdatedAt:          now.Unix(),
+		ExpiresAt:          now.Add(s.ttl).Unix(),
+	}
+	stored, created, err := queue.CreateOrGet(ctx, task, s.ttl)
+	if err != nil {
+		if errors.Is(err, ErrImageTaskIdempotencyConflict) {
+			return nil, false, ErrImageTaskIdempotencyConflict
+		}
+		return nil, false, ErrImageTaskUnavailable.WithCause(err)
+	}
+	return stored, created, nil
+}
+
+func (s *ImageTaskService) ReserveGeneration(ctx context.Context, executionToken string, now time.Time) (*ImageTaskRecord, error) {
+	queue, err := s.imageTaskQueue()
+	if err != nil {
+		return nil, err
+	}
+	task, reserveErr := queue.Reserve(ctx, executionToken, now)
+	if reserveErr != nil {
+		if errors.Is(reserveErr, ErrImageTaskQueueEmpty) {
+			return nil, ErrImageTaskQueueEmpty
+		}
+		return nil, ErrImageTaskUnavailable.WithCause(reserveErr)
+	}
+	return task, nil
+}
+
+func (s *ImageTaskService) HeartbeatGeneration(ctx context.Context, task *ImageTaskRecord, now time.Time) error {
+	queue, err := s.imageTaskQueue()
+	if err != nil {
+		return err
+	}
+	return queue.Heartbeat(ctx, task.ID, task.ExecutionToken, now)
+}
+
+func (s *ImageTaskService) CompleteGeneration(ctx context.Context, task *ImageTaskRecord, statusCode int, result json.RawMessage) error {
+	if !json.Valid(result) {
+		return s.FailGeneration(ctx, task, http.StatusBadGateway, "PROVIDER_REQUEST_FAILED", "Image generation failed", true)
+	}
+	uploader, enabled := s.current()
+	if s.resolve != nil && (!enabled || uploader == nil) {
+		return s.FailGeneration(ctx, task, http.StatusBadGateway, "RESULT_STORAGE_FAILED", "Image result storage is unavailable", true)
+	}
+	if uploader != nil {
+		rewritten, err := uploader.Rewrite(ctx, task.ID, result)
+		if err != nil {
+			logger.L().Error("image_task.offload_failed", zap.String("task_id", task.ID), zap.Error(err))
+			return s.FailGeneration(ctx, task, http.StatusBadGateway, "RESULT_STORAGE_FAILED", "Image result storage failed", true)
+		}
+		result = rewritten
+	}
+	now := time.Now().UTC()
+	completedAt := now.Unix()
+	task.Status = ImageTaskStatusSucceeded
+	task.HTTPStatus = statusCode
+	task.Result = append(json.RawMessage(nil), result...)
+	task.Error = nil
+	task.UpdatedAt = completedAt
+	task.CompletedAt = &completedAt
+	task.ExpiresAt = now.Add(s.ttl).Unix()
+	return s.saveGenerationClaim(ctx, task)
+}
+
+func (s *ImageTaskService) FailGeneration(
+	ctx context.Context,
+	task *ImageTaskRecord,
+	statusCode int,
+	code, message string,
+	retryable bool,
+) error {
+	now := time.Now().UTC()
+	completedAt := now.Unix()
+	task.Status = ImageTaskStatusFailed
+	task.HTTPStatus = statusCode
+	task.Result = nil
+	task.Error = imageTaskStableErrorJSON(code, message, retryable)
+	task.UpdatedAt = completedAt
+	task.CompletedAt = &completedAt
+	task.ExpiresAt = now.Add(s.ttl).Unix()
+	return s.saveGenerationClaim(ctx, task)
+}
+
+func (s *ImageTaskService) RecoverStaleGenerations(ctx context.Context, before, now time.Time) (int, error) {
+	queue, err := s.imageTaskQueue()
+	if err != nil {
+		return 0, err
+	}
+	count, recoverErr := queue.RecoverStale(ctx, before, now, s.ttl)
+	if recoverErr != nil {
+		return 0, ErrImageTaskUnavailable.WithCause(recoverErr)
+	}
+	return count, nil
+}
+
+func (s *ImageTaskService) saveGenerationClaim(ctx context.Context, task *ImageTaskRecord) error {
+	queue, err := s.imageTaskQueue()
+	if err != nil {
+		return err
+	}
+	if err := queue.SaveClaim(ctx, task, task.ExecutionToken, s.ttl); err != nil {
+		if errors.Is(err, ErrImageTaskClaimLost) {
+			return ErrImageTaskClaimLost
+		}
+		return ErrImageTaskUnavailable.WithCause(err)
+	}
+	return nil
+}
+
+func (s *ImageTaskService) imageTaskQueue() (ImageTaskQueue, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrImageTaskUnavailable
+	}
+	queue, ok := s.store.(ImageTaskQueue)
+	if !ok {
+		return nil, ErrImageTaskUnavailable
+	}
+	return queue, nil
+}
+
 func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*ImageTask, error) {
 	if s == nil || s.store == nil {
 		return nil, ErrImageTaskUnavailable
@@ -170,6 +346,14 @@ func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*I
 }
 
 func (s *ImageTaskService) Get(ctx context.Context, owner ImageTaskOwner, id string) (*ImageTask, error) {
+	task, err := s.GetGeneration(ctx, owner, id)
+	if err != nil {
+		return nil, err
+	}
+	return imageTaskToPublic(task), nil
+}
+
+func (s *ImageTaskService) GetGeneration(ctx context.Context, owner ImageTaskOwner, id string) (*ImageTaskRecord, error) {
 	if s == nil || s.store == nil {
 		return nil, ErrImageTaskUnavailable
 	}
@@ -184,7 +368,7 @@ func (s *ImageTaskService) Get(ctx context.Context, owner ImageTaskOwner, id str
 		// Do not reveal whether a random task ID exists for another caller.
 		return nil, ErrImageTaskNotFound
 	}
-	return imageTaskToPublic(task), nil
+	return task, nil
 }
 
 func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode int, result json.RawMessage) error {
@@ -254,6 +438,47 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 	}
 }
 
+func ImageTaskGenerationView(task *ImageTaskRecord) map[string]any {
+	if task == nil {
+		return nil
+	}
+	view := map[string]any{
+		"id":      task.ID,
+		"status":  generationTaskStatus(task.Status),
+		"created": task.CreatedAt,
+		"updated": task.UpdatedAt,
+	}
+	if task.ClientRequestID != "" {
+		view["client_request_id"] = task.ClientRequestID
+	}
+	if len(task.Result) > 0 && json.Valid(task.Result) {
+		var result map[string]json.RawMessage
+		if json.Unmarshal(task.Result, &result) == nil {
+			if data, ok := result["data"]; ok {
+				view["data"] = data
+			}
+			if usage, ok := result["usage"]; ok {
+				view["usage"] = usage
+			}
+		}
+	}
+	if len(task.Error) > 0 && json.Valid(task.Error) {
+		view["error"] = task.Error
+	}
+	return view
+}
+
+func generationTaskStatus(status string) string {
+	switch status {
+	case ImageTaskStatusProcessing:
+		return ImageTaskStatusRunning
+	case ImageTaskStatusCompleted:
+		return ImageTaskStatusSucceeded
+	default:
+		return status
+	}
+}
+
 func firstImageTaskURL(result json.RawMessage) string {
 	if len(result) == 0 || !json.Valid(result) {
 		return ""
@@ -271,5 +496,14 @@ func firstImageTaskURL(result json.RawMessage) string {
 
 func imageTaskErrorJSON(errorType, message string) json.RawMessage {
 	data, _ := json.Marshal(map[string]string{"type": errorType, "message": message})
+	return data
+}
+
+func imageTaskStableErrorJSON(code, message string, retryable bool) json.RawMessage {
+	data, _ := json.Marshal(map[string]any{
+		"code":      code,
+		"message":   message,
+		"retryable": retryable,
+	})
 	return data
 }

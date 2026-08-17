@@ -96,6 +96,7 @@ func provideCleanup(
 	batchImageCleanup *service.BatchImageCleanupService,
 	generatedImageCleanup *service.GeneratedImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
+	imageTaskWorker *service.ImageTaskWorkerRuntime,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -241,6 +242,12 @@ func provideCleanup(
 			{"BatchImageWorkerRuntime", func() error {
 				if batchImageWorker != nil {
 					batchImageWorker.Stop()
+				}
+				return nil
+			}},
+			{"ImageTaskWorkerRuntime", func() error {
+				if imageTaskWorker != nil {
+					imageTaskWorker.Stop()
 				}
 				return nil
 			}},

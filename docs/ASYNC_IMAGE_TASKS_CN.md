@@ -22,6 +22,40 @@
 
 未启用或对象存储配置不完整时，异步接口统一返回 `404`，不会创建 Redis 任务或保存图片结果。流式图片请求不支持异步提交，因为任务轮询只返回一次最终 JSON 结果。
 
+## 公共生图接口异步模式
+
+现有 `POST /v1/images/generations` 支持可选的 `async`：
+
+- 未传 `async`：完全沿用原同步逻辑。
+- `async:false`：删除异步控制字段后沿用原同步逻辑，响应结构不变。
+- `async:true`：创建持久化任务并返回 `202 Accepted`，不要求客户端保持长连接。
+
+异步请求必须提供 `client_request_id`，格式为 `[A-Za-z0-9_-]{1,64}`。同一用户、同一 API Key 下，相同 ID 和相同请求参数返回原任务；参数不同返回 `409 IDEMPOTENCY_CONFLICT`。
+
+```json
+{
+  "async": true,
+  "client_request_id": "request_7f98c6d2",
+  "model": "gpt-image-2",
+  "prompt": "dog",
+  "n": 1,
+  "size": "1:1",
+  "response_format": "url"
+}
+```
+
+创建响应状态为 `queued`。使用同一 API Key 查询：
+
+```http
+GET /v1/images/generations/{task_id}
+```
+
+查询状态为 `queued`、`running`、`succeeded`、`failed`。成功响应直接提供现有 `data[].url` 和可选 `usage`；失败响应提供稳定的 `code`、`message`、`retryable`。任务不存在、过期或不属于当前身份时统一返回 `404 TASK_NOT_FOUND`。
+
+任务和幂等结果从终态起保留至少 24 小时。`queued` 任务可在服务重启后继续执行；失去心跳的 `running` 任务转为 `failed/EXECUTION_INTERRUPTED`，不会自动重复请求上游。第一阶段不支持取消和百分比进度。
+
+旧 `/v1/images/generations/async`、`/v1/images/edits/async` 和 `/v1/images/tasks/{task_id}` 保持兼容。
+
 ## 对象存储配置
 
 在运行时 `config.yaml` 的 `image_storage` 段配置 S3 兼容对象存储；每个配置项也支持对应的 `IMAGE_STORAGE_*` 环境变量覆盖。Docker 部署会透传 `IMAGE_STORAGE_ENABLED`、`IMAGE_STORAGE_ENDPOINT`、`IMAGE_STORAGE_REGION`、`IMAGE_STORAGE_BUCKET`、`IMAGE_STORAGE_ACCESS_KEY_ID`、`IMAGE_STORAGE_SECRET_ACCESS_KEY`、`IMAGE_STORAGE_PREFIX`、`IMAGE_STORAGE_FORCE_PATH_STYLE`、`IMAGE_STORAGE_PUBLIC_BASE_URL`、`IMAGE_STORAGE_PRESIGN_EXPIRY_HOURS` 与 `IMAGE_STORAGE_MAX_DOWNLOAD_BYTES`。密钥必须保存在 staging 或 prod 的运行时 `.env`、凭据管理工具或配置文件中，禁止写入 Git。

@@ -21,14 +21,19 @@ import (
 )
 
 type AsyncImageHandler struct {
-	tasks   *service.ImageTaskService
-	openAI  *OpenAIGatewayHandler
-	execute func(platform string, c *gin.Context)
+	tasks            *service.ImageTaskService
+	openAI           *OpenAIGatewayHandler
+	execute          func(platform string, c *gin.Context)
+	loadAPIKey       func(context.Context, int64) (*service.APIKey, error)
+	loadSubscription func(context.Context, int64, int64) (*service.UserSubscription, error)
 }
 
 func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGatewayHandler) *AsyncImageHandler {
 	h := &AsyncImageHandler{tasks: tasks, openAI: openAI}
 	h.execute = h.executeWithGateway
+	if openAI != nil && openAI.apiKeyService != nil {
+		h.loadAPIKey = openAI.apiKeyService.GetByID
+	}
 	return h
 }
 
@@ -125,6 +130,80 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	go h.run(task.ID, platform, taskCtx, recorder, cancel)
 }
 
+func (h *AsyncImageHandler) DispatchGenerations(syncHandler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+		if err != nil {
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+			return
+		}
+		parsed, err := service.ParseImageTaskRequest(body)
+		if err != nil {
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		if !parsed.Async {
+			restoreImageTaskRequestBody(c.Request, parsed.UpstreamBody)
+			syncHandler(c)
+			return
+		}
+		h.submitGeneration(c, parsed)
+	}
+}
+
+func (h *AsyncImageHandler) submitGeneration(c *gin.Context, parsed service.ParsedImageTaskRequest) {
+	if !h.enabled() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+	}
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+		imageTaskError(c, service.ErrImageTaskForbidden)
+		return
+	}
+	platform := ""
+	if apiKey.Group != nil {
+		platform = apiKey.Group.Platform
+	}
+	if platform != service.PlatformOpenAI && platform != service.PlatformGrok {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "Images API is not supported for this platform")
+		return
+	}
+	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		imageTaskJSONError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
+	if asyncImageRequestStreams(c.GetHeader("Content-Type"), parsed.UpstreamBody) {
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "streaming image requests cannot be submitted as asynchronous tasks")
+		return
+	}
+	if err := h.validateRequest(c, platform, parsed.UpstreamBody); err != nil {
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, parsed.UpstreamBody) {
+		return
+	}
+	task, _, err := h.tasks.CreateGeneration(
+		c.Request.Context(),
+		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},
+		parsed.ClientRequestID,
+		parsed.Fingerprint,
+		parsed.UpstreamBody,
+		c.GetHeader("Content-Type"),
+		platform,
+	)
+	if err != nil {
+		imageTaskError(c, err)
+		return
+	}
+	pollURL := imageGenerationTaskPollURL(c.Request.URL.Path, task.ID)
+	c.Header("Cache-Control", "no-store")
+	c.Header("Location", pollURL)
+	c.Header("Retry-After", "3")
+	c.JSON(http.StatusAccepted, service.ImageTaskGenerationView(task))
+}
+
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {
 	if h == nil || h.openAI == nil {
 		return true
@@ -185,6 +264,36 @@ func (h *AsyncImageHandler) Get(c *gin.Context) {
 		c.Header("Retry-After", "3")
 	}
 	c.JSON(http.StatusOK, task)
+}
+
+func (h *AsyncImageHandler) GetGeneration(c *gin.Context) {
+	if !h.pollable() {
+		imageTaskJSONError(c, http.StatusNotFound, "TASK_NOT_FOUND", "Image task not found")
+		return
+	}
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+		imageTaskJSONError(c, http.StatusNotFound, "TASK_NOT_FOUND", "Image task not found")
+		return
+	}
+	task, err := h.tasks.GetGeneration(
+		c.Request.Context(),
+		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},
+		c.Param("task_id"),
+	)
+	if err != nil {
+		if errors.Is(err, service.ErrImageTaskNotFound) {
+			imageTaskJSONError(c, http.StatusNotFound, "TASK_NOT_FOUND", "Image task not found")
+			return
+		}
+		imageTaskError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	if task.Status == service.ImageTaskStatusQueued || task.Status == service.ImageTaskStatusRunning {
+		c.Header("Retry-After", "3")
+	}
+	c.JSON(http.StatusOK, service.ImageTaskGenerationView(task))
 }
 
 func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) error {
@@ -292,6 +401,18 @@ func imageTaskPollURL(submitPath, taskID string) string {
 		return "/v1/images/tasks/" + taskID
 	}
 	return "/images/tasks/" + taskID
+}
+
+func imageGenerationTaskPollURL(submitPath, taskID string) string {
+	if strings.HasPrefix(submitPath, "/v1/") {
+		return "/v1/images/generations/" + taskID
+	}
+	return "/images/generations/" + taskID
+}
+
+func restoreImageTaskRequestBody(request *http.Request, body []byte) {
+	request.Body = io.NopCloser(bytes.NewReader(body))
+	request.ContentLength = int64(len(body))
 }
 
 func extractImageTaskError(body []byte) json.RawMessage {

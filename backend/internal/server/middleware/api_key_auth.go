@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -169,7 +171,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// Async image task polling only reads data that already belongs to the
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest ||
+			isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path) ||
+			isAsyncImageTaskSubmit(c)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -339,7 +343,27 @@ func isAsyncImageTaskRead(method, path string) bool {
 	if method != http.MethodGet {
 		return false
 	}
-	return strings.HasPrefix(path, "/v1/images/tasks/") || strings.HasPrefix(path, "/images/tasks/")
+	return strings.HasPrefix(path, "/v1/images/tasks/") ||
+		strings.HasPrefix(path, "/images/tasks/") ||
+		strings.HasPrefix(path, "/v1/images/generations/") ||
+		strings.HasPrefix(path, "/images/generations/")
+}
+
+func isAsyncImageTaskSubmit(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.Method != http.MethodPost {
+		return false
+	}
+	path := c.Request.URL.Path
+	if path != "/v1/images/generations" && path != "/images/generations" {
+		return false
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return false
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	parsed, err := service.ParseImageTaskRequest(body)
+	return err == nil && parsed.Async
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

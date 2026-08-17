@@ -242,8 +242,21 @@ func ProvideHandlers(
 	}
 }
 
+func ProvideAsyncImageHandler(
+	tasks *service.ImageTaskService,
+	openAI *OpenAIGatewayHandler,
+	subscriptions *service.SubscriptionService,
+) *AsyncImageHandler {
+	h := NewAsyncImageHandler(tasks, openAI)
+	if subscriptions != nil {
+		h.loadSubscription = subscriptions.GetActiveSubscription
+	}
+	return h
+}
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	wire.Bind(new(service.ImageTaskExecutor), new(*AsyncImageHandler)),
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
@@ -266,7 +279,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewModelPlazaHandler,
-	NewAsyncImageHandler,
+	ProvideAsyncImageHandler,
 	ProvideBatchImageHandler,
 	NewGeneratedImageHandler,
 	NewVideoTestTaskHandler,
