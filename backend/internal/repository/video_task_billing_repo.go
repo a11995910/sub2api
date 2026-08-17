@@ -194,6 +194,10 @@ func (r *videoTaskBillingRepository) ReserveAndCreate(ctx context.Context, task 
 	if len(usageContext) == 0 {
 		usageContext = json.RawMessage(`{}`)
 	}
+	var upstreamTaskID any
+	if value := strings.TrimSpace(task.UpstreamTaskID); value != "" {
+		upstreamTaskID = value
+	}
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO video_task_billings (
 			request_id, upstream_task_id, platform, user_id, api_key_id, group_id, account_id,
@@ -201,7 +205,7 @@ func (r *videoTaskBillingRepository) ReserveAndCreate(ctx context.Context, task 
 			estimated_cost, task_status, billing_status, response_json, submission_deadline, next_poll_at
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		RETURNING id, created_at, updated_at
-	`, task.RequestID, task.UpstreamTaskID, task.Platform, task.UserID, task.APIKeyID, task.GroupID, task.AccountID,
+	`, task.RequestID, upstreamTaskID, task.Platform, task.UserID, task.APIKeyID, task.GroupID, task.AccountID,
 		task.Model, task.UpstreamModel, task.Resolution, task.DurationSeconds, task.ReferenceImageCount, usageContext,
 		task.EstimatedCost, task.TaskStatus, task.BillingStatus, response, task.SubmissionDeadline, task.NextPollAt,
 	).Scan(&task.ID, &task.CreatedAt, &task.UpdatedAt)
@@ -565,6 +569,7 @@ func (r *videoTaskBillingRepository) UpdatePoll(
 	if len(outcome.ResponseJSON) > 0 {
 		response = outcome.ResponseJSON
 	}
+	terminal := outcome.Status == service.VideoTaskStatusCompleted || outcome.Status == service.VideoTaskStatusFailed
 	task, err := scanVideoTaskBilling(r.db.QueryRowContext(ctx, `
 		UPDATE video_task_billings
 		SET task_status = $2,
@@ -574,13 +579,12 @@ func (r *videoTaskBillingRepository) UpdatePoll(
 			last_polled_at = NOW(),
 			next_poll_at = $5,
 			claimed_until = NULL,
-			terminal_at = CASE WHEN $2 IN ($6, $7) THEN NOW() ELSE terminal_at END,
+			terminal_at = CASE WHEN $6 THEN NOW() ELSE terminal_at END,
 			updated_at = NOW()
-		WHERE id = $1 AND billing_status = $8
+		WHERE id = $1 AND billing_status = $7
 		RETURNING `+videoTaskBillingColumnsSQL(),
 		id, outcome.Status, response, outcome.ErrorMessage, nextPollAt,
-		service.VideoTaskStatusCompleted, service.VideoTaskStatusFailed,
-		service.VideoTaskBillingReserved,
+		terminal, service.VideoTaskBillingReserved,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrVideoTaskBillingInvalidState
@@ -751,11 +755,12 @@ func scanVideoTaskReviewItem(row videoTaskBillingScanner) (service.VideoTaskRevi
 	var response, usageContext []byte
 	var actualCost sql.NullFloat64
 	var lastPolledAt, submissionDeadline, terminalAt, claimedUntil sql.NullTime
+	var upstreamTaskID, lastPollError sql.NullString
 	err := row.Scan(
-		&task.ID, &task.RequestID, &task.UpstreamTaskID, &task.Platform, &task.UserID, &task.APIKeyID,
+		&task.ID, &task.RequestID, &upstreamTaskID, &task.Platform, &task.UserID, &task.APIKeyID,
 		&task.GroupID, &task.AccountID, &task.Model, &task.UpstreamModel, &task.EstimatedCost, &actualCost,
 		&task.TaskStatus, &task.BillingStatus, &response, &task.PollCount, &lastPolledAt, &task.NextPollAt,
-		&task.LastPollError, &submissionDeadline, &terminalAt, &claimedUntil, &task.UpdatedAt, &task.CreatedAt,
+		&lastPollError, &submissionDeadline, &terminalAt, &claimedUntil, &task.UpdatedAt, &task.CreatedAt,
 		&task.Resolution, &task.DurationSeconds, &task.ReferenceImageCount, &usageContext, &item.UserEmail, &item.Username, &item.APIKeyName,
 	)
 	if err != nil {
@@ -763,6 +768,12 @@ func scanVideoTaskReviewItem(row videoTaskBillingScanner) (service.VideoTaskRevi
 	}
 	if actualCost.Valid {
 		task.ActualCost = &actualCost.Float64
+	}
+	if upstreamTaskID.Valid {
+		task.UpstreamTaskID = upstreamTaskID.String
+	}
+	if lastPollError.Valid {
+		task.LastPollError = lastPollError.String
 	}
 	task.ResponseJSON = append([]byte(nil), response...)
 	task.UsageContextJSON = append([]byte(nil), usageContext...)
@@ -809,17 +820,24 @@ func scanVideoTaskBilling(row videoTaskBillingScanner) (*service.VideoTaskBillin
 	var response, usageContext []byte
 	var actualCost sql.NullFloat64
 	var lastPolledAt, submissionDeadline, terminalAt, claimedUntil sql.NullTime
+	var upstreamTaskID, lastPollError sql.NullString
 	if err := row.Scan(
-		&task.ID, &task.RequestID, &task.UpstreamTaskID, &task.Platform, &task.UserID, &task.APIKeyID,
+		&task.ID, &task.RequestID, &upstreamTaskID, &task.Platform, &task.UserID, &task.APIKeyID,
 		&task.GroupID, &task.AccountID, &task.Model, &task.UpstreamModel, &task.EstimatedCost, &actualCost,
 		&task.TaskStatus, &task.BillingStatus, &response, &task.PollCount, &lastPolledAt, &task.NextPollAt,
-		&task.LastPollError, &submissionDeadline, &terminalAt, &claimedUntil, &task.UpdatedAt, &task.CreatedAt,
+		&lastPollError, &submissionDeadline, &terminalAt, &claimedUntil, &task.UpdatedAt, &task.CreatedAt,
 		&task.Resolution, &task.DurationSeconds, &task.ReferenceImageCount, &usageContext,
 	); err != nil {
 		return nil, err
 	}
 	if actualCost.Valid {
 		task.ActualCost = &actualCost.Float64
+	}
+	if upstreamTaskID.Valid {
+		task.UpstreamTaskID = upstreamTaskID.String
+	}
+	if lastPollError.Valid {
+		task.LastPollError = lastPollError.String
 	}
 	if len(response) > 0 {
 		task.ResponseJSON = append([]byte(nil), response...)

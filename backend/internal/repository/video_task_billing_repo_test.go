@@ -55,6 +55,29 @@ func TestVideoTaskBillingRepositoryGetByTaskScopesPlatformAndTaskID(t *testing.T
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestVideoTaskBillingRepositoryGetByIDHandlesNullableText(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC()
+	mock.ExpectQuery(`(?s)FROM video_task_billings.*WHERE id = \$1`).
+		WithArgs(int64(9)).
+		WillReturnRows(videoTaskBillingRows().AddRow(
+			int64(9), "request-1", nil, "openai", int64(7), int64(11), int64(13), int64(17),
+			"video-model", "video-model", 1.25, nil, service.VideoTaskStatusSubmitting, service.VideoTaskBillingReserved,
+			[]byte(`{}`), 0, nil, now, nil, nil, nil, nil, now, now, "720p", 8, 0, []byte(`{}`),
+		))
+
+	repo := NewVideoTaskBillingRepository(db)
+	task, err := repo.GetByID(context.Background(), 9)
+
+	require.NoError(t, err)
+	require.Empty(t, task.UpstreamTaskID)
+	require.Empty(t, task.LastPollError)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestVideoTaskDeletionGuardRejectsUnresolvedUserBeforeDelete(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -157,6 +180,34 @@ func TestVideoTaskBillingRepositoryBeginManualSettlementAcceptsReservedUnknown(t
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestVideoTaskBillingRepositoryListReviewTasksHandlesNullableText(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC()
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM video_task_billings`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`(?s)SELECT .*FROM video_task_billings v.*LIMIT \$1 OFFSET \$2`).
+		WithArgs(20, 0).
+		WillReturnRows(videoTaskBillingReviewRows().AddRow(
+			int64(9), "request-1", nil, "openai", int64(7), int64(11), int64(13), int64(17),
+			"video-model", "video-model", 1.25, nil, service.VideoTaskStatusSubmissionUnknown, service.VideoTaskBillingManualReview,
+			[]byte(`{}`), 0, nil, now, nil, nil, now, nil, now, now, "720p", 8, 0, []byte(`{}`),
+			"user@example.com", "user", "video-key",
+		))
+
+	repo := NewVideoTaskReviewRepository(db)
+	items, total, err := repo.ListReviewTasks(context.Background(), service.VideoTaskReviewFilter{})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	require.Empty(t, items[0].Task.UpstreamTaskID)
+	require.Empty(t, items[0].Task.LastPollError)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestVideoTaskBillingRepositoryReleaseReviewedFailureRejectsProcessingUnderLock(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -196,7 +247,7 @@ func TestVideoTaskBillingRepositoryReserveAndCreateMovesBalanceBeforeInsert(t *t
 		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"}).AddRow(8.75, 1.25))
 	mock.ExpectQuery(`(?s)INSERT INTO video_task_billings.*RETURNING id, created_at, updated_at`).
 		WithArgs(
-			"request-1", "", "openai", int64(7), int64(11), int64(13), int64(17),
+			"request-1", nil, "openai", int64(7), int64(11), int64(13), int64(17),
 			"video-model", "video-model", "", 0, 0, sqlmock.AnyArg(),
 			1.25, service.VideoTaskStatusSubmitting, service.VideoTaskBillingReserved, sqlmock.AnyArg(), nil, time.Time{},
 		).
@@ -415,10 +466,10 @@ func TestVideoTaskBillingRepositoryUpdatePollOnlyUpdatesReservedTasks(t *testing
 	defer func() { _ = db.Close() }()
 	repo := NewVideoTaskBillingRepository(db)
 
-	mock.ExpectQuery(`(?s)UPDATE video_task_billings.*WHERE id = \$1 AND billing_status = \$8`).
+	mock.ExpectQuery(`(?s)UPDATE video_task_billings.*terminal_at = CASE WHEN \$6 THEN NOW\(\) ELSE terminal_at END.*WHERE id = \$1 AND billing_status = \$7`).
 		WithArgs(
 			int64(9), service.VideoTaskStatusUnknown, nil, "upstream timeout", sqlmock.AnyArg(),
-			service.VideoTaskStatusCompleted, service.VideoTaskStatusFailed, service.VideoTaskBillingReserved,
+			false, service.VideoTaskBillingReserved,
 		).
 		WillReturnError(sql.ErrNoRows)
 
@@ -427,6 +478,34 @@ func TestVideoTaskBillingRepositoryUpdatePollOnlyUpdatesReservedTasks(t *testing
 	}, time.Now())
 
 	require.ErrorIs(t, err, service.ErrVideoTaskBillingInvalidState)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestVideoTaskBillingRepositoryUpdatePollFailedUsesTerminalFlag(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	repo := NewVideoTaskBillingRepository(db)
+	now := time.Now().UTC()
+
+	mock.ExpectQuery(`(?s)UPDATE video_task_billings.*terminal_at = CASE WHEN \$6 THEN NOW\(\) ELSE terminal_at END.*WHERE id = \$1 AND billing_status = \$7`).
+		WithArgs(
+			int64(9), service.VideoTaskStatusFailed, nil, "upstream rejected request", now,
+			true, service.VideoTaskBillingReserved,
+		).
+		WillReturnRows(videoTaskBillingRows().AddRow(
+			int64(9), "request-1", nil, "openai", int64(7), int64(11), int64(13), int64(17),
+			"video-model", "video-model", 1.25, nil, service.VideoTaskStatusFailed, service.VideoTaskBillingReserved,
+			[]byte(`{}`), 1, now, now, "upstream rejected request", nil, now, nil, now, now, "720p", 8, 0, []byte(`{}`),
+		))
+
+	task, err := repo.UpdatePoll(context.Background(), 9, service.VideoTaskOutcome{
+		Status: service.VideoTaskStatusFailed, ErrorMessage: "upstream rejected request",
+	}, now)
+
+	require.NoError(t, err)
+	require.Equal(t, service.VideoTaskStatusFailed, task.TaskStatus)
+	require.Equal(t, "upstream rejected request", task.LastPollError)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -440,5 +519,15 @@ func videoTaskBillingRows() *sqlmock.Rows {
 		"model", "upstream_model", "estimated_cost", "actual_cost", "task_status", "billing_status", "response_json",
 		"poll_count", "last_polled_at", "next_poll_at", "last_poll_error", "submission_deadline", "terminal_at",
 		"claimed_until", "updated_at", "created_at", "resolution", "duration_seconds", "reference_image_count", "usage_context_json",
+	})
+}
+
+func videoTaskBillingReviewRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id", "request_id", "upstream_task_id", "platform", "user_id", "api_key_id", "group_id", "account_id",
+		"model", "upstream_model", "estimated_cost", "actual_cost", "task_status", "billing_status", "response_json",
+		"poll_count", "last_polled_at", "next_poll_at", "last_poll_error", "submission_deadline", "terminal_at",
+		"claimed_until", "updated_at", "created_at", "resolution", "duration_seconds", "reference_image_count", "usage_context_json",
+		"email", "username", "api_key_name",
 	})
 }
