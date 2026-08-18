@@ -79,6 +79,34 @@ func (s *imageTaskMemoryStore) Get(_ context.Context, _ string) (*ImageTaskRecor
 	return &copy, nil
 }
 
+func TestImageTaskServiceEnabledWithoutObjectStorage(t *testing.T) {
+	svc := NewImageTaskServiceWithResolver(&imageTaskQueueMemoryStore{}, func() (*ImageResultUploader, bool) {
+		return nil, false
+	}, time.Hour, time.Minute)
+
+	require.True(t, svc.Enabled())
+}
+
+func TestImageTaskServiceCompletesWithLocalizedURLWithoutObjectStorage(t *testing.T) {
+	store := &imageTaskQueueMemoryStore{}
+	svc := NewImageTaskServiceWithResolver(store, func() (*ImageResultUploader, bool) {
+		return nil, false
+	}, time.Hour, time.Minute)
+	task := &ImageTaskRecord{
+		ID:             "imgtask_local",
+		UserID:         7,
+		APIKeyID:       9,
+		Status:         ImageTaskStatusRunning,
+		ExecutionToken: "claim_local",
+	}
+	result := json.RawMessage(`{"data":[{"url":"/generated-images/local.png"}]}`)
+
+	require.NoError(t, svc.CompleteGeneration(context.Background(), task, http.StatusOK, result))
+	require.Equal(t, ImageTaskStatusSucceeded, store.task.Status)
+	require.JSONEq(t, string(result), string(store.task.Result))
+	require.Nil(t, store.task.Error)
+}
+
 func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, 10*time.Minute)

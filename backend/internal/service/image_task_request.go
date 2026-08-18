@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrInvalidImageTaskRequest         = errors.New("invalid image task request")
-	ErrInvalidImageTaskClientRequestID = errors.New("client_request_id must match [A-Za-z0-9_-]{1,64}")
+	ErrInvalidImageTaskRequest            = errors.New("invalid image task request")
+	ErrInvalidImageTaskClientRequestID    = errors.New("client_request_id must match [A-Za-z0-9_-]{1,64}")
+	ErrUnsupportedImageTaskResponseFormat = errors.New("async image tasks support response_format url only")
 )
 
 var imageTaskClientRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -52,6 +53,9 @@ func ParseImageTaskRequest(body []byte) (ParsedImageTaskRequest, error) {
 		return ParsedImageTaskRequest{}, ErrInvalidImageTaskClientRequestID
 	}
 	if async {
+		if err := normalizeImageTaskResponseFormat(fields); err != nil {
+			return ParsedImageTaskRequest{}, err
+		}
 		normalizeImageTaskSize(fields)
 	}
 
@@ -69,6 +73,26 @@ func ParseImageTaskRequest(body []byte) (ParsedImageTaskRequest, error) {
 		parsed.Fingerprint = hex.EncodeToString(sum[:])
 	}
 	return parsed, nil
+}
+
+func normalizeImageTaskResponseFormat(fields map[string]json.RawMessage) error {
+	rawFormat, ok := fields["response_format"]
+	if !ok {
+		fields["response_format"] = json.RawMessage(`"url"`)
+		return nil
+	}
+	var responseFormat string
+	if err := json.Unmarshal(rawFormat, &responseFormat); err != nil {
+		return fmt.Errorf("%w: response_format must be a string", ErrUnsupportedImageTaskResponseFormat)
+	}
+	if responseFormat == "" {
+		fields["response_format"] = json.RawMessage(`"url"`)
+		return nil
+	}
+	if responseFormat != "url" {
+		return ErrUnsupportedImageTaskResponseFormat
+	}
+	return nil
 }
 
 func normalizeImageTaskSize(fields map[string]json.RawMessage) {

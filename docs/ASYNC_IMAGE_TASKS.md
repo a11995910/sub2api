@@ -16,9 +16,15 @@ The aliases are `/images/generations/async`, `/images/edits/async`, and `/images
 
 Only OpenAI and Grok groups are supported. Requests use the same JSON or multipart payload as the corresponding synchronous endpoint. Streaming image requests are rejected because a polled task returns one final JSON result.
 
-## Enabling the feature (object storage)
+## Public generations async mode
 
-Asynchronous image tasks are **disabled by default** and gated on object storage. When the switch is off — or the S3 credentials are incomplete — the async endpoints return `404` and never create a task or write to Redis. This is deliberate: without offloading, large `b64_json` results (several MB each, e.g. `gpt-image-1`) would accumulate in Redis and exhaust its memory.
+`POST /v1/images/generations` also accepts `async:true` plus a `client_request_id`. This mode persists the task in Redis and reuses the existing `GeneratedImageStore`; generated files remain under `generated_image.storage_path` and are served from `/generated-images/{filename}`. Docker deployments must keep `/app/data` on a persistent mount.
+
+This mode only supports URL results. A missing `response_format` is normalized to `url`; an explicit `b64_json` returns `400 ASYNC_RESPONSE_FORMAT_UNSUPPORTED`. Synchronous requests are unchanged. S3/R2 is optional for this mode and may still be enabled for shared multi-instance storage.
+
+## Legacy async endpoints (object storage)
+
+The legacy `/images/generations/async` and `/images/edits/async` endpoints remain gated on object storage. When the switch is off — or the S3 credentials are incomplete — those endpoints return `404`. The public `async:true` mode above remains available through local generated-image storage.
 
 ### From the admin UI (recommended)
 

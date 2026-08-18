@@ -171,6 +171,29 @@ func TestAsyncImageHandlerDispatchGenerationsIsIdempotent(t *testing.T) {
 	require.Contains(t, conflictWriter.Body.String(), "IDEMPOTENCY_CONFLICT")
 }
 
+func TestAsyncImageHandlerDispatchGenerationsAcceptsWithoutObjectStorage(t *testing.T) {
+	h, store, router := newAsyncGenerationTestHandler()
+	h.tasks = service.NewImageTaskServiceWithResolver(store, func() (*service.ImageResultUploader, bool) {
+		return nil, false
+	}, time.Hour, time.Minute)
+	router.POST("/v1/images/generations", h.DispatchGenerations(func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{
+		"async":true,
+		"client_request_id":"request_local",
+		"prompt":"dog",
+		"response_format":"url"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+	require.Contains(t, w.Body.String(), `"status":"queued"`)
+}
+
 func TestAsyncImageHandlerDispatchGenerationsRejectsInvalidClientID(t *testing.T) {
 	h, _, router := newAsyncGenerationTestHandler()
 	router.POST("/v1/images/generations", h.DispatchGenerations(func(c *gin.Context) {
@@ -184,6 +207,26 @@ func TestAsyncImageHandlerDispatchGenerationsRejectsInvalidClientID(t *testing.T
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.NotContains(t, w.Body.String(), "INTERNAL_ERROR")
+}
+
+func TestAsyncImageHandlerDispatchGenerationsRejectsBase64ResponseFormat(t *testing.T) {
+	h, _, router := newAsyncGenerationTestHandler()
+	router.POST("/v1/images/generations", h.DispatchGenerations(func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{
+		"async":true,
+		"client_request_id":"request_base64",
+		"prompt":"dog",
+		"response_format":"b64_json"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "ASYNC_RESPONSE_FORMAT_UNSUPPORTED")
 }
 
 func TestAsyncImageHandlerGetGenerationReturnsNewView(t *testing.T) {

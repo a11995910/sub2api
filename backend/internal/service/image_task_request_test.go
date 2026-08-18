@@ -31,8 +31,31 @@ func TestParseImageTaskRequestCleansAsyncPayload(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, parsed.Async)
 	require.Equal(t, "request_7f98c6d2", parsed.ClientRequestID)
-	require.JSONEq(t, `{"model":"gpt-image-2","prompt":"dog","size":"1024x1024"}`, string(parsed.UpstreamBody))
+	require.JSONEq(t, `{"model":"gpt-image-2","prompt":"dog","size":"1024x1024","response_format":"url"}`, string(parsed.UpstreamBody))
 	require.Len(t, parsed.Fingerprint, 64)
+}
+
+func TestParseImageTaskRequestKeepsAsyncURLResponseFormat(t *testing.T) {
+	parsed, err := ParseImageTaskRequest([]byte(`{
+		"async": true,
+		"client_request_id": "request_url",
+		"prompt": "dog",
+		"response_format": "url"
+	}`))
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"prompt":"dog","response_format":"url"}`, string(parsed.UpstreamBody))
+}
+
+func TestParseImageTaskRequestRejectsAsyncBase64ResponseFormat(t *testing.T) {
+	_, err := ParseImageTaskRequest([]byte(`{
+		"async": true,
+		"client_request_id": "request_base64",
+		"prompt": "dog",
+		"response_format": "b64_json"
+	}`))
+
+	require.ErrorIs(t, err, ErrUnsupportedImageTaskResponseFormat)
 }
 
 func TestParseImageTaskRequestCleansExplicitSyncControlFields(t *testing.T) {

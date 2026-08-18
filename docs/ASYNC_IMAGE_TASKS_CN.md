@@ -2,7 +2,7 @@
 
 异步图片任务用于提交耗时较长的 OpenAI 兼容图片请求，并通过轮询获取最终结果。客户端无需维持单个 HTTP 长连接，可避免反向代理或 CDN 因图片生成耗时触发超时。任务执行仍复用同步图片接口既有的路由、计费、内容审核、并发控制和故障切换逻辑。
 
-## 功能入口与前置条件
+## 旧异步接口与前置条件
 
 已认证的 API Key 可使用下列接口：
 
@@ -14,13 +14,13 @@
 
 无 `/v1` 前缀的 `/images/generations/async`、`/images/edits/async`、`/images/tasks/{task_id}` 与上述接口语义相同。
 
-功能默认关闭，只有满足以下条件才会启用：
+上述旧异步接口保持原有对象存储开关，只有满足以下条件才会启用：
 
 - `image_storage.enabled=true`。
 - S3 兼容对象存储的 bucket、访问凭据和必要连接信息完整可用。
 - API Key 所属分组为 OpenAI 或 Grok 图片分组，且通过既有图片生成、用户、API Key、IP 和分组校验。
 
-未启用或对象存储配置不完整时，异步接口统一返回 `404`，不会创建 Redis 任务或保存图片结果。流式图片请求不支持异步提交，因为任务轮询只返回一次最终 JSON 结果。
+未启用或对象存储配置不完整时，上述旧异步接口统一返回 `404`。公共生图接口的 `async:true` 模式不受该开关影响。
 
 ## 公共生图接口异步模式
 
@@ -29,6 +29,8 @@
 - 未传 `async`：完全沿用原同步逻辑。
 - `async:false`：删除异步控制字段后沿用原同步逻辑，响应结构不变。
 - `async:true`：创建持久化任务并返回 `202 Accepted`，不要求客户端保持长连接。
+
+公共接口的异步模式只返回 URL：未传 `response_format` 时自动按 `url` 处理；显式传 `b64_json` 返回 `400 ASYNC_RESPONSE_FORMAT_UNSUPPORTED`。同步模式的响应格式不受影响。
 
 异步请求必须提供 `client_request_id`，格式为 `[A-Za-z0-9_-]{1,64}`。同一用户、同一 API Key 下，相同 ID 和相同请求参数返回原任务；参数不同返回 `409 IDEMPOTENCY_CONFLICT`。
 
@@ -56,7 +58,11 @@ GET /v1/images/generations/{task_id}
 
 旧 `/v1/images/generations/async`、`/v1/images/edits/async` 和 `/v1/images/tasks/{task_id}` 保持兼容。
 
-## 对象存储配置
+## 图片存储
+
+公共接口异步模式默认复用现有 `GeneratedImageStore`：图片保存在 `generated_image.storage_path`（Docker 默认 `/app/data/generated-images`），通过 `/generated-images/{filename}` 提供下载，并按现有策略保留 24 小时。部署时必须持久化挂载 `/app/data`，成功状态写入 Redis 的只是 `data[].url`，不会重复保存图片或写入 Base64。
+
+S3/R2 是多实例共享或跨主机容灾时的可选增强，不再是公共接口异步模式的启用前提。配置后，任务结果仍可按以下设置转存到对象存储；旧异步接口继续依赖该配置。
 
 在运行时 `config.yaml` 的 `image_storage` 段配置 S3 兼容对象存储；每个配置项也支持对应的 `IMAGE_STORAGE_*` 环境变量覆盖。Docker 部署会透传 `IMAGE_STORAGE_ENABLED`、`IMAGE_STORAGE_ENDPOINT`、`IMAGE_STORAGE_REGION`、`IMAGE_STORAGE_BUCKET`、`IMAGE_STORAGE_ACCESS_KEY_ID`、`IMAGE_STORAGE_SECRET_ACCESS_KEY`、`IMAGE_STORAGE_PREFIX`、`IMAGE_STORAGE_FORCE_PATH_STYLE`、`IMAGE_STORAGE_PUBLIC_BASE_URL`、`IMAGE_STORAGE_PRESIGN_EXPIRY_HOURS` 与 `IMAGE_STORAGE_MAX_DOWNLOAD_BYTES`。密钥必须保存在 staging 或 prod 的运行时 `.env`、凭据管理工具或配置文件中，禁止写入 Git。
 
@@ -80,7 +86,7 @@ image_storage:
 - `public_base_url` 为空时，结果 URL 为带有效期的预签名链接；填写公开桶或 CDN 前缀时，结果使用该前缀拼接对象 key。
 - 当上游仅返回图片 URL 时，服务会下载并转存；`max_download_bytes` 限制该下载内容的最大字节数，默认 32MB。
 
-任务完成后，服务将每张图片上传至对象存储，并把结果重写为 `data[].url`。原始 `b64_json` 不会写入 Redis，避免大图片占满 Redis 内存。上传失败时任务标记为 `failed`，不会保存原始 Base64 结果。
+启用对象存储后，服务将每张图片上传并把结果重写为 `data[].url`。上传失败时任务标记为 `failed`。
 
 ## 提交与轮询流程
 
@@ -112,17 +118,17 @@ curl -i "$BASE_URL/v1/images/generations/async" \
 - 任务所有权同时绑定用户 ID 和 API Key ID。不存在的任务与不属于当前 Key 的任务都按不可见任务处理，避免泄露任务是否存在。
 - 轮询时仍执行 API Key、用户状态、IP 和分组校验；任务完成后即使该 Key 的余额已经变化，合法任务的轮询仍遵循现有鉴权规则。
 - 图片计费、审核、并发与故障切换均发生在后台任务执行阶段，不因改为异步而绕过同步接口的业务约束。
-- 对象存储不可用、Redis 不可用、结果上传失败或上游调用失败时，服务返回可区分的任务失败状态或错误响应，不会静默丢弃任务。
+- 本地图片存储、Redis、可选对象存储或上游调用失败时，服务返回可区分的任务失败状态或错误响应，不会静默丢弃任务。
 
 ## 部署与验证
 
-staging 与 prod 必须分别配置独立的对象存储前缀或 bucket、Redis 和运行时凭据，不能让预发布任务污染正式图片对象或任务记录。
+staging 与 prod 必须使用独立 Redis 和本地图片数据目录。启用对象存储时，还必须使用独立前缀或 bucket。
 
 上线验证至少覆盖：
 
-- 未配置对象存储时，三个异步接口返回 `404` 且 Redis 没有新任务。
-- 使用允许图片生成的 OpenAI 或 Grok 分组提交任务，确认返回 `202`、`Location`、`Retry-After` 和 `Cache-Control: no-store`。
-- 轮询 `processing`、`completed` 与 `failed` 三种状态，确认成功结果只包含对象存储 URL，不包含 `b64_json`。
+- 未配置对象存储时，公共接口 `async:true` 返回 `202`，旧异步接口仍返回 `404`。
+- 使用允许图片生成的 OpenAI 或 Grok 分组提交公共异步任务，确认返回 `202`、`Location`、`Retry-After` 和 `Cache-Control: no-store`。
+- 轮询任务状态，确认成功结果只包含可访问的 `/generated-images/` URL，不包含 `b64_json`。
 - 使用不同 API Key 查询同一任务，确认不会暴露任务详情。
 - 验证对象存储上传失败时任务进入失败状态，Redis 中不保留大 Base64 图片内容。
 

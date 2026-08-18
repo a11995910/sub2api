@@ -157,9 +157,15 @@ func (s *ImageTaskService) current() (*ImageResultUploader, bool) {
 	return s.uploader, s.enabled
 }
 
-// Enabled 表示异步图片任务功能是否可用（总开关 + 凭证齐全）。
-// 关闭时 handler 直接返回 404，不创建任务、不写 Redis。
+// Enabled 表示持久化图片任务功能是否可用。新图片任务协议要求 URL 结果，
+// 因此只要任务仓库可用即可复用现有 generated-images 本地存储。
 func (s *ImageTaskService) Enabled() bool {
+	return s != nil && s.store != nil
+}
+
+// ObjectStorageEnabled 保留给旧异步接口作为兼容门槛。旧接口允许更宽泛的
+// 响应格式，未配置对象存储时继续保持原来的 404 行为。
+func (s *ImageTaskService) ObjectStorageEnabled() bool {
 	if s == nil || s.store == nil {
 		return false
 	}
@@ -246,10 +252,7 @@ func (s *ImageTaskService) CompleteGeneration(ctx context.Context, task *ImageTa
 	if !json.Valid(result) {
 		return s.FailGeneration(ctx, task, http.StatusBadGateway, "PROVIDER_REQUEST_FAILED", "Image generation failed", true)
 	}
-	uploader, enabled := s.current()
-	if s.resolve != nil && (!enabled || uploader == nil) {
-		return s.FailGeneration(ctx, task, http.StatusBadGateway, "RESULT_STORAGE_FAILED", "Image result storage is unavailable", true)
-	}
+	uploader, _ := s.current()
 	if uploader != nil {
 		rewritten, err := uploader.Rewrite(ctx, task.ID, result)
 		if err != nil {

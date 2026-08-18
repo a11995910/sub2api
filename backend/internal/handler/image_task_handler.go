@@ -37,11 +37,14 @@ func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGateway
 	return h
 }
 
-// enabled reports whether the async image task feature is available. Object
-// storage is the enablement gate: without it the endpoints are fully disabled
-// so that large base64 results never land in Redis.
+// enabled reports whether persistent task storage is available. The public
+// generations dispatcher only accepts URL results and reuses generated-images.
 func (h *AsyncImageHandler) enabled() bool {
 	return h != nil && h.tasks != nil && h.tasks.Enabled()
+}
+
+func (h *AsyncImageHandler) objectStorageEnabled() bool {
+	return h != nil && h.tasks != nil && h.tasks.ObjectStorageEnabled()
 }
 
 // pollable reports whether task lookups can be served. It is deliberately weaker
@@ -54,7 +57,7 @@ func (h *AsyncImageHandler) pollable() bool {
 // Submit accepts the same payload as the synchronous Images endpoint and
 // returns before the upstream image generation begins.
 func (h *AsyncImageHandler) Submit(c *gin.Context) {
-	if !h.enabled() {
+	if !h.objectStorageEnabled() {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
 		return
 	}
@@ -139,6 +142,10 @@ func (h *AsyncImageHandler) DispatchGenerations(syncHandler gin.HandlerFunc) gin
 		}
 		parsed, err := service.ParseImageTaskRequest(body)
 		if err != nil {
+			if errors.Is(err, service.ErrUnsupportedImageTaskResponseFormat) {
+				imageTaskJSONError(c, http.StatusBadRequest, "ASYNC_RESPONSE_FORMAT_UNSUPPORTED", err.Error())
+				return
+			}
 			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return
 		}

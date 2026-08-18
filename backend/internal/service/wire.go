@@ -634,9 +634,8 @@ func ProvideImageStorageSettingService(
 
 // ProvideImageTaskService 构造异步图片任务服务。
 //
-// 对象存储是异步图片任务的启用前提：仅当开关打开且凭证齐全时功能才可用，否则整体禁用
-// （handler 返回 404，不创建任务、不写 Redis），从而避免大 base64 结果撑爆 Redis。
-// 启用状态由 settings 服务在运行时解析，因此后台改开关后无需重启即可生效。
+// 公共 generations 异步模式复用 generated-images 本地持久化；对象存储是可选增强，
+// 配置后可在任务完成时继续转存。旧异步接口仍使用 settings 作为兼容门槛。
 func ProvideImageTaskService(store ImageTaskRepository, settings *ImageStorageSettingService) *ImageTaskService {
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 }

@@ -58,10 +58,8 @@ func (noopImageStorage) Save(context.Context, string, string, []byte) (string, e
 	return "https://cdn.example.test/object.png", nil
 }
 
-// TestAsyncImageEnablesWithoutRestart drives the actual HTTP path for the bug behind
-// #4458 and #4542: with object storage unconfigured the async endpoint 404s, and the
-// only way to turn it on used to be editing config.yaml and restarting the container.
-// Flipping the admin setting must flip the endpoint over in the same process.
+// TestAsyncImageEnablesWithoutRestart verifies the legacy /async endpoint keeps
+// its object-storage gate and can still be toggled without a restart.
 func TestAsyncImageEnablesWithoutRestart(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -105,7 +103,7 @@ func TestAsyncImageEnablesWithoutRestart(t *testing.T) {
 	}
 
 	rec := submit()
-	require.Equal(t, http.StatusNotFound, rec.Code, "disabled until an admin configures object storage")
+	require.Equal(t, http.StatusNotFound, rec.Code, "legacy async endpoint remains disabled until object storage is configured")
 	require.Contains(t, rec.Body.String(), "async image tasks are not enabled")
 
 	// The admin saves the setting — no restart, same process.
@@ -129,7 +127,7 @@ func TestAsyncImageEnablesWithoutRestart(t *testing.T) {
 	_, err = settings.Update(context.Background(), service.ImageStorageSettings{Enabled: false})
 	require.NoError(t, err)
 
-	require.Equal(t, http.StatusNotFound, submit().Code, "new submissions are refused again")
+	require.Equal(t, http.StatusNotFound, submit().Code, "new legacy submissions are refused again")
 
 	pollRec := httptest.NewRecorder()
 	router.ServeHTTP(pollRec, httptest.NewRequest(http.MethodGet, accepted.PollURL, nil))
