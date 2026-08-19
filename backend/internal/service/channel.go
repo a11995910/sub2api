@@ -90,21 +90,35 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID               int64             `json:"id,omitempty"`
-	ChannelID        int64             `json:"channel_id,omitempty"`
-	Platform         string            `json:"platform"`          // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          `json:"models"`            // 绑定的模型列表
-	BillingMode      BillingMode       `json:"billing_mode"`      // 计费模式
-	InputPrice       *float64          `json:"input_price"`       // token 模式为每 token 输入价；video 模式历史保留字段，不参与计费
-	OutputPrice      *float64          `json:"output_price"`      // 每 token 输出价格（USD）
-	CacheWritePrice  *float64          `json:"cache_write_price"` // 缓存写入价格
-	CacheReadPrice   *float64          `json:"cache_read_price"`  // 缓存读取价格
-	ImageInputPrice  *float64          `json:"image_input_price"` // 图片输入 token 价格；未配置时回退文本输入价
-	ImageOutputPrice *float64          `json:"image_output_price"`
-	PerRequestPrice  *float64          `json:"per_request_price"`
-	Intervals        []PricingInterval `json:"intervals"`
-	CreatedAt        time.Time         `json:"created_at,omitempty"`
-	UpdatedAt        time.Time         `json:"updated_at,omitempty"`
+	ID               int64               `json:"id,omitempty"`
+	ChannelID        int64               `json:"channel_id,omitempty"`
+	Platform         string              `json:"platform"`          // 所属平台（anthropic/openai/gemini/...）
+	Models           []string            `json:"models"`            // 绑定的模型列表
+	BillingMode      BillingMode         `json:"billing_mode"`      // 计费模式
+	InputPrice       *float64            `json:"input_price"`       // token 模式为每 token 输入价；video 模式历史保留字段，不参与计费
+	OutputPrice      *float64            `json:"output_price"`      // 每 token 输出价格（USD）
+	CacheWritePrice  *float64            `json:"cache_write_price"` // 缓存写入价格
+	CacheReadPrice   *float64            `json:"cache_read_price"`  // 缓存读取价格
+	ImageInputPrice  *float64            `json:"image_input_price"` // 图片输入 token 价格；未配置时回退文本输入价
+	ImageOutputPrice *float64            `json:"image_output_price"`
+	PerRequestPrice  *float64            `json:"per_request_price"`
+	Intervals        []PricingInterval   `json:"intervals"`
+	TimePricing      *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt        time.Time           `json:"created_at,omitempty"`
+	UpdatedAt        time.Time           `json:"updated_at,omitempty"`
+}
+
+// ChannelTimePricing 渠道模型定价的分时倍率配置。
+type ChannelTimePricing struct {
+	Timezone string                     `json:"timezone"`
+	Periods  []ChannelTimePricingPeriod `json:"periods"`
+}
+
+// ChannelTimePricingPeriod 是秒级的左闭右开分时倍率区间，并兼容历史 HH:mm 数据。
+type ChannelTimePricingPeriod struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
@@ -197,6 +211,12 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	if p.Intervals != nil {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
+	}
+	if p.TimePricing != nil {
+		cp.TimePricing = &ChannelTimePricing{Timezone: p.TimePricing.Timezone}
+		if p.TimePricing.Periods != nil {
+			cp.TimePricing.Periods = append([]ChannelTimePricingPeriod(nil), p.TimePricing.Periods...)
+		}
 	}
 	return cp
 }

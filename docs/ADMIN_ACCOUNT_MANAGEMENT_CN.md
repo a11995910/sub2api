@@ -42,6 +42,28 @@ API Key 列表、创建响应、详情响应和管理员查看用户 Key 时会�
 
 当 Redis 并发缓存不可用或没有活跃请求时，服务端返回 `0`。前端应把该字段作为瞬时状态展示，不能用它替代历史用量统计或并发上限配置。
 
+## 国产供应商账号
+
+账号管理支持 Kimi、智谱和 DeepSeek 三类 API Key 账号，对应平台值为 `kimi`、`zhipu`、`deepseek`。这些账号可绑定同平台分组，并通过 OpenAI 网关完成鉴权、模型调度、`/count_tokens`、用量记录、用户与 API Key 配额检查和计费。
+
+账号凭据使用以下字段：
+
+- `api_key`：上游 API Key。
+- `base_url`：上游基础地址；管理端提供官方端点预设，也允许保存通过后端安全校验的自定义地址。
+- `account_mode`：`payg` 表示按量付费，`coding` 表示 Coding Plan。Kimi 和智谱支持两种模式；DeepSeek 只支持 `payg`。
+- `api_protocol`：`chat_completions` 或 `anthropic`；DeepSeek 还支持原生 `responses`。缺失或非法值按 `chat_completions` 处理，Kimi、智谱不会把 `responses` 当作有效协议。
+
+`account_mode` 决定账号页和渠道监控读取额度还是余额，`api_protocol` 决定转发到上游时采用 Chat Completions、Anthropic Messages 或 Responses 请求格式。二者彼此独立；管理员切换模式或协议时，页面会切换到对应官方端点预设，自定义中转地址需要重新确认。
+
+账号页提供只读探测操作：
+
+- `GET /api/v1/admin/cn-providers/accounts/:id/quota`：查询 Kimi 或智谱 Coding Plan 的 5 小时及周用量窗口，并把成功结果写入账号 `extra` 快照。
+- `GET /api/v1/admin/cn-providers/accounts/:id/balance`：查询 Kimi 或 DeepSeek 按量账号余额，并把成功结果写入账号 `extra` 快照。DeepSeek 可返回多币种余额；智谱没有公开余额端点。
+
+同一账号的并发探测由服务端合并，单次上游请求超时为 15 秒。探测沿用账号代理和合法的请求头覆写，并在发送凭据前执行出站 URL 安全校验。上游 `401/403`、非 2xx、业务错误或响应解析失败不会覆盖上一份有效快照；数据库落盘失败会返回探测结果，但 `persisted=false`。
+
+Kimi、智谱和 DeepSeek 已加入用户平台配额允许列表，相关记录存放在 `user_platform_quotas`。Kimi、智谱 Coding Plan 的用量窗口还可参与账号自动停调阈值判断；DeepSeek 按余额和上游 `402/429` 状态处理，不使用滚动窗口阈值。
+
 ## 请求头覆写
 
 Anthropic 和 OpenAI 平台的 `api_key` 类型账号支持请求头覆写。管理员可在创建账号、编辑账号或批量编辑账号时开启该能力，并在账号 `credentials` 中保存：
@@ -91,6 +113,8 @@ Anthropic 和 OpenAI 平台的 `api_key` 类型账号支持请求头覆写。管
 - 更新分组时会先校验分组是否存在；存在混合渠道风险时需要管理员确认后继续。
 - 请求头覆写只在支持的平台和账号类型上展示和保存；非法 Header、重复 Header、非字符串值和超长配置会被服务端拒绝。
 - `anthropic_forwarding_risk` 为派生提示字段，旧账号和旧数据不需要迁移；非 Anthropic 账号和未启用透传的 Anthropic API Key 账号不会返回该字段。
+- 国产供应商额度接口只接受 Kimi、智谱 Coding Plan 账号；余额接口只接受 Kimi、DeepSeek 按量账号。平台、账号模式或账号 ID 不匹配时返回明确的 `4xx` 错误，不会尝试其他供应商端点。
+- 智谱按量账号没有余额查询能力；DeepSeek 不提供 Coding Plan 选项。探测失败不等于删除账号，管理员应结合账号状态、上游返回和最近有效快照判断。
 
 ## 测试建议
 
@@ -103,3 +127,4 @@ Anthropic 和 OpenAI 平台的 `api_key` 类型账号支持请求头覆写。管
 - Handler 测试覆盖创建 Anthropic OAuth/SetupToken 账号时自动写入保守 `base_rpm`、`max_sessions`、`session_idle_timeout_minutes`，且不影响 Anthropic API Key 账号。
 - 服务测试覆盖网关调试日志对认证头、Claude Code session、metadata 用户标识和 prompt cache key 的脱敏。
 - 组件测试覆盖多个 Agent Identity 文件导入、camelCase 字段兼容、与 Sub2API 导出数据混选拒绝，以及部分成功后刷新账号列表。
+- 服务与组件测试覆盖国产供应商模式/协议组合、默认端点、额度和余额响应解析、代理与出站 URL 校验、并发探测合并、快照落盘失败以及不支持的供应商组合。

@@ -488,7 +488,7 @@ func (s *OpenAIGatewayService) resolveImage4KEnhancementTargetRequestModel(ctx c
 	candidates := make([]string, 0, len(accounts))
 	seen := map[string]struct{}{}
 	for _, account := range accounts {
-		if !account.IsSchedulable() || normalizeOpenAICompatiblePlatform(account.Platform) != PlatformOpenAI {
+		if !account.IsSchedulable() || NormalizeOpenAICompatiblePlatform(account.Platform) != PlatformOpenAI {
 			continue
 		}
 		for model := range account.GetModelMapping() {
