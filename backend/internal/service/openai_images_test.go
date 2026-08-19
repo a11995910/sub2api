@@ -2097,7 +2097,7 @@ func (r *openAIImages4KEnhancementAccountRepo) ListSchedulableByGroupIDAndPlatfo
 	accounts := r.accountsByGroup[groupID]
 	out := make([]Account, 0, len(accounts))
 	for _, account := range accounts {
-		if normalizeOpenAICompatiblePlatform(account.Platform) == normalizeOpenAICompatiblePlatform(platform) {
+		if NormalizeOpenAICompatiblePlatform(account.Platform) == NormalizeOpenAICompatiblePlatform(platform) {
 			out = append(out, account)
 		}
 	}

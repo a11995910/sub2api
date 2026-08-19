@@ -672,7 +672,58 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validatePricingIntervals(pricing); err != nil {
 		return err
 	}
-	return validatePricingBillingMode(pricing)
+	if err := validatePricingBillingMode(pricing); err != nil {
+		return err
+	}
+	return validatePricingTimePricing(pricing)
+}
+
+func validatePricingTimePricing(pricing []ChannelModelPricing) error {
+	for i := range pricing {
+		config := pricing[i].TimePricing
+		if config == nil {
+			continue
+		}
+		if len(config.Periods) == 0 {
+			pricing[i].TimePricing = nil
+			continue
+		}
+		mode := pricing[i].BillingMode
+		if mode != "" && mode != BillingModeToken {
+			return infraerrors.BadRequest("TIME_PRICING_UNSUPPORTED_MODE", "time pricing only supports token billing mode")
+		}
+		if err := validateChannelTimePricing(config); err != nil {
+			return infraerrors.BadRequest("INVALID_TIME_PRICING", fmt.Sprintf(
+				"invalid time pricing for platform '%s' models %v: %v", pricing[i].Platform, pricing[i].Models, err))
+		}
+	}
+	return nil
+}
+
+func validateAccountStatsPricingRules(rules []AccountStatsPricingRule) error {
+	if err := validateAccountStatsTimePricing(rules); err != nil {
+		return err
+	}
+	for i := range rules {
+		if err := validateAccountStatsPricingEntries(rules[i].Pricing); err != nil {
+			return fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+// validateAccountStatsTimePricing 明确拒绝账号统计规则中的分时倍率。
+// 账号统计计算链路没有请求开始时间语义，接受配置会导致展示价格与实际统计不一致。
+func validateAccountStatsTimePricing(rules []AccountStatsPricingRule) error {
+	for i := range rules {
+		for _, pricing := range rules[i].Pricing {
+			if pricing.TimePricing != nil && len(pricing.TimePricing.Periods) > 0 {
+				return fmt.Errorf("account stats pricing rule #%d: %w", i+1,
+					infraerrors.BadRequest("ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", "account stats pricing does not support time pricing"))
+			}
+		}
+	}
+	return nil
 }
 
 // validateAccountStatsPricingEntries 校验账号统计规则内的定价。
@@ -693,6 +744,9 @@ func validateAccountStatsPricingEntries(pricing []ChannelModelPricing) error {
 // 但禁止改变其作用域、模型、价格或层级。账号统计链路尚不支持视频时长，
 // 因此任何新增、删除或修改都必须继续失败。
 func validateAccountStatsPricingRulesUpdate(existing, updated []AccountStatsPricingRule) error {
+	if err := validateAccountStatsTimePricing(updated); err != nil {
+		return err
+	}
 	existingVideoPricing, err := accountStatsVideoPricingSignatures(existing)
 	if err != nil {
 		return fmt.Errorf("snapshot existing account stats video pricing: %w", err)
@@ -987,10 +1041,8 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
-	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validateAccountStatsPricingEntries(rule.Pricing); err != nil {
-			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-		}
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {

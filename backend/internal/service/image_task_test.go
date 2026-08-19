@@ -194,8 +194,12 @@ func TestImageTaskGenerationViewPromotesResultFields(t *testing.T) {
 	require.Equal(t, "imgtask_123", view["id"])
 	require.Equal(t, ImageTaskStatusSucceeded, view["status"])
 	require.Equal(t, "request_123", view["client_request_id"])
-	require.Contains(t, string(view["data"].(json.RawMessage)), "dog.png")
-	require.Contains(t, string(view["usage"].(json.RawMessage)), "total_tokens")
+	data, ok := view["data"].(json.RawMessage)
+	require.True(t, ok)
+	require.Contains(t, string(data), "dog.png")
+	usage, ok := view["usage"].(json.RawMessage)
+	require.True(t, ok)
+	require.Contains(t, string(usage), "total_tokens")
 }
 
 func TestImageTaskGenerationViewMapsLegacyStatuses(t *testing.T) {

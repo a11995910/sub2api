@@ -78,6 +78,10 @@ describe('渠道视频定价兼容', () => {
         per_request_price: 2.3,
         sort_order: 1,
       }],
+	  time_pricing: {
+		timezone: 'Asia/Shanghai',
+		periods: [],
+	  },
     })
   })
 

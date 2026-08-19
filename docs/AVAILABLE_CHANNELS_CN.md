@@ -71,7 +71,7 @@
 
 管理员在“账号管理”创建 Grok OAuth 账号时，可以粘贴一行一个的 Grok Web SSO key。前端调用 `POST /api/v1/admin/grok/sso-to-oauth`，服务端通过 xAI Device Flow 转换为 Grok Build OAuth 凭据并创建账号；批量任务以 3 路并发执行，返回 `created` 与 `failed` 两组逐项结果。导入成功后系统会主动探测账号，探测失败不会伪造配额数据，管理员可在账号列表继续查看错误并手动重试。SSO key、OAuth Token 和转换过程中的凭据只允许出现在请求和运行时日志脱敏链路中，不得写入文档或仓库。
 
-“渠道监控”支持 `provider=grok`，管理接口为 `/api/v1/admin/channel-monitors` 及其 `/:id/run`、`/:id/history` 子接口。Grok 监控固定使用 `chat_completions` 模式，默认端点为 `https://api.x.ai`，未填写主模型时使用 `grok-4.5`；`responses` 模式会被拒绝。监控请求使用 Bearer API Key，记录主模型和附加模型的状态、延迟与历史结果；上游错误会保留 HTTP 状态用于排障，同时对返回内容中的 xAI key 做脱敏。数据库约束允许 `channel_monitors.provider` 和 `channel_monitor_request_templates.provider` 使用 `grok`。
+“渠道监控”支持 `provider=grok`。Grok 探活固定使用 `chat_completions` 模式，默认端点为 `https://api.x.ai`，未填写主模型时使用 `grok-4.5`；`responses` 模式会被拒绝。监控请求使用 Bearer API Key，记录主模型和附加模型的状态、延迟与历史结果；上游错误会保留 HTTP 状态用于排障，同时对返回内容中的 xAI key 做脱敏。渠道监控同时支持基于关联账号读取用量或余额，完整模式、接口、数据表和异常规则见[渠道监控功能说明](CHANNEL_MONITOR_CN.md)。
 
 自动化覆盖包括账号 SSO 导入接口与批量结果、Grok 主动探测、Grok 监控默认模型与请求格式、错误脱敏、长上下文账号校验与继承、计费结果和用量字段契约。上线验收仍需使用隔离账号分别验证一次 SSO 导入、手动监控运行和一笔可明确判断是否命中长上下文阈值的请求。
 
@@ -100,6 +100,14 @@
 - 启用 `cache_hit_quarter_to_input_enabled` 的分组，缓存读取 token 会先按四分之一划入输入 token 后再计算费用和写入用量日志；统计、账单、余额消耗都读取调整后的用量日志，保持同一展示口径。
 
 如果同一平台下用户可访问多个分组，价格卡会按分组分别展示最终价格，避免用户误以为所有分组价格相同。
+
+### 渠道模型分时倍率
+
+管理端可为渠道的 `token` 模式模型定价配置 `time_pricing`，结构包含 IANA 时区 `timezone` 和每日重复的 `periods`。每个时段包含 `start_time`、`end_time` 和 `multiplier`；时间接受 `HH:mm` 或 `HH:mm:ss`，区间按左闭右开计算，`00:00` / `00:00:00` 可作为当天结束时间。时段不能重叠，开始时间必须早于结束时间，倍率至少为 `0.01` 且最多保留两位小数。
+
+请求命中渠道定价时，系统按请求定价时刻换算到配置时区，并把对应时段倍率乘到渠道 token 成本上；未命中时段、没有配置或读取到历史脏配置时安全回退为 `1`。请求处理和用量记录共用固定的定价时刻，避免跨时段的长请求在不同阶段采用不同倍率。分组倍率、分组高峰倍率和其他既有倍率仍按原顺序参与最终计费。
+
+分时倍率只适用于主渠道 `channel_model_pricing` 的 token 定价。`per_request`、`image`、`video` 模式会拒绝分时配置；分组模型定价和账号统计定价也不接受该字段，因为这些链路没有相同的请求时间语义。删除全部时段等同于关闭分时倍率。数据库通过 `channel_model_pricing.time_pricing` JSONB 保存配置，旧记录为空，不需要回填。
 
 ### 视频渠道定价与兼容边界
 

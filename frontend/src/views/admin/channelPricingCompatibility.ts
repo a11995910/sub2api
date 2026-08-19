@@ -1,6 +1,6 @@
 import type { ChannelModelPricing } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { apiIntervalsToForm, perTokenToMTok, pricingInputToForm } from '@/components/admin/channel/types'
+import { apiIntervalsToForm, apiTimePricingToForm, perTokenToMTok, pricingInputToForm } from '@/components/admin/channel/types'
 import { BILLING_MODE_TOKEN, type BillingMode } from '@/constants/channel'
 
 /** 编辑历史定价时保留后端模式，避免把按次价格隐式解释为视频每秒价格。 */
@@ -24,5 +24,6 @@ export function mapChannelPricingToForm(entry: ChannelModelPricing): PricingForm
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,
     intervals: apiIntervalsToForm(entry.intervals || []),
+	time_pricing: apiTimePricingToForm(entry.time_pricing),
   }
 }

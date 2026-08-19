@@ -72,7 +72,7 @@
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayTokens') }}</p>
           <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatFullTokens(stats?.today_tokens || 0) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatFullTokens(stats?.today_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatFullTokens(stats?.today_output_tokens || 0) }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatFullTokens(stats?.today_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatFullTokens(stats?.today_output_tokens || 0) }} / {{ t('dashboard.cache') }}: {{ formatFullTokens((stats?.today_cache_creation_tokens || 0) + (stats?.today_cache_read_tokens || 0)) }}</p>
         </div>
       </div>
     </div>
@@ -86,7 +86,7 @@
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.totalTokens') }}</p>
           <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatFullTokens(stats?.total_tokens || 0) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatFullTokens(stats?.total_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatFullTokens(stats?.total_output_tokens || 0) }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dashboard.input') }}: {{ formatFullTokens(stats?.total_input_tokens || 0) }} / {{ t('dashboard.output') }}: {{ formatFullTokens(stats?.total_output_tokens || 0) }} / {{ t('dashboard.cache') }}: {{ formatFullTokens((stats?.total_cache_creation_tokens || 0) + (stats?.total_cache_read_tokens || 0)) }}</p>
         </div>
       </div>
     </div>
