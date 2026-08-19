@@ -3,10 +3,24 @@
 package service
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestNormalizeAndValidateCacheHitTargetPercent(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 90.0, NormalizeCacheHitTargetPercent(nil))
+	value := 89.876
+	require.Equal(t, 89.88, NormalizeCacheHitTargetPercent(&value))
+	require.NoError(t, ValidateCacheHitTargetConfig(0.01))
+	require.NoError(t, ValidateCacheHitTargetConfig(100))
+	require.Error(t, ValidateCacheHitTargetConfig(0))
+	require.Error(t, ValidateCacheHitTargetConfig(100.01))
+	require.Error(t, ValidateCacheHitTargetConfig(math.NaN()))
+}
 
 // TestGroup_GetImagePrice_1K 测试 1K 尺寸返回正确价格
 func TestGroup_GetImagePrice_1K(t *testing.T) {

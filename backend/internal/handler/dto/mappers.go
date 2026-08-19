@@ -320,6 +320,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		Image4KEnhancementModel:         g.Image4KEnhancementModel,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		CacheHitQuarterToInput:          g.CacheHitQuarterToInput,
+		CacheHitTargetPercent:           g.CacheHitTargetPercent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,

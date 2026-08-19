@@ -647,23 +647,39 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
-        <label
-          class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50"
-        >
-          <input
-            v-model="createForm.cache_hit_quarter_to_input_enabled"
-            type="checkbox"
-            class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600"
-          />
-          <span>
-            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.form.cacheHitQuarterToInput") }}
+        <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+          <label class="flex items-start gap-3">
+            <input
+              v-model="createForm.cache_hit_quarter_to_input_enabled"
+              type="checkbox"
+              class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600"
+            />
+            <span>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.groups.form.cacheHitTargetEnabled") }}
+              </span>
+              <span class="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.form.cacheHitTargetEnabledHint") }}
+              </span>
             </span>
-            <span class="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.form.cacheHitQuarterToInputHint") }}
-            </span>
-          </span>
-        </label>
+          </label>
+          <div v-if="createForm.cache_hit_quarter_to_input_enabled" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+            <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
+            <div class="relative">
+              <input
+                v-model.number="createForm.cache_hit_target_percent"
+                type="number"
+                min="0.01"
+                max="100"
+                step="0.01"
+                required
+                class="input pr-8"
+              />
+              <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+            </div>
+            <p class="input-hint">{{ t("admin.groups.form.cacheHitTargetPercentHint") }}</p>
+          </div>
+        </div>
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(createForm.platform)"
           ref="createReasoningEffortPolicyRef"
@@ -2532,23 +2548,39 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
-        <label
-          class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50"
-        >
-          <input
-            v-model="editForm.cache_hit_quarter_to_input_enabled"
-            type="checkbox"
-            class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600"
-          />
-          <span>
-            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.form.cacheHitQuarterToInput") }}
+        <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+          <label class="flex items-start gap-3">
+            <input
+              v-model="editForm.cache_hit_quarter_to_input_enabled"
+              type="checkbox"
+              class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600"
+            />
+            <span>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t("admin.groups.form.cacheHitTargetEnabled") }}
+              </span>
+              <span class="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.form.cacheHitTargetEnabledHint") }}
+              </span>
             </span>
-            <span class="mt-1 block text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-              {{ t("admin.groups.form.cacheHitQuarterToInputHint") }}
-            </span>
-          </span>
-        </label>
+          </label>
+          <div v-if="editForm.cache_hit_quarter_to_input_enabled" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+            <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
+            <div class="relative">
+              <input
+                v-model.number="editForm.cache_hit_target_percent"
+                type="number"
+                min="0.01"
+                max="100"
+                step="0.01"
+                required
+                class="input pr-8"
+              />
+              <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+            </div>
+            <p class="input-hint">{{ t("admin.groups.form.cacheHitTargetPercentHint") }}</p>
+          </div>
+        </div>
         <ReasoningEffortPolicyFields
           v-if="supportsReasoningEffortPolicyPlatform(editForm.platform)"
           ref="editReasoningEffortPolicyRef"
@@ -5730,6 +5762,7 @@ const createForm = reactive({
   image_4k_enhancement_model: null as string | null,
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
+  cache_hit_target_percent: 90,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
   batch_image_hold_multiplier: 0.6,
@@ -6100,6 +6133,7 @@ const editForm = reactive({
   image_4k_enhancement_model: null as string | null,
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
+  cache_hit_target_percent: 90,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
   batch_image_hold_multiplier: 0.6,
@@ -6637,6 +6671,7 @@ const closeCreateModal = () => {
   createImage4KEnhancementModels.value = [];
   createForm.image_rate_independent = false;
   createForm.cache_hit_quarter_to_input_enabled = false;
+  createForm.cache_hit_target_percent = 90;
   createForm.image_rate_multiplier = 1;
   createForm.batch_image_discount_multiplier = 0.5;
   createForm.batch_image_hold_multiplier = 0.6;
@@ -6724,9 +6759,30 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
   return true;
 };
 
+const validateCacheHitTargetForm = (
+  enabled: boolean,
+  targetPercent: number | string,
+): boolean => {
+  if (!enabled) return true;
+  const target = Number(targetPercent);
+  if (!Number.isFinite(target) || target < 0.01 || target > 100) {
+    appStore.showError(t("admin.groups.form.cacheHitTargetPercentInvalid"));
+    return false;
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
+    return;
+  }
+  if (
+    !validateCacheHitTargetForm(
+      createForm.cache_hit_quarter_to_input_enabled,
+      createForm.cache_hit_target_percent,
+    )
+  ) {
     return;
   }
   if (
@@ -6925,6 +6981,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.cache_hit_quarter_to_input_enabled =
     group.cache_hit_quarter_to_input_enabled ?? false;
+  editForm.cache_hit_target_percent = group.cache_hit_target_percent ?? 90;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.batch_image_discount_multiplier =
     group.batch_image_discount_multiplier ?? 0.5;
@@ -7051,6 +7108,14 @@ const handleUpdateGroup = async () => {
   if (!editingGroup.value) return;
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
+    return;
+  }
+  if (
+    !validateCacheHitTargetForm(
+      editForm.cache_hit_quarter_to_input_enabled,
+      editForm.cache_hit_target_percent,
+    )
+  ) {
     return;
   }
   if (

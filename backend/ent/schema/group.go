@@ -138,7 +138,11 @@ func (Group) Fields() []ent.Field {
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
 		field.Bool("cache_hit_quarter_to_input_enabled").
 			Default(false).
-			Comment("启用后将每次请求缓存读取 token 的四分之一划入输入 token 重新计费"),
+			Comment("是否启用按用户和分组累计控制缓存命中率；字段名为历史兼容保留"),
+		field.Float("cache_hit_target_percent").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
+			Default(90.0).
+			Comment("缓存命中率目标上限百分比；启用累计控制后生效"),
 		field.Float("image_rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).

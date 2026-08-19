@@ -80,6 +80,7 @@ type APIKeyAuthGroupSnapshot struct {
 	Image4KEnhancementModel         *string                       `json:"image_4k_enhancement_model,omitempty"`
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
+	CacheHitTargetPercent           float64                       `json:"cache_hit_target_percent"`
 	ImageRateMultiplier             float64                       `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64                      `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64                      `json:"image_price_2k,omitempty"`

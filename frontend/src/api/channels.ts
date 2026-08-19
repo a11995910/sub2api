@@ -26,8 +26,10 @@ export interface UserAvailableGroup {
   image_super_resolution_enabled?: boolean
   /** true = 图片生成使用独立倍率；false = 共用当前有效分组倍率。 */
   image_rate_independent: boolean
-  /** 是否将每次请求缓存命中 token 的四分之一划入输入 token 重新计费。 */
+  /** 是否按用户和分组累计控制缓存命中率；字段名为历史兼容保留。 */
   cache_hit_quarter_to_input_enabled: boolean
+  /** 调整后缓存命中率的累计目标上限（百分比）。 */
+  cache_hit_target_percent: number
   /** 图片生成独立倍率，仅 image_rate_independent=true 时生效。 */
   image_rate_multiplier: number
   /** 1K 图片生成单价；为空时后端计费会回退默认图片价格。 */

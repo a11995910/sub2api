@@ -1,10 +1,38 @@
 package service
 
 import (
+	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type memoryCacheHitTargetTracker struct {
+	mu     sync.Mutex
+	states map[string][2]int64
+}
+
+func (m *memoryCacheHitTargetTracker) AdjustCacheHitToTarget(
+	_ context.Context,
+	userID, groupID, targetBasisPoints, promptTokens, cacheReadTokens int64,
+) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.states == nil {
+		m.states = make(map[string][2]int64)
+	}
+	key := fmt.Sprintf("%d:%d:%d", userID, groupID, targetBasisPoints)
+	state := m.states[key]
+	promptTotal := state[0] + promptTokens
+	cacheAvailable := state[1] + cacheReadTokens
+	allowed := (promptTotal/cacheHitTargetBasisPoints)*targetBasisPoints +
+		(promptTotal%cacheHitTargetBasisPoints)*targetBasisPoints/cacheHitTargetBasisPoints
+	cacheKept := min(cacheAvailable, allowed)
+	m.states[key] = [2]int64{promptTotal, cacheKept}
+	return cacheAvailable - cacheKept, nil
+}
 
 func TestParseUsageRequestType(t *testing.T) {
 	t.Parallel()
@@ -109,4 +137,62 @@ func TestUsageLogSyncRequestTypeAndLegacyFieldsNilReceiver(t *testing.T) {
 
 	var log *UsageLog
 	log.SyncRequestTypeAndLegacyFields()
+}
+
+func TestApplyCacheHitTargetToInput_CumulativeUserGroupTarget(t *testing.T) {
+	t.Parallel()
+
+	groupID := int64(9)
+	apiKey := &APIKey{
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                     groupID,
+			CacheHitQuarterToInput: true,
+			CacheHitTargetPercent:  90,
+		},
+	}
+	tracker := &memoryCacheHitTargetTracker{}
+
+	// 首次请求命中率 80%，低于目标，不做调整，但会累计分母。
+	first := &UsageTokens{InputTokens: 20, CacheReadTokens: 80}
+	shifted, err := applyCacheHitTargetToInput(context.Background(), first, apiKey, 101, tracker)
+	require.NoError(t, err)
+	require.Zero(t, shifted)
+	require.Equal(t, 80, first.CacheReadTokens)
+
+	// 第二次请求自身为 100%，但两次累计恰好 90%，因此仍无需调整。
+	second := &UsageTokens{CacheReadTokens: 100}
+	shifted, err = applyCacheHitTargetToInput(context.Background(), second, apiKey, 101, tracker)
+	require.NoError(t, err)
+	require.Zero(t, shifted)
+	require.Equal(t, 100, second.CacheReadTokens)
+
+	// 第三次再全命中时累计将达到 93.33%，只移动 10 token，使累计保持 90%。
+	third := &UsageTokens{CacheReadTokens: 100}
+	shifted, err = applyCacheHitTargetToInput(context.Background(), third, apiKey, 101, tracker)
+	require.NoError(t, err)
+	require.Equal(t, 10, shifted)
+	require.Equal(t, 10, third.InputTokens)
+	require.Equal(t, 90, third.CacheReadTokens)
+}
+
+func TestApplyCacheHitTargetToInput_PerRequestFallback(t *testing.T) {
+	t.Parallel()
+
+	groupID := int64(10)
+	apiKey := &APIKey{
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                     groupID,
+			CacheHitQuarterToInput: true,
+			CacheHitTargetPercent:  90,
+		},
+	}
+	tokens := &UsageTokens{InputTokens: 6, CacheReadTokens: 94}
+	shifted, err := applyCacheHitTargetToInput(context.Background(), tokens, apiKey, 102, nil)
+
+	require.NoError(t, err)
+	require.Equal(t, 4, shifted)
+	require.Equal(t, 10, tokens.InputTokens)
+	require.Equal(t, 90, tokens.CacheReadTokens)
 }

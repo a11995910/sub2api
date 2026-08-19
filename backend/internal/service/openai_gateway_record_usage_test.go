@@ -1443,7 +1443,7 @@ func TestOpenAIGatewayServiceRecordUsage_ServiceTierFlexHalvesCost(t *testing.T)
 	require.InDelta(t, baseCost.TotalCost*0.5, usageRepo.lastLog.TotalCost, 1e-10)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedTokensForLogAndBilling(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogAndBilling(t *testing.T) {
 	groupID := int64(901)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
@@ -1453,11 +1453,11 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedToken
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID: "resp_cache_quarter_to_input",
+			RequestID: "resp_cache_hit_target",
 			Usage: OpenAIUsage{
-				InputTokens:          180,
+				InputTokens:          100,
 				OutputTokens:         20,
-				CacheReadInputTokens: 80,
+				CacheReadInputTokens: 94,
 			},
 			Model:    "gpt-5.4",
 			Duration: time.Second,
@@ -1469,6 +1469,7 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedToken
 				ID:                     groupID,
 				RateMultiplier:         1,
 				CacheHitQuarterToInput: true,
+				CacheHitTargetPercent:  90,
 			},
 		},
 		User:    &User{ID: 2017},
@@ -1477,16 +1478,16 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitQuarterToInputUsesAdjustedToken
 
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, 120, usageRepo.lastLog.InputTokens)
-	require.Equal(t, 60, usageRepo.lastLog.CacheReadTokens)
+	require.Equal(t, 10, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 90, usageRepo.lastLog.CacheReadTokens)
 	require.NotNil(t, billingRepo.lastCmd)
-	require.Equal(t, 120, billingRepo.lastCmd.InputTokens)
-	require.Equal(t, 60, billingRepo.lastCmd.CacheReadTokens)
+	require.Equal(t, 10, billingRepo.lastCmd.InputTokens)
+	require.Equal(t, 90, billingRepo.lastCmd.CacheReadTokens)
 
 	expectedCost, calcErr := svc.billingService.CalculateCost("gpt-5.4", UsageTokens{
-		InputTokens:     120,
+		InputTokens:     10,
 		OutputTokens:    20,
-		CacheReadTokens: 60,
+		CacheReadTokens: 90,
 	}, 1)
 	require.NoError(t, calcErr)
 	require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)

@@ -18,7 +18,27 @@ type ReasoningEffortMapping = domain.ReasoningEffortMapping
 const (
 	ImageResponseFormatB64JSON = "b64_json"
 	ImageResponseFormatURL     = "url"
+	// DefaultCacheHitTargetPercent 是旧开关升级后的默认目标；管理员可按 0.01% 精度覆盖。
+	DefaultCacheHitTargetPercent = 90.0
 )
+
+// NormalizeCacheHitTargetPercent 把 API 浮点输入收敛到数据库与控制算法共用的 0.01% 精度。
+// nil 表示旧客户端未提交该字段，使用 90% 默认值。
+func NormalizeCacheHitTargetPercent(value *float64) float64 {
+	if value == nil {
+		return DefaultCacheHitTargetPercent
+	}
+	return math.Round(*value*100) / 100
+}
+
+// ValidateCacheHitTargetConfig 校验缓存命中率目标。关闭时仍校验目标值，避免无效配置
+// 被保存后在下次打开开关时才暴露问题。
+func ValidateCacheHitTargetConfig(targetPercent float64) error {
+	if math.IsNaN(targetPercent) || math.IsInf(targetPercent, 0) || targetPercent < 0.01 || targetPercent > 100 {
+		return errors.New("cache_hit_target_percent 必须在 0.01 到 100 之间")
+	}
+	return nil
+}
 
 // NormalizeImageResponseFormat 校验图片响应格式；空值兼容旧数据并回退到 Base64。
 func NormalizeImageResponseFormat(value string) (string, error) {
@@ -61,17 +81,20 @@ type Group struct {
 	DefaultValidityDays int
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
-	AllowImageGeneration         bool
-	ImageResponseFormat          string
-	AllowBatchImageGeneration    bool
-	ImageSuperResolutionEnabled  bool
-	Image2KEnhancementEnabled    bool
-	Image2KEnhancementGroupID    *int64
-	Image4KEnhancementEnabled    bool
-	Image4KEnhancementGroupID    *int64
-	Image4KEnhancementModel      *string
-	ImageRateIndependent         bool
+	AllowImageGeneration        bool
+	ImageResponseFormat         string
+	AllowBatchImageGeneration   bool
+	ImageSuperResolutionEnabled bool
+	Image2KEnhancementEnabled   bool
+	Image2KEnhancementGroupID   *int64
+	Image4KEnhancementEnabled   bool
+	Image4KEnhancementGroupID   *int64
+	Image4KEnhancementModel     *string
+	ImageRateIndependent        bool
+	// CacheHitQuarterToInput 是为兼容既有数据库/API 保留的开关名称，实际语义为
+	// 按用户和分组累计控制缓存命中率。
 	CacheHitQuarterToInput       bool
+	CacheHitTargetPercent        float64
 	ImageRateMultiplier          float64
 	ImagePrice1K                 *float64
 	ImagePrice2K                 *float64

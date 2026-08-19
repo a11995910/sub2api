@@ -134,6 +134,7 @@ type Group struct {
 	Image4KEnhancementModel      *string `json:"image_4k_enhancement_model"`
 	ImageRateIndependent         bool    `json:"image_rate_independent"`
 	CacheHitQuarterToInput       bool    `json:"cache_hit_quarter_to_input_enabled"`
+	CacheHitTargetPercent        float64 `json:"cache_hit_target_percent"`
 	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier     float64 `json:"batch_image_hold_multiplier"`

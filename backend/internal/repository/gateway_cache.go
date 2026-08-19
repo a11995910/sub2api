@@ -17,6 +17,7 @@ import (
 const stickySessionPrefix = "sticky_session:"
 const openAIVideoProtocolPrefix = "openai_video_protocol:"
 const liveCallPrefix = "live:call:"
+const cacheHitTargetPrefix = "cache_hit_target:v1:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -24,6 +25,53 @@ type gatewayCache struct {
 
 func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
+}
+
+var adjustCacheHitTargetScript = redis.NewScript(`
+	local key = KEYS[1]
+	local prompt_delta = tonumber(ARGV[1])
+	local cache_delta = tonumber(ARGV[2])
+	local target = tonumber(ARGV[3])
+	if prompt_delta == nil or cache_delta == nil or target == nil or
+		prompt_delta <= 0 or cache_delta < 0 or target < 0 or target > 10000 then
+		return redis.error_reply('invalid cache hit target arguments')
+	end
+
+	local prompt_total = tonumber(redis.call('HGET', key, 'prompt_tokens') or '0') + prompt_delta
+	local cache_available = tonumber(redis.call('HGET', key, 'cache_read_tokens') or '0') + cache_delta
+	-- 分段乘法减少累计 token 较大时的浮点误差，并与 Go 降级算法保持向下取整口径。
+	local allowed = math.floor(prompt_total / 10000) * target +
+		math.floor((prompt_total % 10000) * target / 10000)
+	local cache_kept = cache_available
+	if cache_kept > allowed then
+		cache_kept = allowed
+	end
+	local shifted = cache_available - cache_kept
+	redis.call('HSET', key, 'prompt_tokens', prompt_total, 'cache_read_tokens', cache_kept)
+	return shifted
+`)
+
+// AdjustCacheHitToTarget 原子累加用户在分组内的提示词与调整后缓存读取 token。
+// 目标值放入 key，使不同目标的累计状态相互隔离；每个用户/分组/目标仅一条 Hash。
+func (c *gatewayCache) AdjustCacheHitToTarget(
+	ctx context.Context,
+	userID, groupID, targetBasisPoints, promptTokens, cacheReadTokens int64,
+) (int64, error) {
+	if c == nil || c.rdb == nil {
+		return 0, errors.New("gateway cache unavailable")
+	}
+	if userID <= 0 || groupID <= 0 || targetBasisPoints < 0 || targetBasisPoints > 10000 || promptTokens <= 0 || cacheReadTokens < 0 {
+		return 0, errors.New("invalid cache hit target arguments")
+	}
+	key := fmt.Sprintf("%s%d:%d:%d", cacheHitTargetPrefix, userID, groupID, targetBasisPoints)
+	return adjustCacheHitTargetScript.Run(
+		ctx,
+		c.rdb,
+		[]string{key},
+		promptTokens,
+		cacheReadTokens,
+		targetBasisPoints,
+	).Int64()
 }
 
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
@@ -183,6 +231,7 @@ func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) e
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
+var _ service.CacheHitTargetTracker = (*gatewayCache)(nil)
 
 const cyberSessionBlockPrefix = "cyber_session_block:"
 

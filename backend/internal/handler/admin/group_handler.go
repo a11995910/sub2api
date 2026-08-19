@@ -120,6 +120,7 @@ type CreateGroupRequest struct {
 	Image4KEnhancementModel         *string                       `json:"image_4k_enhancement_model"`
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
+	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
@@ -199,6 +200,7 @@ type UpdateGroupRequest struct {
 	Image4KEnhancementModel         *string                       `json:"image_4k_enhancement_model"`
 	ImageRateIndependent            *bool                         `json:"image_rate_independent"`
 	CacheHitQuarterToInput          *bool                         `json:"cache_hit_quarter_to_input_enabled"`
+	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
@@ -514,6 +516,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	cacheHitTargetPercent := service.NormalizeCacheHitTargetPercent(req.CacheHitTargetPercent)
+	if err := service.ValidateCacheHitTargetConfig(cacheHitTargetPercent); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	if err := service.ValidatePeakRateConfig(req.SubscriptionType, req.PeakRateEnabled, req.PeakStart, req.PeakEnd, float64ValueOrDefault(req.PeakRateMultiplier, 1.0)); err != nil {
 		response.BadRequest(c, err.Error())
@@ -551,6 +558,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Image4KEnhancementModel:         req.Image4KEnhancementModel,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
+		CacheHitTargetPercent:           req.CacheHitTargetPercent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
@@ -664,6 +672,13 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if req.CacheHitTargetPercent != nil {
+		cacheHitTargetPercent := service.NormalizeCacheHitTargetPercent(req.CacheHitTargetPercent)
+		if err := service.ValidateCacheHitTargetConfig(cacheHitTargetPercent); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
@@ -690,6 +705,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Image4KEnhancementModel:         req.Image4KEnhancementModel,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
+		CacheHitTargetPercent:           req.CacheHitTargetPercent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,

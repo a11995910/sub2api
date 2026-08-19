@@ -247,6 +247,7 @@ type CreateGroupInput struct {
 	Image4KEnhancementModel      *string
 	ImageRateIndependent         bool
 	CacheHitQuarterToInput       bool
+	CacheHitTargetPercent        *float64
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
 	BatchImageHoldMultiplier     *float64
@@ -333,6 +334,7 @@ type UpdateGroupInput struct {
 	Image4KEnhancementModel      *string
 	ImageRateIndependent         *bool
 	CacheHitQuarterToInput       *bool
+	CacheHitTargetPercent        *float64
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
 	BatchImageHoldMultiplier     *float64

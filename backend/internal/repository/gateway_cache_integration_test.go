@@ -40,6 +40,23 @@ func (s *GatewayCacheSuite) TestSetAndGetSessionAccountID() {
 	require.Equal(s.T(), accountID, sid, "session id mismatch")
 }
 
+func (s *GatewayCacheSuite) TestAdjustCacheHitToTargetCumulative() {
+	tracker, ok := s.cache.(service.CacheHitTargetTracker)
+	require.True(s.T(), ok)
+
+	shifted, err := tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 100, 80)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), shifted)
+
+	shifted, err = tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 100, 100)
+	require.NoError(s.T(), err)
+	require.Zero(s.T(), shifted)
+
+	shifted, err = tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 100, 100)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(10), shifted)
+}
+
 func (s *GatewayCacheSuite) TestSessionAccountID_TTL() {
 	sessionID := "s2"
 	accountID := int64(100)

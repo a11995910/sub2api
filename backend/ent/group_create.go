@@ -456,6 +456,20 @@ func (_c *GroupCreate) SetNillableCacheHitQuarterToInputEnabled(v *bool) *GroupC
 	return _c
 }
 
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (_c *GroupCreate) SetCacheHitTargetPercent(v float64) *GroupCreate {
+	_c.mutation.SetCacheHitTargetPercent(v)
+	return _c
+}
+
+// SetNillableCacheHitTargetPercent sets the "cache_hit_target_percent" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheHitTargetPercent(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheHitTargetPercent(*v)
+	}
+	return _c
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_c *GroupCreate) SetImageRateMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetImageRateMultiplier(v)
@@ -1222,6 +1236,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCacheHitQuarterToInputEnabled
 		_c.mutation.SetCacheHitQuarterToInputEnabled(v)
 	}
+	if _, ok := _c.mutation.CacheHitTargetPercent(); !ok {
+		v := group.DefaultCacheHitTargetPercent
+		_c.mutation.SetCacheHitTargetPercent(v)
+	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
@@ -1433,6 +1451,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheHitQuarterToInputEnabled(); !ok {
 		return &ValidationError{Name: "cache_hit_quarter_to_input_enabled", err: errors.New(`ent: missing required field "Group.cache_hit_quarter_to_input_enabled"`)}
+	}
+	if _, ok := _c.mutation.CacheHitTargetPercent(); !ok {
+		return &ValidationError{Name: "cache_hit_target_percent", err: errors.New(`ent: missing required field "Group.cache_hit_target_percent"`)}
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
@@ -1686,6 +1707,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheHitQuarterToInputEnabled(); ok {
 		_spec.SetField(group.FieldCacheHitQuarterToInputEnabled, field.TypeBool, value)
 		_node.CacheHitQuarterToInputEnabled = value
+	}
+	if value, ok := _c.mutation.CacheHitTargetPercent(); ok {
+		_spec.SetField(group.FieldCacheHitTargetPercent, field.TypeFloat64, value)
+		_node.CacheHitTargetPercent = value
 	}
 	if value, ok := _c.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
@@ -2468,6 +2493,24 @@ func (u *GroupUpsert) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpsert {
 // UpdateCacheHitQuarterToInputEnabled sets the "cache_hit_quarter_to_input_enabled" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateCacheHitQuarterToInputEnabled() *GroupUpsert {
 	u.SetExcluded(group.FieldCacheHitQuarterToInputEnabled)
+	return u
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (u *GroupUpsert) SetCacheHitTargetPercent(v float64) *GroupUpsert {
+	u.Set(group.FieldCacheHitTargetPercent, v)
+	return u
+}
+
+// UpdateCacheHitTargetPercent sets the "cache_hit_target_percent" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheHitTargetPercent() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheHitTargetPercent)
+	return u
+}
+
+// AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
+func (u *GroupUpsert) AddCacheHitTargetPercent(v float64) *GroupUpsert {
+	u.Add(group.FieldCacheHitTargetPercent, v)
 	return u
 }
 
@@ -3760,6 +3803,27 @@ func (u *GroupUpsertOne) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpsertOn
 func (u *GroupUpsertOne) UpdateCacheHitQuarterToInputEnabled() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitQuarterToInputEnabled()
+	})
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (u *GroupUpsertOne) SetCacheHitTargetPercent(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitTargetPercent(v)
+	})
+}
+
+// AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
+func (u *GroupUpsertOne) AddCacheHitTargetPercent(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitTargetPercent(v)
+	})
+}
+
+// UpdateCacheHitTargetPercent sets the "cache_hit_target_percent" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheHitTargetPercent() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitTargetPercent()
 	})
 }
 
@@ -5339,6 +5403,27 @@ func (u *GroupUpsertBulk) SetCacheHitQuarterToInputEnabled(v bool) *GroupUpsertB
 func (u *GroupUpsertBulk) UpdateCacheHitQuarterToInputEnabled() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitQuarterToInputEnabled()
+	})
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (u *GroupUpsertBulk) SetCacheHitTargetPercent(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitTargetPercent(v)
+	})
+}
+
+// AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
+func (u *GroupUpsertBulk) AddCacheHitTargetPercent(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitTargetPercent(v)
+	})
+}
+
+// UpdateCacheHitTargetPercent sets the "cache_hit_target_percent" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheHitTargetPercent() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitTargetPercent()
 	})
 }
 

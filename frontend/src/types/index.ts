@@ -612,6 +612,7 @@ export interface Group {
   image_4k_enhancement_model: string | null
   image_rate_independent: boolean
   cache_hit_quarter_to_input_enabled: boolean
+  cache_hit_target_percent?: number
   image_rate_multiplier: number
   batch_image_discount_multiplier: number
   batch_image_hold_multiplier: number
@@ -841,6 +842,7 @@ export interface CreateGroupRequest {
   image_4k_enhancement_model?: string | null
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
+  cache_hit_target_percent?: number
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
   batch_image_hold_multiplier?: number
@@ -913,6 +915,7 @@ export interface UpdateGroupRequest {
   image_4k_enhancement_model?: string | null
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
+  cache_hit_target_percent?: number
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
   batch_image_hold_multiplier?: number

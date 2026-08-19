@@ -168,9 +168,14 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
-	if shifted := applyCacheHitQuarterToInput(&tokens, groupCacheHitQuarterToInputEnabled(apiKey)); shifted > 0 {
-		logger.LegacyPrintf("service.openai_gateway", "cache_hit_quarter_to_input: %d cache_read_input_tokens -> input_tokens (group=%d account=%d)",
-			shifted, valueOrZero(apiKey.GroupID), account.ID)
+	shifted, cacheTargetErr := applyCacheHitTargetToInput(ctx, &tokens, apiKey, user.ID, s.cache)
+	if cacheTargetErr != nil {
+		logger.LegacyPrintf("service.openai_gateway", "cache_hit_target tracker unavailable, using per-request fallback (group=%d user=%d): %v",
+			valueOrZero(apiKey.GroupID), user.ID, cacheTargetErr)
+	}
+	if shifted > 0 {
+		logger.LegacyPrintf("service.openai_gateway", "cache_hit_target: %d cache_read_input_tokens -> input_tokens (group=%d user=%d account=%d)",
+			shifted, valueOrZero(apiKey.GroupID), user.ID, account.ID)
 	}
 
 	// Get rate multiplier

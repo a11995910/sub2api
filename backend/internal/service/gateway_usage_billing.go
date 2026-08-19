@@ -796,14 +796,20 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	cacheBillingTokens := UsageTokens{
-		InputTokens:     result.Usage.InputTokens,
-		CacheReadTokens: result.Usage.CacheReadInputTokens,
+		InputTokens:         result.Usage.InputTokens,
+		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 	}
-	if shifted := applyCacheHitQuarterToInput(&cacheBillingTokens, groupCacheHitQuarterToInputEnabled(apiKey)); shifted > 0 {
+	shifted, cacheTargetErr := applyCacheHitTargetToInput(ctx, &cacheBillingTokens, apiKey, user.ID, s.cache)
+	if cacheTargetErr != nil {
+		logger.LegacyPrintf("service.gateway", "cache_hit_target tracker unavailable, using per-request fallback (group=%d user=%d): %v",
+			valueOrZero(apiKey.GroupID), user.ID, cacheTargetErr)
+	}
+	if shifted > 0 {
 		result.Usage.InputTokens = cacheBillingTokens.InputTokens
 		result.Usage.CacheReadInputTokens = cacheBillingTokens.CacheReadTokens
-		logger.LegacyPrintf("service.gateway", "cache_hit_quarter_to_input: %d cache_read_input_tokens -> input_tokens (group=%d account=%d)",
-			shifted, valueOrZero(apiKey.GroupID), account.ID)
+		logger.LegacyPrintf("service.gateway", "cache_hit_target: %d cache_read_input_tokens -> input_tokens (group=%d user=%d account=%d)",
+			shifted, valueOrZero(apiKey.GroupID), user.ID, account.ID)
 	}
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）

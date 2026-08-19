@@ -2479,8 +2479,11 @@ export default {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
-        cacheHitQuarterToInput: 'Move one quarter of cache hits to input',
-        cacheHitQuarterToInputHint: 'When enabled, each request moves one quarter of cache-read tokens into input tokens, then records usage and balance deduction using the adjusted numbers.'
+        cacheHitTargetEnabled: 'Control user cache hit rate',
+        cacheHitTargetEnabledHint: 'Tracks each user and group cumulatively. Only the cache-read tokens needed to stay at the target are reclassified as regular input for usage and billing.',
+        cacheHitTargetPercent: 'Target cache hit rate cap',
+        cacheHitTargetPercentHint: 'Allowed range: 0.01%–100%; default: 90%. Requests below the target are unchanged, and upstream caching is not affected.',
+        cacheHitTargetPercentInvalid: 'Target cache hit rate must be between 0.01% and 100%.'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',

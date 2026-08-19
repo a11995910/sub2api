@@ -349,6 +349,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 		imageRateMultiplier = *input.ImageRateMultiplier
 	}
+	cacheHitTargetPercent := NormalizeCacheHitTargetPercent(input.CacheHitTargetPercent)
+	if err := ValidateCacheHitTargetConfig(cacheHitTargetPercent); err != nil {
+		return nil, err
+	}
 	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
 	if input.BatchImageDiscountMultiplier != nil {
 		if *input.BatchImageDiscountMultiplier < 0 {
@@ -500,6 +504,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Image4KEnhancementModel:         image4KEnhancementModel,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
+		CacheHitTargetPercent:           cacheHitTargetPercent,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
@@ -796,6 +801,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.CacheHitQuarterToInput != nil {
 		group.CacheHitQuarterToInput = *input.CacheHitQuarterToInput
+	}
+	if input.CacheHitTargetPercent != nil {
+		group.CacheHitTargetPercent = NormalizeCacheHitTargetPercent(input.CacheHitTargetPercent)
+	} else if group.CacheHitTargetPercent <= 0 {
+		// 兼容迁移前构造的内存对象或测试桩；数据库升级后该列始终有 90% 默认值。
+		group.CacheHitTargetPercent = DefaultCacheHitTargetPercent
+	}
+	if err := ValidateCacheHitTargetConfig(group.CacheHitTargetPercent); err != nil {
+		return nil, err
 	}
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {

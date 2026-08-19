@@ -79,8 +79,10 @@ type Group struct {
 	AllowBatchImageGeneration bool `json:"allow_batch_image_generation,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
 	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
-	// 启用后将每次请求缓存读取 token 的四分之一划入输入 token 重新计费
+	// 是否启用按用户和分组累计控制缓存命中率；字段名为历史兼容保留
 	CacheHitQuarterToInputEnabled bool `json:"cache_hit_quarter_to_input_enabled,omitempty"`
+	// 缓存命中率目标上限百分比；启用累计控制后生效
+	CacheHitTargetPercent float64 `json:"cache_hit_target_percent,omitempty"`
 	// 图片生成独立倍率，仅 image_rate_independent=true 时生效
 	ImageRateMultiplier float64 `json:"image_rate_multiplier,omitempty"`
 	// ImagePrice1k holds the value of the "image_price_1k" field.
@@ -295,7 +297,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage2kEnhancementEnabled, group.FieldImage4kEnhancementEnabled, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldAutoFallbackGroupID, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -518,6 +520,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field cache_hit_quarter_to_input_enabled", values[i])
 			} else if value.Valid {
 				_m.CacheHitQuarterToInputEnabled = value.Bool
+			}
+		case group.FieldCacheHitTargetPercent:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_target_percent", values[i])
+			} else if value.Valid {
+				_m.CacheHitTargetPercent = value.Float64
 			}
 		case group.FieldImageRateMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -989,6 +997,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_hit_quarter_to_input_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitQuarterToInputEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_target_percent=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitTargetPercent))
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateMultiplier))

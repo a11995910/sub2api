@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -241,19 +243,83 @@ func (u *UsageLog) SyncRequestTypeAndLegacyFields() {
 	u.Stream, u.OpenAIWSMode = ApplyLegacyRequestFields(requestType, u.Stream, u.OpenAIWSMode)
 }
 
-func applyCacheHitQuarterToInput(tokens *UsageTokens, enabled bool) int {
-	if tokens == nil || !enabled || tokens.CacheReadTokens <= 0 {
-		return 0
-	}
-	shift := tokens.CacheReadTokens / 4
-	if shift <= 0 {
-		return 0
-	}
-	tokens.CacheReadTokens -= shift
-	tokens.InputTokens += shift
-	return shift
+const cacheHitTargetBasisPoints = int64(10000)
+
+// CacheHitTargetTracker 是 GatewayCache 的可选扩展。生产 Redis 实现通过原子脚本按
+// 用户+分组累计控制；测试缓存与降级路径无需实现该接口。
+type CacheHitTargetTracker interface {
+	AdjustCacheHitToTarget(ctx context.Context, userID, groupID, targetBasisPoints, promptTokens, cacheReadTokens int64) (int64, error)
 }
 
-func groupCacheHitQuarterToInputEnabled(apiKey *APIKey) bool {
-	return apiKey != nil && apiKey.Group != nil && apiKey.Group.CacheHitQuarterToInput
+func groupCacheHitTarget(apiKey *APIKey) (int64, bool) {
+	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.CacheHitQuarterToInput {
+		return 0, false
+	}
+	percent := apiKey.Group.CacheHitTargetPercent
+	// 兼容直接构造旧 Group 的内部调用与升级前认证快照；正常持久化值由数据库默认值保证。
+	if percent <= 0 {
+		percent = DefaultCacheHitTargetPercent
+	}
+	if err := ValidateCacheHitTargetConfig(percent); err != nil {
+		return 0, false
+	}
+	return int64(math.Round(percent * 100)), true
+}
+
+// cacheHitShiftForSingleRequest 是 Redis 不可用时的安全降级：只控制本次请求命中率，
+// 因而可能比累计算法略低，但不会让新请求的调整后命中率超过目标。
+func cacheHitShiftForSingleRequest(promptTokens, cacheReadTokens, targetBasisPoints int64) int64 {
+	if promptTokens <= 0 || cacheReadTokens <= 0 || targetBasisPoints >= cacheHitTargetBasisPoints {
+		return 0
+	}
+	allowed := (promptTokens/cacheHitTargetBasisPoints)*targetBasisPoints +
+		(promptTokens%cacheHitTargetBasisPoints)*targetBasisPoints/cacheHitTargetBasisPoints
+	if cacheReadTokens <= allowed {
+		return 0
+	}
+	return cacheReadTokens - allowed
+}
+
+// applyCacheHitTargetToInput 保持 token 总量不变，只把达到累计目标所必需的缓存读取
+// token 重分类为普通输入。即便本次 cache_read=0 也会更新累计分母，使后续请求不会被多调。
+func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey *APIKey, userID int64, tracker any) (shifted int, trackerErr error) {
+	if tokens == nil {
+		return 0, nil
+	}
+	target, enabled := groupCacheHitTarget(apiKey)
+	if !enabled || target >= cacheHitTargetBasisPoints {
+		return 0, nil
+	}
+	input := max(tokens.InputTokens, 0)
+	cacheCreation := max(tokens.CacheCreationTokens, 0)
+	cacheRead := max(tokens.CacheReadTokens, 0)
+	promptTokens := int64(input) + int64(cacheCreation) + int64(cacheRead)
+	if promptTokens <= 0 {
+		return 0, nil
+	}
+
+	shift := cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), target)
+	if cumulative, ok := tracker.(CacheHitTargetTracker); ok {
+		groupID := valueOrZero(apiKey.GroupID)
+		if groupID == 0 && apiKey.Group != nil {
+			groupID = apiKey.Group.ID
+		}
+		if groupID > 0 && userID > 0 {
+			var err error
+			shift, err = cumulative.AdjustCacheHitToTarget(ctx, userID, groupID, target, promptTokens, int64(cacheRead))
+			if err != nil {
+				trackerErr = err
+				shift = cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), target)
+			}
+		}
+	}
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > int64(cacheRead) {
+		shift = int64(cacheRead)
+	}
+	tokens.CacheReadTokens -= int(shift)
+	tokens.InputTokens += int(shift)
+	return int(shift), trackerErr
 }
