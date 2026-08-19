@@ -160,6 +160,51 @@ func CacheCreation1hTokens(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheCreation1hTokens, v))
 }
 
+// CacheHitOriginalInputTokens applies equality check predicate on the "cache_hit_original_input_tokens" field. It's identical to CacheHitOriginalInputTokensEQ.
+func CacheHitOriginalInputTokens(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokens applies equality check predicate on the "cache_hit_original_cache_read_tokens" field. It's identical to CacheHitOriginalCacheReadTokensEQ.
+func CacheHitOriginalCacheReadTokens(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitShiftedTokens applies equality check predicate on the "cache_hit_shifted_tokens" field. It's identical to CacheHitShiftedTokensEQ.
+func CacheHitShiftedTokens(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitTargetPercent applies equality check predicate on the "cache_hit_target_percent" field. It's identical to CacheHitTargetPercentEQ.
+func CacheHitTargetPercent(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetTolerancePercent applies equality check predicate on the "cache_hit_target_tolerance_percent" field. It's identical to CacheHitTargetTolerancePercentEQ.
+func CacheHitTargetTolerancePercent(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitCumulativePromptTokens applies equality check predicate on the "cache_hit_cumulative_prompt_tokens" field. It's identical to CacheHitCumulativePromptTokensEQ.
+func CacheHitCumulativePromptTokens(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokens applies equality check predicate on the "cache_hit_cumulative_cache_read_tokens" field. It's identical to CacheHitCumulativeCacheReadTokensEQ.
+func CacheHitCumulativeCacheReadTokens(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativePercent applies equality check predicate on the "cache_hit_cumulative_percent" field. It's identical to CacheHitCumulativePercentEQ.
+func CacheHitCumulativePercent(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitStateVersion applies equality check predicate on the "cache_hit_state_version" field. It's identical to CacheHitStateVersionEQ.
+func CacheHitStateVersion(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitStateVersion, v))
+}
+
 // InputCost applies equality check predicate on the "input_cost" field. It's identical to InputCostEQ.
 func InputCost(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldInputCost, v))
@@ -1293,6 +1338,396 @@ func CacheCreation1hTokensLT(v int) predicate.UsageLog {
 // CacheCreation1hTokensLTE applies the LTE predicate on the "cache_creation_1h_tokens" field.
 func CacheCreation1hTokensLTE(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldCacheCreation1hTokens, v))
+}
+
+// CacheHitOriginalInputTokensEQ applies the EQ predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalInputTokensNEQ applies the NEQ predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalInputTokensIn applies the In predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitOriginalInputTokens, vs...))
+}
+
+// CacheHitOriginalInputTokensNotIn applies the NotIn predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitOriginalInputTokens, vs...))
+}
+
+// CacheHitOriginalInputTokensGT applies the GT predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalInputTokensGTE applies the GTE predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalInputTokensLT applies the LT predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalInputTokensLTE applies the LTE predicate on the "cache_hit_original_input_tokens" field.
+func CacheHitOriginalInputTokensLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitOriginalInputTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokensEQ applies the EQ predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokensNEQ applies the NEQ predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokensIn applies the In predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitOriginalCacheReadTokens, vs...))
+}
+
+// CacheHitOriginalCacheReadTokensNotIn applies the NotIn predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitOriginalCacheReadTokens, vs...))
+}
+
+// CacheHitOriginalCacheReadTokensGT applies the GT predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokensGTE applies the GTE predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokensLT applies the LT predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitOriginalCacheReadTokensLTE applies the LTE predicate on the "cache_hit_original_cache_read_tokens" field.
+func CacheHitOriginalCacheReadTokensLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitOriginalCacheReadTokens, v))
+}
+
+// CacheHitShiftedTokensEQ applies the EQ predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitShiftedTokensNEQ applies the NEQ predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitShiftedTokensIn applies the In predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitShiftedTokens, vs...))
+}
+
+// CacheHitShiftedTokensNotIn applies the NotIn predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitShiftedTokens, vs...))
+}
+
+// CacheHitShiftedTokensGT applies the GT predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitShiftedTokensGTE applies the GTE predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitShiftedTokensLT applies the LT predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitShiftedTokensLTE applies the LTE predicate on the "cache_hit_shifted_tokens" field.
+func CacheHitShiftedTokensLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitShiftedTokens, v))
+}
+
+// CacheHitTargetPercentEQ applies the EQ predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetPercentNEQ applies the NEQ predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetPercentIn applies the In predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitTargetPercent, vs...))
+}
+
+// CacheHitTargetPercentNotIn applies the NotIn predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitTargetPercent, vs...))
+}
+
+// CacheHitTargetPercentGT applies the GT predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetPercentGTE applies the GTE predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetPercentLT applies the LT predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetPercentLTE applies the LTE predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetPercentIsNil applies the IsNil predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCacheHitTargetPercent))
+}
+
+// CacheHitTargetPercentNotNil applies the NotNil predicate on the "cache_hit_target_percent" field.
+func CacheHitTargetPercentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCacheHitTargetPercent))
+}
+
+// CacheHitTargetTolerancePercentEQ applies the EQ predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentNEQ applies the NEQ predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentIn applies the In predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitTargetTolerancePercent, vs...))
+}
+
+// CacheHitTargetTolerancePercentNotIn applies the NotIn predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitTargetTolerancePercent, vs...))
+}
+
+// CacheHitTargetTolerancePercentGT applies the GT predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentGTE applies the GTE predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentLT applies the LT predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentLTE applies the LTE predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentIsNil applies the IsNil predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCacheHitTargetTolerancePercent))
+}
+
+// CacheHitTargetTolerancePercentNotNil applies the NotNil predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCacheHitTargetTolerancePercent))
+}
+
+// CacheHitCumulativePromptTokensEQ applies the EQ predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativePromptTokensNEQ applies the NEQ predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativePromptTokensIn applies the In predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitCumulativePromptTokens, vs...))
+}
+
+// CacheHitCumulativePromptTokensNotIn applies the NotIn predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitCumulativePromptTokens, vs...))
+}
+
+// CacheHitCumulativePromptTokensGT applies the GT predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativePromptTokensGTE applies the GTE predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativePromptTokensLT applies the LT predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativePromptTokensLTE applies the LTE predicate on the "cache_hit_cumulative_prompt_tokens" field.
+func CacheHitCumulativePromptTokensLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitCumulativePromptTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokensEQ applies the EQ predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokensNEQ applies the NEQ predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokensIn applies the In predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitCumulativeCacheReadTokens, vs...))
+}
+
+// CacheHitCumulativeCacheReadTokensNotIn applies the NotIn predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitCumulativeCacheReadTokens, vs...))
+}
+
+// CacheHitCumulativeCacheReadTokensGT applies the GT predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokensGTE applies the GTE predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokensLT applies the LT predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativeCacheReadTokensLTE applies the LTE predicate on the "cache_hit_cumulative_cache_read_tokens" field.
+func CacheHitCumulativeCacheReadTokensLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitCumulativeCacheReadTokens, v))
+}
+
+// CacheHitCumulativePercentEQ applies the EQ predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitCumulativePercentNEQ applies the NEQ predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitCumulativePercentIn applies the In predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitCumulativePercent, vs...))
+}
+
+// CacheHitCumulativePercentNotIn applies the NotIn predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitCumulativePercent, vs...))
+}
+
+// CacheHitCumulativePercentGT applies the GT predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitCumulativePercentGTE applies the GTE predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitCumulativePercentLT applies the LT predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitCumulativePercentLTE applies the LTE predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitCumulativePercent, v))
+}
+
+// CacheHitCumulativePercentIsNil applies the IsNil predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCacheHitCumulativePercent))
+}
+
+// CacheHitCumulativePercentNotNil applies the NotNil predicate on the "cache_hit_cumulative_percent" field.
+func CacheHitCumulativePercentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCacheHitCumulativePercent))
+}
+
+// CacheHitStateVersionEQ applies the EQ predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheHitStateVersion, v))
+}
+
+// CacheHitStateVersionNEQ applies the NEQ predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheHitStateVersion, v))
+}
+
+// CacheHitStateVersionIn applies the In predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCacheHitStateVersion, vs...))
+}
+
+// CacheHitStateVersionNotIn applies the NotIn predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCacheHitStateVersion, vs...))
+}
+
+// CacheHitStateVersionGT applies the GT predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCacheHitStateVersion, v))
+}
+
+// CacheHitStateVersionGTE applies the GTE predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCacheHitStateVersion, v))
+}
+
+// CacheHitStateVersionLT applies the LT predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCacheHitStateVersion, v))
+}
+
+// CacheHitStateVersionLTE applies the LTE predicate on the "cache_hit_state_version" field.
+func CacheHitStateVersionLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCacheHitStateVersion, v))
 }
 
 // InputCostEQ applies the EQ predicate on the "input_cost" field.

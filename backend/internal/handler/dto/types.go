@@ -123,23 +123,24 @@ type Group struct {
 	LongContextPricingEnabled bool     `json:"long_context_pricing_enabled"`
 
 	// 分组计费配置
-	AllowImageGeneration         bool    `json:"allow_image_generation"`
-	ImageResponseFormat          string  `json:"image_response_format"`
-	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
-	ImageSuperResolutionEnabled  bool    `json:"image_super_resolution_enabled"`
-	Image2KEnhancementEnabled    bool    `json:"image_2k_enhancement_enabled"`
-	Image2KEnhancementGroupID    *int64  `json:"image_2k_enhancement_group_id"`
-	Image4KEnhancementEnabled    bool    `json:"image_4k_enhancement_enabled"`
-	Image4KEnhancementGroupID    *int64  `json:"image_4k_enhancement_group_id"`
-	Image4KEnhancementModel      *string `json:"image_4k_enhancement_model"`
-	ImageRateIndependent         bool    `json:"image_rate_independent"`
-	CacheHitQuarterToInput       bool    `json:"cache_hit_quarter_to_input_enabled"`
-	CacheHitTargetPercent        float64 `json:"cache_hit_target_percent"`
-	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
-	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
-	BatchImageHoldMultiplier     float64 `json:"batch_image_hold_multiplier"`
-	VideoRateIndependent         bool    `json:"video_rate_independent"`
-	VideoRateMultiplier          float64 `json:"video_rate_multiplier"`
+	AllowImageGeneration           bool    `json:"allow_image_generation"`
+	ImageResponseFormat            string  `json:"image_response_format"`
+	AllowBatchImageGeneration      bool    `json:"allow_batch_image_generation"`
+	ImageSuperResolutionEnabled    bool    `json:"image_super_resolution_enabled"`
+	Image2KEnhancementEnabled      bool    `json:"image_2k_enhancement_enabled"`
+	Image2KEnhancementGroupID      *int64  `json:"image_2k_enhancement_group_id"`
+	Image4KEnhancementEnabled      bool    `json:"image_4k_enhancement_enabled"`
+	Image4KEnhancementGroupID      *int64  `json:"image_4k_enhancement_group_id"`
+	Image4KEnhancementModel        *string `json:"image_4k_enhancement_model"`
+	ImageRateIndependent           bool    `json:"image_rate_independent"`
+	CacheHitQuarterToInput         bool    `json:"cache_hit_quarter_to_input_enabled"`
+	CacheHitTargetPercent          float64 `json:"cache_hit_target_percent"`
+	CacheHitTargetTolerancePercent float64 `json:"cache_hit_target_tolerance_percent"`
+	ImageRateMultiplier            float64 `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier   float64 `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier       float64 `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent           bool    `json:"video_rate_independent"`
+	VideoRateMultiplier            float64 `json:"video_rate_multiplier"`
 	// 高峰时段倍率配置
 	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
 	PeakStart          string   `json:"peak_start"`
@@ -672,6 +673,17 @@ type AdminUsageLog struct {
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
 	// AccountStatsCost 自定义定价规则计算的账号统计费用（nil 表示使用默认公式）
 	AccountStatsCost *float64 `json:"account_stats_cost,omitempty"`
+
+	// 缓存命中率控制审计快照，仅管理员接口返回。
+	CacheHitOriginalInputTokens       int      `json:"cache_hit_original_input_tokens"`
+	CacheHitOriginalCacheReadTokens   int      `json:"cache_hit_original_cache_read_tokens"`
+	CacheHitShiftedTokens             int      `json:"cache_hit_shifted_tokens"`
+	CacheHitTargetPercent             *float64 `json:"cache_hit_target_percent,omitempty"`
+	CacheHitTargetTolerancePercent    *float64 `json:"cache_hit_target_tolerance_percent,omitempty"`
+	CacheHitCumulativePromptTokens    int64    `json:"cache_hit_cumulative_prompt_tokens"`
+	CacheHitCumulativeCacheReadTokens int64    `json:"cache_hit_cumulative_cache_read_tokens"`
+	CacheHitCumulativePercent         *float64 `json:"cache_hit_cumulative_percent,omitempty"`
+	CacheHitStateVersion              int64    `json:"cache_hit_state_version"`
 
 	// IPAddress 用户请求 IP
 	IPAddress *string `json:"ip_address,omitempty"`

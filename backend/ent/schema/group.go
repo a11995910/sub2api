@@ -143,6 +143,10 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
 			Default(90.0).
 			Comment("缓存命中率目标上限百分比；启用累计控制后生效"),
+		field.Float("cache_hit_target_tolerance_percent").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
+			Default(0.5).
+			Comment("缓存命中率目标容差百分比；累计值超过目标加容差时回调到目标"),
 		field.Float("image_rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).

@@ -56,6 +56,24 @@ const (
 	FieldCacheCreation5mTokens = "cache_creation_5m_tokens"
 	// FieldCacheCreation1hTokens holds the string denoting the cache_creation_1h_tokens field in the database.
 	FieldCacheCreation1hTokens = "cache_creation_1h_tokens"
+	// FieldCacheHitOriginalInputTokens holds the string denoting the cache_hit_original_input_tokens field in the database.
+	FieldCacheHitOriginalInputTokens = "cache_hit_original_input_tokens"
+	// FieldCacheHitOriginalCacheReadTokens holds the string denoting the cache_hit_original_cache_read_tokens field in the database.
+	FieldCacheHitOriginalCacheReadTokens = "cache_hit_original_cache_read_tokens"
+	// FieldCacheHitShiftedTokens holds the string denoting the cache_hit_shifted_tokens field in the database.
+	FieldCacheHitShiftedTokens = "cache_hit_shifted_tokens"
+	// FieldCacheHitTargetPercent holds the string denoting the cache_hit_target_percent field in the database.
+	FieldCacheHitTargetPercent = "cache_hit_target_percent"
+	// FieldCacheHitTargetTolerancePercent holds the string denoting the cache_hit_target_tolerance_percent field in the database.
+	FieldCacheHitTargetTolerancePercent = "cache_hit_target_tolerance_percent"
+	// FieldCacheHitCumulativePromptTokens holds the string denoting the cache_hit_cumulative_prompt_tokens field in the database.
+	FieldCacheHitCumulativePromptTokens = "cache_hit_cumulative_prompt_tokens"
+	// FieldCacheHitCumulativeCacheReadTokens holds the string denoting the cache_hit_cumulative_cache_read_tokens field in the database.
+	FieldCacheHitCumulativeCacheReadTokens = "cache_hit_cumulative_cache_read_tokens"
+	// FieldCacheHitCumulativePercent holds the string denoting the cache_hit_cumulative_percent field in the database.
+	FieldCacheHitCumulativePercent = "cache_hit_cumulative_percent"
+	// FieldCacheHitStateVersion holds the string denoting the cache_hit_state_version field in the database.
+	FieldCacheHitStateVersion = "cache_hit_state_version"
 	// FieldInputCost holds the string denoting the input_cost field in the database.
 	FieldInputCost = "input_cost"
 	// FieldOutputCost holds the string denoting the output_cost field in the database.
@@ -181,6 +199,15 @@ var Columns = []string{
 	FieldCacheReadTokens,
 	FieldCacheCreation5mTokens,
 	FieldCacheCreation1hTokens,
+	FieldCacheHitOriginalInputTokens,
+	FieldCacheHitOriginalCacheReadTokens,
+	FieldCacheHitShiftedTokens,
+	FieldCacheHitTargetPercent,
+	FieldCacheHitTargetTolerancePercent,
+	FieldCacheHitCumulativePromptTokens,
+	FieldCacheHitCumulativeCacheReadTokens,
+	FieldCacheHitCumulativePercent,
+	FieldCacheHitStateVersion,
 	FieldInputCost,
 	FieldOutputCost,
 	FieldCacheCreationCost,
@@ -248,6 +275,18 @@ var (
 	DefaultCacheCreation5mTokens int
 	// DefaultCacheCreation1hTokens holds the default value on creation for the "cache_creation_1h_tokens" field.
 	DefaultCacheCreation1hTokens int
+	// DefaultCacheHitOriginalInputTokens holds the default value on creation for the "cache_hit_original_input_tokens" field.
+	DefaultCacheHitOriginalInputTokens int
+	// DefaultCacheHitOriginalCacheReadTokens holds the default value on creation for the "cache_hit_original_cache_read_tokens" field.
+	DefaultCacheHitOriginalCacheReadTokens int
+	// DefaultCacheHitShiftedTokens holds the default value on creation for the "cache_hit_shifted_tokens" field.
+	DefaultCacheHitShiftedTokens int
+	// DefaultCacheHitCumulativePromptTokens holds the default value on creation for the "cache_hit_cumulative_prompt_tokens" field.
+	DefaultCacheHitCumulativePromptTokens int64
+	// DefaultCacheHitCumulativeCacheReadTokens holds the default value on creation for the "cache_hit_cumulative_cache_read_tokens" field.
+	DefaultCacheHitCumulativeCacheReadTokens int64
+	// DefaultCacheHitStateVersion holds the default value on creation for the "cache_hit_state_version" field.
+	DefaultCacheHitStateVersion int64
 	// DefaultInputCost holds the default value on creation for the "input_cost" field.
 	DefaultInputCost float64
 	// DefaultOutputCost holds the default value on creation for the "output_cost" field.
@@ -403,6 +442,51 @@ func ByCacheCreation5mTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheCreation1hTokens orders the results by the cache_creation_1h_tokens field.
 func ByCacheCreation1hTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheCreation1hTokens, opts...).ToFunc()
+}
+
+// ByCacheHitOriginalInputTokens orders the results by the cache_hit_original_input_tokens field.
+func ByCacheHitOriginalInputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitOriginalInputTokens, opts...).ToFunc()
+}
+
+// ByCacheHitOriginalCacheReadTokens orders the results by the cache_hit_original_cache_read_tokens field.
+func ByCacheHitOriginalCacheReadTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitOriginalCacheReadTokens, opts...).ToFunc()
+}
+
+// ByCacheHitShiftedTokens orders the results by the cache_hit_shifted_tokens field.
+func ByCacheHitShiftedTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitShiftedTokens, opts...).ToFunc()
+}
+
+// ByCacheHitTargetPercent orders the results by the cache_hit_target_percent field.
+func ByCacheHitTargetPercent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitTargetPercent, opts...).ToFunc()
+}
+
+// ByCacheHitTargetTolerancePercent orders the results by the cache_hit_target_tolerance_percent field.
+func ByCacheHitTargetTolerancePercent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitTargetTolerancePercent, opts...).ToFunc()
+}
+
+// ByCacheHitCumulativePromptTokens orders the results by the cache_hit_cumulative_prompt_tokens field.
+func ByCacheHitCumulativePromptTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitCumulativePromptTokens, opts...).ToFunc()
+}
+
+// ByCacheHitCumulativeCacheReadTokens orders the results by the cache_hit_cumulative_cache_read_tokens field.
+func ByCacheHitCumulativeCacheReadTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitCumulativeCacheReadTokens, opts...).ToFunc()
+}
+
+// ByCacheHitCumulativePercent orders the results by the cache_hit_cumulative_percent field.
+func ByCacheHitCumulativePercent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitCumulativePercent, opts...).ToFunc()
+}
+
+// ByCacheHitStateVersion orders the results by the cache_hit_state_version field.
+func ByCacheHitStateVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitStateVersion, opts...).ToFunc()
 }
 
 // ByInputCost orders the results by the input_cost field.

@@ -88,6 +88,39 @@ func (UsageLog) Fields() []ent.Field {
 			Default(0),
 		field.Int("cache_creation_1h_tokens").
 			Default(0),
+		field.Int("cache_hit_original_input_tokens").
+			Default(0).
+			Comment("缓存命中率控制前的普通输入 token"),
+		field.Int("cache_hit_original_cache_read_tokens").
+			Default(0).
+			Comment("缓存命中率控制前的缓存读取 token"),
+		field.Int("cache_hit_shifted_tokens").
+			Default(0).
+			Comment("本次从缓存读取划入普通输入的 token"),
+		field.Float("cache_hit_target_percent").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
+			Comment("本次请求使用的缓存命中率目标百分比"),
+		field.Float("cache_hit_target_tolerance_percent").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
+			Comment("本次请求使用的缓存命中率容差百分比"),
+		field.Int64("cache_hit_cumulative_prompt_tokens").
+			Default(0).
+			Comment("本次调整后的状态累计提示词 token"),
+		field.Int64("cache_hit_cumulative_cache_read_tokens").
+			Default(0).
+			Comment("本次调整后的状态累计缓存读取 token"),
+		field.Float("cache_hit_cumulative_percent").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(7,4)"}).
+			Comment("本次调整后的累计缓存命中率百分比"),
+		field.Int64("cache_hit_state_version").
+			Default(0).
+			Comment("缓存命中率累计状态代次，来自分组更新时间"),
 
 		// 成本字段
 		field.Float("input_cost").

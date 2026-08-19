@@ -98,6 +98,15 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // cache_hit_original_input_tokens
+			sqlmock.AnyArg(), // cache_hit_original_cache_read_tokens
+			sqlmock.AnyArg(), // cache_hit_shifted_tokens
+			sqlmock.AnyArg(), // cache_hit_target_percent
+			sqlmock.AnyArg(), // cache_hit_target_tolerance_percent
+			sqlmock.AnyArg(), // cache_hit_cumulative_prompt_tokens
+			sqlmock.AnyArg(), // cache_hit_cumulative_cache_read_tokens
+			sqlmock.AnyArg(), // cache_hit_cumulative_percent
+			sqlmock.AnyArg(), // cache_hit_state_version
 			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
@@ -190,6 +199,15 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
+			sqlmock.AnyArg(), // cache_hit_original_input_tokens
+			sqlmock.AnyArg(), // cache_hit_original_cache_read_tokens
+			sqlmock.AnyArg(), // cache_hit_shifted_tokens
+			sqlmock.AnyArg(), // cache_hit_target_percent
+			sqlmock.AnyArg(), // cache_hit_target_tolerance_percent
+			sqlmock.AnyArg(), // cache_hit_cumulative_prompt_tokens
+			sqlmock.AnyArg(), // cache_hit_cumulative_cache_read_tokens
+			sqlmock.AnyArg(), // cache_hit_cumulative_percent
+			sqlmock.AnyArg(), // cache_hit_state_version
 			sqlmock.AnyArg(), // session_id
 			createdAt,
 		).
@@ -851,6 +869,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullFloat64{},
+			0, 0, 0,
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			int64(0), int64(0),
+			sql.NullFloat64{},
+			int64(0),
 			sql.NullString{},
 			now,
 		}})
@@ -928,7 +952,16 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
-			sql.NullString{},  // session_id
+			6,                 // cache_hit_original_input_tokens
+			94,                // cache_hit_original_cache_read_tokens
+			4,                 // cache_hit_shifted_tokens
+			sql.NullFloat64{Valid: true, Float64: 90},  // cache_hit_target_percent
+			sql.NullFloat64{Valid: true, Float64: 0.5}, // cache_hit_target_tolerance_percent
+			int64(100), // cache_hit_cumulative_prompt_tokens
+			int64(90),  // cache_hit_cumulative_cache_read_tokens
+			sql.NullFloat64{Valid: true, Float64: 90.0}, // cache_hit_cumulative_percent
+			int64(123),       // cache_hit_state_version
+			sql.NullString{}, // session_id
 			now,
 		}})
 		require.NoError(t, err)
@@ -937,6 +970,18 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, service.RequestTypeWSV2, log.RequestType)
 		require.True(t, log.Stream)
 		require.True(t, log.OpenAIWSMode)
+		require.Equal(t, 6, log.CacheHitOriginalInputTokens)
+		require.Equal(t, 94, log.CacheHitOriginalCacheReadTokens)
+		require.Equal(t, 4, log.CacheHitShiftedTokens)
+		require.NotNil(t, log.CacheHitTargetPercent)
+		require.InDelta(t, 90, *log.CacheHitTargetPercent, 1e-9)
+		require.NotNil(t, log.CacheHitTargetTolerancePercent)
+		require.InDelta(t, 0.5, *log.CacheHitTargetTolerancePercent, 1e-9)
+		require.Equal(t, int64(100), log.CacheHitCumulativePromptTokens)
+		require.Equal(t, int64(90), log.CacheHitCumulativeCacheReadTokens)
+		require.NotNil(t, log.CacheHitCumulativePercent)
+		require.InDelta(t, 90, *log.CacheHitCumulativePercent, 1e-9)
+		require.Equal(t, int64(123), log.CacheHitStateVersion)
 	})
 
 	t.Run("request_type_unknown_falls_back_to_legacy", func(t *testing.T) {
@@ -988,6 +1033,15 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			0,                 // cache_hit_original_input_tokens
+			0,                 // cache_hit_original_cache_read_tokens
+			0,                 // cache_hit_shifted_tokens
+			sql.NullFloat64{}, // cache_hit_target_percent
+			sql.NullFloat64{}, // cache_hit_target_tolerance_percent
+			int64(0),          // cache_hit_cumulative_prompt_tokens
+			int64(0),          // cache_hit_cumulative_cache_read_tokens
+			sql.NullFloat64{}, // cache_hit_cumulative_percent
+			int64(0),          // cache_hit_state_version
 			sql.NullString{},  // session_id
 			now,
 		}})
@@ -1048,6 +1102,15 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_tier
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
+			0,                 // cache_hit_original_input_tokens
+			0,                 // cache_hit_original_cache_read_tokens
+			0,                 // cache_hit_shifted_tokens
+			sql.NullFloat64{}, // cache_hit_target_percent
+			sql.NullFloat64{}, // cache_hit_target_tolerance_percent
+			int64(0),          // cache_hit_cumulative_prompt_tokens
+			int64(0),          // cache_hit_cumulative_cache_read_tokens
+			sql.NullFloat64{}, // cache_hit_cumulative_percent
+			int64(0),          // cache_hit_state_version
 			sql.NullString{},  // session_id
 			now,
 		}})

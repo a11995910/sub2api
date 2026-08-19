@@ -16,22 +16,35 @@ type memoryCacheHitTargetTracker struct {
 
 func (m *memoryCacheHitTargetTracker) AdjustCacheHitToTarget(
 	_ context.Context,
-	userID, groupID, targetBasisPoints, promptTokens, cacheReadTokens int64,
-) (int64, error) {
+	userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion, promptTokens, cacheReadTokens int64,
+) (CacheHitTargetAdjustment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.states == nil {
 		m.states = make(map[string][2]int64)
 	}
-	key := fmt.Sprintf("%d:%d:%d", userID, groupID, targetBasisPoints)
+	key := fmt.Sprintf("%d:%d:%d:%d:%d", userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion)
 	state := m.states[key]
 	promptTotal := state[0] + promptTokens
 	cacheAvailable := state[1] + cacheReadTokens
-	allowed := (promptTotal/cacheHitTargetBasisPoints)*targetBasisPoints +
+	targetAllowed := (promptTotal/cacheHitTargetBasisPoints)*targetBasisPoints +
 		(promptTotal%cacheHitTargetBasisPoints)*targetBasisPoints/cacheHitTargetBasisPoints
-	cacheKept := min(cacheAvailable, allowed)
+	triggerBasisPoints := targetBasisPoints + toleranceBasisPoints
+	triggerAllowed := (promptTotal/cacheHitTargetBasisPoints)*triggerBasisPoints +
+		(promptTotal%cacheHitTargetBasisPoints)*triggerBasisPoints/cacheHitTargetBasisPoints
+	shifted := int64(0)
+	if cacheAvailable > triggerAllowed {
+		shifted = min(cacheAvailable-targetAllowed, cacheReadTokens)
+	}
+	cacheKept := cacheAvailable - shifted
 	m.states[key] = [2]int64{promptTotal, cacheKept}
-	return cacheAvailable - cacheKept, nil
+	return CacheHitTargetAdjustment{
+		Enabled:                   true,
+		ShiftedTokens:             int(shifted),
+		CumulativePromptTokens:    promptTotal,
+		CumulativeCacheReadTokens: cacheKept,
+		StateVersion:              stateVersion,
+	}, nil
 }
 
 func TestParseUsageRequestType(t *testing.T) {
@@ -146,32 +159,36 @@ func TestApplyCacheHitTargetToInput_CumulativeUserGroupTarget(t *testing.T) {
 	apiKey := &APIKey{
 		GroupID: &groupID,
 		Group: &Group{
-			ID:                     groupID,
-			CacheHitQuarterToInput: true,
-			CacheHitTargetPercent:  90,
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
 		},
 	}
 	tracker := &memoryCacheHitTargetTracker{}
 
 	// 首次请求命中率 80%，低于目标，不做调整，但会累计分母。
 	first := &UsageTokens{InputTokens: 20, CacheReadTokens: 80}
-	shifted, err := applyCacheHitTargetToInput(context.Background(), first, apiKey, 101, tracker)
+	adjustment, err := applyCacheHitTargetToInput(context.Background(), first, apiKey, 101, tracker)
 	require.NoError(t, err)
-	require.Zero(t, shifted)
+	require.Zero(t, adjustment.ShiftedTokens)
 	require.Equal(t, 80, first.CacheReadTokens)
 
 	// 第二次请求自身为 100%，但两次累计恰好 90%，因此仍无需调整。
 	second := &UsageTokens{CacheReadTokens: 100}
-	shifted, err = applyCacheHitTargetToInput(context.Background(), second, apiKey, 101, tracker)
+	adjustment, err = applyCacheHitTargetToInput(context.Background(), second, apiKey, 101, tracker)
 	require.NoError(t, err)
-	require.Zero(t, shifted)
+	require.Zero(t, adjustment.ShiftedTokens)
 	require.Equal(t, 100, second.CacheReadTokens)
 
 	// 第三次再全命中时累计将达到 93.33%，只移动 10 token，使累计保持 90%。
 	third := &UsageTokens{CacheReadTokens: 100}
-	shifted, err = applyCacheHitTargetToInput(context.Background(), third, apiKey, 101, tracker)
+	adjustment, err = applyCacheHitTargetToInput(context.Background(), third, apiKey, 101, tracker)
 	require.NoError(t, err)
-	require.Equal(t, 10, shifted)
+	require.Equal(t, 10, adjustment.ShiftedTokens)
+	require.Equal(t, int64(300), adjustment.CumulativePromptTokens)
+	require.Equal(t, int64(270), adjustment.CumulativeCacheReadTokens)
+	require.InDelta(t, 90, adjustment.CumulativeHitPercent, 1e-9)
 	require.Equal(t, 10, third.InputTokens)
 	require.Equal(t, 90, third.CacheReadTokens)
 }
@@ -183,16 +200,51 @@ func TestApplyCacheHitTargetToInput_PerRequestFallback(t *testing.T) {
 	apiKey := &APIKey{
 		GroupID: &groupID,
 		Group: &Group{
-			ID:                     groupID,
-			CacheHitQuarterToInput: true,
-			CacheHitTargetPercent:  90,
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
 		},
 	}
 	tokens := &UsageTokens{InputTokens: 6, CacheReadTokens: 94}
-	shifted, err := applyCacheHitTargetToInput(context.Background(), tokens, apiKey, 102, nil)
+	adjustment, err := applyCacheHitTargetToInput(context.Background(), tokens, apiKey, 102, nil)
 
 	require.NoError(t, err)
-	require.Equal(t, 4, shifted)
+	require.Equal(t, 4, adjustment.ShiftedTokens)
 	require.Equal(t, 10, tokens.InputTokens)
 	require.Equal(t, 90, tokens.CacheReadTokens)
+}
+
+func TestApplyCacheHitTargetToInput_ToleranceAndIntegerRecovery(t *testing.T) {
+	t.Parallel()
+
+	groupID := int64(11)
+	apiKey := &APIKey{
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	}
+	tracker := &memoryCacheHitTargetTracker{}
+
+	// 9 个全命中 token 触发后受整数粒度限制，只能保留 8 个，累计为 88.89%。
+	first := &UsageTokens{CacheReadTokens: 9}
+	adjustment, err := applyCacheHitTargetToInput(context.Background(), first, apiKey, 103, tracker)
+	require.NoError(t, err)
+	require.Equal(t, 1, adjustment.ShiftedTokens)
+	require.InDelta(t, 88.8889, adjustment.CumulativeHitPercent, 0.0001)
+
+	// 下一次命中会自然回升到 90%，未超过 90.5% 上沿，因此不再划拨。
+	second := &UsageTokens{CacheReadTokens: 1}
+	adjustment, err = applyCacheHitTargetToInput(context.Background(), second, apiKey, 103, tracker)
+	require.NoError(t, err)
+	require.Zero(t, adjustment.ShiftedTokens)
+	require.Equal(t, 1, second.CacheReadTokens)
+	require.InDelta(t, 90, adjustment.CumulativeHitPercent, 1e-9)
+
+	// 恰好位于容差上沿也不触发。
+	require.Zero(t, cacheHitShiftForSingleRequest(200, 181, 9000, 50))
 }

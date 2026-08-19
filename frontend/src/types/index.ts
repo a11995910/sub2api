@@ -613,6 +613,7 @@ export interface Group {
   image_rate_independent: boolean
   cache_hit_quarter_to_input_enabled: boolean
   cache_hit_target_percent?: number
+  cache_hit_target_tolerance_percent?: number
   image_rate_multiplier: number
   batch_image_discount_multiplier: number
   batch_image_hold_multiplier: number
@@ -843,6 +844,7 @@ export interface CreateGroupRequest {
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
   cache_hit_target_percent?: number
+  cache_hit_target_tolerance_percent?: number
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
   batch_image_hold_multiplier?: number
@@ -916,6 +918,7 @@ export interface UpdateGroupRequest {
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
   cache_hit_target_percent?: number
+  cache_hit_target_tolerance_percent?: number
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
   batch_image_hold_multiplier?: number
@@ -1791,6 +1794,17 @@ export interface AdminUsageLog extends UsageLog {
   account_rate_multiplier?: number | null
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
   account_stats_cost?: number | null
+
+  // 缓存命中率控制审计快照（仅管理员可见）
+  cache_hit_original_input_tokens?: number
+  cache_hit_original_cache_read_tokens?: number
+  cache_hit_shifted_tokens?: number
+  cache_hit_target_percent?: number | null
+  cache_hit_target_tolerance_percent?: number | null
+  cache_hit_cumulative_prompt_tokens?: number
+  cache_hit_cumulative_cache_read_tokens?: number
+  cache_hit_cumulative_percent?: number | null
+  cache_hit_state_version?: number
 
   // 渠道 ID 和计费等级（仅管理员可见）
   channel_id?: number | null

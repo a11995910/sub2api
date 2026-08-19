@@ -470,6 +470,20 @@ func (_c *GroupCreate) SetNillableCacheHitTargetPercent(v *float64) *GroupCreate
 	return _c
 }
 
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (_c *GroupCreate) SetCacheHitTargetTolerancePercent(v float64) *GroupCreate {
+	_c.mutation.SetCacheHitTargetTolerancePercent(v)
+	return _c
+}
+
+// SetNillableCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheHitTargetTolerancePercent(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheHitTargetTolerancePercent(*v)
+	}
+	return _c
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_c *GroupCreate) SetImageRateMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetImageRateMultiplier(v)
@@ -1240,6 +1254,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCacheHitTargetPercent
 		_c.mutation.SetCacheHitTargetPercent(v)
 	}
+	if _, ok := _c.mutation.CacheHitTargetTolerancePercent(); !ok {
+		v := group.DefaultCacheHitTargetTolerancePercent
+		_c.mutation.SetCacheHitTargetTolerancePercent(v)
+	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
@@ -1454,6 +1472,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheHitTargetPercent(); !ok {
 		return &ValidationError{Name: "cache_hit_target_percent", err: errors.New(`ent: missing required field "Group.cache_hit_target_percent"`)}
+	}
+	if _, ok := _c.mutation.CacheHitTargetTolerancePercent(); !ok {
+		return &ValidationError{Name: "cache_hit_target_tolerance_percent", err: errors.New(`ent: missing required field "Group.cache_hit_target_tolerance_percent"`)}
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
@@ -1711,6 +1732,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheHitTargetPercent(); ok {
 		_spec.SetField(group.FieldCacheHitTargetPercent, field.TypeFloat64, value)
 		_node.CacheHitTargetPercent = value
+	}
+	if value, ok := _c.mutation.CacheHitTargetTolerancePercent(); ok {
+		_spec.SetField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+		_node.CacheHitTargetTolerancePercent = value
 	}
 	if value, ok := _c.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
@@ -2511,6 +2536,24 @@ func (u *GroupUpsert) UpdateCacheHitTargetPercent() *GroupUpsert {
 // AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
 func (u *GroupUpsert) AddCacheHitTargetPercent(v float64) *GroupUpsert {
 	u.Add(group.FieldCacheHitTargetPercent, v)
+	return u
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (u *GroupUpsert) SetCacheHitTargetTolerancePercent(v float64) *GroupUpsert {
+	u.Set(group.FieldCacheHitTargetTolerancePercent, v)
+	return u
+}
+
+// UpdateCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheHitTargetTolerancePercent() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheHitTargetTolerancePercent)
+	return u
+}
+
+// AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
+func (u *GroupUpsert) AddCacheHitTargetTolerancePercent(v float64) *GroupUpsert {
+	u.Add(group.FieldCacheHitTargetTolerancePercent, v)
 	return u
 }
 
@@ -3824,6 +3867,27 @@ func (u *GroupUpsertOne) AddCacheHitTargetPercent(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateCacheHitTargetPercent() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitTargetPercent()
+	})
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (u *GroupUpsertOne) SetCacheHitTargetTolerancePercent(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
+func (u *GroupUpsertOne) AddCacheHitTargetTolerancePercent(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// UpdateCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheHitTargetTolerancePercent() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitTargetTolerancePercent()
 	})
 }
 
@@ -5424,6 +5488,27 @@ func (u *GroupUpsertBulk) AddCacheHitTargetPercent(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateCacheHitTargetPercent() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitTargetPercent()
+	})
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (u *GroupUpsertBulk) SetCacheHitTargetTolerancePercent(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
+func (u *GroupUpsertBulk) AddCacheHitTargetTolerancePercent(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// UpdateCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheHitTargetTolerancePercent() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitTargetTolerancePercent()
 	})
 }
 

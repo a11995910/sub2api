@@ -352,6 +352,38 @@
               <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() }}</span>
             </div>
           </div>
+          <div v-if="tokenTooltipData?.cache_hit_target_percent != null" class="space-y-1.5 border-t border-gray-700 pt-1.5">
+            <div class="text-xs font-semibold text-gray-300">{{ t('usage.cacheHitControlDetails') }}</div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.cacheHitOriginalInputTokens') }}</span>
+              <span class="font-medium text-white">{{ (tokenTooltipData.cache_hit_original_input_tokens || 0).toLocaleString() }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.cacheHitOriginalCacheReadTokens') }}</span>
+              <span class="font-medium text-white">{{ (tokenTooltipData.cache_hit_original_cache_read_tokens || 0).toLocaleString() }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.cacheHitShiftedTokens') }}</span>
+              <span class="font-medium text-amber-300">{{ (tokenTooltipData.cache_hit_shifted_tokens || 0).toLocaleString() }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.cacheHitTarget') }}</span>
+              <span class="font-medium text-white">
+                {{ formatPercent(tokenTooltipData.cache_hit_target_percent) }} ± {{ formatPercent(tokenTooltipData.cache_hit_target_tolerance_percent) }}
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.cacheHitCumulative') }}</span>
+              <span class="font-medium text-sky-300">
+                {{ formatPercent(tokenTooltipData.cache_hit_cumulative_percent, 4) }}
+                ({{ (tokenTooltipData.cache_hit_cumulative_cache_read_tokens || 0).toLocaleString() }} / {{ (tokenTooltipData.cache_hit_cumulative_prompt_tokens || 0).toLocaleString() }})
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
+              <span class="text-gray-400">{{ t('usage.cacheHitStateVersion') }}</span>
+              <span class="font-mono text-[11px] text-gray-300">{{ tokenTooltipData.cache_hit_state_version || 0 }}</span>
+            </div>
+          </div>
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.totalTokens') }}</span>
             <span class="font-semibold text-blue-400">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() }}</span>
@@ -548,6 +580,10 @@ function accountBilled(row: { total_cost?: number | null; account_stats_cost?: n
 
 function formatCost(value: number | null | undefined): string {
   return formatSpiritStones(value ?? 0, { fractionDigits: 6 })
+}
+
+function formatPercent(value: number | null | undefined, fractionDigits = 2): string {
+  return `${(value ?? 0).toFixed(fractionDigits)}%`
 }
 
 import DataTable from '@/components/common/DataTable.vue'

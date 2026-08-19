@@ -121,6 +121,7 @@ type CreateGroupRequest struct {
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
+	CacheHitTargetTolerancePercent  *float64                      `json:"cache_hit_target_tolerance_percent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
@@ -201,6 +202,7 @@ type UpdateGroupRequest struct {
 	ImageRateIndependent            *bool                         `json:"image_rate_independent"`
 	CacheHitQuarterToInput          *bool                         `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
+	CacheHitTargetTolerancePercent  *float64                      `json:"cache_hit_target_tolerance_percent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
@@ -517,7 +519,8 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 	cacheHitTargetPercent := service.NormalizeCacheHitTargetPercent(req.CacheHitTargetPercent)
-	if err := service.ValidateCacheHitTargetConfig(cacheHitTargetPercent); err != nil {
+	cacheHitTargetTolerancePercent := service.NormalizeCacheHitTargetTolerancePercent(req.CacheHitTargetTolerancePercent)
+	if err := service.ValidateCacheHitTargetConfig(cacheHitTargetPercent, cacheHitTargetTolerancePercent); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -559,6 +562,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           req.CacheHitTargetPercent,
+		CacheHitTargetTolerancePercent:  req.CacheHitTargetTolerancePercent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
@@ -674,7 +678,14 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 	if req.CacheHitTargetPercent != nil {
 		cacheHitTargetPercent := service.NormalizeCacheHitTargetPercent(req.CacheHitTargetPercent)
-		if err := service.ValidateCacheHitTargetConfig(cacheHitTargetPercent); err != nil {
+		if err := service.ValidateCacheHitTargetPercent(cacheHitTargetPercent); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+	if req.CacheHitTargetTolerancePercent != nil {
+		cacheHitTargetTolerancePercent := service.NormalizeCacheHitTargetTolerancePercent(req.CacheHitTargetTolerancePercent)
+		if err := service.ValidateCacheHitTargetTolerancePercent(cacheHitTargetTolerancePercent); err != nil {
 			response.BadRequest(c, err.Error())
 			return
 		}
@@ -706,6 +717,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           req.CacheHitTargetPercent,
+		CacheHitTargetTolerancePercent:  req.CacheHitTargetTolerancePercent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,

@@ -800,16 +800,16 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 	}
-	shifted, cacheTargetErr := applyCacheHitTargetToInput(ctx, &cacheBillingTokens, apiKey, user.ID, s.cache)
+	cacheHitAdjustment, cacheTargetErr := applyCacheHitTargetToInput(ctx, &cacheBillingTokens, apiKey, user.ID, s.cache)
 	if cacheTargetErr != nil {
 		logger.LegacyPrintf("service.gateway", "cache_hit_target tracker unavailable, using per-request fallback (group=%d user=%d): %v",
 			valueOrZero(apiKey.GroupID), user.ID, cacheTargetErr)
 	}
-	if shifted > 0 {
+	if cacheHitAdjustment.ShiftedTokens > 0 {
 		result.Usage.InputTokens = cacheBillingTokens.InputTokens
 		result.Usage.CacheReadInputTokens = cacheBillingTokens.CacheReadTokens
 		logger.LegacyPrintf("service.gateway", "cache_hit_target: %d cache_read_input_tokens -> input_tokens (group=%d user=%d account=%d)",
-			shifted, valueOrZero(apiKey.GroupID), user.ID, account.ID)
+			cacheHitAdjustment.ShiftedTokens, valueOrZero(apiKey.GroupID), user.ID, account.ID)
 	}
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
@@ -890,6 +890,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+	applyCacheHitTargetAudit(usageLog, cacheHitAdjustment)
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {

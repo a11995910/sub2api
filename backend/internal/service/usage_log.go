@@ -152,6 +152,17 @@ type UsageLog struct {
 	CacheCreation5mTokens int `gorm:"column:cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `gorm:"column:cache_creation_1h_tokens"`
 
+	// 缓存命中率控制审计快照；目标未启用的历史/普通请求保持零值或 nil。
+	CacheHitOriginalInputTokens         int
+	CacheHitOriginalCacheReadTokens     int
+	CacheHitShiftedTokens               int
+	CacheHitTargetPercent               *float64
+	CacheHitTargetTolerancePercent      *float64
+	CacheHitCumulativePromptTokens      int64
+	CacheHitCumulativeCacheReadTokens   int64
+	CacheHitCumulativePercent           *float64
+	CacheHitStateVersion                int64
+
 	ImageInputTokens  int
 	ImageInputCost    float64
 	ImageOutputTokens int
@@ -248,57 +259,102 @@ const cacheHitTargetBasisPoints = int64(10000)
 // CacheHitTargetTracker 是 GatewayCache 的可选扩展。生产 Redis 实现通过原子脚本按
 // 用户+分组累计控制；测试缓存与降级路径无需实现该接口。
 type CacheHitTargetTracker interface {
-	AdjustCacheHitToTarget(ctx context.Context, userID, groupID, targetBasisPoints, promptTokens, cacheReadTokens int64) (int64, error)
+	AdjustCacheHitToTarget(
+		ctx context.Context,
+		userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion, promptTokens, cacheReadTokens int64,
+	) (CacheHitTargetAdjustment, error)
 }
 
-func groupCacheHitTarget(apiKey *APIKey) (int64, bool) {
+type cacheHitTargetConfig struct {
+	targetBasisPoints    int64
+	toleranceBasisPoints int64
+	stateVersion         int64
+	targetPercent        float64
+	tolerancePercent     float64
+}
+
+// CacheHitTargetAdjustment 记录一次累计控制的完整审计结果。
+type CacheHitTargetAdjustment struct {
+	Enabled                   bool
+	OriginalInputTokens       int
+	OriginalCacheReadTokens   int
+	ShiftedTokens             int
+	TargetPercent             float64
+	TolerancePercent          float64
+	CumulativePromptTokens    int64
+	CumulativeCacheReadTokens int64
+	CumulativeHitPercent      float64
+	StateVersion              int64
+}
+
+func groupCacheHitTarget(apiKey *APIKey) (cacheHitTargetConfig, bool) {
 	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.CacheHitQuarterToInput {
-		return 0, false
+		return cacheHitTargetConfig{}, false
 	}
-	percent := apiKey.Group.CacheHitTargetPercent
+	targetPercent := apiKey.Group.CacheHitTargetPercent
 	// 兼容直接构造旧 Group 的内部调用与升级前认证快照；正常持久化值由数据库默认值保证。
-	if percent <= 0 {
-		percent = DefaultCacheHitTargetPercent
+	if targetPercent <= 0 {
+		targetPercent = DefaultCacheHitTargetPercent
 	}
-	if err := ValidateCacheHitTargetConfig(percent); err != nil {
-		return 0, false
+	tolerancePercent := apiKey.Group.CacheHitTargetTolerancePercent
+	if err := ValidateCacheHitTargetConfig(targetPercent, tolerancePercent); err != nil {
+		return cacheHitTargetConfig{}, false
 	}
-	return int64(math.Round(percent * 100)), true
+	return cacheHitTargetConfig{
+		targetBasisPoints:    int64(math.Round(targetPercent * 100)),
+		toleranceBasisPoints: int64(math.Round(tolerancePercent * 100)),
+		stateVersion:         apiKey.Group.UpdatedAt.UnixMicro(),
+		targetPercent:        targetPercent,
+		tolerancePercent:     tolerancePercent,
+	}, true
 }
 
 // cacheHitShiftForSingleRequest 是 Redis 不可用时的安全降级：只控制本次请求命中率，
-// 因而可能比累计算法略低，但不会让新请求的调整后命中率超过目标。
-func cacheHitShiftForSingleRequest(promptTokens, cacheReadTokens, targetBasisPoints int64) int64 {
-	if promptTokens <= 0 || cacheReadTokens <= 0 || targetBasisPoints >= cacheHitTargetBasisPoints {
+// 只有超过目标加容差时才回调到目标，避免在边界附近频繁划拨。
+func cacheHitShiftForSingleRequest(promptTokens, cacheReadTokens, targetBasisPoints, toleranceBasisPoints int64) int64 {
+	if promptTokens <= 0 || cacheReadTokens <= 0 {
 		return 0
 	}
-	allowed := (promptTokens/cacheHitTargetBasisPoints)*targetBasisPoints +
+	triggerBasisPoints := min(targetBasisPoints+toleranceBasisPoints, cacheHitTargetBasisPoints)
+	triggerAllowed := (promptTokens/cacheHitTargetBasisPoints)*triggerBasisPoints +
+		(promptTokens%cacheHitTargetBasisPoints)*triggerBasisPoints/cacheHitTargetBasisPoints
+	if cacheReadTokens <= triggerAllowed {
+		return 0
+	}
+	targetAllowed := (promptTokens/cacheHitTargetBasisPoints)*targetBasisPoints +
 		(promptTokens%cacheHitTargetBasisPoints)*targetBasisPoints/cacheHitTargetBasisPoints
-	if cacheReadTokens <= allowed {
-		return 0
-	}
-	return cacheReadTokens - allowed
+	return cacheReadTokens - targetAllowed
 }
 
 // applyCacheHitTargetToInput 保持 token 总量不变，只把达到累计目标所必需的缓存读取
 // token 重分类为普通输入。即便本次 cache_read=0 也会更新累计分母，使后续请求不会被多调。
-func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey *APIKey, userID int64, tracker any) (shifted int, trackerErr error) {
+func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey *APIKey, userID int64, tracker any) (adjustment CacheHitTargetAdjustment, trackerErr error) {
 	if tokens == nil {
-		return 0, nil
+		return CacheHitTargetAdjustment{}, nil
 	}
-	target, enabled := groupCacheHitTarget(apiKey)
-	if !enabled || target >= cacheHitTargetBasisPoints {
-		return 0, nil
+	config, enabled := groupCacheHitTarget(apiKey)
+	if !enabled {
+		return CacheHitTargetAdjustment{}, nil
 	}
 	input := max(tokens.InputTokens, 0)
 	cacheCreation := max(tokens.CacheCreationTokens, 0)
 	cacheRead := max(tokens.CacheReadTokens, 0)
+	adjustment = CacheHitTargetAdjustment{
+		Enabled:                 true,
+		OriginalInputTokens:     input,
+		OriginalCacheReadTokens: cacheRead,
+		TargetPercent:           config.targetPercent,
+		TolerancePercent:        config.tolerancePercent,
+		StateVersion:            config.stateVersion,
+	}
 	promptTokens := int64(input) + int64(cacheCreation) + int64(cacheRead)
 	if promptTokens <= 0 {
-		return 0, nil
+		return adjustment, nil
 	}
 
-	shift := cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), target)
+	shift := cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), config.targetBasisPoints, config.toleranceBasisPoints)
+	adjustment.CumulativePromptTokens = promptTokens
+	adjustment.CumulativeCacheReadTokens = int64(cacheRead) - shift
 	if cumulative, ok := tracker.(CacheHitTargetTracker); ok {
 		groupID := valueOrZero(apiKey.GroupID)
 		if groupID == 0 && apiKey.Group != nil {
@@ -306,10 +362,24 @@ func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey
 		}
 		if groupID > 0 && userID > 0 {
 			var err error
-			shift, err = cumulative.AdjustCacheHitToTarget(ctx, userID, groupID, target, promptTokens, int64(cacheRead))
+			var cumulativeAdjustment CacheHitTargetAdjustment
+			cumulativeAdjustment, err = cumulative.AdjustCacheHitToTarget(
+				ctx,
+				userID,
+				groupID,
+				config.targetBasisPoints,
+				config.toleranceBasisPoints,
+				config.stateVersion,
+				promptTokens,
+				int64(cacheRead),
+			)
 			if err != nil {
 				trackerErr = err
-				shift = cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), target)
+				shift = cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), config.targetBasisPoints, config.toleranceBasisPoints)
+			} else {
+				shift = int64(cumulativeAdjustment.ShiftedTokens)
+				adjustment.CumulativePromptTokens = cumulativeAdjustment.CumulativePromptTokens
+				adjustment.CumulativeCacheReadTokens = cumulativeAdjustment.CumulativeCacheReadTokens
 			}
 		}
 	}
@@ -321,5 +391,24 @@ func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey
 	}
 	tokens.CacheReadTokens -= int(shift)
 	tokens.InputTokens += int(shift)
-	return int(shift), trackerErr
+	adjustment.ShiftedTokens = int(shift)
+	if adjustment.CumulativePromptTokens > 0 {
+		adjustment.CumulativeHitPercent = float64(adjustment.CumulativeCacheReadTokens) * 100 / float64(adjustment.CumulativePromptTokens)
+	}
+	return adjustment, trackerErr
+}
+
+func applyCacheHitTargetAudit(log *UsageLog, adjustment CacheHitTargetAdjustment) {
+	if log == nil || !adjustment.Enabled {
+		return
+	}
+	log.CacheHitOriginalInputTokens = adjustment.OriginalInputTokens
+	log.CacheHitOriginalCacheReadTokens = adjustment.OriginalCacheReadTokens
+	log.CacheHitShiftedTokens = adjustment.ShiftedTokens
+	log.CacheHitTargetPercent = &adjustment.TargetPercent
+	log.CacheHitTargetTolerancePercent = &adjustment.TolerancePercent
+	log.CacheHitCumulativePromptTokens = adjustment.CumulativePromptTokens
+	log.CacheHitCumulativeCacheReadTokens = adjustment.CumulativeCacheReadTokens
+	log.CacheHitCumulativePercent = &adjustment.CumulativeHitPercent
+	log.CacheHitStateVersion = adjustment.StateVersion
 }

@@ -17,7 +17,10 @@ import (
 const stickySessionPrefix = "sticky_session:"
 const openAIVideoProtocolPrefix = "openai_video_protocol:"
 const liveCallPrefix = "live:call:"
-const cacheHitTargetPrefix = "cache_hit_target:v1:"
+const (
+	cacheHitTargetPrefix = "cache_hit_target:v2:"
+	cacheHitTargetTTL    = 30 * 24 * time.Hour
+)
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -32,46 +35,70 @@ var adjustCacheHitTargetScript = redis.NewScript(`
 	local prompt_delta = tonumber(ARGV[1])
 	local cache_delta = tonumber(ARGV[2])
 	local target = tonumber(ARGV[3])
-	if prompt_delta == nil or cache_delta == nil or target == nil or
-		prompt_delta <= 0 or cache_delta < 0 or target < 0 or target > 10000 then
+	local tolerance = tonumber(ARGV[4])
+	local ttl_seconds = tonumber(ARGV[5])
+	if prompt_delta == nil or cache_delta == nil or target == nil or tolerance == nil or ttl_seconds == nil or
+		prompt_delta <= 0 or cache_delta < 0 or target < 0 or target > 10000 or
+		tolerance < 0 or target + tolerance > 10000 or ttl_seconds <= 0 then
 		return redis.error_reply('invalid cache hit target arguments')
 	end
 
 	local prompt_total = tonumber(redis.call('HGET', key, 'prompt_tokens') or '0') + prompt_delta
 	local cache_available = tonumber(redis.call('HGET', key, 'cache_read_tokens') or '0') + cache_delta
 	-- 分段乘法减少累计 token 较大时的浮点误差，并与 Go 降级算法保持向下取整口径。
-	local allowed = math.floor(prompt_total / 10000) * target +
+	local target_allowed = math.floor(prompt_total / 10000) * target +
 		math.floor((prompt_total % 10000) * target / 10000)
-	local cache_kept = cache_available
-	if cache_kept > allowed then
-		cache_kept = allowed
+	local trigger = target + tolerance
+	local trigger_allowed = math.floor(prompt_total / 10000) * trigger +
+		math.floor((prompt_total % 10000) * trigger / 10000)
+	local shifted = 0
+	if cache_available > trigger_allowed then
+		-- 容差带允许历史累计暂时高于目标；触发时只能重分类本次请求实际拥有的缓存读取 token，
+		-- 不能回溯改写已落库请求，否则 Redis 累计会与真实账单不一致。
+		shifted = math.min(cache_available - target_allowed, cache_delta)
 	end
-	local shifted = cache_available - cache_kept
+	local cache_kept = cache_available - shifted
 	redis.call('HSET', key, 'prompt_tokens', prompt_total, 'cache_read_tokens', cache_kept)
-	return shifted
+	redis.call('EXPIRE', key, ttl_seconds)
+	return {shifted, prompt_total, cache_kept}
 `)
 
 // AdjustCacheHitToTarget 原子累加用户在分组内的提示词与调整后缓存读取 token。
-// 目标值放入 key，使不同目标的累计状态相互隔离；每个用户/分组/目标仅一条 Hash。
+// 目标、容差和分组状态代次放入 key，使配置保存前后的累计状态相互隔离。
 func (c *gatewayCache) AdjustCacheHitToTarget(
 	ctx context.Context,
-	userID, groupID, targetBasisPoints, promptTokens, cacheReadTokens int64,
-) (int64, error) {
+	userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion, promptTokens, cacheReadTokens int64,
+) (service.CacheHitTargetAdjustment, error) {
 	if c == nil || c.rdb == nil {
-		return 0, errors.New("gateway cache unavailable")
+		return service.CacheHitTargetAdjustment{}, errors.New("gateway cache unavailable")
 	}
-	if userID <= 0 || groupID <= 0 || targetBasisPoints < 0 || targetBasisPoints > 10000 || promptTokens <= 0 || cacheReadTokens < 0 {
-		return 0, errors.New("invalid cache hit target arguments")
+	if userID <= 0 || groupID <= 0 || targetBasisPoints < 0 || targetBasisPoints > 10000 || toleranceBasisPoints < 0 || targetBasisPoints+toleranceBasisPoints > 10000 || promptTokens <= 0 || cacheReadTokens < 0 {
+		return service.CacheHitTargetAdjustment{}, errors.New("invalid cache hit target arguments")
 	}
-	key := fmt.Sprintf("%s%d:%d:%d", cacheHitTargetPrefix, userID, groupID, targetBasisPoints)
-	return adjustCacheHitTargetScript.Run(
+	key := fmt.Sprintf("%s%d:%d:%d:%d:%d", cacheHitTargetPrefix, userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion)
+	values, err := adjustCacheHitTargetScript.Run(
 		ctx,
 		c.rdb,
 		[]string{key},
 		promptTokens,
 		cacheReadTokens,
 		targetBasisPoints,
-	).Int64()
+		toleranceBasisPoints,
+		int64(cacheHitTargetTTL/time.Second),
+	).Int64Slice()
+	if err != nil {
+		return service.CacheHitTargetAdjustment{}, err
+	}
+	if len(values) != 3 {
+		return service.CacheHitTargetAdjustment{}, errors.New("invalid cache hit target result")
+	}
+	return service.CacheHitTargetAdjustment{
+		Enabled:                   true,
+		ShiftedTokens:             int(values[0]),
+		CumulativePromptTokens:    values[1],
+		CumulativeCacheReadTokens: values[2],
+		StateVersion:              stateVersion,
+	}, nil
 }
 
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离

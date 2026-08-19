@@ -664,18 +664,37 @@
             </span>
           </label>
           <div v-if="createForm.cache_hit_quarter_to_input_enabled" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
-            <div class="relative">
-              <input
-                v-model.number="createForm.cache_hit_target_percent"
-                type="number"
-                min="0.01"
-                max="100"
-                step="0.01"
-                required
-                class="input pr-8"
-              />
-              <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
+                <div class="relative">
+                  <input
+                    v-model.number="createForm.cache_hit_target_percent"
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    required
+                    class="input pr-8"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                </div>
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.cacheHitTargetTolerancePercent") }}</label>
+                <div class="relative">
+                  <input
+                    v-model.number="createForm.cache_hit_target_tolerance_percent"
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.01"
+                    required
+                    class="input pr-8"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                </div>
+              </div>
             </div>
             <p class="input-hint">{{ t("admin.groups.form.cacheHitTargetPercentHint") }}</p>
           </div>
@@ -2565,18 +2584,37 @@
             </span>
           </label>
           <div v-if="editForm.cache_hit_quarter_to_input_enabled" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
-            <div class="relative">
-              <input
-                v-model.number="editForm.cache_hit_target_percent"
-                type="number"
-                min="0.01"
-                max="100"
-                step="0.01"
-                required
-                class="input pr-8"
-              />
-              <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
+                <div class="relative">
+                  <input
+                    v-model.number="editForm.cache_hit_target_percent"
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    required
+                    class="input pr-8"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                </div>
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.cacheHitTargetTolerancePercent") }}</label>
+                <div class="relative">
+                  <input
+                    v-model.number="editForm.cache_hit_target_tolerance_percent"
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.01"
+                    required
+                    class="input pr-8"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                </div>
+              </div>
             </div>
             <p class="input-hint">{{ t("admin.groups.form.cacheHitTargetPercentHint") }}</p>
           </div>
@@ -5763,6 +5801,7 @@ const createForm = reactive({
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
   cache_hit_target_percent: 90,
+  cache_hit_target_tolerance_percent: 0.5,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
   batch_image_hold_multiplier: 0.6,
@@ -6134,6 +6173,7 @@ const editForm = reactive({
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
   cache_hit_target_percent: 90,
+  cache_hit_target_tolerance_percent: 0.5,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
   batch_image_hold_multiplier: 0.6,
@@ -6672,6 +6712,7 @@ const closeCreateModal = () => {
   createForm.image_rate_independent = false;
   createForm.cache_hit_quarter_to_input_enabled = false;
   createForm.cache_hit_target_percent = 90;
+  createForm.cache_hit_target_tolerance_percent = 0.5;
   createForm.image_rate_multiplier = 1;
   createForm.batch_image_discount_multiplier = 0.5;
   createForm.batch_image_hold_multiplier = 0.6;
@@ -6762,11 +6803,23 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
 const validateCacheHitTargetForm = (
   enabled: boolean,
   targetPercent: number | string,
+  tolerancePercent: number | string,
 ): boolean => {
   if (!enabled) return true;
   const target = Number(targetPercent);
   if (!Number.isFinite(target) || target < 0.01 || target > 100) {
     appStore.showError(t("admin.groups.form.cacheHitTargetPercentInvalid"));
+    return false;
+  }
+  const tolerance = Number(tolerancePercent);
+  if (
+    !Number.isFinite(tolerance) ||
+    tolerance < 0 ||
+    tolerance > 50 ||
+    target - tolerance < 0 ||
+    target + tolerance > 100
+  ) {
+    appStore.showError(t("admin.groups.form.cacheHitTargetTolerancePercentInvalid"));
     return false;
   }
   return true;
@@ -6781,6 +6834,7 @@ const handleCreateGroup = async () => {
     !validateCacheHitTargetForm(
       createForm.cache_hit_quarter_to_input_enabled,
       createForm.cache_hit_target_percent,
+      createForm.cache_hit_target_tolerance_percent,
     )
   ) {
     return;
@@ -6982,6 +7036,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.cache_hit_quarter_to_input_enabled =
     group.cache_hit_quarter_to_input_enabled ?? false;
   editForm.cache_hit_target_percent = group.cache_hit_target_percent ?? 90;
+  editForm.cache_hit_target_tolerance_percent =
+    group.cache_hit_target_tolerance_percent ?? 0.5;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.batch_image_discount_multiplier =
     group.batch_image_discount_multiplier ?? 0.5;
@@ -7114,6 +7170,7 @@ const handleUpdateGroup = async () => {
     !validateCacheHitTargetForm(
       editForm.cache_hit_quarter_to_input_enabled,
       editForm.cache_hit_target_percent,
+      editForm.cache_hit_target_tolerance_percent,
     )
   ) {
     return;

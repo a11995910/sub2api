@@ -81,6 +81,7 @@ type userAvailableGroup struct {
 	ImageRateIndependent        bool     `json:"image_rate_independent"`
 	CacheHitQuarterToInput      bool     `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent       float64  `json:"cache_hit_target_percent"`
+	CacheHitTargetTolerancePercent float64 `json:"cache_hit_target_tolerance_percent"`
 	ImageRateMultiplier         float64  `json:"image_rate_multiplier"`
 	ImagePrice1K                *float64 `json:"image_price_1k"`
 	ImagePrice2K                *float64 `json:"image_price_2k"`
@@ -340,6 +341,7 @@ func filterUserVisibleGroups(
 			ImageRateIndependent:        g.ImageRateIndependent,
 			CacheHitQuarterToInput:      g.CacheHitQuarterToInput,
 			CacheHitTargetPercent:       g.CacheHitTargetPercent,
+			CacheHitTargetTolerancePercent: g.CacheHitTargetTolerancePercent,
 			ImageRateMultiplier:         g.ImageRateMultiplier,
 			ImagePrice1K:                g.ImagePrice1K,
 			ImagePrice2K:                g.ImagePrice2K,

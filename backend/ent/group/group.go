@@ -80,6 +80,8 @@ const (
 	FieldCacheHitQuarterToInputEnabled = "cache_hit_quarter_to_input_enabled"
 	// FieldCacheHitTargetPercent holds the string denoting the cache_hit_target_percent field in the database.
 	FieldCacheHitTargetPercent = "cache_hit_target_percent"
+	// FieldCacheHitTargetTolerancePercent holds the string denoting the cache_hit_target_tolerance_percent field in the database.
+	FieldCacheHitTargetTolerancePercent = "cache_hit_target_tolerance_percent"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
 	FieldImageRateMultiplier = "image_rate_multiplier"
 	// FieldImagePrice1k holds the string denoting the image_price_1k field in the database.
@@ -285,6 +287,7 @@ var Columns = []string{
 	FieldImageRateIndependent,
 	FieldCacheHitQuarterToInputEnabled,
 	FieldCacheHitTargetPercent,
+	FieldCacheHitTargetTolerancePercent,
 	FieldImageRateMultiplier,
 	FieldImagePrice1k,
 	FieldImagePrice2k,
@@ -422,6 +425,8 @@ var (
 	DefaultCacheHitQuarterToInputEnabled bool
 	// DefaultCacheHitTargetPercent holds the default value on creation for the "cache_hit_target_percent" field.
 	DefaultCacheHitTargetPercent float64
+	// DefaultCacheHitTargetTolerancePercent holds the default value on creation for the "cache_hit_target_tolerance_percent" field.
+	DefaultCacheHitTargetTolerancePercent float64
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
 	// DefaultBatchImageDiscountMultiplier holds the default value on creation for the "batch_image_discount_multiplier" field.
@@ -650,6 +655,11 @@ func ByCacheHitQuarterToInputEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheHitTargetPercent orders the results by the cache_hit_target_percent field.
 func ByCacheHitTargetPercent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheHitTargetPercent, opts...).ToFunc()
+}
+
+// ByCacheHitTargetTolerancePercent orders the results by the cache_hit_target_tolerance_percent field.
+func ByCacheHitTargetTolerancePercent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitTargetTolerancePercent, opts...).ToFunc()
 }
 
 // ByImageRateMultiplier orders the results by the image_rate_multiplier field.

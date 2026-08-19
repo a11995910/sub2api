@@ -65,6 +65,24 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
 	// CacheCreation1hTokens holds the value of the "cache_creation_1h_tokens" field.
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
+	// 缓存命中率控制前的普通输入 token
+	CacheHitOriginalInputTokens int `json:"cache_hit_original_input_tokens,omitempty"`
+	// 缓存命中率控制前的缓存读取 token
+	CacheHitOriginalCacheReadTokens int `json:"cache_hit_original_cache_read_tokens,omitempty"`
+	// 本次从缓存读取划入普通输入的 token
+	CacheHitShiftedTokens int `json:"cache_hit_shifted_tokens,omitempty"`
+	// 本次请求使用的缓存命中率目标百分比
+	CacheHitTargetPercent *float64 `json:"cache_hit_target_percent,omitempty"`
+	// 本次请求使用的缓存命中率容差百分比
+	CacheHitTargetTolerancePercent *float64 `json:"cache_hit_target_tolerance_percent,omitempty"`
+	// 本次调整后的状态累计提示词 token
+	CacheHitCumulativePromptTokens int64 `json:"cache_hit_cumulative_prompt_tokens,omitempty"`
+	// 本次调整后的状态累计缓存读取 token
+	CacheHitCumulativeCacheReadTokens int64 `json:"cache_hit_cumulative_cache_read_tokens,omitempty"`
+	// 本次调整后的累计缓存命中率百分比
+	CacheHitCumulativePercent *float64 `json:"cache_hit_cumulative_percent,omitempty"`
+	// 缓存命中率累计状态代次，来自分组更新时间
+	CacheHitStateVersion int64 `json:"cache_hit_state_version,omitempty"`
 	// InputCost holds the value of the "input_cost" field.
 	InputCost float64 `json:"input_cost,omitempty"`
 	// OutputCost holds the value of the "output_cost" field.
@@ -204,9 +222,9 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case usagelog.FieldUpstreamModelMismatch, usagelog.FieldLongContextBillingApplied, usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
-		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
+		case usagelog.FieldCacheHitTargetPercent, usagelog.FieldCacheHitTargetTolerancePercent, usagelog.FieldCacheHitCumulativePercent, usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldCacheHitOriginalInputTokens, usagelog.FieldCacheHitOriginalCacheReadTokens, usagelog.FieldCacheHitShiftedTokens, usagelog.FieldCacheHitCumulativePromptTokens, usagelog.FieldCacheHitCumulativeCacheReadTokens, usagelog.FieldCacheHitStateVersion, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
 		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUpstreamResponseModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
@@ -368,6 +386,63 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field cache_creation_1h_tokens", values[i])
 			} else if value.Valid {
 				_m.CacheCreation1hTokens = int(value.Int64)
+			}
+		case usagelog.FieldCacheHitOriginalInputTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_original_input_tokens", values[i])
+			} else if value.Valid {
+				_m.CacheHitOriginalInputTokens = int(value.Int64)
+			}
+		case usagelog.FieldCacheHitOriginalCacheReadTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_original_cache_read_tokens", values[i])
+			} else if value.Valid {
+				_m.CacheHitOriginalCacheReadTokens = int(value.Int64)
+			}
+		case usagelog.FieldCacheHitShiftedTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_shifted_tokens", values[i])
+			} else if value.Valid {
+				_m.CacheHitShiftedTokens = int(value.Int64)
+			}
+		case usagelog.FieldCacheHitTargetPercent:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_target_percent", values[i])
+			} else if value.Valid {
+				_m.CacheHitTargetPercent = new(float64)
+				*_m.CacheHitTargetPercent = value.Float64
+			}
+		case usagelog.FieldCacheHitTargetTolerancePercent:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_target_tolerance_percent", values[i])
+			} else if value.Valid {
+				_m.CacheHitTargetTolerancePercent = new(float64)
+				*_m.CacheHitTargetTolerancePercent = value.Float64
+			}
+		case usagelog.FieldCacheHitCumulativePromptTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_cumulative_prompt_tokens", values[i])
+			} else if value.Valid {
+				_m.CacheHitCumulativePromptTokens = value.Int64
+			}
+		case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_cumulative_cache_read_tokens", values[i])
+			} else if value.Valid {
+				_m.CacheHitCumulativeCacheReadTokens = value.Int64
+			}
+		case usagelog.FieldCacheHitCumulativePercent:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_cumulative_percent", values[i])
+			} else if value.Valid {
+				_m.CacheHitCumulativePercent = new(float64)
+				*_m.CacheHitCumulativePercent = value.Float64
+			}
+		case usagelog.FieldCacheHitStateVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_state_version", values[i])
+			} else if value.Valid {
+				_m.CacheHitStateVersion = value.Int64
 			}
 		case usagelog.FieldInputCost:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -681,6 +756,39 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_creation_1h_tokens=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheCreation1hTokens))
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_original_input_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitOriginalInputTokens))
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_original_cache_read_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitOriginalCacheReadTokens))
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_shifted_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitShiftedTokens))
+	builder.WriteString(", ")
+	if v := _m.CacheHitTargetPercent; v != nil {
+		builder.WriteString("cache_hit_target_percent=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.CacheHitTargetTolerancePercent; v != nil {
+		builder.WriteString("cache_hit_target_tolerance_percent=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_cumulative_prompt_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitCumulativePromptTokens))
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_cumulative_cache_read_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitCumulativeCacheReadTokens))
+	builder.WriteString(", ")
+	if v := _m.CacheHitCumulativePercent; v != nil {
+		builder.WriteString("cache_hit_cumulative_percent=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_state_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitStateVersion))
 	builder.WriteString(", ")
 	builder.WriteString("input_cost=")
 	builder.WriteString(fmt.Sprintf("%v", _m.InputCost))

@@ -28,6 +28,7 @@ type AvailableGroupRef struct {
 	ImageRateIndependent        bool
 	CacheHitQuarterToInput      bool
 	CacheHitTargetPercent       float64
+	CacheHitTargetTolerancePercent float64
 	ImageRateMultiplier         float64
 	ImagePrice1K                *float64
 	ImagePrice2K                *float64
@@ -92,6 +93,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			ImageRateIndependent:        g.ImageRateIndependent,
 			CacheHitQuarterToInput:      g.CacheHitQuarterToInput,
 			CacheHitTargetPercent:       g.CacheHitTargetPercent,
+			CacheHitTargetTolerancePercent: g.CacheHitTargetTolerancePercent,
 			ImageRateMultiplier:         g.ImageRateMultiplier,
 			ImagePrice1K:                g.ImagePrice1K,
 			ImagePrice2K:                g.ImagePrice2K,

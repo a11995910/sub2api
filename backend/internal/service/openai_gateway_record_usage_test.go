@@ -1466,10 +1466,11 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogA
 			ID:      1017,
 			GroupID: &groupID,
 			Group: &Group{
-				ID:                     groupID,
-				RateMultiplier:         1,
-				CacheHitQuarterToInput: true,
-				CacheHitTargetPercent:  90,
+				ID:                             groupID,
+				RateMultiplier:                 1,
+				CacheHitQuarterToInput:         true,
+				CacheHitTargetPercent:          90,
+				CacheHitTargetTolerancePercent: 0.5,
 			},
 		},
 		User:    &User{ID: 2017},
@@ -1480,6 +1481,17 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogA
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, 10, usageRepo.lastLog.InputTokens)
 	require.Equal(t, 90, usageRepo.lastLog.CacheReadTokens)
+	require.Equal(t, 6, usageRepo.lastLog.CacheHitOriginalInputTokens)
+	require.Equal(t, 94, usageRepo.lastLog.CacheHitOriginalCacheReadTokens)
+	require.Equal(t, 4, usageRepo.lastLog.CacheHitShiftedTokens)
+	require.NotNil(t, usageRepo.lastLog.CacheHitTargetPercent)
+	require.InDelta(t, 90, *usageRepo.lastLog.CacheHitTargetPercent, 1e-9)
+	require.NotNil(t, usageRepo.lastLog.CacheHitTargetTolerancePercent)
+	require.InDelta(t, 0.5, *usageRepo.lastLog.CacheHitTargetTolerancePercent, 1e-9)
+	require.Equal(t, int64(100), usageRepo.lastLog.CacheHitCumulativePromptTokens)
+	require.Equal(t, int64(90), usageRepo.lastLog.CacheHitCumulativeCacheReadTokens)
+	require.NotNil(t, usageRepo.lastLog.CacheHitCumulativePercent)
+	require.InDelta(t, 90, *usageRepo.lastLog.CacheHitCumulativePercent, 1e-9)
 	require.NotNil(t, billingRepo.lastCmd)
 	require.Equal(t, 10, billingRepo.lastCmd.InputTokens)
 	require.Equal(t, 90, billingRepo.lastCmd.CacheReadTokens)

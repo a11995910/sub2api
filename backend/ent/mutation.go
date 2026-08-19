@@ -23274,6 +23274,8 @@ type GroupMutation struct {
 	cache_hit_quarter_to_input_enabled      *bool
 	cache_hit_target_percent                *float64
 	addcache_hit_target_percent             *float64
+	cache_hit_target_tolerance_percent      *float64
+	addcache_hit_target_tolerance_percent   *float64
 	image_rate_multiplier                   *float64
 	addimage_rate_multiplier                *float64
 	image_price_1k                          *float64
@@ -24917,6 +24919,62 @@ func (m *GroupMutation) AddedCacheHitTargetPercent() (r float64, exists bool) {
 func (m *GroupMutation) ResetCacheHitTargetPercent() {
 	m.cache_hit_target_percent = nil
 	m.addcache_hit_target_percent = nil
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (m *GroupMutation) SetCacheHitTargetTolerancePercent(f float64) {
+	m.cache_hit_target_tolerance_percent = &f
+	m.addcache_hit_target_tolerance_percent = nil
+}
+
+// CacheHitTargetTolerancePercent returns the value of the "cache_hit_target_tolerance_percent" field in the mutation.
+func (m *GroupMutation) CacheHitTargetTolerancePercent() (r float64, exists bool) {
+	v := m.cache_hit_target_tolerance_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitTargetTolerancePercent returns the old "cache_hit_target_tolerance_percent" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCacheHitTargetTolerancePercent(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitTargetTolerancePercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitTargetTolerancePercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitTargetTolerancePercent: %w", err)
+	}
+	return oldValue.CacheHitTargetTolerancePercent, nil
+}
+
+// AddCacheHitTargetTolerancePercent adds f to the "cache_hit_target_tolerance_percent" field.
+func (m *GroupMutation) AddCacheHitTargetTolerancePercent(f float64) {
+	if m.addcache_hit_target_tolerance_percent != nil {
+		*m.addcache_hit_target_tolerance_percent += f
+	} else {
+		m.addcache_hit_target_tolerance_percent = &f
+	}
+}
+
+// AddedCacheHitTargetTolerancePercent returns the value that was added to the "cache_hit_target_tolerance_percent" field in this mutation.
+func (m *GroupMutation) AddedCacheHitTargetTolerancePercent() (r float64, exists bool) {
+	v := m.addcache_hit_target_tolerance_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitTargetTolerancePercent resets all changes to the "cache_hit_target_tolerance_percent" field.
+func (m *GroupMutation) ResetCacheHitTargetTolerancePercent() {
+	m.cache_hit_target_tolerance_percent = nil
+	m.addcache_hit_target_tolerance_percent = nil
 }
 
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
@@ -27528,7 +27586,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 73)
+	fields := make([]string, 0, 74)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27624,6 +27682,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.cache_hit_target_percent != nil {
 		fields = append(fields, group.FieldCacheHitTargetPercent)
+	}
+	if m.cache_hit_target_tolerance_percent != nil {
+		fields = append(fields, group.FieldCacheHitTargetTolerancePercent)
 	}
 	if m.image_rate_multiplier != nil {
 		fields = append(fields, group.FieldImageRateMultiplier)
@@ -27820,6 +27881,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheHitQuarterToInputEnabled()
 	case group.FieldCacheHitTargetPercent:
 		return m.CacheHitTargetPercent()
+	case group.FieldCacheHitTargetTolerancePercent:
+		return m.CacheHitTargetTolerancePercent()
 	case group.FieldImageRateMultiplier:
 		return m.ImageRateMultiplier()
 	case group.FieldImagePrice1k:
@@ -27975,6 +28038,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldCacheHitQuarterToInputEnabled(ctx)
 	case group.FieldCacheHitTargetPercent:
 		return m.OldCacheHitTargetPercent(ctx)
+	case group.FieldCacheHitTargetTolerancePercent:
+		return m.OldCacheHitTargetTolerancePercent(ctx)
 	case group.FieldImageRateMultiplier:
 		return m.OldImageRateMultiplier(ctx)
 	case group.FieldImagePrice1k:
@@ -28289,6 +28354,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheHitTargetPercent(v)
+		return nil
+	case group.FieldCacheHitTargetTolerancePercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitTargetTolerancePercent(v)
 		return nil
 	case group.FieldImageRateMultiplier:
 		v, ok := value.(float64)
@@ -28612,6 +28684,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addcache_hit_target_percent != nil {
 		fields = append(fields, group.FieldCacheHitTargetPercent)
 	}
+	if m.addcache_hit_target_tolerance_percent != nil {
+		fields = append(fields, group.FieldCacheHitTargetTolerancePercent)
+	}
 	if m.addimage_rate_multiplier != nil {
 		fields = append(fields, group.FieldImageRateMultiplier)
 	}
@@ -28704,6 +28779,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedImage4kEnhancementGroupID()
 	case group.FieldCacheHitTargetPercent:
 		return m.AddedCacheHitTargetPercent()
+	case group.FieldCacheHitTargetTolerancePercent:
+		return m.AddedCacheHitTargetTolerancePercent()
 	case group.FieldImageRateMultiplier:
 		return m.AddedImageRateMultiplier()
 	case group.FieldImagePrice1k:
@@ -28819,6 +28896,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCacheHitTargetPercent(v)
+		return nil
+	case group.FieldCacheHitTargetTolerancePercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitTargetTolerancePercent(v)
 		return nil
 	case group.FieldImageRateMultiplier:
 		v, ok := value.(float64)
@@ -29255,6 +29339,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldCacheHitTargetPercent:
 		m.ResetCacheHitTargetPercent()
+		return nil
+	case group.FieldCacheHitTargetTolerancePercent:
+		m.ResetCacheHitTargetTolerancePercent()
 		return nil
 	case group.FieldImageRateMultiplier:
 		m.ResetImageRateMultiplier()
@@ -46268,86 +46355,104 @@ func (m *UsageCleanupTaskMutation) ResetEdge(name string) error {
 // UsageLogMutation represents an operation that mutates the UsageLog nodes in the graph.
 type UsageLogMutation struct {
 	config
-	op                           Op
-	typ                          string
-	id                           *int64
-	request_id                   *string
-	model                        *string
-	requested_model              *string
-	upstream_model               *string
-	upstream_response_model      *string
-	upstream_model_mismatch      *bool
-	channel_id                   *int64
-	addchannel_id                *int64
-	model_mapping_chain          *string
-	billing_tier                 *string
-	billing_mode                 *string
-	input_tokens                 *int
-	addinput_tokens              *int
-	output_tokens                *int
-	addoutput_tokens             *int
-	cache_creation_tokens        *int
-	addcache_creation_tokens     *int
-	cache_read_tokens            *int
-	addcache_read_tokens         *int
-	cache_creation_5m_tokens     *int
-	addcache_creation_5m_tokens  *int
-	cache_creation_1h_tokens     *int
-	addcache_creation_1h_tokens  *int
-	input_cost                   *float64
-	addinput_cost                *float64
-	output_cost                  *float64
-	addoutput_cost               *float64
-	cache_creation_cost          *float64
-	addcache_creation_cost       *float64
-	cache_read_cost              *float64
-	addcache_read_cost           *float64
-	total_cost                   *float64
-	addtotal_cost                *float64
-	actual_cost                  *float64
-	addactual_cost               *float64
-	rate_multiplier              *float64
-	addrate_multiplier           *float64
-	long_context_billing_applied *bool
-	account_rate_multiplier      *float64
-	addaccount_rate_multiplier   *float64
-	billing_type                 *int8
-	addbilling_type              *int8
-	stream                       *bool
-	duration_ms                  *int
-	addduration_ms               *int
-	first_token_ms               *int
-	addfirst_token_ms            *int
-	user_agent                   *string
-	ip_address                   *string
-	image_count                  *int
-	addimage_count               *int
-	image_size                   *string
-	image_input_size             *string
-	image_output_size            *string
-	image_size_source            *string
-	image_size_breakdown         *map[string]int
-	video_count                  *int
-	addvideo_count               *int
-	video_resolution             *string
-	video_duration_seconds       *int
-	addvideo_duration_seconds    *int
-	cache_ttl_overridden         *bool
-	created_at                   *time.Time
-	clearedFields                map[string]struct{}
-	user                         *int64
-	cleareduser                  bool
-	api_key                      *int64
-	clearedapi_key               bool
-	account                      *int64
-	clearedaccount               bool
-	group                        *int64
-	clearedgroup                 bool
-	subscription                 *int64
-	clearedsubscription          bool
-	done                         bool
-	oldValue                     func(context.Context) (*UsageLog, error)
-	predicates                   []predicate.UsageLog
+	op                                        Op
+	typ                                       string
+	id                                        *int64
+	request_id                                *string
+	model                                     *string
+	requested_model                           *string
+	upstream_model                            *string
+	upstream_response_model                   *string
+	upstream_model_mismatch                   *bool
+	channel_id                                *int64
+	addchannel_id                             *int64
+	model_mapping_chain                       *string
+	billing_tier                              *string
+	billing_mode                              *string
+	input_tokens                              *int
+	addinput_tokens                           *int
+	output_tokens                             *int
+	addoutput_tokens                          *int
+	cache_creation_tokens                     *int
+	addcache_creation_tokens                  *int
+	cache_read_tokens                         *int
+	addcache_read_tokens                      *int
+	cache_creation_5m_tokens                  *int
+	addcache_creation_5m_tokens               *int
+	cache_creation_1h_tokens                  *int
+	addcache_creation_1h_tokens               *int
+	cache_hit_original_input_tokens           *int
+	addcache_hit_original_input_tokens        *int
+	cache_hit_original_cache_read_tokens      *int
+	addcache_hit_original_cache_read_tokens   *int
+	cache_hit_shifted_tokens                  *int
+	addcache_hit_shifted_tokens               *int
+	cache_hit_target_percent                  *float64
+	addcache_hit_target_percent               *float64
+	cache_hit_target_tolerance_percent        *float64
+	addcache_hit_target_tolerance_percent     *float64
+	cache_hit_cumulative_prompt_tokens        *int64
+	addcache_hit_cumulative_prompt_tokens     *int64
+	cache_hit_cumulative_cache_read_tokens    *int64
+	addcache_hit_cumulative_cache_read_tokens *int64
+	cache_hit_cumulative_percent              *float64
+	addcache_hit_cumulative_percent           *float64
+	cache_hit_state_version                   *int64
+	addcache_hit_state_version                *int64
+	input_cost                                *float64
+	addinput_cost                             *float64
+	output_cost                               *float64
+	addoutput_cost                            *float64
+	cache_creation_cost                       *float64
+	addcache_creation_cost                    *float64
+	cache_read_cost                           *float64
+	addcache_read_cost                        *float64
+	total_cost                                *float64
+	addtotal_cost                             *float64
+	actual_cost                               *float64
+	addactual_cost                            *float64
+	rate_multiplier                           *float64
+	addrate_multiplier                        *float64
+	long_context_billing_applied              *bool
+	account_rate_multiplier                   *float64
+	addaccount_rate_multiplier                *float64
+	billing_type                              *int8
+	addbilling_type                           *int8
+	stream                                    *bool
+	duration_ms                               *int
+	addduration_ms                            *int
+	first_token_ms                            *int
+	addfirst_token_ms                         *int
+	user_agent                                *string
+	ip_address                                *string
+	image_count                               *int
+	addimage_count                            *int
+	image_size                                *string
+	image_input_size                          *string
+	image_output_size                         *string
+	image_size_source                         *string
+	image_size_breakdown                      *map[string]int
+	video_count                               *int
+	addvideo_count                            *int
+	video_resolution                          *string
+	video_duration_seconds                    *int
+	addvideo_duration_seconds                 *int
+	cache_ttl_overridden                      *bool
+	created_at                                *time.Time
+	clearedFields                             map[string]struct{}
+	user                                      *int64
+	cleareduser                               bool
+	api_key                                   *int64
+	clearedapi_key                            bool
+	account                                   *int64
+	clearedaccount                            bool
+	group                                     *int64
+	clearedgroup                              bool
+	subscription                              *int64
+	clearedsubscription                       bool
+	done                                      bool
+	oldValue                                  func(context.Context) (*UsageLog, error)
+	predicates                                []predicate.UsageLog
 }
 
 var _ ent.Mutation = (*UsageLogMutation)(nil)
@@ -47473,6 +47578,552 @@ func (m *UsageLogMutation) AddedCacheCreation1hTokens() (r int, exists bool) {
 func (m *UsageLogMutation) ResetCacheCreation1hTokens() {
 	m.cache_creation_1h_tokens = nil
 	m.addcache_creation_1h_tokens = nil
+}
+
+// SetCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field.
+func (m *UsageLogMutation) SetCacheHitOriginalInputTokens(i int) {
+	m.cache_hit_original_input_tokens = &i
+	m.addcache_hit_original_input_tokens = nil
+}
+
+// CacheHitOriginalInputTokens returns the value of the "cache_hit_original_input_tokens" field in the mutation.
+func (m *UsageLogMutation) CacheHitOriginalInputTokens() (r int, exists bool) {
+	v := m.cache_hit_original_input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitOriginalInputTokens returns the old "cache_hit_original_input_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitOriginalInputTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitOriginalInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitOriginalInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitOriginalInputTokens: %w", err)
+	}
+	return oldValue.CacheHitOriginalInputTokens, nil
+}
+
+// AddCacheHitOriginalInputTokens adds i to the "cache_hit_original_input_tokens" field.
+func (m *UsageLogMutation) AddCacheHitOriginalInputTokens(i int) {
+	if m.addcache_hit_original_input_tokens != nil {
+		*m.addcache_hit_original_input_tokens += i
+	} else {
+		m.addcache_hit_original_input_tokens = &i
+	}
+}
+
+// AddedCacheHitOriginalInputTokens returns the value that was added to the "cache_hit_original_input_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitOriginalInputTokens() (r int, exists bool) {
+	v := m.addcache_hit_original_input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitOriginalInputTokens resets all changes to the "cache_hit_original_input_tokens" field.
+func (m *UsageLogMutation) ResetCacheHitOriginalInputTokens() {
+	m.cache_hit_original_input_tokens = nil
+	m.addcache_hit_original_input_tokens = nil
+}
+
+// SetCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field.
+func (m *UsageLogMutation) SetCacheHitOriginalCacheReadTokens(i int) {
+	m.cache_hit_original_cache_read_tokens = &i
+	m.addcache_hit_original_cache_read_tokens = nil
+}
+
+// CacheHitOriginalCacheReadTokens returns the value of the "cache_hit_original_cache_read_tokens" field in the mutation.
+func (m *UsageLogMutation) CacheHitOriginalCacheReadTokens() (r int, exists bool) {
+	v := m.cache_hit_original_cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitOriginalCacheReadTokens returns the old "cache_hit_original_cache_read_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitOriginalCacheReadTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitOriginalCacheReadTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitOriginalCacheReadTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitOriginalCacheReadTokens: %w", err)
+	}
+	return oldValue.CacheHitOriginalCacheReadTokens, nil
+}
+
+// AddCacheHitOriginalCacheReadTokens adds i to the "cache_hit_original_cache_read_tokens" field.
+func (m *UsageLogMutation) AddCacheHitOriginalCacheReadTokens(i int) {
+	if m.addcache_hit_original_cache_read_tokens != nil {
+		*m.addcache_hit_original_cache_read_tokens += i
+	} else {
+		m.addcache_hit_original_cache_read_tokens = &i
+	}
+}
+
+// AddedCacheHitOriginalCacheReadTokens returns the value that was added to the "cache_hit_original_cache_read_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitOriginalCacheReadTokens() (r int, exists bool) {
+	v := m.addcache_hit_original_cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitOriginalCacheReadTokens resets all changes to the "cache_hit_original_cache_read_tokens" field.
+func (m *UsageLogMutation) ResetCacheHitOriginalCacheReadTokens() {
+	m.cache_hit_original_cache_read_tokens = nil
+	m.addcache_hit_original_cache_read_tokens = nil
+}
+
+// SetCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field.
+func (m *UsageLogMutation) SetCacheHitShiftedTokens(i int) {
+	m.cache_hit_shifted_tokens = &i
+	m.addcache_hit_shifted_tokens = nil
+}
+
+// CacheHitShiftedTokens returns the value of the "cache_hit_shifted_tokens" field in the mutation.
+func (m *UsageLogMutation) CacheHitShiftedTokens() (r int, exists bool) {
+	v := m.cache_hit_shifted_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitShiftedTokens returns the old "cache_hit_shifted_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitShiftedTokens(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitShiftedTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitShiftedTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitShiftedTokens: %w", err)
+	}
+	return oldValue.CacheHitShiftedTokens, nil
+}
+
+// AddCacheHitShiftedTokens adds i to the "cache_hit_shifted_tokens" field.
+func (m *UsageLogMutation) AddCacheHitShiftedTokens(i int) {
+	if m.addcache_hit_shifted_tokens != nil {
+		*m.addcache_hit_shifted_tokens += i
+	} else {
+		m.addcache_hit_shifted_tokens = &i
+	}
+}
+
+// AddedCacheHitShiftedTokens returns the value that was added to the "cache_hit_shifted_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitShiftedTokens() (r int, exists bool) {
+	v := m.addcache_hit_shifted_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitShiftedTokens resets all changes to the "cache_hit_shifted_tokens" field.
+func (m *UsageLogMutation) ResetCacheHitShiftedTokens() {
+	m.cache_hit_shifted_tokens = nil
+	m.addcache_hit_shifted_tokens = nil
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (m *UsageLogMutation) SetCacheHitTargetPercent(f float64) {
+	m.cache_hit_target_percent = &f
+	m.addcache_hit_target_percent = nil
+}
+
+// CacheHitTargetPercent returns the value of the "cache_hit_target_percent" field in the mutation.
+func (m *UsageLogMutation) CacheHitTargetPercent() (r float64, exists bool) {
+	v := m.cache_hit_target_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitTargetPercent returns the old "cache_hit_target_percent" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitTargetPercent(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitTargetPercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitTargetPercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitTargetPercent: %w", err)
+	}
+	return oldValue.CacheHitTargetPercent, nil
+}
+
+// AddCacheHitTargetPercent adds f to the "cache_hit_target_percent" field.
+func (m *UsageLogMutation) AddCacheHitTargetPercent(f float64) {
+	if m.addcache_hit_target_percent != nil {
+		*m.addcache_hit_target_percent += f
+	} else {
+		m.addcache_hit_target_percent = &f
+	}
+}
+
+// AddedCacheHitTargetPercent returns the value that was added to the "cache_hit_target_percent" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitTargetPercent() (r float64, exists bool) {
+	v := m.addcache_hit_target_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheHitTargetPercent clears the value of the "cache_hit_target_percent" field.
+func (m *UsageLogMutation) ClearCacheHitTargetPercent() {
+	m.cache_hit_target_percent = nil
+	m.addcache_hit_target_percent = nil
+	m.clearedFields[usagelog.FieldCacheHitTargetPercent] = struct{}{}
+}
+
+// CacheHitTargetPercentCleared returns if the "cache_hit_target_percent" field was cleared in this mutation.
+func (m *UsageLogMutation) CacheHitTargetPercentCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCacheHitTargetPercent]
+	return ok
+}
+
+// ResetCacheHitTargetPercent resets all changes to the "cache_hit_target_percent" field.
+func (m *UsageLogMutation) ResetCacheHitTargetPercent() {
+	m.cache_hit_target_percent = nil
+	m.addcache_hit_target_percent = nil
+	delete(m.clearedFields, usagelog.FieldCacheHitTargetPercent)
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (m *UsageLogMutation) SetCacheHitTargetTolerancePercent(f float64) {
+	m.cache_hit_target_tolerance_percent = &f
+	m.addcache_hit_target_tolerance_percent = nil
+}
+
+// CacheHitTargetTolerancePercent returns the value of the "cache_hit_target_tolerance_percent" field in the mutation.
+func (m *UsageLogMutation) CacheHitTargetTolerancePercent() (r float64, exists bool) {
+	v := m.cache_hit_target_tolerance_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitTargetTolerancePercent returns the old "cache_hit_target_tolerance_percent" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitTargetTolerancePercent(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitTargetTolerancePercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitTargetTolerancePercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitTargetTolerancePercent: %w", err)
+	}
+	return oldValue.CacheHitTargetTolerancePercent, nil
+}
+
+// AddCacheHitTargetTolerancePercent adds f to the "cache_hit_target_tolerance_percent" field.
+func (m *UsageLogMutation) AddCacheHitTargetTolerancePercent(f float64) {
+	if m.addcache_hit_target_tolerance_percent != nil {
+		*m.addcache_hit_target_tolerance_percent += f
+	} else {
+		m.addcache_hit_target_tolerance_percent = &f
+	}
+}
+
+// AddedCacheHitTargetTolerancePercent returns the value that was added to the "cache_hit_target_tolerance_percent" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitTargetTolerancePercent() (r float64, exists bool) {
+	v := m.addcache_hit_target_tolerance_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheHitTargetTolerancePercent clears the value of the "cache_hit_target_tolerance_percent" field.
+func (m *UsageLogMutation) ClearCacheHitTargetTolerancePercent() {
+	m.cache_hit_target_tolerance_percent = nil
+	m.addcache_hit_target_tolerance_percent = nil
+	m.clearedFields[usagelog.FieldCacheHitTargetTolerancePercent] = struct{}{}
+}
+
+// CacheHitTargetTolerancePercentCleared returns if the "cache_hit_target_tolerance_percent" field was cleared in this mutation.
+func (m *UsageLogMutation) CacheHitTargetTolerancePercentCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCacheHitTargetTolerancePercent]
+	return ok
+}
+
+// ResetCacheHitTargetTolerancePercent resets all changes to the "cache_hit_target_tolerance_percent" field.
+func (m *UsageLogMutation) ResetCacheHitTargetTolerancePercent() {
+	m.cache_hit_target_tolerance_percent = nil
+	m.addcache_hit_target_tolerance_percent = nil
+	delete(m.clearedFields, usagelog.FieldCacheHitTargetTolerancePercent)
+}
+
+// SetCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field.
+func (m *UsageLogMutation) SetCacheHitCumulativePromptTokens(i int64) {
+	m.cache_hit_cumulative_prompt_tokens = &i
+	m.addcache_hit_cumulative_prompt_tokens = nil
+}
+
+// CacheHitCumulativePromptTokens returns the value of the "cache_hit_cumulative_prompt_tokens" field in the mutation.
+func (m *UsageLogMutation) CacheHitCumulativePromptTokens() (r int64, exists bool) {
+	v := m.cache_hit_cumulative_prompt_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitCumulativePromptTokens returns the old "cache_hit_cumulative_prompt_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitCumulativePromptTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitCumulativePromptTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitCumulativePromptTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitCumulativePromptTokens: %w", err)
+	}
+	return oldValue.CacheHitCumulativePromptTokens, nil
+}
+
+// AddCacheHitCumulativePromptTokens adds i to the "cache_hit_cumulative_prompt_tokens" field.
+func (m *UsageLogMutation) AddCacheHitCumulativePromptTokens(i int64) {
+	if m.addcache_hit_cumulative_prompt_tokens != nil {
+		*m.addcache_hit_cumulative_prompt_tokens += i
+	} else {
+		m.addcache_hit_cumulative_prompt_tokens = &i
+	}
+}
+
+// AddedCacheHitCumulativePromptTokens returns the value that was added to the "cache_hit_cumulative_prompt_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitCumulativePromptTokens() (r int64, exists bool) {
+	v := m.addcache_hit_cumulative_prompt_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitCumulativePromptTokens resets all changes to the "cache_hit_cumulative_prompt_tokens" field.
+func (m *UsageLogMutation) ResetCacheHitCumulativePromptTokens() {
+	m.cache_hit_cumulative_prompt_tokens = nil
+	m.addcache_hit_cumulative_prompt_tokens = nil
+}
+
+// SetCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field.
+func (m *UsageLogMutation) SetCacheHitCumulativeCacheReadTokens(i int64) {
+	m.cache_hit_cumulative_cache_read_tokens = &i
+	m.addcache_hit_cumulative_cache_read_tokens = nil
+}
+
+// CacheHitCumulativeCacheReadTokens returns the value of the "cache_hit_cumulative_cache_read_tokens" field in the mutation.
+func (m *UsageLogMutation) CacheHitCumulativeCacheReadTokens() (r int64, exists bool) {
+	v := m.cache_hit_cumulative_cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitCumulativeCacheReadTokens returns the old "cache_hit_cumulative_cache_read_tokens" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitCumulativeCacheReadTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitCumulativeCacheReadTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitCumulativeCacheReadTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitCumulativeCacheReadTokens: %w", err)
+	}
+	return oldValue.CacheHitCumulativeCacheReadTokens, nil
+}
+
+// AddCacheHitCumulativeCacheReadTokens adds i to the "cache_hit_cumulative_cache_read_tokens" field.
+func (m *UsageLogMutation) AddCacheHitCumulativeCacheReadTokens(i int64) {
+	if m.addcache_hit_cumulative_cache_read_tokens != nil {
+		*m.addcache_hit_cumulative_cache_read_tokens += i
+	} else {
+		m.addcache_hit_cumulative_cache_read_tokens = &i
+	}
+}
+
+// AddedCacheHitCumulativeCacheReadTokens returns the value that was added to the "cache_hit_cumulative_cache_read_tokens" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitCumulativeCacheReadTokens() (r int64, exists bool) {
+	v := m.addcache_hit_cumulative_cache_read_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitCumulativeCacheReadTokens resets all changes to the "cache_hit_cumulative_cache_read_tokens" field.
+func (m *UsageLogMutation) ResetCacheHitCumulativeCacheReadTokens() {
+	m.cache_hit_cumulative_cache_read_tokens = nil
+	m.addcache_hit_cumulative_cache_read_tokens = nil
+}
+
+// SetCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field.
+func (m *UsageLogMutation) SetCacheHitCumulativePercent(f float64) {
+	m.cache_hit_cumulative_percent = &f
+	m.addcache_hit_cumulative_percent = nil
+}
+
+// CacheHitCumulativePercent returns the value of the "cache_hit_cumulative_percent" field in the mutation.
+func (m *UsageLogMutation) CacheHitCumulativePercent() (r float64, exists bool) {
+	v := m.cache_hit_cumulative_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitCumulativePercent returns the old "cache_hit_cumulative_percent" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitCumulativePercent(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitCumulativePercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitCumulativePercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitCumulativePercent: %w", err)
+	}
+	return oldValue.CacheHitCumulativePercent, nil
+}
+
+// AddCacheHitCumulativePercent adds f to the "cache_hit_cumulative_percent" field.
+func (m *UsageLogMutation) AddCacheHitCumulativePercent(f float64) {
+	if m.addcache_hit_cumulative_percent != nil {
+		*m.addcache_hit_cumulative_percent += f
+	} else {
+		m.addcache_hit_cumulative_percent = &f
+	}
+}
+
+// AddedCacheHitCumulativePercent returns the value that was added to the "cache_hit_cumulative_percent" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitCumulativePercent() (r float64, exists bool) {
+	v := m.addcache_hit_cumulative_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCacheHitCumulativePercent clears the value of the "cache_hit_cumulative_percent" field.
+func (m *UsageLogMutation) ClearCacheHitCumulativePercent() {
+	m.cache_hit_cumulative_percent = nil
+	m.addcache_hit_cumulative_percent = nil
+	m.clearedFields[usagelog.FieldCacheHitCumulativePercent] = struct{}{}
+}
+
+// CacheHitCumulativePercentCleared returns if the "cache_hit_cumulative_percent" field was cleared in this mutation.
+func (m *UsageLogMutation) CacheHitCumulativePercentCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCacheHitCumulativePercent]
+	return ok
+}
+
+// ResetCacheHitCumulativePercent resets all changes to the "cache_hit_cumulative_percent" field.
+func (m *UsageLogMutation) ResetCacheHitCumulativePercent() {
+	m.cache_hit_cumulative_percent = nil
+	m.addcache_hit_cumulative_percent = nil
+	delete(m.clearedFields, usagelog.FieldCacheHitCumulativePercent)
+}
+
+// SetCacheHitStateVersion sets the "cache_hit_state_version" field.
+func (m *UsageLogMutation) SetCacheHitStateVersion(i int64) {
+	m.cache_hit_state_version = &i
+	m.addcache_hit_state_version = nil
+}
+
+// CacheHitStateVersion returns the value of the "cache_hit_state_version" field in the mutation.
+func (m *UsageLogMutation) CacheHitStateVersion() (r int64, exists bool) {
+	v := m.cache_hit_state_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitStateVersion returns the old "cache_hit_state_version" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheHitStateVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitStateVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitStateVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitStateVersion: %w", err)
+	}
+	return oldValue.CacheHitStateVersion, nil
+}
+
+// AddCacheHitStateVersion adds i to the "cache_hit_state_version" field.
+func (m *UsageLogMutation) AddCacheHitStateVersion(i int64) {
+	if m.addcache_hit_state_version != nil {
+		*m.addcache_hit_state_version += i
+	} else {
+		m.addcache_hit_state_version = &i
+	}
+}
+
+// AddedCacheHitStateVersion returns the value that was added to the "cache_hit_state_version" field in this mutation.
+func (m *UsageLogMutation) AddedCacheHitStateVersion() (r int64, exists bool) {
+	v := m.addcache_hit_state_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitStateVersion resets all changes to the "cache_hit_state_version" field.
+func (m *UsageLogMutation) ResetCacheHitStateVersion() {
+	m.cache_hit_state_version = nil
+	m.addcache_hit_state_version = nil
 }
 
 // SetInputCost sets the "input_cost" field.
@@ -49020,7 +49671,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 56)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -49083,6 +49734,33 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.cache_creation_1h_tokens != nil {
 		fields = append(fields, usagelog.FieldCacheCreation1hTokens)
+	}
+	if m.cache_hit_original_input_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitOriginalInputTokens)
+	}
+	if m.cache_hit_original_cache_read_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitOriginalCacheReadTokens)
+	}
+	if m.cache_hit_shifted_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitShiftedTokens)
+	}
+	if m.cache_hit_target_percent != nil {
+		fields = append(fields, usagelog.FieldCacheHitTargetPercent)
+	}
+	if m.cache_hit_target_tolerance_percent != nil {
+		fields = append(fields, usagelog.FieldCacheHitTargetTolerancePercent)
+	}
+	if m.cache_hit_cumulative_prompt_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitCumulativePromptTokens)
+	}
+	if m.cache_hit_cumulative_cache_read_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitCumulativeCacheReadTokens)
+	}
+	if m.cache_hit_cumulative_percent != nil {
+		fields = append(fields, usagelog.FieldCacheHitCumulativePercent)
+	}
+	if m.cache_hit_state_version != nil {
+		fields = append(fields, usagelog.FieldCacheHitStateVersion)
 	}
 	if m.input_cost != nil {
 		fields = append(fields, usagelog.FieldInputCost)
@@ -49212,6 +49890,24 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheCreation5mTokens()
 	case usagelog.FieldCacheCreation1hTokens:
 		return m.CacheCreation1hTokens()
+	case usagelog.FieldCacheHitOriginalInputTokens:
+		return m.CacheHitOriginalInputTokens()
+	case usagelog.FieldCacheHitOriginalCacheReadTokens:
+		return m.CacheHitOriginalCacheReadTokens()
+	case usagelog.FieldCacheHitShiftedTokens:
+		return m.CacheHitShiftedTokens()
+	case usagelog.FieldCacheHitTargetPercent:
+		return m.CacheHitTargetPercent()
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		return m.CacheHitTargetTolerancePercent()
+	case usagelog.FieldCacheHitCumulativePromptTokens:
+		return m.CacheHitCumulativePromptTokens()
+	case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+		return m.CacheHitCumulativeCacheReadTokens()
+	case usagelog.FieldCacheHitCumulativePercent:
+		return m.CacheHitCumulativePercent()
+	case usagelog.FieldCacheHitStateVersion:
+		return m.CacheHitStateVersion()
 	case usagelog.FieldInputCost:
 		return m.InputCost()
 	case usagelog.FieldOutputCost:
@@ -49315,6 +50011,24 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldCacheCreation5mTokens(ctx)
 	case usagelog.FieldCacheCreation1hTokens:
 		return m.OldCacheCreation1hTokens(ctx)
+	case usagelog.FieldCacheHitOriginalInputTokens:
+		return m.OldCacheHitOriginalInputTokens(ctx)
+	case usagelog.FieldCacheHitOriginalCacheReadTokens:
+		return m.OldCacheHitOriginalCacheReadTokens(ctx)
+	case usagelog.FieldCacheHitShiftedTokens:
+		return m.OldCacheHitShiftedTokens(ctx)
+	case usagelog.FieldCacheHitTargetPercent:
+		return m.OldCacheHitTargetPercent(ctx)
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		return m.OldCacheHitTargetTolerancePercent(ctx)
+	case usagelog.FieldCacheHitCumulativePromptTokens:
+		return m.OldCacheHitCumulativePromptTokens(ctx)
+	case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+		return m.OldCacheHitCumulativeCacheReadTokens(ctx)
+	case usagelog.FieldCacheHitCumulativePercent:
+		return m.OldCacheHitCumulativePercent(ctx)
+	case usagelog.FieldCacheHitStateVersion:
+		return m.OldCacheHitStateVersion(ctx)
 	case usagelog.FieldInputCost:
 		return m.OldInputCost(ctx)
 	case usagelog.FieldOutputCost:
@@ -49522,6 +50236,69 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheCreation1hTokens(v)
+		return nil
+	case usagelog.FieldCacheHitOriginalInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitOriginalInputTokens(v)
+		return nil
+	case usagelog.FieldCacheHitOriginalCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitOriginalCacheReadTokens(v)
+		return nil
+	case usagelog.FieldCacheHitShiftedTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitShiftedTokens(v)
+		return nil
+	case usagelog.FieldCacheHitTargetPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitTargetPercent(v)
+		return nil
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitTargetTolerancePercent(v)
+		return nil
+	case usagelog.FieldCacheHitCumulativePromptTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitCumulativePromptTokens(v)
+		return nil
+	case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitCumulativeCacheReadTokens(v)
+		return nil
+	case usagelog.FieldCacheHitCumulativePercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitCumulativePercent(v)
+		return nil
+	case usagelog.FieldCacheHitStateVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitStateVersion(v)
 		return nil
 	case usagelog.FieldInputCost:
 		v, ok := value.(float64)
@@ -49734,6 +50511,33 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addcache_creation_1h_tokens != nil {
 		fields = append(fields, usagelog.FieldCacheCreation1hTokens)
 	}
+	if m.addcache_hit_original_input_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitOriginalInputTokens)
+	}
+	if m.addcache_hit_original_cache_read_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitOriginalCacheReadTokens)
+	}
+	if m.addcache_hit_shifted_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitShiftedTokens)
+	}
+	if m.addcache_hit_target_percent != nil {
+		fields = append(fields, usagelog.FieldCacheHitTargetPercent)
+	}
+	if m.addcache_hit_target_tolerance_percent != nil {
+		fields = append(fields, usagelog.FieldCacheHitTargetTolerancePercent)
+	}
+	if m.addcache_hit_cumulative_prompt_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitCumulativePromptTokens)
+	}
+	if m.addcache_hit_cumulative_cache_read_tokens != nil {
+		fields = append(fields, usagelog.FieldCacheHitCumulativeCacheReadTokens)
+	}
+	if m.addcache_hit_cumulative_percent != nil {
+		fields = append(fields, usagelog.FieldCacheHitCumulativePercent)
+	}
+	if m.addcache_hit_state_version != nil {
+		fields = append(fields, usagelog.FieldCacheHitStateVersion)
+	}
 	if m.addinput_cost != nil {
 		fields = append(fields, usagelog.FieldInputCost)
 	}
@@ -49798,6 +50602,24 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedCacheCreation5mTokens()
 	case usagelog.FieldCacheCreation1hTokens:
 		return m.AddedCacheCreation1hTokens()
+	case usagelog.FieldCacheHitOriginalInputTokens:
+		return m.AddedCacheHitOriginalInputTokens()
+	case usagelog.FieldCacheHitOriginalCacheReadTokens:
+		return m.AddedCacheHitOriginalCacheReadTokens()
+	case usagelog.FieldCacheHitShiftedTokens:
+		return m.AddedCacheHitShiftedTokens()
+	case usagelog.FieldCacheHitTargetPercent:
+		return m.AddedCacheHitTargetPercent()
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		return m.AddedCacheHitTargetTolerancePercent()
+	case usagelog.FieldCacheHitCumulativePromptTokens:
+		return m.AddedCacheHitCumulativePromptTokens()
+	case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+		return m.AddedCacheHitCumulativeCacheReadTokens()
+	case usagelog.FieldCacheHitCumulativePercent:
+		return m.AddedCacheHitCumulativePercent()
+	case usagelog.FieldCacheHitStateVersion:
+		return m.AddedCacheHitStateVersion()
 	case usagelog.FieldInputCost:
 		return m.AddedInputCost()
 	case usagelog.FieldOutputCost:
@@ -49883,6 +50705,69 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCacheCreation1hTokens(v)
+		return nil
+	case usagelog.FieldCacheHitOriginalInputTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitOriginalInputTokens(v)
+		return nil
+	case usagelog.FieldCacheHitOriginalCacheReadTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitOriginalCacheReadTokens(v)
+		return nil
+	case usagelog.FieldCacheHitShiftedTokens:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitShiftedTokens(v)
+		return nil
+	case usagelog.FieldCacheHitTargetPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitTargetPercent(v)
+		return nil
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitTargetTolerancePercent(v)
+		return nil
+	case usagelog.FieldCacheHitCumulativePromptTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitCumulativePromptTokens(v)
+		return nil
+	case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitCumulativeCacheReadTokens(v)
+		return nil
+	case usagelog.FieldCacheHitCumulativePercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitCumulativePercent(v)
+		return nil
+	case usagelog.FieldCacheHitStateVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitStateVersion(v)
 		return nil
 	case usagelog.FieldInputCost:
 		v, ok := value.(float64)
@@ -50020,6 +50905,15 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
+	if m.FieldCleared(usagelog.FieldCacheHitTargetPercent) {
+		fields = append(fields, usagelog.FieldCacheHitTargetPercent)
+	}
+	if m.FieldCleared(usagelog.FieldCacheHitTargetTolerancePercent) {
+		fields = append(fields, usagelog.FieldCacheHitTargetTolerancePercent)
+	}
+	if m.FieldCleared(usagelog.FieldCacheHitCumulativePercent) {
+		fields = append(fields, usagelog.FieldCacheHitCumulativePercent)
+	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -50099,6 +50993,15 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldCacheHitTargetPercent:
+		m.ClearCacheHitTargetPercent()
+		return nil
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		m.ClearCacheHitTargetTolerancePercent()
+		return nil
+	case usagelog.FieldCacheHitCumulativePercent:
+		m.ClearCacheHitCumulativePercent()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -50206,6 +51109,33 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheCreation1hTokens:
 		m.ResetCacheCreation1hTokens()
+		return nil
+	case usagelog.FieldCacheHitOriginalInputTokens:
+		m.ResetCacheHitOriginalInputTokens()
+		return nil
+	case usagelog.FieldCacheHitOriginalCacheReadTokens:
+		m.ResetCacheHitOriginalCacheReadTokens()
+		return nil
+	case usagelog.FieldCacheHitShiftedTokens:
+		m.ResetCacheHitShiftedTokens()
+		return nil
+	case usagelog.FieldCacheHitTargetPercent:
+		m.ResetCacheHitTargetPercent()
+		return nil
+	case usagelog.FieldCacheHitTargetTolerancePercent:
+		m.ResetCacheHitTargetTolerancePercent()
+		return nil
+	case usagelog.FieldCacheHitCumulativePromptTokens:
+		m.ResetCacheHitCumulativePromptTokens()
+		return nil
+	case usagelog.FieldCacheHitCumulativeCacheReadTokens:
+		m.ResetCacheHitCumulativeCacheReadTokens()
+		return nil
+	case usagelog.FieldCacheHitCumulativePercent:
+		m.ResetCacheHitCumulativePercent()
+		return nil
+	case usagelog.FieldCacheHitStateVersion:
+		m.ResetCacheHitStateVersion()
 		return nil
 	case usagelog.FieldInputCost:
 		m.ResetInputCost()

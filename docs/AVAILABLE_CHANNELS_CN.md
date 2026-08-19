@@ -21,7 +21,8 @@
 - `image_4k_enhancement_model`：二段 4K 提升使用的目标图片模型；管理端在选择目标分组后从目标分组候选模型中选择。为空时后端沿用目标分组自动模型解析。
 - `image_rate_independent`：图片生成是否使用独立倍率。
 - `cache_hit_quarter_to_input_enabled`：缓存命中率目标控制开关。字段名为兼容旧客户端保留，开启后不再固定移动四分之一，而是按用户和分组累计控制调整后的命中率。
-- `cache_hit_target_percent`：调整后缓存命中率的累计目标上限，范围为 `0.01` 至 `100.00`，默认 `90.00`。命中率按 `cache_read_tokens / (input_tokens + cache_creation_tokens + cache_read_tokens)` 计算。
+- `cache_hit_target_percent`：调整后缓存命中率的累计回调目标，范围为 `0.01` 至 `100.00`，默认 `90.00`。命中率按 `cache_read_tokens / (input_tokens + cache_creation_tokens + cache_read_tokens)` 计算。
+- `cache_hit_target_tolerance_percent`：目标容差带，范围为 `0.00` 至 `50.00`，默认 `0.50`；目标加减容差必须保持在 `0` 至 `100` 之间。累计命中率只有超过“目标 + 容差”才触发划拨，触发后尽量回到目标。
 - `image_rate_multiplier`：图片独立倍率，仅 `image_rate_independent=true` 时生效。
 - `image_price_1k`、`image_price_2k`、`image_price_4k`：图片生成 1K、2K、4K 单张基础价；为空时后端真实计费会回退默认图片价格。
 - `video_rate_independent`：视频生成是否使用独立倍率。
@@ -98,7 +99,10 @@
 - 用户存在专属分组倍率时，优先使用 `/api/v1/groups/rates` 返回的专属倍率。
 - 图片计费模型：若 `image_rate_independent=true`，使用 `image_rate_multiplier`；否则使用当前有效分组倍率。
 - 视频计费模型：若 `video_rate_independent=true`，使用 `video_rate_multiplier`；否则使用当前有效分组倍率；总价为“分辨率每秒价格 × 视频时长”，参考图可参与图生视频但不额外收费。
-- 启用 `cache_hit_quarter_to_input_enabled` 的分组，会按“用户 + 分组 + 目标值”累计提示词 token 和调整后缓存读取 token。仅当加入本次请求会让累计命中率超过 `cache_hit_target_percent` 时，系统才把本次必要数量的缓存读取 token 划入普通输入；低于目标时不调整。状态通过 Redis 原子脚本更新，多个 API Key、多个账号和并发请求共享同一用户分组口径；Redis 不可用时退化为单请求目标上限，不阻断请求与计费。统计、账单、余额、订阅额度、API Key 配额和账号配额都读取调整后的用量日志，真实上游缓存和返回给客户端的响应不变，历史用量不回填。
+- 启用 `cache_hit_quarter_to_input_enabled` 的分组，会按“用户 + 分组 + 目标 + 容差 + 状态代次”累计提示词 token 和调整后缓存读取 token。加入本次请求后未超过“目标 + 容差”时不划拨；超过后只把本次请求实际拥有且为回到目标所必需的缓存读取 token 划入普通输入，不会回溯改写历史请求。整数 token 可能让一次调整略低于目标，后续请求会先自然回升，只有再次超过容差上沿才继续划拨。
+- 累计状态通过 Redis 原子脚本更新，多个 API Key、多个账号和并发请求共享同一用户分组口径。分组保存后 `updated_at` 形成新的状态代次，新请求不再继承旧配置的累计值；当前状态采用 30 天滑动过期，旧代次会自动清理。Redis 不可用时退化为同样带容差的单请求控制，不阻断请求与计费。
+- 划拨只改变 `input_tokens` 与 `cache_read_tokens` 的分类，两者之和以及请求总 token 保持不变。统计、账单、余额、订阅额度、API Key 配额和账号配额都读取调整后的用量日志，真实上游缓存和返回给客户端的响应不变，历史用量不回填。
+- `usage_logs` 保存原始普通输入、原始缓存读取、本次划拨量、目标、容差、调整后累计提示词、调整后累计缓存读取、累计命中率和状态代次。管理端使用记录的 Token 明细会展示这些审计值；普通用户使用记录不返回内部控制字段。
 
 如果同一平台下用户可访问多个分组，价格卡会按分组分别展示最终价格，避免用户误以为所有分组价格相同。
 

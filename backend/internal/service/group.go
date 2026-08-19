@@ -20,6 +20,8 @@ const (
 	ImageResponseFormatURL     = "url"
 	// DefaultCacheHitTargetPercent 是旧开关升级后的默认目标；管理员可按 0.01% 精度覆盖。
 	DefaultCacheHitTargetPercent = 90.0
+	// DefaultCacheHitTargetTolerancePercent 是累计控制的默认容差，避免在目标附近频繁划拨。
+	DefaultCacheHitTargetTolerancePercent = 0.5
 )
 
 // NormalizeCacheHitTargetPercent 把 API 浮点输入收敛到数据库与控制算法共用的 0.01% 精度。
@@ -31,11 +33,39 @@ func NormalizeCacheHitTargetPercent(value *float64) float64 {
 	return math.Round(*value*100) / 100
 }
 
-// ValidateCacheHitTargetConfig 校验缓存命中率目标。关闭时仍校验目标值，避免无效配置
-// 被保存后在下次打开开关时才暴露问题。
-func ValidateCacheHitTargetConfig(targetPercent float64) error {
+// NormalizeCacheHitTargetTolerancePercent 把容差收敛到 0.01% 精度。
+func NormalizeCacheHitTargetTolerancePercent(value *float64) float64 {
+	if value == nil {
+		return DefaultCacheHitTargetTolerancePercent
+	}
+	return math.Round(*value*100) / 100
+}
+
+func ValidateCacheHitTargetPercent(targetPercent float64) error {
 	if math.IsNaN(targetPercent) || math.IsInf(targetPercent, 0) || targetPercent < 0.01 || targetPercent > 100 {
 		return errors.New("cache_hit_target_percent 必须在 0.01 到 100 之间")
+	}
+	return nil
+}
+
+func ValidateCacheHitTargetTolerancePercent(tolerancePercent float64) error {
+	if math.IsNaN(tolerancePercent) || math.IsInf(tolerancePercent, 0) || tolerancePercent < 0 || tolerancePercent > 50 {
+		return errors.New("cache_hit_target_tolerance_percent 必须在 0 到 50 之间")
+	}
+	return nil
+}
+
+// ValidateCacheHitTargetConfig 校验目标及其容差带。关闭时仍校验，避免无效配置
+// 被保存后在下次打开开关时才暴露问题。
+func ValidateCacheHitTargetConfig(targetPercent, tolerancePercent float64) error {
+	if err := ValidateCacheHitTargetPercent(targetPercent); err != nil {
+		return err
+	}
+	if err := ValidateCacheHitTargetTolerancePercent(tolerancePercent); err != nil {
+		return err
+	}
+	if targetPercent-tolerancePercent < 0 || targetPercent+tolerancePercent > 100 {
+		return errors.New("缓存命中率目标加减容差后必须保持在 0 到 100 之间")
 	}
 	return nil
 }
@@ -95,6 +125,7 @@ type Group struct {
 	// 按用户和分组累计控制缓存命中率。
 	CacheHitQuarterToInput       bool
 	CacheHitTargetPercent        float64
+	CacheHitTargetTolerancePercent float64
 	ImageRateMultiplier          float64
 	ImagePrice1K                 *float64
 	ImagePrice2K                 *float64

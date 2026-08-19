@@ -21,6 +21,13 @@ import UsageTable from '../UsageTable.vue'
 const messages: Record<string, string> = {
   'admin.usage.userDeletedBadge': 'Deleted',
   'usage.costDetails': 'Cost Breakdown',
+	'usage.cacheHitControlDetails': 'Cache Hit Rate Control',
+	'usage.cacheHitOriginalInputTokens': 'Original input',
+	'usage.cacheHitOriginalCacheReadTokens': 'Original cache read',
+	'usage.cacheHitShiftedTokens': 'Moved to input',
+	'usage.cacheHitTarget': 'Target and tolerance',
+	'usage.cacheHitCumulative': 'Adjusted cumulative hit rate',
+	'usage.cacheHitStateVersion': 'State generation',
   'admin.usage.inputCost': 'Input Cost',
   'admin.usage.outputCost': 'Output Cost',
   'admin.usage.cacheCreationCost': 'Cache Creation Cost',
@@ -189,6 +196,54 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
   })
+
+	it('shows cache hit target audit details in the token tooltip', async () => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					...baseImageRow,
+					request_id: 'req-cache-hit-target',
+					billing_mode: 'token',
+					image_count: 0,
+					input_tokens: 10,
+					output_tokens: 20,
+					cache_read_tokens: 90,
+					cache_hit_original_input_tokens: 6,
+					cache_hit_original_cache_read_tokens: 94,
+					cache_hit_shifted_tokens: 4,
+					cache_hit_target_percent: 90,
+					cache_hit_target_tolerance_percent: 0.5,
+					cache_hit_cumulative_prompt_tokens: 100,
+					cache_hit_cumulative_cache_read_tokens: 90,
+					cache_hit_cumulative_percent: 90,
+					cache_hit_state_version: 123,
+				}],
+				loading: false,
+				columns: [],
+			},
+			global: {
+				stubs: {
+					DataTable: DataTableStub,
+					EmptyState: true,
+					Icon: true,
+					Teleport: true,
+				},
+			},
+		})
+
+		await wrapper.findAll('.group.relative')[0].trigger('mouseenter')
+		await nextTick()
+
+		const text = wrapper.text()
+		expect(text).toContain('Cache Hit Rate Control')
+		expect(text).toContain('Original input')
+		expect(text).toContain('Original cache read')
+		expect(text).toContain('Moved to input')
+		expect(text).toContain('90.00% ± 0.50%')
+		expect(text).toContain('90.0000% (90 / 100)')
+		expect(text).toContain('State generation')
+		expect(text).toContain('123')
+	})
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {
     const row = {

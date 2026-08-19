@@ -13,13 +13,20 @@ func TestNormalizeAndValidateCacheHitTargetPercent(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, 90.0, NormalizeCacheHitTargetPercent(nil))
+	require.Equal(t, 0.5, NormalizeCacheHitTargetTolerancePercent(nil))
 	value := 89.876
 	require.Equal(t, 89.88, NormalizeCacheHitTargetPercent(&value))
-	require.NoError(t, ValidateCacheHitTargetConfig(0.01))
-	require.NoError(t, ValidateCacheHitTargetConfig(100))
-	require.Error(t, ValidateCacheHitTargetConfig(0))
-	require.Error(t, ValidateCacheHitTargetConfig(100.01))
-	require.Error(t, ValidateCacheHitTargetConfig(math.NaN()))
+	tolerance := 0.506
+	require.Equal(t, 0.51, NormalizeCacheHitTargetTolerancePercent(&tolerance))
+	require.NoError(t, ValidateCacheHitTargetConfig(90, 0.5))
+	require.NoError(t, ValidateCacheHitTargetConfig(100, 0))
+	require.Error(t, ValidateCacheHitTargetConfig(0, 0))
+	require.Error(t, ValidateCacheHitTargetConfig(100.01, 0))
+	require.Error(t, ValidateCacheHitTargetConfig(math.NaN(), 0))
+	require.Error(t, ValidateCacheHitTargetConfig(90, -0.01))
+	require.Error(t, ValidateCacheHitTargetConfig(90, math.NaN()))
+	require.Error(t, ValidateCacheHitTargetConfig(99.75, 0.5))
+	require.Error(t, ValidateCacheHitTargetConfig(0.25, 0.5))
 }
 
 // TestGroup_GetImagePrice_1K 测试 1K 尺寸返回正确价格

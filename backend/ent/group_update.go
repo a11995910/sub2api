@@ -560,6 +560,27 @@ func (_u *GroupUpdate) AddCacheHitTargetPercent(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (_u *GroupUpdate) SetCacheHitTargetTolerancePercent(v float64) *GroupUpdate {
+	_u.mutation.ResetCacheHitTargetTolerancePercent()
+	_u.mutation.SetCacheHitTargetTolerancePercent(v)
+	return _u
+}
+
+// SetNillableCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCacheHitTargetTolerancePercent(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetCacheHitTargetTolerancePercent(*v)
+	}
+	return _u
+}
+
+// AddCacheHitTargetTolerancePercent adds value to the "cache_hit_target_tolerance_percent" field.
+func (_u *GroupUpdate) AddCacheHitTargetTolerancePercent(v float64) *GroupUpdate {
+	_u.mutation.AddCacheHitTargetTolerancePercent(v)
+	return _u
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_u *GroupUpdate) SetImageRateMultiplier(v float64) *GroupUpdate {
 	_u.mutation.ResetImageRateMultiplier()
@@ -1898,6 +1919,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedCacheHitTargetPercent(); ok {
 		_spec.AddField(group.FieldCacheHitTargetPercent, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.CacheHitTargetTolerancePercent(); ok {
+		_spec.SetField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheHitTargetTolerancePercent(); ok {
+		_spec.AddField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
 	}
@@ -3044,6 +3071,27 @@ func (_u *GroupUpdateOne) SetNillableCacheHitTargetPercent(v *float64) *GroupUpd
 // AddCacheHitTargetPercent adds value to the "cache_hit_target_percent" field.
 func (_u *GroupUpdateOne) AddCacheHitTargetPercent(v float64) *GroupUpdateOne {
 	_u.mutation.AddCacheHitTargetPercent(v)
+	return _u
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (_u *GroupUpdateOne) SetCacheHitTargetTolerancePercent(v float64) *GroupUpdateOne {
+	_u.mutation.ResetCacheHitTargetTolerancePercent()
+	_u.mutation.SetCacheHitTargetTolerancePercent(v)
+	return _u
+}
+
+// SetNillableCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCacheHitTargetTolerancePercent(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCacheHitTargetTolerancePercent(*v)
+	}
+	return _u
+}
+
+// AddCacheHitTargetTolerancePercent adds value to the "cache_hit_target_tolerance_percent" field.
+func (_u *GroupUpdateOne) AddCacheHitTargetTolerancePercent(v float64) *GroupUpdateOne {
+	_u.mutation.AddCacheHitTargetTolerancePercent(v)
 	return _u
 }
 
@@ -4414,6 +4462,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedCacheHitTargetPercent(); ok {
 		_spec.AddField(group.FieldCacheHitTargetPercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CacheHitTargetTolerancePercent(); ok {
+		_spec.SetField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheHitTargetTolerancePercent(); ok {
+		_spec.AddField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)

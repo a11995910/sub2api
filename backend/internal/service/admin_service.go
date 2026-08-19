@@ -248,6 +248,7 @@ type CreateGroupInput struct {
 	ImageRateIndependent         bool
 	CacheHitQuarterToInput       bool
 	CacheHitTargetPercent        *float64
+	CacheHitTargetTolerancePercent *float64
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
 	BatchImageHoldMultiplier     *float64
@@ -335,6 +336,7 @@ type UpdateGroupInput struct {
 	ImageRateIndependent         *bool
 	CacheHitQuarterToInput       *bool
 	CacheHitTargetPercent        *float64
+	CacheHitTargetTolerancePercent *float64
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
 	BatchImageHoldMultiplier     *float64

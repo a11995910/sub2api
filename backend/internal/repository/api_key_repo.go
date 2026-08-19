@@ -209,6 +209,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldImageRateIndependent,
 				group.FieldCacheHitQuarterToInputEnabled,
 				group.FieldCacheHitTargetPercent,
+				group.FieldCacheHitTargetTolerancePercent,
 				group.FieldImageRateMultiplier,
 				group.FieldImagePrice1k,
 				group.FieldImagePrice2k,
@@ -253,6 +254,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProfitControlEnabled,
 				group.FieldProfitMinMargin,
 				group.FieldProfitSafetyBuffer,
+				group.FieldUpdatedAt,
 			)
 		}).
 		Only(ctx)
@@ -1051,6 +1053,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ImageRateIndependent:            g.ImageRateIndependent,
 		CacheHitQuarterToInput:          g.CacheHitQuarterToInputEnabled,
 		CacheHitTargetPercent:           g.CacheHitTargetPercent,
+		CacheHitTargetTolerancePercent:  g.CacheHitTargetTolerancePercent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,

@@ -81,6 +81,8 @@ type APIKeyAuthGroupSnapshot struct {
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           float64                       `json:"cache_hit_target_percent"`
+	CacheHitTargetTolerancePercent  float64                       `json:"cache_hit_target_tolerance_percent"`
+	UpdatedAt                       time.Time                     `json:"updated_at"`
 	ImageRateMultiplier             float64                       `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64                      `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64                      `json:"image_price_2k,omitempty"`

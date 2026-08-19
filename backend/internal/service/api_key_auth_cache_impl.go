@@ -16,7 +16,7 @@ import (
 
 // 同时包含定制的图片、推理、号池和利润控制字段，以及上游搜索、音频和视频模型计费字段。
 // 递增版本以淘汰不含完整计费配置的旧结构缓存。
-const apiKeyAuthSnapshotVersion = 25
+const apiKeyAuthSnapshotVersion = 26
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -405,6 +405,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
 			CacheHitQuarterToInput:          apiKey.Group.CacheHitQuarterToInput,
 			CacheHitTargetPercent:           apiKey.Group.CacheHitTargetPercent,
+			CacheHitTargetTolerancePercent:  apiKey.Group.CacheHitTargetTolerancePercent,
+			UpdatedAt:                       apiKey.Group.UpdatedAt,
 			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
 			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
 			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
@@ -518,6 +520,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,
 			CacheHitQuarterToInput:          snapshot.Group.CacheHitQuarterToInput,
 			CacheHitTargetPercent:           snapshot.Group.CacheHitTargetPercent,
+			CacheHitTargetTolerancePercent:  snapshot.Group.CacheHitTargetTolerancePercent,
+			UpdatedAt:                       snapshot.Group.UpdatedAt,
 			ImageRateMultiplier:             snapshot.Group.ImageRateMultiplier,
 			ImagePrice1K:                    snapshot.Group.ImagePrice1K,
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,

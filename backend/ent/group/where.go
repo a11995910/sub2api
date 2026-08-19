@@ -215,6 +215,11 @@ func CacheHitTargetPercent(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCacheHitTargetPercent, v))
 }
 
+// CacheHitTargetTolerancePercent applies equality check predicate on the "cache_hit_target_tolerance_percent" field. It's identical to CacheHitTargetTolerancePercentEQ.
+func CacheHitTargetTolerancePercent(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitTargetTolerancePercent, v))
+}
+
 // ImageRateMultiplier applies equality check predicate on the "image_rate_multiplier" field. It's identical to ImageRateMultiplierEQ.
 func ImageRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateMultiplier, v))
@@ -1703,6 +1708,46 @@ func CacheHitTargetPercentLT(v float64) predicate.Group {
 // CacheHitTargetPercentLTE applies the LTE predicate on the "cache_hit_target_percent" field.
 func CacheHitTargetPercentLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldCacheHitTargetPercent, v))
+}
+
+// CacheHitTargetTolerancePercentEQ applies the EQ predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentNEQ applies the NEQ predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentIn applies the In predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCacheHitTargetTolerancePercent, vs...))
+}
+
+// CacheHitTargetTolerancePercentNotIn applies the NotIn predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCacheHitTargetTolerancePercent, vs...))
+}
+
+// CacheHitTargetTolerancePercentGT applies the GT predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentGTE applies the GTE predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentLT applies the LT predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitTargetTolerancePercentLTE applies the LTE predicate on the "cache_hit_target_tolerance_percent" field.
+func CacheHitTargetTolerancePercentLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldCacheHitTargetTolerancePercent, v))
 }
 
 // ImageRateMultiplierEQ applies the EQ predicate on the "image_rate_multiplier" field.

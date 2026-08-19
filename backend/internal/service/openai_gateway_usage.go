@@ -168,14 +168,14 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
-	shifted, cacheTargetErr := applyCacheHitTargetToInput(ctx, &tokens, apiKey, user.ID, s.cache)
+	cacheHitAdjustment, cacheTargetErr := applyCacheHitTargetToInput(ctx, &tokens, apiKey, user.ID, s.cache)
 	if cacheTargetErr != nil {
 		logger.LegacyPrintf("service.openai_gateway", "cache_hit_target tracker unavailable, using per-request fallback (group=%d user=%d): %v",
 			valueOrZero(apiKey.GroupID), user.ID, cacheTargetErr)
 	}
-	if shifted > 0 {
+	if cacheHitAdjustment.ShiftedTokens > 0 {
 		logger.LegacyPrintf("service.openai_gateway", "cache_hit_target: %d cache_read_input_tokens -> input_tokens (group=%d user=%d account=%d)",
-			shifted, valueOrZero(apiKey.GroupID), user.ID, account.ID)
+			cacheHitAdjustment.ShiftedTokens, valueOrZero(apiKey.GroupID), user.ID, account.ID)
 	}
 
 	// Get rate multiplier
@@ -355,6 +355,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeSource:       optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:    result.ImageSizeBreakdown,
 	}
+	applyCacheHitTargetAudit(usageLog, cacheHitAdjustment)
 	isVideoUsage := isVideoUsageResult(result, billingModels)
 	if isVideoUsage {
 		usageLog.VideoCount = result.VideoCount

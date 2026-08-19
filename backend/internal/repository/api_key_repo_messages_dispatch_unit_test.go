@@ -106,6 +106,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()
 	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-cache-hit-unit@test.com")
+	updatedAt := time.Date(2026, time.August, 19, 12, 34, 56, 123000000, time.UTC)
 
 	group, err := client.Group.Create().
 		SetName("g-auth-cache-hit-quarter-unit").
@@ -114,6 +115,9 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1).
 		SetCacheHitQuarterToInputEnabled(true).
+		SetCacheHitTargetPercent(90).
+		SetCacheHitTargetTolerancePercent(0.5).
+		SetUpdatedAt(updatedAt).
 		Save(ctx)
 	require.NoError(t, err)
 
@@ -130,6 +134,9 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite
 	require.NoError(t, err)
 	require.NotNil(t, got.Group)
 	require.True(t, got.Group.CacheHitQuarterToInput)
+	require.InDelta(t, 90, got.Group.CacheHitTargetPercent, 1e-9)
+	require.InDelta(t, 0.5, got.Group.CacheHitTargetTolerancePercent, 1e-9)
+	require.Equal(t, updatedAt, got.Group.UpdatedAt)
 }
 
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesImageEnhancementConfig_SQLite(t *testing.T) {

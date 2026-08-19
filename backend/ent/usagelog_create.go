@@ -281,6 +281,132 @@ func (_c *UsageLogCreate) SetNillableCacheCreation1hTokens(v *int) *UsageLogCrea
 	return _c
 }
 
+// SetCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field.
+func (_c *UsageLogCreate) SetCacheHitOriginalInputTokens(v int) *UsageLogCreate {
+	_c.mutation.SetCacheHitOriginalInputTokens(v)
+	return _c
+}
+
+// SetNillableCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitOriginalInputTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitOriginalInputTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field.
+func (_c *UsageLogCreate) SetCacheHitOriginalCacheReadTokens(v int) *UsageLogCreate {
+	_c.mutation.SetCacheHitOriginalCacheReadTokens(v)
+	return _c
+}
+
+// SetNillableCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitOriginalCacheReadTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitOriginalCacheReadTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field.
+func (_c *UsageLogCreate) SetCacheHitShiftedTokens(v int) *UsageLogCreate {
+	_c.mutation.SetCacheHitShiftedTokens(v)
+	return _c
+}
+
+// SetNillableCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitShiftedTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitShiftedTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (_c *UsageLogCreate) SetCacheHitTargetPercent(v float64) *UsageLogCreate {
+	_c.mutation.SetCacheHitTargetPercent(v)
+	return _c
+}
+
+// SetNillableCacheHitTargetPercent sets the "cache_hit_target_percent" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitTargetPercent(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitTargetPercent(*v)
+	}
+	return _c
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (_c *UsageLogCreate) SetCacheHitTargetTolerancePercent(v float64) *UsageLogCreate {
+	_c.mutation.SetCacheHitTargetTolerancePercent(v)
+	return _c
+}
+
+// SetNillableCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitTargetTolerancePercent(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitTargetTolerancePercent(*v)
+	}
+	return _c
+}
+
+// SetCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field.
+func (_c *UsageLogCreate) SetCacheHitCumulativePromptTokens(v int64) *UsageLogCreate {
+	_c.mutation.SetCacheHitCumulativePromptTokens(v)
+	return _c
+}
+
+// SetNillableCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitCumulativePromptTokens(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitCumulativePromptTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field.
+func (_c *UsageLogCreate) SetCacheHitCumulativeCacheReadTokens(v int64) *UsageLogCreate {
+	_c.mutation.SetCacheHitCumulativeCacheReadTokens(v)
+	return _c
+}
+
+// SetNillableCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitCumulativeCacheReadTokens(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitCumulativeCacheReadTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field.
+func (_c *UsageLogCreate) SetCacheHitCumulativePercent(v float64) *UsageLogCreate {
+	_c.mutation.SetCacheHitCumulativePercent(v)
+	return _c
+}
+
+// SetNillableCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitCumulativePercent(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitCumulativePercent(*v)
+	}
+	return _c
+}
+
+// SetCacheHitStateVersion sets the "cache_hit_state_version" field.
+func (_c *UsageLogCreate) SetCacheHitStateVersion(v int64) *UsageLogCreate {
+	_c.mutation.SetCacheHitStateVersion(v)
+	return _c
+}
+
+// SetNillableCacheHitStateVersion sets the "cache_hit_state_version" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheHitStateVersion(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheHitStateVersion(*v)
+	}
+	return _c
+}
+
 // SetInputCost sets the "input_cost" field.
 func (_c *UsageLogCreate) SetInputCost(v float64) *UsageLogCreate {
 	_c.mutation.SetInputCost(v)
@@ -721,6 +847,30 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultCacheCreation1hTokens
 		_c.mutation.SetCacheCreation1hTokens(v)
 	}
+	if _, ok := _c.mutation.CacheHitOriginalInputTokens(); !ok {
+		v := usagelog.DefaultCacheHitOriginalInputTokens
+		_c.mutation.SetCacheHitOriginalInputTokens(v)
+	}
+	if _, ok := _c.mutation.CacheHitOriginalCacheReadTokens(); !ok {
+		v := usagelog.DefaultCacheHitOriginalCacheReadTokens
+		_c.mutation.SetCacheHitOriginalCacheReadTokens(v)
+	}
+	if _, ok := _c.mutation.CacheHitShiftedTokens(); !ok {
+		v := usagelog.DefaultCacheHitShiftedTokens
+		_c.mutation.SetCacheHitShiftedTokens(v)
+	}
+	if _, ok := _c.mutation.CacheHitCumulativePromptTokens(); !ok {
+		v := usagelog.DefaultCacheHitCumulativePromptTokens
+		_c.mutation.SetCacheHitCumulativePromptTokens(v)
+	}
+	if _, ok := _c.mutation.CacheHitCumulativeCacheReadTokens(); !ok {
+		v := usagelog.DefaultCacheHitCumulativeCacheReadTokens
+		_c.mutation.SetCacheHitCumulativeCacheReadTokens(v)
+	}
+	if _, ok := _c.mutation.CacheHitStateVersion(); !ok {
+		v := usagelog.DefaultCacheHitStateVersion
+		_c.mutation.SetCacheHitStateVersion(v)
+	}
 	if _, ok := _c.mutation.InputCost(); !ok {
 		v := usagelog.DefaultInputCost
 		_c.mutation.SetInputCost(v)
@@ -853,6 +1003,24 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheCreation1hTokens(); !ok {
 		return &ValidationError{Name: "cache_creation_1h_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_creation_1h_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheHitOriginalInputTokens(); !ok {
+		return &ValidationError{Name: "cache_hit_original_input_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_hit_original_input_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheHitOriginalCacheReadTokens(); !ok {
+		return &ValidationError{Name: "cache_hit_original_cache_read_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_hit_original_cache_read_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheHitShiftedTokens(); !ok {
+		return &ValidationError{Name: "cache_hit_shifted_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_hit_shifted_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheHitCumulativePromptTokens(); !ok {
+		return &ValidationError{Name: "cache_hit_cumulative_prompt_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_hit_cumulative_prompt_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheHitCumulativeCacheReadTokens(); !ok {
+		return &ValidationError{Name: "cache_hit_cumulative_cache_read_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_hit_cumulative_cache_read_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheHitStateVersion(); !ok {
+		return &ValidationError{Name: "cache_hit_state_version", err: errors.New(`ent: missing required field "UsageLog.cache_hit_state_version"`)}
 	}
 	if _, ok := _c.mutation.InputCost(); !ok {
 		return &ValidationError{Name: "input_cost", err: errors.New(`ent: missing required field "UsageLog.input_cost"`)}
@@ -1030,6 +1198,42 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheCreation1hTokens(); ok {
 		_spec.SetField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
 		_node.CacheCreation1hTokens = value
+	}
+	if value, ok := _c.mutation.CacheHitOriginalInputTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheHitOriginalInputTokens, field.TypeInt, value)
+		_node.CacheHitOriginalInputTokens = value
+	}
+	if value, ok := _c.mutation.CacheHitOriginalCacheReadTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheHitOriginalCacheReadTokens, field.TypeInt, value)
+		_node.CacheHitOriginalCacheReadTokens = value
+	}
+	if value, ok := _c.mutation.CacheHitShiftedTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheHitShiftedTokens, field.TypeInt, value)
+		_node.CacheHitShiftedTokens = value
+	}
+	if value, ok := _c.mutation.CacheHitTargetPercent(); ok {
+		_spec.SetField(usagelog.FieldCacheHitTargetPercent, field.TypeFloat64, value)
+		_node.CacheHitTargetPercent = &value
+	}
+	if value, ok := _c.mutation.CacheHitTargetTolerancePercent(); ok {
+		_spec.SetField(usagelog.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+		_node.CacheHitTargetTolerancePercent = &value
+	}
+	if value, ok := _c.mutation.CacheHitCumulativePromptTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheHitCumulativePromptTokens, field.TypeInt64, value)
+		_node.CacheHitCumulativePromptTokens = value
+	}
+	if value, ok := _c.mutation.CacheHitCumulativeCacheReadTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheHitCumulativeCacheReadTokens, field.TypeInt64, value)
+		_node.CacheHitCumulativeCacheReadTokens = value
+	}
+	if value, ok := _c.mutation.CacheHitCumulativePercent(); ok {
+		_spec.SetField(usagelog.FieldCacheHitCumulativePercent, field.TypeFloat64, value)
+		_node.CacheHitCumulativePercent = &value
+	}
+	if value, ok := _c.mutation.CacheHitStateVersion(); ok {
+		_spec.SetField(usagelog.FieldCacheHitStateVersion, field.TypeInt64, value)
+		_node.CacheHitStateVersion = value
 	}
 	if value, ok := _c.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
@@ -1623,6 +1827,186 @@ func (u *UsageLogUpsert) UpdateCacheCreation1hTokens() *UsageLogUpsert {
 // AddCacheCreation1hTokens adds v to the "cache_creation_1h_tokens" field.
 func (u *UsageLogUpsert) AddCacheCreation1hTokens(v int) *UsageLogUpsert {
 	u.Add(usagelog.FieldCacheCreation1hTokens, v)
+	return u
+}
+
+// SetCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field.
+func (u *UsageLogUpsert) SetCacheHitOriginalInputTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitOriginalInputTokens, v)
+	return u
+}
+
+// UpdateCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitOriginalInputTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitOriginalInputTokens)
+	return u
+}
+
+// AddCacheHitOriginalInputTokens adds v to the "cache_hit_original_input_tokens" field.
+func (u *UsageLogUpsert) AddCacheHitOriginalInputTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitOriginalInputTokens, v)
+	return u
+}
+
+// SetCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field.
+func (u *UsageLogUpsert) SetCacheHitOriginalCacheReadTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitOriginalCacheReadTokens, v)
+	return u
+}
+
+// UpdateCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitOriginalCacheReadTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitOriginalCacheReadTokens)
+	return u
+}
+
+// AddCacheHitOriginalCacheReadTokens adds v to the "cache_hit_original_cache_read_tokens" field.
+func (u *UsageLogUpsert) AddCacheHitOriginalCacheReadTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitOriginalCacheReadTokens, v)
+	return u
+}
+
+// SetCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field.
+func (u *UsageLogUpsert) SetCacheHitShiftedTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitShiftedTokens, v)
+	return u
+}
+
+// UpdateCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitShiftedTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitShiftedTokens)
+	return u
+}
+
+// AddCacheHitShiftedTokens adds v to the "cache_hit_shifted_tokens" field.
+func (u *UsageLogUpsert) AddCacheHitShiftedTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitShiftedTokens, v)
+	return u
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (u *UsageLogUpsert) SetCacheHitTargetPercent(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitTargetPercent, v)
+	return u
+}
+
+// UpdateCacheHitTargetPercent sets the "cache_hit_target_percent" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitTargetPercent() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitTargetPercent)
+	return u
+}
+
+// AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
+func (u *UsageLogUpsert) AddCacheHitTargetPercent(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitTargetPercent, v)
+	return u
+}
+
+// ClearCacheHitTargetPercent clears the value of the "cache_hit_target_percent" field.
+func (u *UsageLogUpsert) ClearCacheHitTargetPercent() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCacheHitTargetPercent)
+	return u
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsert) SetCacheHitTargetTolerancePercent(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitTargetTolerancePercent, v)
+	return u
+}
+
+// UpdateCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitTargetTolerancePercent() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitTargetTolerancePercent)
+	return u
+}
+
+// AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsert) AddCacheHitTargetTolerancePercent(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitTargetTolerancePercent, v)
+	return u
+}
+
+// ClearCacheHitTargetTolerancePercent clears the value of the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsert) ClearCacheHitTargetTolerancePercent() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCacheHitTargetTolerancePercent)
+	return u
+}
+
+// SetCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field.
+func (u *UsageLogUpsert) SetCacheHitCumulativePromptTokens(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitCumulativePromptTokens, v)
+	return u
+}
+
+// UpdateCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitCumulativePromptTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitCumulativePromptTokens)
+	return u
+}
+
+// AddCacheHitCumulativePromptTokens adds v to the "cache_hit_cumulative_prompt_tokens" field.
+func (u *UsageLogUpsert) AddCacheHitCumulativePromptTokens(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitCumulativePromptTokens, v)
+	return u
+}
+
+// SetCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field.
+func (u *UsageLogUpsert) SetCacheHitCumulativeCacheReadTokens(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitCumulativeCacheReadTokens, v)
+	return u
+}
+
+// UpdateCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitCumulativeCacheReadTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitCumulativeCacheReadTokens)
+	return u
+}
+
+// AddCacheHitCumulativeCacheReadTokens adds v to the "cache_hit_cumulative_cache_read_tokens" field.
+func (u *UsageLogUpsert) AddCacheHitCumulativeCacheReadTokens(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitCumulativeCacheReadTokens, v)
+	return u
+}
+
+// SetCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsert) SetCacheHitCumulativePercent(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitCumulativePercent, v)
+	return u
+}
+
+// UpdateCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitCumulativePercent() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitCumulativePercent)
+	return u
+}
+
+// AddCacheHitCumulativePercent adds v to the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsert) AddCacheHitCumulativePercent(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitCumulativePercent, v)
+	return u
+}
+
+// ClearCacheHitCumulativePercent clears the value of the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsert) ClearCacheHitCumulativePercent() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCacheHitCumulativePercent)
+	return u
+}
+
+// SetCacheHitStateVersion sets the "cache_hit_state_version" field.
+func (u *UsageLogUpsert) SetCacheHitStateVersion(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheHitStateVersion, v)
+	return u
+}
+
+// UpdateCacheHitStateVersion sets the "cache_hit_state_version" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheHitStateVersion() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheHitStateVersion)
+	return u
+}
+
+// AddCacheHitStateVersion adds v to the "cache_hit_state_version" field.
+func (u *UsageLogUpsert) AddCacheHitStateVersion(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheHitStateVersion, v)
 	return u
 }
 
@@ -2537,6 +2921,216 @@ func (u *UsageLogUpsertOne) AddCacheCreation1hTokens(v int) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheCreation1hTokens() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation1hTokens()
+	})
+}
+
+// SetCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheHitOriginalInputTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitOriginalInputTokens(v)
+	})
+}
+
+// AddCacheHitOriginalInputTokens adds v to the "cache_hit_original_input_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheHitOriginalInputTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitOriginalInputTokens(v)
+	})
+}
+
+// UpdateCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitOriginalInputTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitOriginalInputTokens()
+	})
+}
+
+// SetCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheHitOriginalCacheReadTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitOriginalCacheReadTokens(v)
+	})
+}
+
+// AddCacheHitOriginalCacheReadTokens adds v to the "cache_hit_original_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheHitOriginalCacheReadTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitOriginalCacheReadTokens(v)
+	})
+}
+
+// UpdateCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitOriginalCacheReadTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitOriginalCacheReadTokens()
+	})
+}
+
+// SetCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheHitShiftedTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitShiftedTokens(v)
+	})
+}
+
+// AddCacheHitShiftedTokens adds v to the "cache_hit_shifted_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheHitShiftedTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitShiftedTokens(v)
+	})
+}
+
+// UpdateCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitShiftedTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitShiftedTokens()
+	})
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (u *UsageLogUpsertOne) SetCacheHitTargetPercent(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitTargetPercent(v)
+	})
+}
+
+// AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
+func (u *UsageLogUpsertOne) AddCacheHitTargetPercent(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitTargetPercent(v)
+	})
+}
+
+// UpdateCacheHitTargetPercent sets the "cache_hit_target_percent" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitTargetPercent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitTargetPercent()
+	})
+}
+
+// ClearCacheHitTargetPercent clears the value of the "cache_hit_target_percent" field.
+func (u *UsageLogUpsertOne) ClearCacheHitTargetPercent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheHitTargetPercent()
+	})
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsertOne) SetCacheHitTargetTolerancePercent(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsertOne) AddCacheHitTargetTolerancePercent(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// UpdateCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitTargetTolerancePercent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitTargetTolerancePercent()
+	})
+}
+
+// ClearCacheHitTargetTolerancePercent clears the value of the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsertOne) ClearCacheHitTargetTolerancePercent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheHitTargetTolerancePercent()
+	})
+}
+
+// SetCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheHitCumulativePromptTokens(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitCumulativePromptTokens(v)
+	})
+}
+
+// AddCacheHitCumulativePromptTokens adds v to the "cache_hit_cumulative_prompt_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheHitCumulativePromptTokens(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitCumulativePromptTokens(v)
+	})
+}
+
+// UpdateCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitCumulativePromptTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitCumulativePromptTokens()
+	})
+}
+
+// SetCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheHitCumulativeCacheReadTokens(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitCumulativeCacheReadTokens(v)
+	})
+}
+
+// AddCacheHitCumulativeCacheReadTokens adds v to the "cache_hit_cumulative_cache_read_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheHitCumulativeCacheReadTokens(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitCumulativeCacheReadTokens(v)
+	})
+}
+
+// UpdateCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitCumulativeCacheReadTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitCumulativeCacheReadTokens()
+	})
+}
+
+// SetCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsertOne) SetCacheHitCumulativePercent(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitCumulativePercent(v)
+	})
+}
+
+// AddCacheHitCumulativePercent adds v to the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsertOne) AddCacheHitCumulativePercent(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitCumulativePercent(v)
+	})
+}
+
+// UpdateCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitCumulativePercent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitCumulativePercent()
+	})
+}
+
+// ClearCacheHitCumulativePercent clears the value of the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsertOne) ClearCacheHitCumulativePercent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheHitCumulativePercent()
+	})
+}
+
+// SetCacheHitStateVersion sets the "cache_hit_state_version" field.
+func (u *UsageLogUpsertOne) SetCacheHitStateVersion(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitStateVersion(v)
+	})
+}
+
+// AddCacheHitStateVersion adds v to the "cache_hit_state_version" field.
+func (u *UsageLogUpsertOne) AddCacheHitStateVersion(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitStateVersion(v)
+	})
+}
+
+// UpdateCacheHitStateVersion sets the "cache_hit_state_version" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheHitStateVersion() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitStateVersion()
 	})
 }
 
@@ -3693,6 +4287,216 @@ func (u *UsageLogUpsertBulk) AddCacheCreation1hTokens(v int) *UsageLogUpsertBulk
 func (u *UsageLogUpsertBulk) UpdateCacheCreation1hTokens() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation1hTokens()
+	})
+}
+
+// SetCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheHitOriginalInputTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitOriginalInputTokens(v)
+	})
+}
+
+// AddCacheHitOriginalInputTokens adds v to the "cache_hit_original_input_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheHitOriginalInputTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitOriginalInputTokens(v)
+	})
+}
+
+// UpdateCacheHitOriginalInputTokens sets the "cache_hit_original_input_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitOriginalInputTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitOriginalInputTokens()
+	})
+}
+
+// SetCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheHitOriginalCacheReadTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitOriginalCacheReadTokens(v)
+	})
+}
+
+// AddCacheHitOriginalCacheReadTokens adds v to the "cache_hit_original_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheHitOriginalCacheReadTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitOriginalCacheReadTokens(v)
+	})
+}
+
+// UpdateCacheHitOriginalCacheReadTokens sets the "cache_hit_original_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitOriginalCacheReadTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitOriginalCacheReadTokens()
+	})
+}
+
+// SetCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheHitShiftedTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitShiftedTokens(v)
+	})
+}
+
+// AddCacheHitShiftedTokens adds v to the "cache_hit_shifted_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheHitShiftedTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitShiftedTokens(v)
+	})
+}
+
+// UpdateCacheHitShiftedTokens sets the "cache_hit_shifted_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitShiftedTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitShiftedTokens()
+	})
+}
+
+// SetCacheHitTargetPercent sets the "cache_hit_target_percent" field.
+func (u *UsageLogUpsertBulk) SetCacheHitTargetPercent(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitTargetPercent(v)
+	})
+}
+
+// AddCacheHitTargetPercent adds v to the "cache_hit_target_percent" field.
+func (u *UsageLogUpsertBulk) AddCacheHitTargetPercent(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitTargetPercent(v)
+	})
+}
+
+// UpdateCacheHitTargetPercent sets the "cache_hit_target_percent" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitTargetPercent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitTargetPercent()
+	})
+}
+
+// ClearCacheHitTargetPercent clears the value of the "cache_hit_target_percent" field.
+func (u *UsageLogUpsertBulk) ClearCacheHitTargetPercent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheHitTargetPercent()
+	})
+}
+
+// SetCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsertBulk) SetCacheHitTargetTolerancePercent(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsertBulk) AddCacheHitTargetTolerancePercent(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitTargetTolerancePercent(v)
+	})
+}
+
+// UpdateCacheHitTargetTolerancePercent sets the "cache_hit_target_tolerance_percent" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitTargetTolerancePercent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitTargetTolerancePercent()
+	})
+}
+
+// ClearCacheHitTargetTolerancePercent clears the value of the "cache_hit_target_tolerance_percent" field.
+func (u *UsageLogUpsertBulk) ClearCacheHitTargetTolerancePercent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheHitTargetTolerancePercent()
+	})
+}
+
+// SetCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheHitCumulativePromptTokens(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitCumulativePromptTokens(v)
+	})
+}
+
+// AddCacheHitCumulativePromptTokens adds v to the "cache_hit_cumulative_prompt_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheHitCumulativePromptTokens(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitCumulativePromptTokens(v)
+	})
+}
+
+// UpdateCacheHitCumulativePromptTokens sets the "cache_hit_cumulative_prompt_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitCumulativePromptTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitCumulativePromptTokens()
+	})
+}
+
+// SetCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheHitCumulativeCacheReadTokens(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitCumulativeCacheReadTokens(v)
+	})
+}
+
+// AddCacheHitCumulativeCacheReadTokens adds v to the "cache_hit_cumulative_cache_read_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheHitCumulativeCacheReadTokens(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitCumulativeCacheReadTokens(v)
+	})
+}
+
+// UpdateCacheHitCumulativeCacheReadTokens sets the "cache_hit_cumulative_cache_read_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitCumulativeCacheReadTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitCumulativeCacheReadTokens()
+	})
+}
+
+// SetCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsertBulk) SetCacheHitCumulativePercent(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitCumulativePercent(v)
+	})
+}
+
+// AddCacheHitCumulativePercent adds v to the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsertBulk) AddCacheHitCumulativePercent(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitCumulativePercent(v)
+	})
+}
+
+// UpdateCacheHitCumulativePercent sets the "cache_hit_cumulative_percent" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitCumulativePercent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitCumulativePercent()
+	})
+}
+
+// ClearCacheHitCumulativePercent clears the value of the "cache_hit_cumulative_percent" field.
+func (u *UsageLogUpsertBulk) ClearCacheHitCumulativePercent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCacheHitCumulativePercent()
+	})
+}
+
+// SetCacheHitStateVersion sets the "cache_hit_state_version" field.
+func (u *UsageLogUpsertBulk) SetCacheHitStateVersion(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheHitStateVersion(v)
+	})
+}
+
+// AddCacheHitStateVersion adds v to the "cache_hit_state_version" field.
+func (u *UsageLogUpsertBulk) AddCacheHitStateVersion(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheHitStateVersion(v)
+	})
+}
+
+// UpdateCacheHitStateVersion sets the "cache_hit_state_version" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheHitStateVersion() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheHitStateVersion()
 	})
 }
 
