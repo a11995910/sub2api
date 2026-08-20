@@ -25,6 +25,8 @@ const (
 	CodexClientRestrictionReasonNotMatchedUA = "official_client_user_agent_not_matched"
 	// CodexClientRestrictionReasonForceCodexCLI 表示通过 ForceCodexCLI 配置兜底放行。
 	CodexClientRestrictionReasonForceCodexCLI = "force_codex_cli_enabled"
+	// CodexClientRestrictionReasonTrustedModelTest 表示请求已通过站内测试台双重身份校验。
+	CodexClientRestrictionReasonTrustedModelTest = "trusted_model_test_request"
 	// CodexClientRestrictionReasonBlacklisted 表示请求命中全局黑名单（门内 deny 最先，OR 语义）。
 	CodexClientRestrictionReasonBlacklisted = "blacklist_matched"
 	// CodexClientRestrictionReasonMatchedWhitelistClient 表示请求命中全局自由白名单条目（双因子 AND）。
@@ -82,14 +84,19 @@ func NewOpenAICodexClientRestrictionDetector(cfg *config.Config) *OpenAICodexCli
 
 // Detect 门控顺序（每步可短路）：
 //  1. 账号未开 codex_cli_only → 不限制（Disabled）。
-//  2. gateway.force_codex_cli → 全局旁路放行（ForceCodexCLI）。
-//  3. 黑名单命中 → 立即拒（门内 deny 最先，OR 语义）。
-//  4. 身份候选：官方 UA / 官方 originator / 全局白名单 / App Server 开闸（全局开关 OR 账号开关）；都不命中 → 拒（NotMatchedUA）。
-//  5. Codex 版本（仅官方候选）：版本必须可解析（否则 VersionUndetectable）；< Min → 拒（TooLow）；> Max → 拒（TooHigh）。
-//  6. 引擎指纹 AND 硬门：按 EngineFingerprintSignals 列表勾选 AND 判定（无任何 Required 信号→放行，即「关闭指纹门」=取消所有勾选）；白名单条目可显式 skip。
+//  2. 已认证的站内测试台请求 → 放行（不伪装成 Codex 客户端）。
+//  3. gateway.force_codex_cli → 全局旁路放行（ForceCodexCLI）。
+//  4. 黑名单命中 → 立即拒（门内 deny 最先，OR 语义）。
+//  5. 身份候选：官方 UA / 官方 originator / 全局白名单 / App Server 开闸（全局开关 OR 账号开关）；都不命中 → 拒（NotMatchedUA）。
+//  6. Codex 版本（仅官方候选）：版本必须可解析（否则 VersionUndetectable）；< Min → 拒（TooLow）；> Max → 拒（TooHigh）。
+//  7. 引擎指纹 AND 硬门：按 EngineFingerprintSignals 列表勾选 AND 判定（无任何 Required 信号→放行，即「关闭指纹门」=取消所有勾选）；白名单条目可显式 skip。
 func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *Account, policy CodexRestrictionPolicy, body []byte) CodexClientRestrictionDetectionResult {
 	if account == nil || !account.IsCodexCLIOnlyEnabled() {
 		return CodexClientRestrictionDetectionResult{Enabled: false, Matched: false, Reason: CodexClientRestrictionReasonDisabled}
+	}
+
+	if IsTrustedModelTestRequest(c) {
+		return CodexClientRestrictionDetectionResult{Enabled: true, Matched: true, Reason: CodexClientRestrictionReasonTrustedModelTest}
 	}
 
 	if d != nil && d.cfg != nil && d.cfg.Gateway.ForceCodexCLI {

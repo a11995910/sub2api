@@ -107,6 +107,35 @@ func TestOpenAICodexClientRestrictionDetector_Detect(t *testing.T) {
 		require.Equal(t, CodexClientRestrictionReasonNotMatchedUA, result.Reason)
 	})
 
+	t.Run("已认证测试台兼容同时开启的账号限制", func(t *testing.T) {
+		detector := NewOpenAICodexClientRestrictionDetector(nil)
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"codex_cli_only":                  true,
+				"codex_cli_only_allow_app_server": true,
+			},
+		}
+		c := newCodexDetectorTestContext("Mozilla/5.0", "")
+		c.Request.Header.Set("X-Sub2API-Model-Test", "text")
+
+		rawResult := detector.Detect(c, account, CodexRestrictionPolicy{
+			AllowAppServerClients:    true,
+			EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals,
+		}, nil)
+		require.False(t, rawResult.Matched, "客户端可伪造的请求头不能绕过限制")
+
+		require.True(t, SetTrustedModelTestMode(c, ModelTestModeText))
+		trustedResult := detector.Detect(c, account, CodexRestrictionPolicy{
+			AllowAppServerClients:    true,
+			EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals,
+		}, nil)
+		require.True(t, trustedResult.Enabled)
+		require.True(t, trustedResult.Matched)
+		require.Equal(t, CodexClientRestrictionReasonTrustedModelTest, trustedResult.Reason)
+	})
+
 	t.Run("开启 ForceCodexCLI 时允许通过", func(t *testing.T) {
 		detector := NewOpenAICodexClientRestrictionDetector(&config.Config{
 			Gateway: config.GatewayConfig{ForceCodexCLI: true},

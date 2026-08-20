@@ -495,10 +495,13 @@ test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target
 compose_staging ps
 /opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 90 2
 /opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1
+expected_version="$(tr -d '[:space:]' < /opt/sub2api/repo/backend/cmd/server/VERSION)"
+test "$(curl -fsS http://127.0.0.1:18080/api/v1/settings/public | jq -r '.data.version')" = "$expected_version"
+curl -fsS http://127.0.0.1:18080/ | grep -Fq "\"version\":\"$expected_version\""
 compose_staging logs --tail=200 sub2api
 ```
 
-`config -q` 只验证 compose 结构；随后对 `config --images` 的精确计数断言用于证明最终合并配置只引用一次目标应用镜像。`up` 后还必须通过 `compose ps -q sub2api` 定位真实容器，由 `docker inspect` 证明实际运行 tag 与目标 tag 相同，再等待 Docker health 为 `healthy` 并通过宿主机 HTTP 健康检查，全部通过才算发布成功。
+`config -q` 只验证 compose 结构；随后对 `config --images` 的精确计数断言用于证明最终合并配置只引用一次目标应用镜像。`up` 后还必须通过 `compose ps -q sub2api` 定位真实容器，由 `docker inspect` 证明实际运行 tag 与目标 tag 相同，再等待 Docker health 为 `healthy` 并通过宿主机 HTTP 健康检查。公开设置接口与首页 `window.__APP_CONFIG__` 注入的版本必须同时等于源码 `VERSION`，以保证管理员和普通用户看到同一个当前版本；上述检查全部通过才算发布成功。
 
 staging 功能验收必须使用隔离测试账号、渠道、分组、API Key 和唯一请求 ID，开始前记录所有测试对象 ID 及余额基线。以下快照命令在上述 staging 发布的同一 SSH 会话执行；若已开启新会话，必须先按 staging 发布段重新定义 `env_file` 和 `compose_staging()`。测试前先确认 PostgreSQL 容器确实属于 `sub2api-staging` compose project，并生成可读的完整数据库快照：
 

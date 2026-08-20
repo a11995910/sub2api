@@ -47,6 +47,7 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 			})
 			c.Next()
 		}),
+		servermiddleware.ModelTestAuthMiddleware(func(c *gin.Context) { c.Next() }),
 		nil,
 		nil,
 		nil,

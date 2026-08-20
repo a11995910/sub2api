@@ -61,7 +61,8 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 			service.SettingKeyForceEmailOnThirdPartySignup: "true",
 		},
 	}
-	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+	settingService := service.NewSettingService(repo, &config.Config{})
+	h := ProvideSettingHandler(settingService, BuildInfo{Version: "test-version"}, nil)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -74,12 +75,20 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			ForceEmailOnThirdPartySignup bool `json:"force_email_on_third_party_signup"`
+			ForceEmailOnThirdPartySignup bool   `json:"force_email_on_third_party_signup"`
+			Version                      string `json:"version"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
+	require.Equal(t, "test-version", resp.Data.Version)
+
+	injected, err := settingService.GetPublicSettingsForInjection(context.Background())
+	require.NoError(t, err)
+	payload, ok := injected.(*service.PublicSettingsInjectionPayload)
+	require.True(t, ok)
+	require.Equal(t, "test-version", payload.Version)
 }
 
 func TestSettingHandler_GetPublicSettings_ExposesTencentCaptchaConfiguration(t *testing.T) {

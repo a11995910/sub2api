@@ -294,7 +294,7 @@ func redactIdentifierForLog(v string) string {
 func safeHeaderValueForLog(key string, v string) string {
 	key = strings.ToLower(strings.TrimSpace(key))
 	switch key {
-	case "authorization", "x-api-key":
+	case "authorization", "x-api-key", modelTestAuthorizationHeaderForLog:
 		return redactAuthHeaderValue(v)
 	case "x-claude-code-session-id", "x-client-request-id":
 		return redactIdentifierForLog(v)

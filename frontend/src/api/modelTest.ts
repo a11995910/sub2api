@@ -1,4 +1,6 @@
 import { isFixedResolutionVideoModel, normalizeVideoDurationForModel } from '@/utils/videoPricing'
+import { getAuthToken, getRefreshToken, getTokenExpiresAt } from './auth'
+import { refreshAuthTokens } from './tokenRefresh'
 
 /**
  * 模型测试台直接调用 OpenAI 兼容网关。
@@ -62,12 +64,49 @@ export class ModelTestError extends Error {
   }
 }
 
+type ModelTestRequestMode = 'text' | 'image' | 'video'
+
+const MODEL_TEST_REQUEST_HEADER = 'X-Sub2API-Model-Test'
+const MODEL_TEST_AUTHORIZATION_HEADER = 'X-Sub2API-Model-Test-Authorization'
+const MODEL_TEST_TOKEN_REFRESH_BUFFER_MS = 120_000
+
+async function modelTestAuthHeaders(mode: ModelTestRequestMode): Promise<Record<string, string>> {
+  let token = String(getAuthToken() || '').trim()
+  if (!token) {
+    throw new ModelTestError('A valid panel session is required for model testing', 401, null)
+  }
+
+  const expiresAt = getTokenExpiresAt()
+  const shouldRefresh = Boolean(
+    getRefreshToken() &&
+    expiresAt !== null &&
+    Number.isFinite(expiresAt) &&
+    expiresAt <= Date.now() + MODEL_TEST_TOKEN_REFRESH_BUFFER_MS
+  )
+  if (shouldRefresh) {
+    try {
+      const refreshed = await refreshAuthTokens({ failedAccessToken: token })
+      token = refreshed.access_token
+    } catch (error) {
+      // 临近过期但仍有效时允许继续；已经过期则不要发出注定失败的测试请求。
+      if (expiresAt !== null && expiresAt <= Date.now()) {
+        throw new ModelTestError('Panel session has expired; please sign in again', 401, error)
+      }
+    }
+  }
+
+  return {
+    [MODEL_TEST_REQUEST_HEADER]: mode,
+    [MODEL_TEST_AUTHORIZATION_HEADER]: `Bearer ${token}`,
+  }
+}
+
 async function postGateway<T>(
   path: '/v1/chat/completions' | '/v1/images/generations' | '/v1/videos',
   apiKey: string,
   payload: Record<string, unknown>,
+  mode: ModelTestRequestMode,
   signal?: AbortSignal,
-  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
@@ -75,7 +114,7 @@ async function postGateway<T>(
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      ...extraHeaders,
+      ...(await modelTestAuthHeaders(mode)),
     },
     body: JSON.stringify(payload),
     signal,
@@ -124,6 +163,7 @@ async function postGatewayFormData<T>(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       Accept: 'application/json',
+      ...(await modelTestAuthHeaders('image')),
     },
     body: payload,
     signal,
@@ -171,6 +211,7 @@ export async function testChatCompletion(req: ChatCompletionTestRequest): Promis
       stream: false,
       max_tokens: req.maxTokens ?? 256,
     },
+    'text',
     req.signal,
   )
 }
@@ -190,6 +231,7 @@ export async function testImageGeneration(req: ImageGenerationTestRequest): Prom
     '/v1/images/generations',
     req.apiKey,
     payload,
+    'image',
     req.signal,
   )
 }
@@ -239,8 +281,8 @@ export async function testVideoGeneration(req: VideoGenerationTestRequest): Prom
     '/v1/videos',
     req.apiKey,
     payload,
+    'video',
     req.signal,
-    { 'X-Sub2API-Model-Test': 'video' },
   )
   const requestID = extractVideoRequestID(created)
   if (!requestID) {

@@ -1,10 +1,72 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchVideoContent, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fetchVideoContent, testChatCompletion, testImageEdit, testImageGeneration, testVideoGeneration } from '@/api/modelTest'
+
+const refreshAuthTokens = vi.hoisted(() => vi.fn())
+
+vi.mock('@/api/tokenRefresh', () => ({ refreshAuthTokens }))
 
 describe('modelTest api', () => {
+  beforeEach(() => {
+    refreshAuthTokens.mockReset()
+    localStorage.setItem('auth_token', 'panel-test-token')
+  })
+
   afterEach(() => {
+    localStorage.clear()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('文本测试同时携带 API Key 与站内会话证明', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"choices":[]}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await testChatCompletion({
+      apiKey: 'sk-test',
+      model: 'gpt-5.6-sol',
+      prompt: '你好',
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer sk-test',
+      'X-Sub2API-Model-Test': 'text',
+      'X-Sub2API-Model-Test-Authorization': 'Bearer panel-test-token',
+    }))
+  })
+
+  it('面板令牌临近过期时刷新后再发起测试', async () => {
+    localStorage.setItem('refresh_token', 'panel-refresh-token')
+    localStorage.setItem('token_expires_at', String(Date.now() + 30_000))
+    refreshAuthTokens.mockResolvedValue({
+      access_token: 'refreshed-panel-token',
+      refresh_token: 'refreshed-panel-refresh-token',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"choices":[]}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await testChatCompletion({
+      apiKey: 'sk-test',
+      model: 'gpt-5.6-sol',
+      prompt: '你好',
+    })
+
+    expect(refreshAuthTokens).toHaveBeenCalledWith({ failedAccessToken: 'panel-test-token' })
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer sk-test',
+      'X-Sub2API-Model-Test-Authorization': 'Bearer refreshed-panel-token',
+    }))
   })
 
   it('自适应图片尺寸不向网关传 size 字段', async () => {
@@ -68,10 +130,12 @@ describe('modelTest api', () => {
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     const form = init.body as FormData
     expect(path).toBe('/v1/images/edits')
-    expect(init.headers).toEqual({
+    expect(init.headers).toEqual(expect.objectContaining({
       Authorization: 'Bearer sk-test',
       Accept: 'application/json',
-    })
+      'X-Sub2API-Model-Test': 'image',
+      'X-Sub2API-Model-Test-Authorization': 'Bearer panel-test-token',
+    }))
     expect(form.get('model')).toBe('gpt-image-2')
     expect(form.get('prompt')).toBe('把背景改成夜景')
     expect(form.get('size')).toBe('1536x1024')

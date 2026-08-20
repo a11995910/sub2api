@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"strings"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -50,7 +49,8 @@ func (h *OpenAIGatewayHandler) OpenAIVideoGeneration(c *gin.Context) {
 }
 
 func isModelTestVideoRequest(c *gin.Context) bool {
-	return c != nil && strings.TrimSpace(c.GetHeader("X-Sub2API-Model-Test")) == "video"
+	mode, ok := service.TrustedModelTestMode(c)
+	return ok && mode == service.ModelTestModeVideo
 }
 
 func shouldReserveOpenAIVideoBilling(c *gin.Context, apiKey *service.APIKey, subscription *service.UserSubscription) bool {
