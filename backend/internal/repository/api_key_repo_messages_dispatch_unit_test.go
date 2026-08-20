@@ -117,6 +117,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite
 		SetCacheHitQuarterToInputEnabled(true).
 		SetCacheHitTargetPercent(90).
 		SetCacheHitTargetTolerancePercent(0.5).
+		SetCacheHitHalfLifeDays(2.5).
 		SetUpdatedAt(updatedAt).
 		Save(ctx)
 	require.NoError(t, err)
@@ -136,6 +137,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesCacheHitQuarterToInput_SQLite
 	require.True(t, got.Group.CacheHitQuarterToInput)
 	require.InDelta(t, 90, got.Group.CacheHitTargetPercent, 1e-9)
 	require.InDelta(t, 0.5, got.Group.CacheHitTargetTolerancePercent, 1e-9)
+	require.InDelta(t, 2.5, got.Group.CacheHitHalfLifeDays, 1e-9)
 	require.Equal(t, updatedAt, got.Group.UpdatedAt)
 }
 

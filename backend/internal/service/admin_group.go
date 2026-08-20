@@ -354,6 +354,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err := ValidateCacheHitTargetConfig(cacheHitTargetPercent, cacheHitTargetTolerancePercent); err != nil {
 		return nil, err
 	}
+	cacheHitHalfLifeDays := NormalizeCacheHitHalfLifeDays(input.CacheHitHalfLifeDays)
+	if err := ValidateCacheHitHalfLifeDays(cacheHitHalfLifeDays); err != nil {
+		return nil, err
+	}
 	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
 	if input.BatchImageDiscountMultiplier != nil {
 		if *input.BatchImageDiscountMultiplier < 0 {
@@ -507,6 +511,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           cacheHitTargetPercent,
 		CacheHitTargetTolerancePercent:  cacheHitTargetTolerancePercent,
+		CacheHitHalfLifeDays:            cacheHitHalfLifeDays,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
@@ -816,6 +821,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.CacheHitTargetTolerancePercent = DefaultCacheHitTargetTolerancePercent
 	}
 	if err := ValidateCacheHitTargetConfig(group.CacheHitTargetPercent, group.CacheHitTargetTolerancePercent); err != nil {
+		return nil, err
+	}
+	if input.CacheHitHalfLifeDays != nil {
+		group.CacheHitHalfLifeDays = NormalizeCacheHitHalfLifeDays(input.CacheHitHalfLifeDays)
+	} else if group.CacheHitHalfLifeDays <= 0 {
+		group.CacheHitHalfLifeDays = DefaultCacheHitHalfLifeDays
+	}
+	if err := ValidateCacheHitHalfLifeDays(group.CacheHitHalfLifeDays); err != nil {
 		return nil, err
 	}
 	if input.ImageRateMultiplier != nil {

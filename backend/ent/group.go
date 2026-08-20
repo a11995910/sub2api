@@ -85,6 +85,8 @@ type Group struct {
 	CacheHitTargetPercent float64 `json:"cache_hit_target_percent,omitempty"`
 	// 缓存命中率目标容差百分比；累计值超过目标加容差时回调到目标
 	CacheHitTargetTolerancePercent float64 `json:"cache_hit_target_tolerance_percent,omitempty"`
+	// 缓存命中率累计状态的时间半衰期（天）；历史权重按时间指数衰减
+	CacheHitHalfLifeDays float64 `json:"cache_hit_half_life_days,omitempty"`
 	// 图片生成独立倍率，仅 image_rate_independent=true 时生效
 	ImageRateMultiplier float64 `json:"image_rate_multiplier,omitempty"`
 	// ImagePrice1k holds the value of the "image_price_1k" field.
@@ -299,7 +301,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage2kEnhancementEnabled, group.FieldImage4kEnhancementEnabled, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldCacheHitTargetTolerancePercent, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldCacheHitTargetTolerancePercent, group.FieldCacheHitHalfLifeDays, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldAutoFallbackGroupID, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -534,6 +536,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field cache_hit_target_tolerance_percent", values[i])
 			} else if value.Valid {
 				_m.CacheHitTargetTolerancePercent = value.Float64
+			}
+		case group.FieldCacheHitHalfLifeDays:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_hit_half_life_days", values[i])
+			} else if value.Valid {
+				_m.CacheHitHalfLifeDays = value.Float64
 			}
 		case group.FieldImageRateMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -1011,6 +1019,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_hit_target_tolerance_percent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitTargetTolerancePercent))
+	builder.WriteString(", ")
+	builder.WriteString("cache_hit_half_life_days=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheHitHalfLifeDays))
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateMultiplier))

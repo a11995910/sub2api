@@ -344,6 +344,7 @@ const toAvailableGroup = (group: Group): UserAvailableGroup => ({
   cache_hit_quarter_to_input_enabled: group.cache_hit_quarter_to_input_enabled ?? false,
   cache_hit_target_percent: group.cache_hit_target_percent ?? 90,
   cache_hit_target_tolerance_percent: group.cache_hit_target_tolerance_percent ?? 0.5,
+  cache_hit_half_life_days: group.cache_hit_half_life_days ?? 1,
   image_rate_multiplier: group.image_rate_multiplier,
   image_price_1k: group.image_price_1k,
   image_price_2k: group.image_price_2k,

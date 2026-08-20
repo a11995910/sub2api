@@ -16,14 +16,14 @@ type memoryCacheHitTargetTracker struct {
 
 func (m *memoryCacheHitTargetTracker) AdjustCacheHitToTarget(
 	_ context.Context,
-	userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion, promptTokens, cacheReadTokens int64,
+	userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens int64,
 ) (CacheHitTargetAdjustment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.states == nil {
 		m.states = make(map[string][2]int64)
 	}
-	key := fmt.Sprintf("%d:%d:%d:%d:%d", userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion)
+	key := fmt.Sprintf("%d:%d:%d:%d:%d:%d", userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion)
 	state := m.states[key]
 	promptTotal := state[0] + promptTokens
 	cacheAvailable := state[1] + cacheReadTokens

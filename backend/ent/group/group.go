@@ -82,6 +82,8 @@ const (
 	FieldCacheHitTargetPercent = "cache_hit_target_percent"
 	// FieldCacheHitTargetTolerancePercent holds the string denoting the cache_hit_target_tolerance_percent field in the database.
 	FieldCacheHitTargetTolerancePercent = "cache_hit_target_tolerance_percent"
+	// FieldCacheHitHalfLifeDays holds the string denoting the cache_hit_half_life_days field in the database.
+	FieldCacheHitHalfLifeDays = "cache_hit_half_life_days"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
 	FieldImageRateMultiplier = "image_rate_multiplier"
 	// FieldImagePrice1k holds the string denoting the image_price_1k field in the database.
@@ -288,6 +290,7 @@ var Columns = []string{
 	FieldCacheHitQuarterToInputEnabled,
 	FieldCacheHitTargetPercent,
 	FieldCacheHitTargetTolerancePercent,
+	FieldCacheHitHalfLifeDays,
 	FieldImageRateMultiplier,
 	FieldImagePrice1k,
 	FieldImagePrice2k,
@@ -427,6 +430,10 @@ var (
 	DefaultCacheHitTargetPercent float64
 	// DefaultCacheHitTargetTolerancePercent holds the default value on creation for the "cache_hit_target_tolerance_percent" field.
 	DefaultCacheHitTargetTolerancePercent float64
+	// DefaultCacheHitHalfLifeDays holds the default value on creation for the "cache_hit_half_life_days" field.
+	DefaultCacheHitHalfLifeDays float64
+	// CacheHitHalfLifeDaysValidator is a validator for the "cache_hit_half_life_days" field. It is called by the builders before save.
+	CacheHitHalfLifeDaysValidator func(float64) error
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
 	// DefaultBatchImageDiscountMultiplier holds the default value on creation for the "batch_image_discount_multiplier" field.
@@ -660,6 +667,11 @@ func ByCacheHitTargetPercent(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheHitTargetTolerancePercent orders the results by the cache_hit_target_tolerance_percent field.
 func ByCacheHitTargetTolerancePercent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheHitTargetTolerancePercent, opts...).ToFunc()
+}
+
+// ByCacheHitHalfLifeDays orders the results by the cache_hit_half_life_days field.
+func ByCacheHitHalfLifeDays(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheHitHalfLifeDays, opts...).ToFunc()
 }
 
 // ByImageRateMultiplier orders the results by the image_rate_multiplier field.

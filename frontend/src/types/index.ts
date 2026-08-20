@@ -614,6 +614,7 @@ export interface Group {
   cache_hit_quarter_to_input_enabled: boolean
   cache_hit_target_percent?: number
   cache_hit_target_tolerance_percent?: number
+  cache_hit_half_life_days?: number
   image_rate_multiplier: number
   batch_image_discount_multiplier: number
   batch_image_hold_multiplier: number
@@ -845,6 +846,7 @@ export interface CreateGroupRequest {
   cache_hit_quarter_to_input_enabled?: boolean
   cache_hit_target_percent?: number
   cache_hit_target_tolerance_percent?: number
+  cache_hit_half_life_days?: number
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
   batch_image_hold_multiplier?: number
@@ -919,6 +921,7 @@ export interface UpdateGroupRequest {
   cache_hit_quarter_to_input_enabled?: boolean
   cache_hit_target_percent?: number
   cache_hit_target_tolerance_percent?: number
+  cache_hit_half_life_days?: number
   image_rate_multiplier?: number
   batch_image_discount_multiplier?: number
   batch_image_hold_multiplier?: number

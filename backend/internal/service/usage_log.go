@@ -153,15 +153,15 @@ type UsageLog struct {
 	CacheCreation1hTokens int `gorm:"column:cache_creation_1h_tokens"`
 
 	// 缓存命中率控制审计快照；目标未启用的历史/普通请求保持零值或 nil。
-	CacheHitOriginalInputTokens         int
-	CacheHitOriginalCacheReadTokens     int
-	CacheHitShiftedTokens               int
-	CacheHitTargetPercent               *float64
-	CacheHitTargetTolerancePercent      *float64
-	CacheHitCumulativePromptTokens      int64
-	CacheHitCumulativeCacheReadTokens   int64
-	CacheHitCumulativePercent           *float64
-	CacheHitStateVersion                int64
+	CacheHitOriginalInputTokens       int
+	CacheHitOriginalCacheReadTokens   int
+	CacheHitShiftedTokens             int
+	CacheHitTargetPercent             *float64
+	CacheHitTargetTolerancePercent    *float64
+	CacheHitCumulativePromptTokens    int64
+	CacheHitCumulativeCacheReadTokens int64
+	CacheHitCumulativePercent         *float64
+	CacheHitStateVersion              int64
 
 	ImageInputTokens  int
 	ImageInputCost    float64
@@ -261,13 +261,14 @@ const cacheHitTargetBasisPoints = int64(10000)
 type CacheHitTargetTracker interface {
 	AdjustCacheHitToTarget(
 		ctx context.Context,
-		userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion, promptTokens, cacheReadTokens int64,
+		userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens int64,
 	) (CacheHitTargetAdjustment, error)
 }
 
 type cacheHitTargetConfig struct {
 	targetBasisPoints    int64
 	toleranceBasisPoints int64
+	halfLifeSeconds      int64
 	stateVersion         int64
 	targetPercent        float64
 	tolerancePercent     float64
@@ -300,9 +301,17 @@ func groupCacheHitTarget(apiKey *APIKey) (cacheHitTargetConfig, bool) {
 	if err := ValidateCacheHitTargetConfig(targetPercent, tolerancePercent); err != nil {
 		return cacheHitTargetConfig{}, false
 	}
+	halfLifeDays := apiKey.Group.CacheHitHalfLifeDays
+	if halfLifeDays <= 0 {
+		halfLifeDays = DefaultCacheHitHalfLifeDays
+	}
+	if err := ValidateCacheHitHalfLifeDays(halfLifeDays); err != nil {
+		return cacheHitTargetConfig{}, false
+	}
 	return cacheHitTargetConfig{
 		targetBasisPoints:    int64(math.Round(targetPercent * 100)),
 		toleranceBasisPoints: int64(math.Round(tolerancePercent * 100)),
+		halfLifeSeconds:      int64(math.Round(halfLifeDays * 24 * float64(time.Hour/time.Second))),
 		stateVersion:         apiKey.Group.UpdatedAt.UnixMicro(),
 		targetPercent:        targetPercent,
 		tolerancePercent:     tolerancePercent,
@@ -369,6 +378,7 @@ func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey
 				groupID,
 				config.targetBasisPoints,
 				config.toleranceBasisPoints,
+				config.halfLifeSeconds,
 				config.stateVersion,
 				promptTokens,
 				int64(cacheRead),

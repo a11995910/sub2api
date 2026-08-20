@@ -484,6 +484,20 @@ func (_c *GroupCreate) SetNillableCacheHitTargetTolerancePercent(v *float64) *Gr
 	return _c
 }
 
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (_c *GroupCreate) SetCacheHitHalfLifeDays(v float64) *GroupCreate {
+	_c.mutation.SetCacheHitHalfLifeDays(v)
+	return _c
+}
+
+// SetNillableCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCacheHitHalfLifeDays(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetCacheHitHalfLifeDays(*v)
+	}
+	return _c
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_c *GroupCreate) SetImageRateMultiplier(v float64) *GroupCreate {
 	_c.mutation.SetImageRateMultiplier(v)
@@ -1258,6 +1272,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCacheHitTargetTolerancePercent
 		_c.mutation.SetCacheHitTargetTolerancePercent(v)
 	}
+	if _, ok := _c.mutation.CacheHitHalfLifeDays(); !ok {
+		v := group.DefaultCacheHitHalfLifeDays
+		_c.mutation.SetCacheHitHalfLifeDays(v)
+	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
@@ -1475,6 +1493,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheHitTargetTolerancePercent(); !ok {
 		return &ValidationError{Name: "cache_hit_target_tolerance_percent", err: errors.New(`ent: missing required field "Group.cache_hit_target_tolerance_percent"`)}
+	}
+	if _, ok := _c.mutation.CacheHitHalfLifeDays(); !ok {
+		return &ValidationError{Name: "cache_hit_half_life_days", err: errors.New(`ent: missing required field "Group.cache_hit_half_life_days"`)}
+	}
+	if v, ok := _c.mutation.CacheHitHalfLifeDays(); ok {
+		if err := group.CacheHitHalfLifeDaysValidator(v); err != nil {
+			return &ValidationError{Name: "cache_hit_half_life_days", err: fmt.Errorf(`ent: validator failed for field "Group.cache_hit_half_life_days": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
@@ -1736,6 +1762,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheHitTargetTolerancePercent(); ok {
 		_spec.SetField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
 		_node.CacheHitTargetTolerancePercent = value
+	}
+	if value, ok := _c.mutation.CacheHitHalfLifeDays(); ok {
+		_spec.SetField(group.FieldCacheHitHalfLifeDays, field.TypeFloat64, value)
+		_node.CacheHitHalfLifeDays = value
 	}
 	if value, ok := _c.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
@@ -2554,6 +2584,24 @@ func (u *GroupUpsert) UpdateCacheHitTargetTolerancePercent() *GroupUpsert {
 // AddCacheHitTargetTolerancePercent adds v to the "cache_hit_target_tolerance_percent" field.
 func (u *GroupUpsert) AddCacheHitTargetTolerancePercent(v float64) *GroupUpsert {
 	u.Add(group.FieldCacheHitTargetTolerancePercent, v)
+	return u
+}
+
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (u *GroupUpsert) SetCacheHitHalfLifeDays(v float64) *GroupUpsert {
+	u.Set(group.FieldCacheHitHalfLifeDays, v)
+	return u
+}
+
+// UpdateCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCacheHitHalfLifeDays() *GroupUpsert {
+	u.SetExcluded(group.FieldCacheHitHalfLifeDays)
+	return u
+}
+
+// AddCacheHitHalfLifeDays adds v to the "cache_hit_half_life_days" field.
+func (u *GroupUpsert) AddCacheHitHalfLifeDays(v float64) *GroupUpsert {
+	u.Add(group.FieldCacheHitHalfLifeDays, v)
 	return u
 }
 
@@ -3888,6 +3936,27 @@ func (u *GroupUpsertOne) AddCacheHitTargetTolerancePercent(v float64) *GroupUpse
 func (u *GroupUpsertOne) UpdateCacheHitTargetTolerancePercent() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitTargetTolerancePercent()
+	})
+}
+
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (u *GroupUpsertOne) SetCacheHitHalfLifeDays(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitHalfLifeDays(v)
+	})
+}
+
+// AddCacheHitHalfLifeDays adds v to the "cache_hit_half_life_days" field.
+func (u *GroupUpsertOne) AddCacheHitHalfLifeDays(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitHalfLifeDays(v)
+	})
+}
+
+// UpdateCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCacheHitHalfLifeDays() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitHalfLifeDays()
 	})
 }
 
@@ -5509,6 +5578,27 @@ func (u *GroupUpsertBulk) AddCacheHitTargetTolerancePercent(v float64) *GroupUps
 func (u *GroupUpsertBulk) UpdateCacheHitTargetTolerancePercent() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCacheHitTargetTolerancePercent()
+	})
+}
+
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (u *GroupUpsertBulk) SetCacheHitHalfLifeDays(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCacheHitHalfLifeDays(v)
+	})
+}
+
+// AddCacheHitHalfLifeDays adds v to the "cache_hit_half_life_days" field.
+func (u *GroupUpsertBulk) AddCacheHitHalfLifeDays(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddCacheHitHalfLifeDays(v)
+	})
+}
+
+// UpdateCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCacheHitHalfLifeDays() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCacheHitHalfLifeDays()
 	})
 }
 

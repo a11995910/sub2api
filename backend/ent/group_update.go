@@ -581,6 +581,27 @@ func (_u *GroupUpdate) AddCacheHitTargetTolerancePercent(v float64) *GroupUpdate
 	return _u
 }
 
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (_u *GroupUpdate) SetCacheHitHalfLifeDays(v float64) *GroupUpdate {
+	_u.mutation.ResetCacheHitHalfLifeDays()
+	_u.mutation.SetCacheHitHalfLifeDays(v)
+	return _u
+}
+
+// SetNillableCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCacheHitHalfLifeDays(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetCacheHitHalfLifeDays(*v)
+	}
+	return _u
+}
+
+// AddCacheHitHalfLifeDays adds value to the "cache_hit_half_life_days" field.
+func (_u *GroupUpdate) AddCacheHitHalfLifeDays(v float64) *GroupUpdate {
+	_u.mutation.AddCacheHitHalfLifeDays(v)
+	return _u
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_u *GroupUpdate) SetImageRateMultiplier(v float64) *GroupUpdate {
 	_u.mutation.ResetImageRateMultiplier()
@@ -1730,6 +1751,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CacheHitHalfLifeDays(); ok {
+		if err := group.CacheHitHalfLifeDaysValidator(v); err != nil {
+			return &ValidationError{Name: "cache_hit_half_life_days", err: fmt.Errorf(`ent: validator failed for field "Group.cache_hit_half_life_days": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SearchPricePer1k(); ok {
 		if err := group.SearchPricePer1kValidator(v); err != nil {
 			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)}
@@ -1924,6 +1950,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedCacheHitTargetTolerancePercent(); ok {
 		_spec.AddField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CacheHitHalfLifeDays(); ok {
+		_spec.SetField(group.FieldCacheHitHalfLifeDays, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheHitHalfLifeDays(); ok {
+		_spec.AddField(group.FieldCacheHitHalfLifeDays, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
@@ -3095,6 +3127,27 @@ func (_u *GroupUpdateOne) AddCacheHitTargetTolerancePercent(v float64) *GroupUpd
 	return _u
 }
 
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (_u *GroupUpdateOne) SetCacheHitHalfLifeDays(v float64) *GroupUpdateOne {
+	_u.mutation.ResetCacheHitHalfLifeDays()
+	_u.mutation.SetCacheHitHalfLifeDays(v)
+	return _u
+}
+
+// SetNillableCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCacheHitHalfLifeDays(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCacheHitHalfLifeDays(*v)
+	}
+	return _u
+}
+
+// AddCacheHitHalfLifeDays adds value to the "cache_hit_half_life_days" field.
+func (_u *GroupUpdateOne) AddCacheHitHalfLifeDays(v float64) *GroupUpdateOne {
+	_u.mutation.AddCacheHitHalfLifeDays(v)
+	return _u
+}
+
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
 func (_u *GroupUpdateOne) SetImageRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.ResetImageRateMultiplier()
@@ -4257,6 +4310,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CacheHitHalfLifeDays(); ok {
+		if err := group.CacheHitHalfLifeDaysValidator(v); err != nil {
+			return &ValidationError{Name: "cache_hit_half_life_days", err: fmt.Errorf(`ent: validator failed for field "Group.cache_hit_half_life_days": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SearchPricePer1k(); ok {
 		if err := group.SearchPricePer1kValidator(v); err != nil {
 			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)}
@@ -4468,6 +4526,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedCacheHitTargetTolerancePercent(); ok {
 		_spec.AddField(group.FieldCacheHitTargetTolerancePercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CacheHitHalfLifeDays(); ok {
+		_spec.SetField(group.FieldCacheHitHalfLifeDays, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCacheHitHalfLifeDays(); ok {
+		_spec.AddField(group.FieldCacheHitHalfLifeDays, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)

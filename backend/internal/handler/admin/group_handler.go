@@ -122,6 +122,7 @@ type CreateGroupRequest struct {
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
 	CacheHitTargetTolerancePercent  *float64                      `json:"cache_hit_target_tolerance_percent"`
+	CacheHitHalfLifeDays            *float64                      `json:"cache_hit_half_life_days"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
@@ -203,6 +204,7 @@ type UpdateGroupRequest struct {
 	CacheHitQuarterToInput          *bool                         `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
 	CacheHitTargetTolerancePercent  *float64                      `json:"cache_hit_target_tolerance_percent"`
+	CacheHitHalfLifeDays            *float64                      `json:"cache_hit_half_life_days"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
@@ -524,6 +526,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	cacheHitHalfLifeDays := service.NormalizeCacheHitHalfLifeDays(req.CacheHitHalfLifeDays)
+	if err := service.ValidateCacheHitHalfLifeDays(cacheHitHalfLifeDays); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	if err := service.ValidatePeakRateConfig(req.SubscriptionType, req.PeakRateEnabled, req.PeakStart, req.PeakEnd, float64ValueOrDefault(req.PeakRateMultiplier, 1.0)); err != nil {
 		response.BadRequest(c, err.Error())
@@ -563,6 +570,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           req.CacheHitTargetPercent,
 		CacheHitTargetTolerancePercent:  req.CacheHitTargetTolerancePercent,
+		CacheHitHalfLifeDays:            req.CacheHitHalfLifeDays,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
@@ -690,6 +698,13 @@ func (h *GroupHandler) Update(c *gin.Context) {
 			return
 		}
 	}
+	if req.CacheHitHalfLifeDays != nil {
+		cacheHitHalfLifeDays := service.NormalizeCacheHitHalfLifeDays(req.CacheHitHalfLifeDays)
+		if err := service.ValidateCacheHitHalfLifeDays(cacheHitHalfLifeDays); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
@@ -718,6 +733,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           req.CacheHitTargetPercent,
 		CacheHitTargetTolerancePercent:  req.CacheHitTargetTolerancePercent,
+		CacheHitHalfLifeDays:            req.CacheHitHalfLifeDays,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,

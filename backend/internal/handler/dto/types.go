@@ -136,6 +136,7 @@ type Group struct {
 	CacheHitQuarterToInput         bool    `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent          float64 `json:"cache_hit_target_percent"`
 	CacheHitTargetTolerancePercent float64 `json:"cache_hit_target_tolerance_percent"`
+	CacheHitHalfLifeDays           float64 `json:"cache_hit_half_life_days"`
 	ImageRateMultiplier            float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier   float64 `json:"batch_image_discount_multiplier"`
 	BatchImageHoldMultiplier       float64 `json:"batch_image_hold_multiplier"`

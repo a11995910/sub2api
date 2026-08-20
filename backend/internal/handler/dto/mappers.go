@@ -322,6 +322,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		CacheHitQuarterToInput:          g.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           g.CacheHitTargetPercent,
 		CacheHitTargetTolerancePercent:  g.CacheHitTargetTolerancePercent,
+		CacheHitHalfLifeDays:            g.CacheHitHalfLifeDays,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,

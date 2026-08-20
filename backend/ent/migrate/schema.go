@@ -973,6 +973,7 @@ var (
 		{Name: "cache_hit_quarter_to_input_enabled", Type: field.TypeBool, Default: false},
 		{Name: "cache_hit_target_percent", Type: field.TypeFloat64, Default: 90, SchemaType: map[string]string{"postgres": "decimal(5,2)"}},
 		{Name: "cache_hit_target_tolerance_percent", Type: field.TypeFloat64, Default: 0.5, SchemaType: map[string]string{"postgres": "decimal(5,2)"}},
+		{Name: "cache_hit_half_life_days", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(8,2)"}},
 		{Name: "image_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
@@ -1049,7 +1050,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[61]},
+				Columns: []*schema.Column{GroupsColumns[62]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",

@@ -36,6 +36,52 @@ func TestAPIKeyService_AuthSnapshotPreservesOpenAIFastModeEnabled(t *testing.T) 
 	}
 }
 
+func TestAPIKeyService_AuthSnapshotPreservesCacheHitHalfLife(t *testing.T) {
+	groupID := int64(31)
+	svc := &APIKeyService{}
+	apiKey := &APIKey{
+		ID:      11,
+		UserID:  22,
+		GroupID: &groupID,
+		Name:    "cache-hit-key",
+		Status:  StatusActive,
+		User:    &User{ID: 22, Status: StatusActive, Role: RoleUser, Balance: 10, Concurrency: 1},
+		Group: &Group{
+			ID:                   groupID,
+			Name:                 "正价分组",
+			Status:               StatusActive,
+			CacheHitHalfLifeDays: 2.5,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	if snapshot == nil || snapshot.Group == nil || snapshot.Group.CacheHitHalfLifeDays != 2.5 {
+		t.Fatalf("expected snapshot to preserve cache_hit_half_life_days, got %#v", snapshot)
+	}
+	roundTripped := svc.snapshotToAPIKey("sk-cache-hit", snapshot)
+	if roundTripped == nil || roundTripped.Group == nil || roundTripped.Group.CacheHitHalfLifeDays != 2.5 {
+		t.Fatalf("expected API key to preserve cache_hit_half_life_days after snapshot round trip, got %#v", roundTripped)
+	}
+}
+
+func TestAPIKeyService_RejectsV26AuthSnapshotWithoutCacheHitHalfLife(t *testing.T) {
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-cache-hit-half-life", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 26},
+	})
+
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected v26 auth snapshot to be rejected after cache_hit_half_life_days was added")
+	}
+	if apiKey != nil {
+		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
+	}
+}
+
 func TestAPIKeyService_RejectsV21AuthSnapshotWithoutBlockedGroups(t *testing.T) {
 	svc := &APIKeyService{}
 

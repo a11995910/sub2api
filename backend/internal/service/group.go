@@ -22,6 +22,10 @@ const (
 	DefaultCacheHitTargetPercent = 90.0
 	// DefaultCacheHitTargetTolerancePercent 是累计控制的默认容差，避免在目标附近频繁划拨。
 	DefaultCacheHitTargetTolerancePercent = 0.5
+	// DefaultCacheHitHalfLifeDays 是累计状态历史权重减半所需的默认天数。
+	DefaultCacheHitHalfLifeDays = 1.0
+	MinCacheHitHalfLifeDays     = 0.01
+	MaxCacheHitHalfLifeDays     = 365.0
 )
 
 // NormalizeCacheHitTargetPercent 把 API 浮点输入收敛到数据库与控制算法共用的 0.01% 精度。
@@ -41,6 +45,14 @@ func NormalizeCacheHitTargetTolerancePercent(value *float64) float64 {
 	return math.Round(*value*100) / 100
 }
 
+// NormalizeCacheHitHalfLifeDays 把半衰期收敛到数据库使用的 0.01 天精度。
+func NormalizeCacheHitHalfLifeDays(value *float64) float64 {
+	if value == nil {
+		return DefaultCacheHitHalfLifeDays
+	}
+	return math.Round(*value*100) / 100
+}
+
 func ValidateCacheHitTargetPercent(targetPercent float64) error {
 	if math.IsNaN(targetPercent) || math.IsInf(targetPercent, 0) || targetPercent < 0.01 || targetPercent > 100 {
 		return errors.New("cache_hit_target_percent 必须在 0.01 到 100 之间")
@@ -51,6 +63,13 @@ func ValidateCacheHitTargetPercent(targetPercent float64) error {
 func ValidateCacheHitTargetTolerancePercent(tolerancePercent float64) error {
 	if math.IsNaN(tolerancePercent) || math.IsInf(tolerancePercent, 0) || tolerancePercent < 0 || tolerancePercent > 50 {
 		return errors.New("cache_hit_target_tolerance_percent 必须在 0 到 50 之间")
+	}
+	return nil
+}
+
+func ValidateCacheHitHalfLifeDays(halfLifeDays float64) error {
+	if math.IsNaN(halfLifeDays) || math.IsInf(halfLifeDays, 0) || halfLifeDays < MinCacheHitHalfLifeDays || halfLifeDays > MaxCacheHitHalfLifeDays {
+		return errors.New("cache_hit_half_life_days 必须在 0.01 到 365 之间")
 	}
 	return nil
 }
@@ -123,20 +142,21 @@ type Group struct {
 	ImageRateIndependent        bool
 	// CacheHitQuarterToInput 是为兼容既有数据库/API 保留的开关名称，实际语义为
 	// 按用户和分组累计控制缓存命中率。
-	CacheHitQuarterToInput       bool
-	CacheHitTargetPercent        float64
+	CacheHitQuarterToInput         bool
+	CacheHitTargetPercent          float64
 	CacheHitTargetTolerancePercent float64
-	ImageRateMultiplier          float64
-	ImagePrice1K                 *float64
-	ImagePrice2K                 *float64
-	ImagePrice4K                 *float64
-	BatchImageDiscountMultiplier float64
-	BatchImageHoldMultiplier     float64
-	VideoRateIndependent         bool
-	VideoRateMultiplier          float64
-	VideoPrice480P               *float64
-	VideoPrice720P               *float64
-	VideoPrice1080P              *float64
+	CacheHitHalfLifeDays           float64
+	ImageRateMultiplier            float64
+	ImagePrice1K                   *float64
+	ImagePrice2K                   *float64
+	ImagePrice4K                   *float64
+	BatchImageDiscountMultiplier   float64
+	BatchImageHoldMultiplier       float64
+	VideoRateIndependent           bool
+	VideoRateMultiplier            float64
+	VideoPrice480P                 *float64
+	VideoPrice720P                 *float64
+	VideoPrice1080P                *float64
 	// VideoModelPrices is optional per-model-family per-second pricing
 	// (groups.video_model_prices JSONB). Shape: family → resolution → USD/s.
 	// When set for a model, overrides VideoPrice* for that model only.

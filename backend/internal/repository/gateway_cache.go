@@ -18,7 +18,7 @@ const stickySessionPrefix = "sticky_session:"
 const openAIVideoProtocolPrefix = "openai_video_protocol:"
 const liveCallPrefix = "live:call:"
 const (
-	cacheHitTargetPrefix = "cache_hit_target:v2:"
+	cacheHitTargetPrefix = "cache_hit_target:v3:"
 	cacheHitTargetTTL    = 30 * 24 * time.Hour
 )
 
@@ -36,46 +36,66 @@ var adjustCacheHitTargetScript = redis.NewScript(`
 	local cache_delta = tonumber(ARGV[2])
 	local target = tonumber(ARGV[3])
 	local tolerance = tonumber(ARGV[4])
-	local ttl_seconds = tonumber(ARGV[5])
-	if prompt_delta == nil or cache_delta == nil or target == nil or tolerance == nil or ttl_seconds == nil or
+	local half_life_seconds = tonumber(ARGV[5])
+	local now_unix = tonumber(ARGV[6])
+	local ttl_seconds = tonumber(ARGV[7])
+	if prompt_delta == nil or cache_delta == nil or target == nil or tolerance == nil or
+		half_life_seconds == nil or now_unix == nil or ttl_seconds == nil or
 		prompt_delta <= 0 or cache_delta < 0 or target < 0 or target > 10000 or
-		tolerance < 0 or target + tolerance > 10000 or ttl_seconds <= 0 then
+		tolerance < 0 or target + tolerance > 10000 or half_life_seconds <= 0 or
+		now_unix <= 0 or ttl_seconds <= 0 then
 		return redis.error_reply('invalid cache hit target arguments')
 	end
 
-	local prompt_total = tonumber(redis.call('HGET', key, 'prompt_tokens') or '0') + prompt_delta
-	local cache_available = tonumber(redis.call('HGET', key, 'cache_read_tokens') or '0') + cache_delta
-	-- 分段乘法减少累计 token 较大时的浮点误差，并与 Go 降级算法保持向下取整口径。
-	local target_allowed = math.floor(prompt_total / 10000) * target +
-		math.floor((prompt_total % 10000) * target / 10000)
+	local historical_prompt = tonumber(redis.call('HGET', key, 'prompt_tokens') or '0')
+	local historical_cache = tonumber(redis.call('HGET', key, 'cache_read_tokens') or '0')
+	local last_updated_unix = tonumber(redis.call('HGET', key, 'last_updated_unix') or '0')
+	if last_updated_unix > 0 and now_unix > last_updated_unix then
+		local decay = math.pow(0.5, (now_unix - last_updated_unix) / half_life_seconds)
+		historical_prompt = historical_prompt * decay
+		historical_cache = historical_cache * decay
+	end
+
+	local prompt_total = historical_prompt + prompt_delta
+	local cache_available = historical_cache + cache_delta
+	local target_allowed = math.floor(prompt_total * target / 10000)
 	local trigger = target + tolerance
-	local trigger_allowed = math.floor(prompt_total / 10000) * trigger +
-		math.floor((prompt_total % 10000) * trigger / 10000)
+	local trigger_allowed = math.floor(prompt_total * trigger / 10000)
 	local shifted = 0
 	if cache_available > trigger_allowed then
 		-- 容差带允许历史累计暂时高于目标；触发时只能重分类本次请求实际拥有的缓存读取 token，
 		-- 不能回溯改写已落库请求，否则 Redis 累计会与真实账单不一致。
-		shifted = math.min(cache_available - target_allowed, cache_delta)
+		shifted = math.min(math.ceil(cache_available - target_allowed), cache_delta)
 	end
 	local cache_kept = cache_available - shifted
-	redis.call('HSET', key, 'prompt_tokens', prompt_total, 'cache_read_tokens', cache_kept)
+	redis.call('HSET', key,
+		'prompt_tokens', prompt_total,
+		'cache_read_tokens', cache_kept,
+		'last_updated_unix', now_unix)
 	redis.call('EXPIRE', key, ttl_seconds)
-	return {shifted, prompt_total, cache_kept}
+	return {shifted, math.floor(prompt_total + 0.5), math.floor(cache_kept + 0.5)}
 `)
 
-// AdjustCacheHitToTarget 原子累加用户在分组内的提示词与调整后缓存读取 token。
-// 目标、容差和分组状态代次放入 key，使配置保存前后的累计状态相互隔离。
+// AdjustCacheHitToTarget 先按半衰期衰减历史权重，再原子累加本次提示词与缓存读取 token。
 func (c *gatewayCache) AdjustCacheHitToTarget(
 	ctx context.Context,
-	userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion, promptTokens, cacheReadTokens int64,
+	userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens int64,
+) (service.CacheHitTargetAdjustment, error) {
+	return c.adjustCacheHitToTargetAt(ctx, userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens, time.Now())
+}
+
+func (c *gatewayCache) adjustCacheHitToTargetAt(
+	ctx context.Context,
+	userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens int64,
+	observedAt time.Time,
 ) (service.CacheHitTargetAdjustment, error) {
 	if c == nil || c.rdb == nil {
 		return service.CacheHitTargetAdjustment{}, errors.New("gateway cache unavailable")
 	}
-	if userID <= 0 || groupID <= 0 || targetBasisPoints < 0 || targetBasisPoints > 10000 || toleranceBasisPoints < 0 || targetBasisPoints+toleranceBasisPoints > 10000 || promptTokens <= 0 || cacheReadTokens < 0 {
+	if userID <= 0 || groupID <= 0 || targetBasisPoints < 0 || targetBasisPoints > 10000 || toleranceBasisPoints < 0 || targetBasisPoints+toleranceBasisPoints > 10000 || halfLifeSeconds <= 0 || observedAt.Unix() <= 0 || promptTokens <= 0 || cacheReadTokens < 0 {
 		return service.CacheHitTargetAdjustment{}, errors.New("invalid cache hit target arguments")
 	}
-	key := fmt.Sprintf("%s%d:%d:%d:%d:%d", cacheHitTargetPrefix, userID, groupID, targetBasisPoints, toleranceBasisPoints, stateVersion)
+	key := fmt.Sprintf("%s%d:%d:%d:%d:%d:%d", cacheHitTargetPrefix, userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion)
 	values, err := adjustCacheHitTargetScript.Run(
 		ctx,
 		c.rdb,
@@ -84,6 +104,8 @@ func (c *gatewayCache) AdjustCacheHitToTarget(
 		cacheReadTokens,
 		targetBasisPoints,
 		toleranceBasisPoints,
+		halfLifeSeconds,
+		observedAt.Unix(),
 		int64(cacheHitTargetTTL/time.Second),
 	).Int64Slice()
 	if err != nil {

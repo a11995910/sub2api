@@ -664,7 +664,7 @@
             </span>
           </label>
           <div v-if="createForm.cache_hit_quarter_to_input_enabled" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            <div class="grid gap-3 sm:grid-cols-2">
+            <div class="grid gap-3 sm:grid-cols-3">
               <div>
                 <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
                 <div class="relative">
@@ -693,6 +693,21 @@
                     class="input pr-8"
                   />
                   <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                </div>
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.cacheHitHalfLifeDays") }}</label>
+                <div class="relative">
+                  <input
+                    v-model.number="createForm.cache_hit_half_life_days"
+                    type="number"
+                    min="0.01"
+                    max="365"
+                    step="0.01"
+                    required
+                    class="input pr-8"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">{{ t("admin.groups.form.daysUnit") }}</span>
                 </div>
               </div>
             </div>
@@ -2584,7 +2599,7 @@
             </span>
           </label>
           <div v-if="editForm.cache_hit_quarter_to_input_enabled" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            <div class="grid gap-3 sm:grid-cols-2">
+            <div class="grid gap-3 sm:grid-cols-3">
               <div>
                 <label class="input-label">{{ t("admin.groups.form.cacheHitTargetPercent") }}</label>
                 <div class="relative">
@@ -2613,6 +2628,21 @@
                     class="input pr-8"
                   />
                   <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">%</span>
+                </div>
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.cacheHitHalfLifeDays") }}</label>
+                <div class="relative">
+                  <input
+                    v-model.number="editForm.cache_hit_half_life_days"
+                    type="number"
+                    min="0.01"
+                    max="365"
+                    step="0.01"
+                    required
+                    class="input pr-8"
+                  />
+                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-500">{{ t("admin.groups.form.daysUnit") }}</span>
                 </div>
               </div>
             </div>
@@ -5802,6 +5832,7 @@ const createForm = reactive({
   cache_hit_quarter_to_input_enabled: false,
   cache_hit_target_percent: 90,
   cache_hit_target_tolerance_percent: 0.5,
+  cache_hit_half_life_days: 1,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
   batch_image_hold_multiplier: 0.6,
@@ -6174,6 +6205,7 @@ const editForm = reactive({
   cache_hit_quarter_to_input_enabled: false,
   cache_hit_target_percent: 90,
   cache_hit_target_tolerance_percent: 0.5,
+  cache_hit_half_life_days: 1,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
   batch_image_hold_multiplier: 0.6,
@@ -6713,6 +6745,7 @@ const closeCreateModal = () => {
   createForm.cache_hit_quarter_to_input_enabled = false;
   createForm.cache_hit_target_percent = 90;
   createForm.cache_hit_target_tolerance_percent = 0.5;
+  createForm.cache_hit_half_life_days = 1;
   createForm.image_rate_multiplier = 1;
   createForm.batch_image_discount_multiplier = 0.5;
   createForm.batch_image_hold_multiplier = 0.6;
@@ -6804,6 +6837,7 @@ const validateCacheHitTargetForm = (
   enabled: boolean,
   targetPercent: number | string,
   tolerancePercent: number | string,
+  halfLifeDays: number | string,
 ): boolean => {
   if (!enabled) return true;
   const target = Number(targetPercent);
@@ -6822,6 +6856,11 @@ const validateCacheHitTargetForm = (
     appStore.showError(t("admin.groups.form.cacheHitTargetTolerancePercentInvalid"));
     return false;
   }
+  const halfLife = Number(halfLifeDays);
+  if (!Number.isFinite(halfLife) || halfLife < 0.01 || halfLife > 365) {
+    appStore.showError(t("admin.groups.form.cacheHitHalfLifeDaysInvalid"));
+    return false;
+  }
   return true;
 };
 
@@ -6835,6 +6874,7 @@ const handleCreateGroup = async () => {
       createForm.cache_hit_quarter_to_input_enabled,
       createForm.cache_hit_target_percent,
       createForm.cache_hit_target_tolerance_percent,
+      createForm.cache_hit_half_life_days,
     )
   ) {
     return;
@@ -7038,6 +7078,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.cache_hit_target_percent = group.cache_hit_target_percent ?? 90;
   editForm.cache_hit_target_tolerance_percent =
     group.cache_hit_target_tolerance_percent ?? 0.5;
+  editForm.cache_hit_half_life_days = group.cache_hit_half_life_days ?? 1;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.batch_image_discount_multiplier =
     group.batch_image_discount_multiplier ?? 0.5;
@@ -7171,6 +7212,7 @@ const handleUpdateGroup = async () => {
       editForm.cache_hit_quarter_to_input_enabled,
       editForm.cache_hit_target_percent,
       editForm.cache_hit_target_tolerance_percent,
+      editForm.cache_hit_half_life_days,
     )
   ) {
     return;

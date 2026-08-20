@@ -23276,6 +23276,8 @@ type GroupMutation struct {
 	addcache_hit_target_percent             *float64
 	cache_hit_target_tolerance_percent      *float64
 	addcache_hit_target_tolerance_percent   *float64
+	cache_hit_half_life_days                *float64
+	addcache_hit_half_life_days             *float64
 	image_rate_multiplier                   *float64
 	addimage_rate_multiplier                *float64
 	image_price_1k                          *float64
@@ -24975,6 +24977,62 @@ func (m *GroupMutation) AddedCacheHitTargetTolerancePercent() (r float64, exists
 func (m *GroupMutation) ResetCacheHitTargetTolerancePercent() {
 	m.cache_hit_target_tolerance_percent = nil
 	m.addcache_hit_target_tolerance_percent = nil
+}
+
+// SetCacheHitHalfLifeDays sets the "cache_hit_half_life_days" field.
+func (m *GroupMutation) SetCacheHitHalfLifeDays(f float64) {
+	m.cache_hit_half_life_days = &f
+	m.addcache_hit_half_life_days = nil
+}
+
+// CacheHitHalfLifeDays returns the value of the "cache_hit_half_life_days" field in the mutation.
+func (m *GroupMutation) CacheHitHalfLifeDays() (r float64, exists bool) {
+	v := m.cache_hit_half_life_days
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheHitHalfLifeDays returns the old "cache_hit_half_life_days" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCacheHitHalfLifeDays(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheHitHalfLifeDays is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheHitHalfLifeDays requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheHitHalfLifeDays: %w", err)
+	}
+	return oldValue.CacheHitHalfLifeDays, nil
+}
+
+// AddCacheHitHalfLifeDays adds f to the "cache_hit_half_life_days" field.
+func (m *GroupMutation) AddCacheHitHalfLifeDays(f float64) {
+	if m.addcache_hit_half_life_days != nil {
+		*m.addcache_hit_half_life_days += f
+	} else {
+		m.addcache_hit_half_life_days = &f
+	}
+}
+
+// AddedCacheHitHalfLifeDays returns the value that was added to the "cache_hit_half_life_days" field in this mutation.
+func (m *GroupMutation) AddedCacheHitHalfLifeDays() (r float64, exists bool) {
+	v := m.addcache_hit_half_life_days
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheHitHalfLifeDays resets all changes to the "cache_hit_half_life_days" field.
+func (m *GroupMutation) ResetCacheHitHalfLifeDays() {
+	m.cache_hit_half_life_days = nil
+	m.addcache_hit_half_life_days = nil
 }
 
 // SetImageRateMultiplier sets the "image_rate_multiplier" field.
@@ -27586,7 +27644,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 74)
+	fields := make([]string, 0, 75)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27685,6 +27743,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.cache_hit_target_tolerance_percent != nil {
 		fields = append(fields, group.FieldCacheHitTargetTolerancePercent)
+	}
+	if m.cache_hit_half_life_days != nil {
+		fields = append(fields, group.FieldCacheHitHalfLifeDays)
 	}
 	if m.image_rate_multiplier != nil {
 		fields = append(fields, group.FieldImageRateMultiplier)
@@ -27883,6 +27944,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheHitTargetPercent()
 	case group.FieldCacheHitTargetTolerancePercent:
 		return m.CacheHitTargetTolerancePercent()
+	case group.FieldCacheHitHalfLifeDays:
+		return m.CacheHitHalfLifeDays()
 	case group.FieldImageRateMultiplier:
 		return m.ImageRateMultiplier()
 	case group.FieldImagePrice1k:
@@ -28040,6 +28103,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldCacheHitTargetPercent(ctx)
 	case group.FieldCacheHitTargetTolerancePercent:
 		return m.OldCacheHitTargetTolerancePercent(ctx)
+	case group.FieldCacheHitHalfLifeDays:
+		return m.OldCacheHitHalfLifeDays(ctx)
 	case group.FieldImageRateMultiplier:
 		return m.OldImageRateMultiplier(ctx)
 	case group.FieldImagePrice1k:
@@ -28361,6 +28426,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheHitTargetTolerancePercent(v)
+		return nil
+	case group.FieldCacheHitHalfLifeDays:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheHitHalfLifeDays(v)
 		return nil
 	case group.FieldImageRateMultiplier:
 		v, ok := value.(float64)
@@ -28687,6 +28759,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addcache_hit_target_tolerance_percent != nil {
 		fields = append(fields, group.FieldCacheHitTargetTolerancePercent)
 	}
+	if m.addcache_hit_half_life_days != nil {
+		fields = append(fields, group.FieldCacheHitHalfLifeDays)
+	}
 	if m.addimage_rate_multiplier != nil {
 		fields = append(fields, group.FieldImageRateMultiplier)
 	}
@@ -28781,6 +28856,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedCacheHitTargetPercent()
 	case group.FieldCacheHitTargetTolerancePercent:
 		return m.AddedCacheHitTargetTolerancePercent()
+	case group.FieldCacheHitHalfLifeDays:
+		return m.AddedCacheHitHalfLifeDays()
 	case group.FieldImageRateMultiplier:
 		return m.AddedImageRateMultiplier()
 	case group.FieldImagePrice1k:
@@ -28903,6 +28980,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCacheHitTargetTolerancePercent(v)
+		return nil
+	case group.FieldCacheHitHalfLifeDays:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheHitHalfLifeDays(v)
 		return nil
 	case group.FieldImageRateMultiplier:
 		v, ok := value.(float64)
@@ -29342,6 +29426,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldCacheHitTargetTolerancePercent:
 		m.ResetCacheHitTargetTolerancePercent()
+		return nil
+	case group.FieldCacheHitHalfLifeDays:
+		m.ResetCacheHitHalfLifeDays()
 		return nil
 	case group.FieldImageRateMultiplier:
 		m.ResetImageRateMultiplier()

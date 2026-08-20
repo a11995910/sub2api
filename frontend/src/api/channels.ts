@@ -32,6 +32,8 @@ export interface UserAvailableGroup {
   cache_hit_target_percent: number
   /** 超过目标加容差后才触发划拨（百分比）。 */
   cache_hit_target_tolerance_percent: number
+  /** 历史累计权重减半所需天数。 */
+  cache_hit_half_life_days: number
   /** 图片生成独立倍率，仅 image_rate_independent=true 时生效。 */
   image_rate_multiplier: number
   /** 1K 图片生成单价；为空时后端计费会回退默认图片价格。 */

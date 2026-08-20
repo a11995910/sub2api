@@ -290,6 +290,8 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		"image_rate_independent",
 		"cache_hit_quarter_to_input_enabled",
 		"cache_hit_target_percent",
+		"cache_hit_target_tolerance_percent",
+		"cache_hit_half_life_days",
 		"image_rate_multiplier",
 		"image_price_1k",
 		"image_price_2k",

@@ -14,10 +14,13 @@ func TestNormalizeAndValidateCacheHitTargetPercent(t *testing.T) {
 
 	require.Equal(t, 90.0, NormalizeCacheHitTargetPercent(nil))
 	require.Equal(t, 0.5, NormalizeCacheHitTargetTolerancePercent(nil))
+	require.Equal(t, 1.0, NormalizeCacheHitHalfLifeDays(nil))
 	value := 89.876
 	require.Equal(t, 89.88, NormalizeCacheHitTargetPercent(&value))
 	tolerance := 0.506
 	require.Equal(t, 0.51, NormalizeCacheHitTargetTolerancePercent(&tolerance))
+	halfLife := 1.236
+	require.Equal(t, 1.24, NormalizeCacheHitHalfLifeDays(&halfLife))
 	require.NoError(t, ValidateCacheHitTargetConfig(90, 0.5))
 	require.NoError(t, ValidateCacheHitTargetConfig(100, 0))
 	require.Error(t, ValidateCacheHitTargetConfig(0, 0))
@@ -27,6 +30,10 @@ func TestNormalizeAndValidateCacheHitTargetPercent(t *testing.T) {
 	require.Error(t, ValidateCacheHitTargetConfig(90, math.NaN()))
 	require.Error(t, ValidateCacheHitTargetConfig(99.75, 0.5))
 	require.Error(t, ValidateCacheHitTargetConfig(0.25, 0.5))
+	require.NoError(t, ValidateCacheHitHalfLifeDays(1))
+	require.Error(t, ValidateCacheHitHalfLifeDays(0))
+	require.Error(t, ValidateCacheHitHalfLifeDays(365.01))
+	require.Error(t, ValidateCacheHitHalfLifeDays(math.Inf(1)))
 }
 
 // TestGroup_GetImagePrice_1K 测试 1K 尺寸返回正确价格

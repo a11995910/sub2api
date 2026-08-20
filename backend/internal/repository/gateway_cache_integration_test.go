@@ -44,15 +44,15 @@ func (s *GatewayCacheSuite) TestAdjustCacheHitToTargetCumulative() {
 	tracker, ok := s.cache.(service.CacheHitTargetTracker)
 	require.True(s.T(), ok)
 
-	adjustment, err := tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 50, 1, 100, 80)
+	adjustment, err := tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 50, 86400, 1, 100, 80)
 	require.NoError(s.T(), err)
 	require.Zero(s.T(), adjustment.ShiftedTokens)
 
-	adjustment, err = tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 50, 1, 100, 100)
+	adjustment, err = tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 50, 86400, 1, 100, 100)
 	require.NoError(s.T(), err)
 	require.Zero(s.T(), adjustment.ShiftedTokens)
 
-	adjustment, err = tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 50, 1, 100, 100)
+	adjustment, err = tracker.AdjustCacheHitToTarget(s.ctx, 1001, 2001, 9000, 50, 86400, 1, 100, 100)
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), 10, adjustment.ShiftedTokens)
 }

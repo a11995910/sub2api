@@ -220,6 +220,11 @@ func CacheHitTargetTolerancePercent(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCacheHitTargetTolerancePercent, v))
 }
 
+// CacheHitHalfLifeDays applies equality check predicate on the "cache_hit_half_life_days" field. It's identical to CacheHitHalfLifeDaysEQ.
+func CacheHitHalfLifeDays(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitHalfLifeDays, v))
+}
+
 // ImageRateMultiplier applies equality check predicate on the "image_rate_multiplier" field. It's identical to ImageRateMultiplierEQ.
 func ImageRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateMultiplier, v))
@@ -1748,6 +1753,46 @@ func CacheHitTargetTolerancePercentLT(v float64) predicate.Group {
 // CacheHitTargetTolerancePercentLTE applies the LTE predicate on the "cache_hit_target_tolerance_percent" field.
 func CacheHitTargetTolerancePercentLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldCacheHitTargetTolerancePercent, v))
+}
+
+// CacheHitHalfLifeDaysEQ applies the EQ predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCacheHitHalfLifeDays, v))
+}
+
+// CacheHitHalfLifeDaysNEQ applies the NEQ predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCacheHitHalfLifeDays, v))
+}
+
+// CacheHitHalfLifeDaysIn applies the In predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCacheHitHalfLifeDays, vs...))
+}
+
+// CacheHitHalfLifeDaysNotIn applies the NotIn predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCacheHitHalfLifeDays, vs...))
+}
+
+// CacheHitHalfLifeDaysGT applies the GT predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldCacheHitHalfLifeDays, v))
+}
+
+// CacheHitHalfLifeDaysGTE applies the GTE predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldCacheHitHalfLifeDays, v))
+}
+
+// CacheHitHalfLifeDaysLT applies the LT predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldCacheHitHalfLifeDays, v))
+}
+
+// CacheHitHalfLifeDaysLTE applies the LTE predicate on the "cache_hit_half_life_days" field.
+func CacheHitHalfLifeDaysLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldCacheHitHalfLifeDays, v))
 }
 
 // ImageRateMultiplierEQ applies the EQ predicate on the "image_rate_multiplier" field.

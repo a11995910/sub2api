@@ -2487,12 +2487,15 @@ export default {
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
         cacheHitTargetEnabled: 'Control user cache hit rate',
-        cacheHitTargetEnabledHint: 'Tracks each user and group cumulatively. When the rate exceeds the target plus tolerance, the required cache-read tokens are reclassified as regular input to return to the target.',
+        cacheHitTargetEnabledHint: 'Tracks each user and group with time-decayed totals. When the rate exceeds the target plus tolerance, the required cache-read tokens are reclassified as regular input to return to the target.',
         cacheHitTargetPercent: 'Target cache hit rate',
         cacheHitTargetTolerancePercent: 'Tolerance band',
-        cacheHitTargetPercentHint: 'Defaults to a 90% target with ±0.50% tolerance. Control triggers above 90.50% and returns the cumulative rate to 90%; upstream caching is unaffected.',
+        cacheHitHalfLifeDays: 'History half-life',
+        daysUnit: 'days',
+        cacheHitTargetPercentHint: 'Defaults to a 90% target, ±0.50% tolerance, and a 1-day history half-life. Historical weight halves after each half-life; upstream caching is unaffected.',
         cacheHitTargetPercentInvalid: 'Target cache hit rate must be between 0.01% and 100%.',
-        cacheHitTargetTolerancePercentInvalid: 'Tolerance must be between 0% and 50%, and target ± tolerance must remain between 0% and 100%.'
+        cacheHitTargetTolerancePercentInvalid: 'Tolerance must be between 0% and 50%, and target ± tolerance must remain between 0% and 100%.',
+        cacheHitHalfLifeDaysInvalid: 'History half-life must be between 0.01 and 365 days.'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
