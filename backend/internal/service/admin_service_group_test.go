@@ -404,6 +404,44 @@ func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	require.Nil(t, repo.created.ImagePrice4K)
 }
 
+func TestAdminService_CreateAndUpdateGroup_RejectsZeroCacheHitHalfLifeDays(t *testing.T) {
+	zero := 0.0
+
+	t.Run("create", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name:                 "invalid-half-life",
+			Platform:             PlatformOpenAI,
+			RateMultiplier:       1,
+			CacheHitHalfLifeDays: &zero,
+		})
+
+		require.ErrorContains(t, err, "cache_hit_half_life_days")
+		require.Nil(t, repo.created)
+	})
+
+	t.Run("update", func(t *testing.T) {
+		existing := &Group{
+			ID:                   1,
+			Name:                 "existing",
+			Platform:             PlatformOpenAI,
+			Status:               StatusActive,
+			CacheHitHalfLifeDays: DefaultCacheHitHalfLifeDays,
+		}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			CacheHitHalfLifeDays: &zero,
+		})
+
+		require.ErrorContains(t, err, "cache_hit_half_life_days")
+		require.Nil(t, repo.updated)
+	})
+}
+
 func TestAdminService_CreateGroup_DefaultsImageResponseFormatToBase64(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}
