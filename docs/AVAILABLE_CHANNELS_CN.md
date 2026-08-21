@@ -68,7 +68,7 @@
 
 账号通过 `POST /api/v1/admin/accounts` 创建、通过 `PUT /api/v1/admin/accounts/:id` 编辑，批量编辑继续使用 `POST /api/v1/admin/accounts/bulk-update`。编辑请求没有携带该字段时保留账号当前值；Spark 影子账号继承父账号的有效值，父账号变更后数据库触发器同步影子账号并写入调度事件，避免父子账号采用不同计费口径。
 
-网关只在 OpenAI token 计费路径中应用该开关。达到模型长上下文阈值并实际采用对应价格时，用量记录 `usage_logs.long_context_billing_applied` 为 `true`，管理端用量列表会在实际费用旁显示 `x2` 标记；未命中阈值、非 token 计费和历史记录保持 `false`。用量接口返回同名字段，前端不根据金额反推是否发生长上下文计费。
+网关只在 OpenAI token 计费路径中应用长上下文规则。分组 `long_context_pricing_enabled` 或账号 `extra.openai_long_context_billing_enabled` 任一开启即可允许使用官方长上下文阶梯；账号开关可为关闭了该能力的分组单独开启，但不能反向关闭分组已经开启的能力。达到模型长上下文阈值并实际采用对应价格时，用量记录 `usage_logs.long_context_billing_applied` 为 `true`，管理端用量列表会在实际费用旁显示长上下文标记；两个开关均关闭、未命中阈值、非 token 计费和历史记录保持 `false`。用量接口返回同名字段，前端不根据金额反推是否发生长上下文计费。
 
 ## Grok 账号导入与渠道监控
 
@@ -114,6 +114,14 @@
 请求命中渠道定价时，系统按请求定价时刻换算到配置时区，并把对应时段倍率乘到渠道 token 成本上；未命中时段、没有配置或读取到历史脏配置时安全回退为 `1`。请求处理和用量记录共用固定的定价时刻，避免跨时段的长请求在不同阶段采用不同倍率。分组倍率、分组高峰倍率和其他既有倍率仍按原顺序参与最终计费。
 
 分时倍率只适用于主渠道 `channel_model_pricing` 的 token 定价。`per_request`、`image`、`video` 模式会拒绝分时配置；分组模型定价和账号统计定价也不接受该字段，因为这些链路没有相同的请求时间语义。删除全部时段等同于关闭分时倍率。数据库通过 `channel_model_pricing.time_pricing` JSONB 保存配置，旧记录为空，不需要回填。
+
+### 渠道服务层级与上下文区间倍率
+
+管理端渠道定价的 `token` 模式支持可选的 Fast/Flex 服务层级倍率。`fast_multiplier` 同时适用于 `fast` 和 `priority` 请求，`flex_multiplier` 适用于 `flex` 请求；未配置时继续使用模型目录中的服务层级价格或系统默认倍率。倍率必须大于 `0`，并统一作用于输入、输出、缓存写入和缓存读取成本，避免只调整部分 token 项目。
+
+上下文区间可以使用 `input_multiplier`、`output_multiplier`、`cache_write_multiplier` 和 `cache_read_multiplier`，按命中的渠道基础价格分别计算。区间内同一计费项目同时存在显式价格和倍率时，显式价格优先；没有命中区间或对应项目均未配置时回退渠道基础价格。区间倍率是否参与计费仍受分组或账号的长上下文计费开关控制，最终再叠加服务层级倍率、分时倍率及有效分组倍率。
+
+这些字段只允许写入主渠道定价，不进入分组模型定价或账号统计定价。管理接口 `POST /api/v1/admin/channels`、`PUT /api/v1/admin/channels/:id` 及渠道详情响应使用同名字段；数据库分别保存于 `channel_model_pricing.fast_multiplier`、`channel_model_pricing.flex_multiplier` 和 `channel_pricing_intervals.*_multiplier`。旧记录字段为空，保持原计费行为，不需要回填。
 
 ### 视频渠道定价与兼容边界
 
