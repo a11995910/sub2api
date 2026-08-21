@@ -297,7 +297,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	if err != nil {
 		currentRoutingModel = routingModel
-		if mappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel); mappedModel != "" {
+		if mappedModel := resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel); mappedModel != "" {
 			currentRoutingModel = mappedModel
 		}
 		requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
@@ -325,7 +325,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	}
 	// 自动承接后，Count Tokens 与实际请求必须使用同一目标分组配置。
 	channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+	preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)
 	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
 	defaultMappedModel := preferredMappedModel
 

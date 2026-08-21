@@ -1117,7 +1117,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		)
 		if err != nil {
 			currentRoutingModel = routingModel
-			if mappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel); mappedModel != "" {
+			if mappedModel := resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel); mappedModel != "" {
 				currentRoutingModel = mappedModel
 			}
 			if failoverClientGone(c) {
@@ -1160,7 +1160,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 		channelMappingMsg, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-		effectiveMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+		effectiveMappedModel = resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
