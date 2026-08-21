@@ -62,10 +62,12 @@ func (s *GroupRepoSuite) TestCreate() {
 	err := s.repo.Create(s.ctx, group)
 	s.Require().NoError(err, "Create")
 	s.Require().NotZero(group.ID, "expected ID to be set")
+	s.Require().Equal(service.DefaultCacheHitHalfLifeDays, group.CacheHitHalfLifeDays)
 
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("test-create", got.Name)
+	s.Require().Equal(service.DefaultCacheHitHalfLifeDays, got.CacheHitHalfLifeDays)
 }
 
 func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligibleAccounts() {
@@ -193,10 +195,12 @@ func (s *GroupRepoSuite) TestUpdate() {
 	group.Name = "updated"
 	err := s.repo.Update(s.ctx, group)
 	s.Require().NoError(err, "Update")
+	s.Require().Equal(service.DefaultCacheHitHalfLifeDays, group.CacheHitHalfLifeDays)
 
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID after update")
 	s.Require().Equal("updated", got.Name)
+	s.Require().Equal(service.DefaultCacheHitHalfLifeDays, got.CacheHitHalfLifeDays)
 }
 
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {

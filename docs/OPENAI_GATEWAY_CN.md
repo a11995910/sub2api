@@ -17,6 +17,14 @@ OpenAI 平台分组的 API Key 可通过 OpenAI 兼容入口调用文本、图�
 
 非 OpenAI 分组访问 Embeddings 或图片入口时，网关返回 `404`，错误类型为 `not_found_error`，并记录本地功能门禁类运维限制标记。
 
+## Responses 转 Chat Completions 兼容
+
+当 OpenAI API Key 账号被配置为强制使用 Chat Completions，或上游能力探测确认不支持 Responses 时，`POST /v1/responses` 会在网关内转换为 Chat Completions 请求。custom、`tool_search`、namespace/MCP 工具和工具结果会按 Chat Completions 结构转发，响应再恢复为 Responses 事件或非流式响应。
+
+转换链会按 Responses reasoning item ID 缓存完整 `reasoning_content`，缓存有效期为 7 天。后续历史仅携带 `encrypted_content` 而没有明文 summary 时，网关按该 ID 回查并补回 assistant 工具调用消息；缓存读取失败或未命中时保持兼容降级，不中断请求。每个显式 reasoning item 都开启独立思考片段，不会错误继承前一个工具调用的明文；请求中重新出现明文 summary 时会刷新缓存。
+
+Raw Chat 回退在内部转换完成前保留 reasoning item ID，使缓存回查可用，但该 ID 不会进入最终 Chat Completions 上游请求。原生 OpenAI Responses、透传和 WebSocket 出站仍会删除不符合 OpenAI 前缀约束的回放 item ID，避免上游因无效 ID 返回 `400`。
+
 ## 上游错误可见性
 
 OpenAI 网关及 Codex 直连入口不会向客户端回传基础设施类上游错误体。上游返回 `5xx`（包括 Cloudflare 的 `520` 至 `524`）时，即使命中管理端错误透传规则，客户端只会收到本地通用文案 `Upstream service temporarily unavailable`；上游域名、CDN 区域、回源地址、IP、错误详情和原始 JSON 不会出现在 HTTP 或 SSE 错误响应中。

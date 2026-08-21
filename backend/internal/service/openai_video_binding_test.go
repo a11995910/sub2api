@@ -62,6 +62,14 @@ func (s *videoBindingCacheStub) ReleaseGrokVideoBilled(_ context.Context, _ stri
 	return nil
 }
 
+func (s *videoBindingCacheStub) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+
+func (s *videoBindingCacheStub) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+}
+
 func TestVideoTaskSessionHashIsScopedToOwner(t *testing.T) {
 	base := VideoTaskSessionHash("task-1", 10, 20)
 	require.NotEmpty(t, base)

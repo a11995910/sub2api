@@ -43,6 +43,15 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 	return &groupRepository{client: client, sql: sqlq}
 }
 
+// normalizeCacheHitHalfLifeDaysForPersistence 兼容未初始化新字段的历史内部调用。
+// 管理接口会在进入仓储前拒绝显式 0，这里只补齐 service.Group 的 Go 零值。
+func normalizeCacheHitHalfLifeDaysForPersistence(value float64) float64 {
+	if value == 0 {
+		return service.DefaultCacheHitHalfLifeDays
+	}
+	return value
+}
+
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
 	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
 		return err
@@ -57,6 +66,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	if groupIn == nil {
 		return errors.New("group is nil")
 	}
+	groupIn.CacheHitHalfLifeDays = normalizeCacheHitHalfLifeDaysForPersistence(groupIn.CacheHitHalfLifeDays)
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
@@ -254,6 +264,10 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	if groupIn == nil {
+		return errors.New("group is nil")
+	}
+	groupIn.CacheHitHalfLifeDays = normalizeCacheHitHalfLifeDaysForPersistence(groupIn.CacheHitHalfLifeDays)
 	modelPricing, err := json.Marshal(groupIn.ModelPricing)
 	if err != nil {
 		return fmt.Errorf("marshal group model pricing: %w", err)
