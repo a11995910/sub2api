@@ -385,6 +385,8 @@ func TestAPIContracts(t *testing.T) {
 						"batch_image_hold_multiplier": 0,
 						"cache_hit_quarter_to_input_enabled": false,
 						"cache_hit_target_percent": 0,
+						"cache_hit_target_tolerance_percent": 0,
+						"cache_hit_half_life_days": 0,
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
 						"image_response_format": "",

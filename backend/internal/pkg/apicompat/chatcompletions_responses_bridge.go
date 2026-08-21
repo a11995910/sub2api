@@ -353,6 +353,10 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		itemType := rawString(item["type"])
 		switch itemType {
 		case "reasoning":
+			// 显式 reasoning item 开启新的思考片段，不能沿用上一项的明文；
+			// encrypted-only 项应按自身 ID 回查缓存，未命中也应保持为空。
+			pendingReasoning = ""
+			lastTurnReasoning = ""
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
 			} else if opts != nil && opts.ReasoningContentByID != nil {

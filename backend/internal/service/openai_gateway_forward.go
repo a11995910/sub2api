@@ -99,6 +99,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			return nil, err
 		}
 	}
+	// Raw Chat 回退需要 reasoning item ID 回查本地缓存；原生 Responses
+	// 出站仍使用下方清理后的请求体，避免把无效回放 ID 发给 OpenAI。
+	responsesChatFallbackBody := body
 	// 所有 OpenAI Responses 出站分支共用同一 ID 契约。必须在 passthrough
 	// 早返回之前清理，否则 API-key/自定义 Base URL 会把客户端回放的
 	// message/function_call item_* id 原样发给上游并持续收到 400。
@@ -131,7 +134,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
-		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, responsesChatFallbackBody)
 	}
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
 		sanitizedBody, changed, sanitizeErr := sanitizeOpenAIResponsesInputItemIDs(body)

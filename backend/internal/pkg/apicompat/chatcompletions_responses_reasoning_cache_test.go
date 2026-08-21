@@ -41,6 +41,28 @@ func TestResponsesToChat_ReasoningCacheLookup_RestoresEncryptedOnlyItem(t *testi
 	require.Equal(t, "user", out.Messages[2].Role)
 }
 
+// 新 reasoning item 必须覆盖同轮前一个工具调用的思考文本。
+func TestResponsesToChat_ReasoningCacheLookup_RestoresAfterPriorToolCall(t *testing.T) {
+	req := &ResponsesRequest{Model: "deepseek-reasoner", Input: json.RawMessage(`[
+		{"type":"reasoning","id":"item_plain","summary":[{"type":"summary_text","text":"plain thinking"}]},
+		{"type":"function_call","call_id":"call_0","name":"get_value","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_0","output":"ok"},
+		{"type":"reasoning","id":"item_enc1","summary":[],"encrypted_content":"opaque"},
+		{"type":"function_call","call_id":"call_1","name":"get_value","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_1","output":"ok"}
+	]`)}
+	out, err := ResponsesToChatCompletionsRequestWithOptions(req, &ResponsesToChatOptions{ReasoningContentByID: func(id string) string {
+		if id == "item_enc1" {
+			return "cached thinking"
+		}
+		return ""
+	}})
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 4)
+	require.Equal(t, "plain thinking", out.Messages[0].ReasoningContent)
+	require.Equal(t, "cached thinking", out.Messages[2].ReasoningContent)
+}
+
 // A cache miss keeps the original behavior: no reasoning_content, no error.
 func TestResponsesToChat_ReasoningCacheLookup_MissKeepsOriginalBehavior(t *testing.T) {
 	req := &ResponsesRequest{
@@ -64,6 +86,29 @@ func TestResponsesToChat_ReasoningCacheLookup_MissKeepsOriginalBehavior(t *testi
 	legacy, err := ResponsesToChatCompletionsRequest(req)
 	require.NoError(t, err)
 	require.Equal(t, out.Messages, legacy.Messages)
+}
+
+// 显式 encrypted-only reasoning item 未命中缓存时，不得继承前一项的明文。
+func TestResponsesToChat_ReasoningCacheLookup_MissDoesNotReusePreviousItem(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "deepseek-reasoner",
+		Input: json.RawMessage(`[
+			{"type":"reasoning","id":"item_plain","summary":[{"type":"summary_text","text":"old thinking"}]},
+			{"type":"function_call","call_id":"call_0","name":"get_value","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_0","output":"ok"},
+			{"type":"reasoning","id":"item_missing","summary":[],"encrypted_content":"opaque"},
+			{"type":"function_call","call_id":"call_1","name":"get_value","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		]`),
+	}
+
+	out, err := ResponsesToChatCompletionsRequestWithOptions(req, &ResponsesToChatOptions{
+		ReasoningContentByID: func(string) string { return "" },
+	})
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 4)
+	require.Equal(t, "old thinking", out.Messages[0].ReasoningContent)
+	require.Empty(t, out.Messages[2].ReasoningContent)
 }
 
 // Plaintext summary wins and the cache lookup is not consulted.
