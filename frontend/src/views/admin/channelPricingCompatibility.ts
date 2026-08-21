@@ -20,6 +20,8 @@ export function mapChannelPricingToForm(entry: ChannelModelPricing): PricingForm
     output_price: perTokenToMTok(entry.output_price),
     cache_write_price: perTokenToMTok(entry.cache_write_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
+    fast_multiplier: entry.fast_multiplier,
+    flex_multiplier: entry.flex_multiplier,
     image_input_price: perTokenToMTok(entry.image_input_price),
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,
