@@ -118,6 +118,7 @@ jobs:
               -f deploy/Dockerfile \
               --build-arg COMMIT="$COMMIT" \
               --build-arg DATE="$DATE" \
+              --build-arg GOMAXPROCS=2 \
               -t "$target_image" \
               --load .
           version_output="$(docker run --rm "$target_image" --version)"

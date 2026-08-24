@@ -122,6 +122,7 @@ ensure_target_image() {
         -f deploy/Dockerfile \
         --build-arg COMMIT="$short_commit" \
         --build-arg DATE="$commit_date" \
+        --build-arg GOMAXPROCS=2 \
         -t "$target_image" \
         --load .
     fi

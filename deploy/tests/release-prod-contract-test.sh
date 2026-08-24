@@ -11,12 +11,12 @@ fail() {
 
 assert_contains() {
   local file="$1" text="$2"
-  grep -Fq "$text" "$file" || fail "$file is missing: $text"
+  grep -Fq -- "$text" "$file" || fail "$file is missing: $text"
 }
 
 assert_not_contains() {
   local file="$1" text="$2"
-  if grep -Fq "$text" "$file"; then
+  if grep -Fq -- "$text" "$file"; then
     fail "$file still contains: $text"
   fi
 }
@@ -24,6 +24,8 @@ assert_not_contains() {
 assert_contains deploy/release-prod 'backup_result=/opt/sub2api/state/prod-backup-result.json'
 assert_contains deploy/release-prod 'validate-backup-receipt'
 assert_contains deploy/release-prod 'wait-container-healthy'
+assert_contains deploy/release-prod '        --build-arg GOMAXPROCS=2 \'
+assert_contains deploy/Dockerfile 'ARG GOMAXPROCS'
 assert_contains deploy/release-prod '"$scripts_dir/update-sub2api-image" "$env_file" "$previous_original_image" prod-abort'
 assert_contains deploy/release-prod 'if [[ "$recovery_failed" -eq 0 ]]; then'
 assert_not_contains deploy/release-prod 'database_backup='
@@ -36,6 +38,7 @@ fi
 
 assert_contains .github/workflows/staging-verify.yml 'deploy/release-gates wait-container-healthy "$container_id" 90 2'
 assert_contains .github/workflows/staging-verify.yml 'deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1'
+assert_contains .github/workflows/staging-verify.yml '              --build-arg GOMAXPROCS=2 \'
 assert_contains .github/workflows/prod-release.yml 'BACKUP_RESULT: /opt/sub2api/state/prod-backup-result.json'
 assert_contains .github/workflows/prod-release.yml 'test -f "$BACKUP_RESULT"'
 

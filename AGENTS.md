@@ -32,7 +32,7 @@
 - 项目只使用一台正式 VPS：`207.57.145.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`；不存在独立测试 VPS。
 - 预发布验证在正式 VPS 的隔离 staging 中完成。功能代码必须先在本地完成验证、合并并推送到 `main`，staging 只允许拉取和构建 `origin/main`，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
 - staging 验证通过后必须报告验证结果、目标 `main` commit 和风险点，并等待用户明确口头命令；prod 只能切换到 staging 已验证的同一个 `main` commit，不得在 staging 验证后再合并代码或更换 commit。
-- 正式 VPS 资源空间充足，构建默认不需要使用低资源管控参数；仍需在构建前核对磁盘、内存、CPU 余量和当前运行服务，避免与线上请求争抢资源。
+- 正式 VPS 当前为 8GB 内存且无 Swap。Docker 冷缓存构建必须通过 `GOMAXPROCS=2` 限制 Go 编译并行度；仍需在构建前核对磁盘、内存、CPU 余量和当前运行服务，避免触发 OOM 或与线上请求争抢资源。
 - 正式 VPS 的 root 密码不得写入本文件、仓库、文档、提交记录或日志；如需密码登录，应使用运行时凭据或本机 Keychain 凭据引用，例如 `sub2api-new-vps-root`，并优先使用 SSH Key 免密登录。
 - 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
 - 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 等敏感信息不得写入仓库、文档、提交记录或日志；如需使用，只能通过运行时凭据或环境变量临时注入。
@@ -110,6 +110,7 @@ docker buildx build \
   -f deploy/Dockerfile \
   --build-arg COMMIT="$commit" \
   --build-arg DATE="$date" \
+  --build-arg GOMAXPROCS=2 \
   -t "sub2api:staging-$commit" \
   --load .
 docker run --rm "sub2api:staging-$commit" --version
