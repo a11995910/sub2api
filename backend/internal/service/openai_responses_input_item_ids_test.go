@@ -25,7 +25,8 @@ func TestSanitizeOpenAIResponsesInputItemIDs(t *testing.T) {
 			{"type":"function_call","id":"item_bad_call","call_id":"fc_pair","name":"shell","arguments":"{}"},
 			{"type":"function_call","id":"fc_valid","call_id":"fc_valid","name":"shell","arguments":"{}"},
 			{"type":"function_call_output","id":"item_output","call_id":"fc_pair","output":"keep-output"},
-			{"type":"web_search_call","id":"item_search","status":"completed"}
+			{"type":"web_search_call","id":"item_bad_search","status":"completed"},
+			{"type":"web_search_call","id":"ws_valid","status":"completed"}
 		]
 	}`)
 
@@ -40,7 +41,8 @@ func TestSanitizeOpenAIResponsesInputItemIDs(t *testing.T) {
 	require.Equal(t, "fc_valid", gjson.GetBytes(got, "input.3.id").String())
 	require.Equal(t, "item_output", gjson.GetBytes(got, "input.4.id").String())
 	require.Equal(t, "keep-output", gjson.GetBytes(got, "input.4.output").String())
-	require.Equal(t, "item_search", gjson.GetBytes(got, "input.5.id").String())
+	require.False(t, gjson.GetBytes(got, "input.5.id").Exists())
+	require.Equal(t, "ws_valid", gjson.GetBytes(got, "input.6.id").String())
 }
 
 func TestSanitizeOpenAIResponsesInputItemIDs_NoInvalidIDKeepsBody(t *testing.T) {

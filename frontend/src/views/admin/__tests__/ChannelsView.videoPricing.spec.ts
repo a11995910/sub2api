@@ -67,6 +67,8 @@ describe('渠道视频定价兼容', () => {
       image_input_price: null,
       image_output_price: 5,
       per_request_price: 2.1,
+      fast_multiplier: undefined,
+      flex_multiplier: undefined,
       intervals: [{
         min_tokens: 0,
         max_tokens: null,
@@ -75,13 +77,18 @@ describe('渠道视频定价兼容', () => {
         output_price: 7,
         cache_write_price: 8,
         cache_read_price: 9,
+        input_multiplier: undefined,
+        output_multiplier: undefined,
+        cache_write_multiplier: undefined,
+        cache_read_multiplier: undefined,
         per_request_price: 2.3,
         sort_order: 1,
       }],
-	  time_pricing: {
-		timezone: 'Asia/Shanghai',
-		periods: [],
-	  },
+      time_pricing: {
+        timezone: 'Asia/Shanghai',
+        weekdays_only: false,
+        periods: [],
+      },
     })
   })
 
