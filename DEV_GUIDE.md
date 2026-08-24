@@ -84,8 +84,8 @@ docker compose -f docker-compose.dev.yml down -v
 ### 开发工具
 
 ```bash
-# golangci-lint（CI 用 v2.9，本地建议装同一版以免版本差异带来的噪音）
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.9
+# golangci-lint（CI 用 v2.13，本地建议装同一版以免版本差异带来的噪音）
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13
 
 # pnpm (前端包管理)
 npm install -g pnpm
@@ -97,7 +97,7 @@ npm install -g pnpm
 
 | Workflow | 触发条件 | 检查内容 |
 |----------|----------|----------|
-| **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.9 |
+| **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.13 |
 | **security-scan.yml** | push, pull_request, 每周一 | govulncheck + gosec + pnpm audit |
 | **release.yml** | tag `v*` | 构建发布（PR 不触发） |
 | **upstream-sync.yml** | 已禁用 legacy workflow | 防止绕过 AstrBot AI 合并流程；不会修改 `main` |
@@ -159,8 +159,8 @@ GitHub 公共 API 有匿名速率限制；要保持定时轮询、精确计算�
 
 ### CI 要求
 
-- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.26.6**。CI workflow 使用 `go-version-file: backend/go.mod` 取版本并硬断言 `go version`；Docker、开发容器和文档中的固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。升级 Go 时必须同步更新这些固定值，否则 CI 会在版本校验或镜像构建前失败。
-- golangci-lint 使用 **v2.9**（以 `.github/workflows/backend-ci.yml` 为准）
+- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.0**。三个 workflow 都用 `go-version-file: backend/go.mod` 取版本，随后硬断言 `go version | grep -q 'go1.27.0'`。升级 Go 时必须同步更新 `backend/go.mod`、`backend-ci.yml`（两处）、`release.yml`、`security-scan.yml`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
+- golangci-lint 使用 **v2.13**（以 `.github/workflows/backend-ci.yml` 为准）
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
 ### 本地测试命令
@@ -310,7 +310,7 @@ go test -tags=integration ./...
 **解决**：
 ```bash
 cd backend
-go generate ./ent  # 重新生成 ent 代码
+go generate ./ent  # 重新生成 ent 代码（json.RawMessage 字段会生成为同类型的 jsontext.Value，属预期）
 git add ent/       # 生成的文件也要提交
 ```
 
