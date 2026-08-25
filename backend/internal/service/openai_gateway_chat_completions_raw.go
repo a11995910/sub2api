@@ -183,7 +183,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
 	customUA := account.GetOpenAIUserAgent()
 	if customUA == "" && account.IsGrokOAuth() {
-		customUA = "sub2api-grok/1.0"
+		customUA = defaultGrokUpstreamUserAgent()
 	}
 
 	// 6. Send request
