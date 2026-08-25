@@ -31,10 +31,6 @@ assert_line backend/Dockerfile "FROM golang:${go_version}-alpine"
 assert_line deploy/Dockerfile "ARG GOLANG_IMAGE=golang:${go_version}-alpine"
 assert_line deploy/Dockerfile.dev "ARG GOLANG_IMAGE=golang:${go_version}-alpine"
 assert_line deploy/docker-compose.dev.yml "        GOLANG_IMAGE: \${SUB2API_GO_IMAGE:-golang:${go_version}-alpine}"
-assert_count .github/workflows/backend-ci.yml "go version | grep -q 'go${go_version}'" 2
-assert_count .github/workflows/release.yml "go version | grep -q 'go${go_version}'" 1
-assert_count .github/workflows/security-scan.yml "go version | grep -q 'go${go_version}'" 1
-assert_count .github/workflows/ai-merge-verify.yml "go version | grep -q 'go${go_version}'" 1
 assert_line README.md "[![Go](https://img.shields.io/badge/Go-${go_version}-00ADD8.svg)](https://golang.org/)"
 assert_line README_CN.md "[![Go](https://img.shields.io/badge/Go-${go_version}-00ADD8.svg)](https://golang.org/)"
 assert_line README_JA.md "[![Go](https://img.shields.io/badge/Go-${go_version}-00ADD8.svg)](https://golang.org/)"

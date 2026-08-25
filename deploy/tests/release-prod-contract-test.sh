@@ -36,10 +36,15 @@ if [[ "${RELEASE_PROD_CONTRACT_SCOPE:-all}" == script ]]; then
   exit 0
 fi
 
-assert_contains .github/workflows/staging-verify.yml 'deploy/release-gates wait-container-healthy "$container_id" 90 2'
-assert_contains .github/workflows/staging-verify.yml 'deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1'
-assert_contains .github/workflows/staging-verify.yml '              --build-arg GOMAXPROCS=2 \'
-assert_contains .github/workflows/prod-release.yml 'BACKUP_RESULT: /opt/sub2api/state/prod-backup-result.json'
-assert_contains .github/workflows/prod-release.yml 'test -f "$BACKUP_RESULT"'
+assert_contains deploy/release-staging 'result_status=failed'
+assert_contains deploy/release-staging '"workflow": "manual"'
+assert_contains deploy/release-staging 'staging_result="$state_dir/staging-result.json"'
+assert_contains deploy/release-staging '  --build-arg GOMAXPROCS=2 \'
+assert_contains deploy/release-staging '"$release_gates" wait-container-healthy "$container_id" 90 2'
+assert_contains deploy/release-staging '"$release_gates" wait-http http://127.0.0.1:18080/health 10 1'
+
+if find .github/workflows -type f -print -quit 2>/dev/null | grep -q .; then
+  fail '.github/workflows must not contain automation files'
+fi
 
 printf 'release prod contract test passed\n'

@@ -74,7 +74,7 @@
 - `/opt/sub2api/repo` 必须始终检出 `main`，staging 和 prod 都只允许使用 `origin/main`。任何功能分支或同步分支都必须在本地验证并合并、推送到 `main` 后，才允许进入 VPS staging；VPS 上禁止检出或构建其他分支。prod 切换仍必须等待用户明确口头确认。
 - 每次构建必须使用 `deploy/Dockerfile` 在正式 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
 - Docker 构建必须传入可追溯版本信息，至少包含 `COMMIT=$(git rev-parse --short=12 HEAD)` 和 `DATE=$(git show -s --format=%cI HEAD)`。
-- 仓库 `deploy/release-prod` 是 `/opt/sub2api/scripts/release-prod` 的唯一受版本控制来源；安装或升级时必须从已推送的 `origin/main` 复制并设置为 `root:root`、`0700`，不得在 VPS 上直接手写简化发布脚本。
+- 仓库 `deploy/release-staging` 和 `deploy/release-prod` 分别是 `/opt/sub2api/scripts/release-staging` 和 `/opt/sub2api/scripts/release-prod` 的唯一受版本控制来源；安装或升级时必须从已推送的 `origin/main` 复制并设置为 `root:root`、`0700`，不得在 VPS 上直接手写简化发布脚本。
 - 异机备份机只承担 prod 数据库归档，归档目录为 `/opt/sub2api-prod-backup/archives`；正式 VPS 不保存 prod 全库 dump，`deploy/release-prod` 也不得在正式 VPS 创建全库 dump。
 - prod 发布前必须存在 `/opt/sub2api/state/prod-backup-result.json`，并保持 `root:root`、`0600`。凭证必须由已完成 SHA-256、zstd 和 `pg_restore --list` 校验的异机归档生成，绑定目标完整 commit 与 staging run ID，且校验时不得超过两小时。
 - staging 与 prod 切换应用容器后必须先使用 `deploy/release-gates wait-container-healthy` 等待 Docker health 为 `healthy`，再使用 `wait-http` 检查宿主机健康接口；禁止在 `compose up -d` 后立即以单次 `curl` 判定失败。
@@ -82,18 +82,20 @@
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
 - `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在正式 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
 - 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。
-- 上游同步必须由 AstrBot 固定待同步的上游 SHA，在 AstrBot 临时工作区执行 Git 三方合并；双方共同修改的冲突文件交给已配置 AI 按 `.github/upstream-merge-rules.yml` 生成候选结果。AI 只能生成候选合并 commit 和报告，不能直接推送 `main`、操作正式 VPS 或触发 prod。
-- 用户确认 AI 合并报告后，AstrBot 只允许推送 `sync/ai-merge-*` 临时分支并触发 `ai-merge-verify.yml`。验证通过后创建 PR，PR 经人工审核并合并 `main` 后才允许 staging；临时分支完成后必须删除。禁止让 VPS 拉取或构建临时分支，也禁止跳过 staging 直接切换 prod。
+- 上游同步、staging 和 prod 均由用户人工发起。禁止 AstrBot、飞书机器人、GitHub Actions、自托管 Runner、Webhook、定时任务或其他自动化执行上游合并、VPS 部署或生产切换。
+- 仓库不使用 GitHub Actions、PR 或 GitHub Environment 做代码验证和发布；所有检查必须由用户或协作助手在本地显式执行并报告结果。
+- 上游同步必须先在本地执行 `git fetch upstream --prune` 并记录目标上游完整 SHA；在本地 `main` 或隔离 worktree 完成 Git 三方合并，逐项处理冲突并运行必要检查。合并结果必须保留双方父提交，禁止 force push。
+- 合并完成后必须重新 fetch，确认目标上游 SHA 未变化且 `origin/main` 仍等于合并基线；再由用户以普通 push 推送 `main`。推送后由用户手工 SSH 到正式 VPS 执行 staging，禁止 GitHub 验证、PR、临时同步分支或自动部署。
 
 当前源码远端与上游关系必须保持清晰：
 
 - `origin` 是当前定制仓库 `https://github.com/a11995910/sub2api.git`，本地 `main` 和正式 VPS 都以它的 `main` 为发布来源。
-- `upstream` 是官方上游仓库 `https://github.com/Wei-Shaw/sub2api.git`，只用于版本对照和 AstrBot 临时工作区三方合并，不得让正式 VPS 直接拉取或构建 `upstream/main`。
-- 上游同步顺序固定为：版本监听 -> 管理员二次确认且 SHA 未变化 -> AstrBot AI 三方合并 -> 飞书合并报告 -> 发起人确认继续 -> 推送 `sync/ai-merge-*` -> `ai-merge-verify.yml` -> PR 人工审核并合并 `main` -> staging -> 用户明确确认 prod。
-- 本仓库历史中的 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169）证明历史同步采用合并提交并保留定制；当前自动化仍必须保留可追溯合并记录，但不得绕过 AI 报告、GitHub 验证和 PR 门禁。
+- `upstream` 是官方上游仓库 `https://github.com/Wei-Shaw/sub2api.git`，只用于本地版本对照和人工三方合并，不得让正式 VPS 直接拉取或构建 `upstream/main`。
+- 上游同步顺序固定为：本地 fetch -> 固定上游 SHA 和 `origin/main` 基线 -> 人工三方合并 -> 冲突与差异检查 -> 必要测试 -> 生成可追溯 merge commit -> 重新核对远端基线 -> 普通 push `main` -> 手工 SSH staging -> 用户明确确认 -> 手工 prod。
+- 本仓库历史中的 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169）证明历史同步采用合并提交并保留定制；后续人工同步仍必须保留可追溯合并记录、远端基线核对和 staging 门禁。
 - `deploy/install.sh`、`deploy/docker-deploy.sh` 和默认 `weishaw/sub2api:latest` 属于官方通用部署链路，不得当作当前定制 VPS 的生产发布入口。
 
-正式 VPS staging 构建示例：
+正式 VPS staging 必须手工执行受版本控制的脚本：
 
 ```bash
 ssh sub2api-new-vps
@@ -104,39 +106,9 @@ git switch main
 git pull --ff-only origin main
 expected_commit='填写本地 main 的 git rev-parse HEAD 输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
-commit="$(git rev-parse --short=12 HEAD)"
-date="$(git show -s --format=%cI HEAD)"
-docker buildx build \
-  -f deploy/Dockerfile \
-  --build-arg COMMIT="$commit" \
-  --build-arg DATE="$date" \
-  --build-arg GOMAXPROCS=2 \
-  -t "sub2api:staging-$commit" \
-  --load .
-docker run --rm "sub2api:staging-$commit" --version
-```
-
-staging 发布后必须验证：
-
-```bash
-docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml up -d
-docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml ps
-container_id="$(docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml ps -q sub2api)"
-/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 90 2
-/opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1
-docker compose -p sub2api-staging \
-  --env-file /opt/sub2api/env/staging/.env \
-  -f /opt/sub2api/repo/deploy/docker-compose.yml \
-  -f /opt/sub2api/compose/staging/docker-compose.yml logs --tail=200 sub2api
+install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/release-staging
+/opt/sub2api/scripts/release-staging "$expected_commit"
+# 记录脚本输出的数字 run_id，后续异机备份凭证和 prod 必须使用同一值。
 ```
 
 prod 发布必须在用户明确确认后执行，并使用同一 commit、staging run 和两小时内的异机备份凭证。正式 VPS 只调用受版本控制的 root-only 发布脚本，不复制其内部切换逻辑：

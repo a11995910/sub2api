@@ -84,83 +84,36 @@ docker compose -f docker-compose.dev.yml down -v
 ### 开发工具
 
 ```bash
-# golangci-lint（CI 用 v2.13，本地建议装同一版以免版本差异带来的噪音）
+# golangci-lint（本地固定使用 v2.13）
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13
 
 # pnpm (前端包管理)
 npm install -g pnpm
 ```
 
-## 三、CI/CD 流水线
+## 三、代码检查与人工发布
 
-### GitHub Actions Workflows
+### 本地检查
 
-| Workflow | 触发条件 | 检查内容 |
-|----------|----------|----------|
-| **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.13 |
-| **security-scan.yml** | push, pull_request, 每周一 | govulncheck + gosec + pnpm audit |
-| **release.yml** | tag `v*` | 构建发布（PR 不触发） |
-| **upstream-sync.yml** | 已禁用 legacy workflow | 防止绕过 AstrBot AI 合并流程；不会修改 `main` |
-| **ai-merge-verify.yml** | AstrBot 推送临时分支后触发 | 验证 AI 合并分支，不推送 `main` |
-| **staging-verify.yml** | AstrBot 触发 | 在正式 VPS 隔离 staging 构建并验证指定 `main` commit |
-| **prod-release.yml** | AstrBot 触发 + GitHub `production` 环境确认 | 只发布已验证的同一 commit |
+仓库不配置 GitHub Actions，不使用 PR、GitHub Environment、自托管 Runner、Webhook、AstrBot 或飞书命令。
+代码测试、安全检查、上游同步、tag 构建和 VPS 发布都必须由用户或协作助手显式执行；GitHub 只保存
+`main` 和 tag，不承担验证与部署。
 
-上游合并由 AstrBot 在临时工作区完成，AI 报告确认后推送临时分支；GitHub 只负责临时分支
-测试、PR 和审计，staging 和 prod 仍在正式 VPS 分阶段执行。上游合并、staging 和 prod
-工作流不直接由 VPS 上的通用定时任务执行。生产工作流要求正式 VPS 预先安装 root-only `/opt/sub2api/scripts/release-prod`，
-详见 [`docs/SOURCE_DEPLOY_CN.md`](docs/SOURCE_DEPLOY_CN.md) 的发布脚本章节。
+### 人工上游同步与发布
 
-### AstrBot 飞书控制面
+1. 本地更新 `origin/main`，执行 `git fetch upstream --prune`，记录目标上游完整 SHA 和当前 `origin/main` 基线。
+2. 在本地 `main` 或隔离 worktree 执行三方合并，逐项处理冲突，检查冲突标记、`git diff --check`、生成文件和必要测试。
+3. 生成保留双方父提交的 merge commit；重新 fetch 并确认上游 SHA 与 `origin/main` 基线未变化后，普通 push `main`，禁止 force push。
+4. 手工 SSH 到 `207.57.145.15`，安装并执行 `deploy/release-staging <完整 commit>`；记录脚本输出的数字 run ID。
+5. 用户验收 staging 后明确确认 prod，人工生成绑定同一 commit/run ID 的异机备份凭证，再执行 `deploy/release-prod`。
 
-AstrBot（`120.26.44.145`）安装独立插件 `sub2api_version_monitor`，不修改通用定时任务
-调度器核心。插件默认轮询 `Wei-Shaw/sub2api/main` 与 `a11995910/sub2api/main`，并通过
-GitHub Actions API 串联“上游合并测试 -> staging 验证 -> 用户确认后 prod 发布”。
+完整命令和服务器目录见 [`docs/SOURCE_DEPLOY_CN.md`](docs/SOURCE_DEPLOY_CN.md)。任何机器人、定时任务或
+GitHub workflow 都不得代替用户执行以上步骤。
 
-当官方上游与当前 fork 不一致时，插件按轮询周期发送一张飞书版本卡片，并复用调度器的
-群和两位成员 ID。卡片会列出官方领先提交数（跨 fork 历史无法直接比较时显示“至少”）、
-上游最近提交摘要和链接，并提供两个按钮：
+### 本地检查要求
 
-- **更新版本**：第一次点击只校验按钮中的上游 commit、管理员身份和任务状态，并发送
-  10 分钟有效的二次确认卡片；只有同一发起人再次确认后才在 AstrBot 临时工作区启动 AI
-  三方合并。AI 合并完成后先发送报告，只有发起人点击“继续提交”才推送临时分支并触发
-  `ai-merge-verify.yml`。验证通过后创建 PR，PR 合并 `main` 后才触发 staging。确认、取消、
-  过期和上游 SHA 变化都不会推送分支；重复点击不会创建第二个任务。
-- **暂时不更新**：记录当前上游 commit，删除当前版本卡片，后续轮询不重复提醒；只有官方出现
-  更高 commit 才会再次发送卡片。旧卡片在上游已变化后会被拒绝，避免误操作。
-- **卡片清理**：版本监控只管理配置的通知群，并保存当前卡片消息 ID。发送新卡片成功后删除旧卡片；
-  删除失败的消息 ID 会进入待清理队列，不会按群历史批量删除其他消息。
-
-上游同步冲突时不再让 GitHub workflow 直接尝试覆盖定制代码。AstrBot 会在自己的临时工作区重建
-`origin/main` 与 `upstream/main` 的三方合并，并启动受限 Agent。Agent 只能使用工作区工具按行读取
-冲突版本、应用统一 diff 和执行检查，不能执行任意 shell 或访问 GitHub/VPS；按
-`.github/upstream-merge-rules.yml` 保留当前定制并合并上游独有功能。AI 合并完成后只发送报告并等待“继续提交”；确认后
-推送 `sync/ai-merge-*` 临时分支，触发 `ai-merge-verify.yml`，测试通过后再创建 PR 合并 `main`。
-AI 不能直接推送 `main`、修改正式 VPS 或触发 prod。
-
-按钮回调由 AstrBot Lark 适配器转换为 `/sub2api button:...` 命令，版本监控插件负责权限、
-过期校验和状态持久化。若卡片接口不可用，会降级为带 @ 的普通飞书消息，仍可使用
-`/sub2api sync` 或 `/sub2api publish` 完成流程。
-
-飞书命令：
-
-```text
-/sub2api status      # 查看上游、fork、workflow 和 verified_commit
-/sub2api sync        # 管理员固定当前上游 SHA 并启动 AstrBot AI 合并；仍需确认报告才推送
-/sub2api publish     # 管理员发布最近一次 staging 已验证 commit
-```
-
-插件配置至少需要当前仓库 fine-grained GitHub token（Actions read/write、Contents read/write）
-和飞书管理员 sender ID；通知群 `chat_id` 可显式配置，留空时尝试复用通用调度器的目标群。
-首次上线前先用 `/查ID` 获取管理员 sender ID，再用 `/sub2api status` 验证公开版本轮询；未
-配置 token 或管理员 ID 时，`sync`/`publish` 必须拒绝执行。prod workflow 的 GitHub
-`production` Environment 仍是独立的人工确认门禁，AstrBot 命令不能绕过它。
-GitHub 公共 API 有匿名速率限制；要保持定时轮询、精确计算领先提交数和读取提交明细，必须
-配置 token。token 缺失或额度耗尽时插件只保留上次状态，不会把 API 错误当成版本更新通知。
-
-### CI 要求
-
-- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.0**。三个 workflow 都用 `go-version-file: backend/go.mod` 取版本，随后硬断言 `go version | grep -q 'go1.27.0'`。升级 Go 时必须同步更新 `backend/go.mod`、`backend-ci.yml`（两处）、`release.yml`、`security-scan.yml`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
-- golangci-lint 使用 **v2.13**（以 `.github/workflows/backend-ci.yml` 为准）
+- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.0**。升级 Go 时必须同步更新 `backend/go.mod`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
+- golangci-lint 本地使用 **v2.13**。
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
 ### 本地测试命令
@@ -183,7 +136,7 @@ cd frontend && pnpm install
 
 ### 坑 1：pnpm-lock.yaml 必须同步提交
 
-**问题**：`package.json` 新增依赖后，CI 的 `pnpm install --frozen-lockfile` 失败。
+**问题**：`package.json` 新增依赖后，本地 `pnpm install --frozen-lockfile` 失败。
 
 **原因**：上游 CI 使用 pnpm，lock 文件不同步会报错。
 
@@ -290,7 +243,7 @@ grep -r "type.*Mock.*struct" internal/
 
 ### 坑 8：Windows 没有 make 命令
 
-**问题**：CI 里用 `make test-unit`，本地 Windows 没有 make。
+**问题**：文档命令使用 `make test-unit`，本地 Windows 没有 make。
 
 **解决**：直接用 Makefile 里的原始命令：
 ```bash
@@ -339,9 +292,9 @@ git add ent/       # 生成的文件也要提交
 
 ---
 
-### 坑 11：PR 提交前检查清单
+### 坑 11：推送前检查清单
 
-提交 PR 前务必本地验证：
+推送 `main` 前务必本地验证：
 
 - [ ] `go test -tags=unit ./...` 通过
 - [ ] `go test -tags=integration ./...` 通过
@@ -375,15 +328,21 @@ psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
 git remote get-url upstream >/dev/null 2>&1 || \
   git remote add upstream https://github.com/Wei-Shaw/sub2api.git
 
-# 只读检查官方上游；正式同步必须从 AstrBot/飞书发起
+# 人工检查并固定官方上游 SHA
 git status --short
 git switch main
 git fetch origin
 git pull --ff-only origin main
 git fetch upstream --prune
 git log --oneline main..upstream/main
+upstream_sha="$(git rev-parse upstream/main)"
+origin_baseline="$(git rev-parse origin/main)"
 
-# 管理员在飞书群中发送 `/sub2api sync`；AI 报告确认前不会推送 GitHub
+# 本地完成三方合并和测试后，重新核对远端基线，再普通推送 main
+git fetch origin upstream --prune
+test "$(git rev-parse upstream/main)" = "$upstream_sha"
+test "$(git rev-parse origin/main)" = "$origin_baseline"
+git push origin main
 
 # 创建功能分支
 git switch -c feature/xxx

@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  printf '%s\n' 'release-staging 必须由 root 手工执行。' >&2
+  exit 1
+fi
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  printf '用法：%s <target-commit> [staging-run-id]\n' "$0" >&2
+  exit 2
+fi
+
+target_commit="$1"
+staging_run_id="${2:-$(date -u +%Y%m%d%H%M%S)}"
+repo_dir=/opt/sub2api/repo
+env_file=/opt/sub2api/env/staging/.env
+base_compose="$repo_dir/deploy/docker-compose.yml"
+staging_override=/opt/sub2api/compose/staging/docker-compose.yml
+prod_env_file=/opt/sub2api/env/prod/.env
+prod_override=/opt/sub2api/compose/prod/docker-compose.yml
+state_dir=/opt/sub2api/state
+staging_result="$state_dir/staging-result.json"
+release_gates="$repo_dir/deploy/release-gates"
+update_image=/opt/sub2api/scripts/update-sub2api-image
+
+[[ "$target_commit" =~ ^[0-9a-f]{40}$ ]]
+[[ "$staging_run_id" =~ ^[0-9]+$ ]]
+test -d "$repo_dir"
+test -f "$env_file"
+test -f "$base_compose"
+test -f "$staging_override"
+test -f "$prod_env_file"
+test -f "$prod_override"
+test -x "$release_gates"
+test -x "$update_image"
+command -v flock >/dev/null
+command -v jq >/dev/null
+install -d -o root -g root -m 0755 "$state_dir"
+
+commit="$target_commit"
+short_commit="${target_commit:0:12}"
+commit_date=""
+target_image="sub2api:staging-$short_commit"
+result_status=failed
+result_tmp="$(mktemp "$state_dir/.staging-result.XXXXXX")"
+
+compose_staging() {
+  docker compose -p sub2api-staging \
+    --env-file "$env_file" \
+    -f "$base_compose" \
+    -f "$staging_override" "$@"
+}
+
+compose_prod() {
+  docker compose -p sub2api-prod \
+    --env-file "$prod_env_file" \
+    -f "$base_compose" \
+    -f "$prod_override" "$@"
+}
+
+record_result() {
+  local rc="$?" recorded_status=failed
+  trap - EXIT
+  set +e
+  if [[ "$rc" -eq 0 && "$result_status" == verified ]]; then
+    recorded_status=verified
+  fi
+  python3 - "$result_tmp" "$recorded_status" "$staging_run_id" "$commit" \
+    "$short_commit" "$commit_date" "$target_image" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path, status, run_id, commit, short_commit, commit_date, image = sys.argv[1:]
+payload = {
+    "environment": "staging",
+    "status": status,
+    "workflow": "manual",
+    "run_id": run_id,
+    "commit": commit,
+    "short_commit": short_commit,
+    "date": commit_date,
+    "image": image,
+    "verified_at": datetime.now(timezone.utc).isoformat(),
+}
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+PY
+  if ! install -o root -g root -m 0644 "$result_tmp" "$staging_result"; then
+    printf '%s\n' '无法写入 staging 验证结果。' >&2
+    [[ "$rc" -ne 0 ]] || rc=1
+  fi
+  rm -f -- "$result_tmp"
+  if [[ "$rc" -ne 0 ]]; then
+    compose_staging logs --tail=200 sub2api >&2 || true
+    printf 'staging 发布失败：commit=%s run_id=%s\n' "$target_commit" "$staging_run_id" >&2
+  else
+    printf 'staging 验证通过：commit=%s image=%s run_id=%s\n' \
+      "$commit" "$target_image" "$staging_run_id"
+  fi
+  exit "$rc"
+}
+trap record_result EXIT
+
+available_disk_kb="$(df -Pk "$repo_dir" | awk 'NR == 2 {print $4}')"
+available_mem_kb="$(awk '/MemAvailable:/ {print $2; exit}' /proc/meminfo)"
+load_one="$(awk '{print $1}' /proc/loadavg)"
+test "$available_disk_kb" -ge 10485760
+test "$available_mem_kb" -ge 2097152
+python3 - "$load_one" <<'PY'
+import sys
+
+if float(sys.argv[1]) >= 3.0:
+    raise SystemExit("load average is too high for a staging build")
+PY
+
+prod_id="$(compose_prod ps -q sub2api)"
+test -n "$prod_id"
+test "$(docker inspect --format '{{.State.Status}}' "$prod_id")" = running
+test "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$prod_id")" = healthy
+
+printf 'staging 资源检查：磁盘=%sGiB 内存=%sMiB 负载=%s prod=healthy\n' \
+  "$((available_disk_kb / 1024 / 1024))" "$((available_mem_kb / 1024))" "$load_one"
+
+cd "$repo_dir"
+test -z "$(git status --porcelain)"
+git fetch origin
+git switch main
+git pull --ff-only origin main
+test "$(git rev-parse HEAD)" = "$target_commit"
+
+commit="$(git rev-parse HEAD)"
+short_commit="$(git rev-parse --short=12 HEAD)"
+commit_date="$(git show -s --format=%cI HEAD)"
+target_image="sub2api:staging-$short_commit"
+
+exec 9>/var/lock/sub2api-build.lock
+flock -n 9
+docker buildx build \
+  -f deploy/Dockerfile \
+  --build-arg COMMIT="$short_commit" \
+  --build-arg DATE="$commit_date" \
+  --build-arg GOMAXPROCS=2 \
+  -t "$target_image" \
+  --load .
+flock -u 9
+
+version_output="$(docker run --rm "$target_image" --version)"
+printf '%s\n' "$version_output"
+test "$(printf '%s\n' "$version_output" | grep -F "commit: $short_commit" | wc -l)" -eq 1
+
+"$update_image" "$env_file" "$target_image" staging
+compose_staging config -q
+resolved_images="$(compose_staging config --images)"
+test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$target_image" || true)" -eq 1
+compose_staging up -d
+container_id="$(compose_staging ps -q sub2api)"
+test -n "$container_id"
+test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
+compose_staging ps
+"$release_gates" wait-container-healthy "$container_id" 90 2
+"$release_gates" wait-http http://127.0.0.1:18080/health 10 1
+expected_version="$(tr -d '[:space:]' < "$repo_dir/backend/cmd/server/VERSION")"
+test "$(curl -fsS http://127.0.0.1:18080/api/v1/settings/public | jq -r '.data.version')" = "$expected_version"
+curl -fsS http://127.0.0.1:18080/ | grep -Fq "\"version\":\"$expected_version\""
+compose_staging logs --tail=200 sub2api
+
+result_status=verified

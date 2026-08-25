@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# 该脚本必须安装为正式 VPS 的 root-only 文件：
+# 该脚本必须从 origin/main 安装为正式 VPS 的 root-only 文件：
 # /opt/sub2api/scripts/release-prod
-# GitHub Actions 只负责传递已验证 commit，所有生产门禁在此执行。
+# 用户明确确认后手工执行，所有生产门禁在此完成。
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   printf '%s\n' 'release-prod 必须由 root 执行。' >&2

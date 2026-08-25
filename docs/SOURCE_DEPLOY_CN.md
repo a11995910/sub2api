@@ -19,19 +19,13 @@
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
 - 验证通过后按保留策略清理 Docker 构建缓存和无回滚价值的旧镜像，不得删除当前镜像、最近回滚镜像或业务数据卷。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
+- 上游同步、staging 和 prod 只允许用户人工执行；禁止 AstrBot、飞书机器人、GitHub Actions、自托管 Runner、Webhook 或定时任务触发合并和部署。
 
-## GitHub Actions Runner
+## 人工发布控制
 
-正式 VPS 当前注册了一个仓库级 self-hosted Runner：
+仓库的 GitHub Actions 已关闭，当前没有 Environment、自托管 Runner、分支保护或规则集，也不使用 PR。GitHub 只保存 `main` 和 tag，不承担代码验证、上游同步、构建或部署。
 
-- 服务目录：`/opt/actions-runner`
-- systemd 服务：`actions.runner.a11995910-sub2api.sub2api-vps.service`
-- Runner 标签：`self-hosted`、`linux`、`sub2api-staging`、`sub2api-prod`
-- 运行用户：`root`（因构建需要 Docker、root-only 运行配置和生产门禁脚本）
-
-该 Runner 只承接仓库中的 staging/prod 手动工作流，不承接 Pull Request 构建。Runner 空闲时资源占用很低，Docker 构建期间由 staging workflow 的磁盘、内存、负载门禁和构建锁控制。Runner 上线不等于生产发布；prod 仍必须通过 staging 结果校验并等待用户明确口头确认。
-
-Runner 注册 token 是一次性凭据，注册完成后失效；长期 GitHub Token 只保存在 AstrBot 运行时配置中，不写入仓库或日志。若 Runner 服务异常，先执行 `systemctl status actions.runner.a11995910-sub2api.sub2api-vps.service` 和 `journalctl -u actions.runner.a11995910-sub2api.sub2api-vps.service`，不得直接删除 `/opt/actions-runner` 或重置 Runner。
+用户先在本地检查、合并、提交并普通推送 `main`，再使用 `ssh sub2api-new-vps` 登录正式 VPS。staging 必须手工调用 `/opt/sub2api/scripts/release-staging`；prod 必须在 staging 验收和用户明确确认后，手工生成异机备份凭证并调用 `/opt/sub2api/scripts/release-prod`。脚本保留资源、版本、健康、备份和回滚门禁，但不会自行定时运行。
 
 ## 图片 URL 本地存储
 
@@ -130,12 +124,12 @@ git log -1 --oneline
 
 项目不存在独立测试 VPS。所有预发布验证均在正式 VPS 的隔离 staging 中完成；staging 与 prod 不得共享 compose project、环境文件、数据库、Redis、数据目录或宿主机端口。完整运行拓扑见 `docs/VPS_MIGRATION_CN.md`。
 
-### root-only 生产发布脚本
+### root-only 人工发布脚本
 
-仓库中的 `deploy/release-prod` 是 GitHub Actions 生产工作流调用的门禁脚本。它必须以
-`root:root`、`0700` 安装在正式 VPS 的 `/opt/sub2api/scripts/release-prod`，不能让普通用户
-直接执行或把脚本复制到 GitHub runner 的工作目录。脚本只接受已通过 staging 的完整 commit、
-目标镜像 tag 和 staging workflow run ID。它先通过 `deploy/release-gates` 校验异机全库备份
+仓库中的 `deploy/release-staging` 和 `deploy/release-prod` 是人工发布的受版本控制入口。它们必须以
+`root:root`、`0700` 分别安装在正式 VPS 的 `/opt/sub2api/scripts/release-staging` 和
+`/opt/sub2api/scripts/release-prod`，只能由用户登录后手工执行。生产脚本只接受已通过 staging 的完整 commit、
+目标镜像 tag 和人工 staging run ID。它先通过 `deploy/release-gates` 校验异机全库备份
 凭证，再在正式 VPS 保存定价与策略的小型快照、创建旧镜像回滚 tag，并原子更新 `.env`。
 它不得在正式 VPS 创建 prod 全库 dump；任何失败都必须把 `.env` 恢复为原正式镜像 tag，
 并确认恢复后的容器与 HTTP 均健康后，才能删除未记录的临时回滚 tag。
@@ -149,16 +143,17 @@ git fetch origin
 git switch main
 git pull --ff-only origin main
 test -x deploy/release-gates
+install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/release-staging
 install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release-prod
+sha256sum deploy/release-staging /opt/sub2api/scripts/release-staging
 sha256sum deploy/release-prod /opt/sub2api/scripts/release-prod
 ```
 
 `release-gates` 不复制到独立目录，始终从已锁定 commit 的
 `/opt/sub2api/repo/deploy/release-gates` 执行，避免发布脚本与门禁版本漂移。
 
-安装后应由 root 做一次只读门禁检查，确认依赖脚本、prod compose、`.env` 和 Docker 权限均
-存在；不要用占位参数执行发布脚本。GitHub Actions 的 `sub2api-prod` runner 只调用该脚本，
-不得把备份凭证校验、定价门禁或回滚逻辑复制到 workflow YAML 中。
+安装后应由 root 做一次只读门禁检查，确认依赖脚本、staging/prod compose、`.env` 和 Docker 权限均
+存在；不要用占位参数执行发布脚本，也不得把脚本内部的资源、备份、定价或回滚门禁复制成另一套命令。
 
 ## 正式 VPS 镜像化部署流程
 
@@ -448,7 +443,7 @@ chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 
 ### staging 构建与发布
 
-staging 只承接已经合并并推送到 `main` 的 commit。每次构建都必须核对本地 `main`、`origin/main` 与正式 VPS 工作区 commit 一致：
+staging 只承接已经合并并推送到 `main` 的 commit。用户手工登录正式 VPS 后，安装并调用受版本控制的 staging 脚本：
 
 ```bash
 ssh sub2api-new-vps
@@ -462,22 +457,18 @@ test "$(git branch --show-current)" = "main"
 expected_commit='填写本地 main 的 git rev-parse HEAD 输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 git log -1 --oneline
+install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/release-staging
+/opt/sub2api/scripts/release-staging "$expected_commit"
+```
 
-commit="$(git rev-parse --short=12 HEAD)"
-date="$(git show -s --format=%cI HEAD)"
-docker buildx build \
-  -f deploy/Dockerfile \
-  --build-arg COMMIT="$commit" \
-  --build-arg DATE="$date" \
-  -t "sub2api:staging-$commit" \
-  --load .
-docker run --rm "sub2api:staging-$commit" --version
+脚本先检查磁盘、内存、一分钟负载和 prod 健康状态，再用构建锁和 `GOMAXPROCS=2` 构建目标 commit。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。异机备份凭证和 prod 必须使用这次输出的同一 commit 与 run ID。
 
-env_file=/opt/sub2api/env/staging/.env
-target_image="sub2api:staging-$commit"
-/opt/sub2api/scripts/update-sub2api-image "$env_file" "$target_image" staging
+staging 功能验收必须使用隔离测试账号、渠道、分组、API Key 和唯一请求 ID，开始前记录所有测试对象 ID 及余额基线。快照与验收命令必须显式定义 `env_file` 和 `compose_staging()`。测试前先确认 PostgreSQL 容器确实属于 `sub2api-staging` compose project，并生成可读的完整数据库快照：
 
+```bash
+ssh sub2api-new-vps
 cd /opt/sub2api/repo/deploy
+env_file=/opt/sub2api/env/staging/.env
 compose_staging() {
   docker compose -p sub2api-staging \
     --env-file "$env_file" \
@@ -485,27 +476,6 @@ compose_staging() {
     -f /opt/sub2api/compose/staging/docker-compose.yml "$@"
 }
 
-compose_staging config -q
-resolved_images="$(compose_staging config --images)"
-test "$(printf '%s\n' "$resolved_images" | grep -Fxc "$target_image" || true)" -eq 1
-compose_staging up -d
-container_id="$(compose_staging ps -q sub2api)"
-test -n "$container_id"
-test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
-compose_staging ps
-/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 90 2
-/opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1
-expected_version="$(tr -d '[:space:]' < /opt/sub2api/repo/backend/cmd/server/VERSION)"
-test "$(curl -fsS http://127.0.0.1:18080/api/v1/settings/public | jq -r '.data.version')" = "$expected_version"
-curl -fsS http://127.0.0.1:18080/ | grep -Fq "\"version\":\"$expected_version\""
-compose_staging logs --tail=200 sub2api
-```
-
-`config -q` 只验证 compose 结构；随后对 `config --images` 的精确计数断言用于证明最终合并配置只引用一次目标应用镜像。`up` 后还必须通过 `compose ps -q sub2api` 定位真实容器，由 `docker inspect` 证明实际运行 tag 与目标 tag 相同，再等待 Docker health 为 `healthy` 并通过宿主机 HTTP 健康检查。公开设置接口与首页 `window.__APP_CONFIG__` 注入的版本必须同时等于源码 `VERSION`，以保证管理员和普通用户看到同一个当前版本；上述检查全部通过才算发布成功。
-
-staging 功能验收必须使用隔离测试账号、渠道、分组、API Key 和唯一请求 ID，开始前记录所有测试对象 ID 及余额基线。以下快照命令在上述 staging 发布的同一 SSH 会话执行；若已开启新会话，必须先按 staging 发布段重新定义 `env_file` 和 `compose_staging()`。测试前先确认 PostgreSQL 容器确实属于 `sub2api-staging` compose project，并生成可读的完整数据库快照：
-
-```bash
 postgres_id="$(compose_staging ps -q postgres)"
 test -n "$postgres_id"
 test "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$postgres_id")" = "sub2api-staging"
@@ -591,7 +561,7 @@ prod 切换前必须在异机备份机生成新的全库归档，并独立完成
 
 凭证必须绑定待发布的完整 commit 和同一次 staging 验证 run；`verified_at` 不得来自未来，发布脚本校验时最多两小时。归档大小必须为正数，TOC 项数至少为 100。凭证不包含密码、连接串或其他运行时凭据。
 
-生产发布只调用受版本控制的 root-only 脚本，不在文档或 workflow 中复制内部实现。脚本会验证凭证和 staging 结果、检查目标镜像能力、保存定价与 Fast/Flex 策略小型快照、记录原正式镜像 tag、创建专用回滚 tag，然后执行切换：
+生产发布只手工调用受版本控制的 root-only 脚本，不复制内部实现。脚本会验证凭证和 staging 结果、检查目标镜像能力、保存定价与 Fast/Flex 策略小型快照、记录原正式镜像 tag、创建专用回滚 tag，然后执行切换：
 
 ```bash
 ssh sub2api-new-vps
@@ -779,29 +749,19 @@ Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查�
 
 ### 上游同步
 
-当前仓库的上游同步依据历史提交 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169），继续使用可追溯的 Git 合并记录并保留本地定制。当前执行入口已迁移到 AstrBot（`120.26.44.145`）的 `sub2api_version_monitor` 插件；旧 `upstream-sync.yml` 已禁用，不得用它或本地脚本直接覆盖 `main`。
+当前仓库的上游同步依据历史提交 `e666c87dc`（同步官方上游主线）和 `13fc3cbf2`（同步上游 v0.1.169），继续使用可追溯的 Git 合并记录并保留本地定制。同步只允许用户在本地人工执行，不使用机器人、GitHub workflow、PR 或临时同步分支。
 
 固定流程如下：
 
-1. AstrBot 轮询 `Wei-Shaw/sub2api/main` 与当前 fork 的 `main`，发现上游领先后在飞书发送版本卡片。
-2. 管理员点击更新并完成二次确认；确认时必须校验管理员、nonce、有效期和上游 SHA。AstrBot 随后固定该 SHA，在自己的临时工作区执行三方合并。
-3. AstrBot 在临时工作区启动受限 Agent。Agent 只能通过工作区工具查看冲突状态、按行读取
-   base/current/upstream/working 版本、应用统一 diff 和执行合并检查；不会把全部冲突文件一次性
-   放入提示词，也没有任意 shell、GitHub 推送、VPS 或 prod 权限。按 `.github/upstream-merge-rules.yml`
-   保留当前定制并合并上游独有功能。上游 SHA 已变化、冲突标记残留或 `git diff --check` 失败时必须停止。
-4. AstrBot 在飞书发送 AI 合并摘要、冲突决策和 diff 统计。发起人点击“继续提交”前，不得向 GitHub 推送任何分支。
-5. 确认后只推送 `sync/ai-merge-*` 临时分支，并从该分支 ref 触发 `ai-merge-verify.yml`。GitHub 完成后端单元/集成测试、前端检查、lint 和部署脚本检查；通过后创建 PR。
-6. PR 必须人工审核并合并 `main`。合并后删除临时分支，AstrBot 才触发正式 VPS 的隔离 staging。staging 通过后报告 commit 和风险，prod 仍需用户明确口头确认，并且只能发布同一 commit。
+1. 本地切换到干净的 `main`，更新 `origin/main`，执行 `git fetch upstream --prune`，记录 `upstream/main` 完整 SHA 和 `origin/main` 基线 commit。
+2. 在本地 `main` 或隔离 worktree 执行 Git 三方合并。逐项检查双方共同修改的文件，保留本地定制并合入上游独有功能；禁止整文件盲选一侧。
+3. 检查冲突标记、`git diff --check`、生成文件一致性、数据库迁移、配置和发布脚本影响，并运行与改动相关的前后端测试。
+4. 生成保留当前仓库和上游双方父提交的 merge commit。提交前检查 diff，确认没有凭据、构建产物或无关改动。
+5. 再次 fetch `origin` 和 `upstream`，确认固定的上游 SHA 未变化，且 `origin/main` 仍等于合并基线；任一不一致都必须停止并重新合并。
+6. 基线核对通过后，由用户普通 push `main`，禁止 force push。推送不会触发 GitHub 代码验证或 VPS 发布。
+7. 用户手工 SSH 到正式 VPS，用完整 `main` commit 执行隔离 staging；验收后明确确认 prod，再生成异机备份凭证并手工执行生产脚本。
 
-飞书管理员命令：
-
-```text
-/sub2api status
-/sub2api sync
-/sub2api publish
-```
-
-`/sub2api sync` 会固定命令执行时的当前上游 SHA 并启动 AI 合并，但仍必须等待合并报告并由同一发起人确认后才推送临时分支。同步分支不得推送到 VPS，也不得让 VPS 检出或构建；正式 VPS 只能从已推送的 `origin/main` 拉取 PR 合并后的 commit。
+正式 VPS 只能从已推送的 `origin/main` 拉取可追溯 merge commit，不得拉取或构建 `upstream/main`、临时分支或本地未提交源码。
 
 仓库内的 `deploy/install.sh`、`deploy/docker-deploy.sh` 和默认 `weishaw/sub2api:latest` 属于官方通用部署链路，默认指向 `Wei-Shaw/sub2api`；它们不承载当前 fork 的定制生产发布，不得替代本节的 staging/prod 流程。
 
