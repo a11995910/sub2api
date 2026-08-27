@@ -320,6 +320,17 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	}
 }
 
+func TestToUserPricingIncludesPriceCurrency(t *testing.T) {
+	pricing := toUserPricing(&service.ChannelModelPricing{
+		BillingMode:   service.BillingModeToken,
+		PriceCurrency: service.PriceCurrencyCNY,
+	})
+
+	require.NotNil(t, pricing)
+	require.Equal(t, "CNY", pricing.PriceCurrency)
+	require.Equal(t, "USD", toUserPricing(&service.ChannelModelPricing{}).PriceCurrency)
+}
+
 func TestFilterUserVisibleGroups_ExposesImageControls(t *testing.T) {
 	// 可用渠道页需要在创建 API Key 前提示用户哪些分组支持图片生成；
 	// 因此用户可见分组 DTO 必须携带图片开关及图片独立倍率。

@@ -49,11 +49,17 @@ function makeEntry(overrides: Partial<PricingFormEntry> = {}): PricingFormEntry 
   }
 }
 
-function mountCard(entry = makeEntry(), allowedBillingModes?: BillingMode[], useRealSelect = false) {
+function mountCard(
+  entry = makeEntry(),
+  allowedBillingModes?: BillingMode[],
+  useRealSelect = false,
+  enablePriceCurrency = false,
+) {
   return mount(PricingEntryCard, {
     props: {
       entry,
       ...(allowedBillingModes ? { allowedBillingModes } : {}),
+      enablePriceCurrency,
     },
     global: {
       stubs: {
@@ -117,5 +123,40 @@ describe('PricingEntryCard', () => {
     )
 
     expect(wrapper.find('.select-value').text()).toBe('admin.channels.billingMode.video')
+  })
+
+  it('主渠道可选择人民币原价币种并显示对应价格单位', async () => {
+    const wrapper = mountCard(
+      makeEntry({ billing_mode: 'token', price_currency: 'USD' }),
+      undefined,
+      false,
+      true,
+    )
+    const selects = wrapper.findAllComponents(SelectStub)
+
+    expect(wrapper.get('[data-testid="pricing-price-currency"]').text()).toContain(
+      'admin.channels.form.priceCurrency',
+    )
+    expect(selects).toHaveLength(2)
+    expect(selects[1].props('modelValue')).toBe('USD')
+    expect(selects[1].props('options')).toEqual([
+      { value: 'USD', label: 'admin.channels.form.priceCurrencyUSD' },
+      { value: 'CNY', label: 'admin.channels.form.priceCurrencyCNY' },
+    ])
+    expect(wrapper.text()).toContain('$/MTok')
+
+    selects[1].vm.$emit('update:modelValue', 'CNY')
+    await nextTick()
+
+    expect(wrapper.emitted<[{ price_currency: string }]>('update')?.[0]?.[0]).toMatchObject({
+      price_currency: 'CNY',
+    })
+  })
+
+  it('未由渠道管理开启时不显示原价币种入口', () => {
+    const wrapper = mountCard(makeEntry({ price_currency: 'CNY' }))
+
+    expect(wrapper.find('[data-testid="pricing-price-currency"]').exists()).toBe(false)
+    expect(wrapper.findAllComponents(SelectStub)).toHaveLength(1)
   })
 })

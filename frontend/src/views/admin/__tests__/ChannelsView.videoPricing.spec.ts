@@ -60,6 +60,7 @@ describe('渠道视频定价兼容', () => {
     expect(result).toEqual({
       models: ['grok-imagine-video-1.5'],
       billing_mode: BILLING_MODE_IMAGE,
+      price_currency: 'USD',
       input_price: 1,
       output_price: 2,
       cache_write_price: 3,
@@ -101,6 +102,12 @@ describe('渠道视频定价兼容', () => {
 
     expect(result.billing_mode).toBe(BILLING_MODE_VIDEO)
     expect(result.input_price).toBeNull()
+  })
+
+  it('主渠道价格映射保留人民币原价币种', () => {
+    const result = mapChannelPricingToForm(createPricing({ price_currency: 'CNY' }))
+
+    expect(result.price_currency).toBe('CNY')
   })
 
   it('账号统计价格映射保留历史 per_request 模式及层级价格', () => {

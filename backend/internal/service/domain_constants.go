@@ -538,6 +538,10 @@ const (
 	// the Model Plaza page (global pricing notes, exchange rate, promotions, ...).
 	SettingKeyModelPlazaDescription = "model_plaza_description"
 
+	// SettingKeyModelMarketUSDToCNYRate 仅控制用户模型行情中的美元原价换算。
+	// 0 表示不比较美元优惠，避免隐式使用过期汇率；与内置模型广场开关无关。
+	SettingKeyModelMarketUSDToCNYRate = "model_market_usd_to_cny_rate"
+
 	// SettingKeyPluginManagementEnabled controls sidebar visibility only; it does
 	// not stop or otherwise change already loaded plugin runtimes.
 	SettingKeyPluginManagementEnabled = "plugin_management_enabled"

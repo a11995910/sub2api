@@ -111,6 +111,18 @@ func TestDiffSettings_DetectsQuickLinkChanges(t *testing.T) {
 	require.Contains(t, changed, service.SettingKeyQuickLinkURL)
 }
 
+func TestDiffSettings_DetectsModelMarketUSDToCNYRateChange(t *testing.T) {
+	changed := diffSettings(
+		&service.SystemSettings{ModelMarketUSDToCNYRate: 7.1},
+		&service.SystemSettings{ModelMarketUSDToCNYRate: 7.2},
+		nil,
+		nil,
+		UpdateSettingsRequest{},
+	)
+
+	require.Contains(t, changed, service.SettingKeyModelMarketUSDToCNYRate)
+}
+
 func TestEqualNullableFloat(t *testing.T) {
 	five := 5.0
 	five2 := 5.0

@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { BillingMode } from '@/constants/channel'
+import type { BillingMode, PriceCurrency } from '@/constants/channel'
 
 export interface UserAvailableGroup {
   id: number
@@ -62,6 +62,8 @@ export interface UserPricingInterval {
 
 export interface UserSupportedModelPricing {
   billing_mode: BillingMode
+  /** 渠道原价币种；旧接口缺失时按 USD 兼容。 */
+  price_currency?: PriceCurrency
   input_price: number | null
   output_price: number | null
   cache_write_price: number | null

@@ -2894,6 +2894,16 @@ func TestValidatePricingEntriesRejectsUnknownBillingModeBeforeIntervals(t *testi
 	require.Equal(t, "INVALID_BILLING_MODE", infraerrors.Reason(err))
 }
 
+func TestValidatePricingEntriesRejectsUnknownPriceCurrency(t *testing.T) {
+	err := validatePricingEntries([]ChannelModelPricing{{
+		BillingMode:   BillingModeToken,
+		PriceCurrency: PriceCurrency("EUR"),
+	}})
+
+	require.Error(t, err)
+	require.Equal(t, "INVALID_PRICE_CURRENCY", infraerrors.Reason(err))
+}
+
 func validTimePricingForTest() *ChannelTimePricing {
 	return &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{
 		{StartTime: "09:00", EndTime: "12:00", Multiplier: 2},

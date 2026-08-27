@@ -238,6 +238,31 @@ func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *t
 	require.True(t, settings.AllowUserViewErrorRequests)
 }
 
+func TestSettingService_GetPublicSettings_ExposesModelMarketUSDToCNYRate(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyModelMarketUSDToCNYRate: "7.2345",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.InDelta(t, 7.2345, settings.ModelMarketUSDToCNYRate, 0.000001)
+}
+
+func TestSettingService_GetPublicSettings_InvalidModelMarketUSDToCNYRateFallsBackToZero(t *testing.T) {
+	for _, value := range []string{"", "invalid", "-1", "NaN", "+Inf"} {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyModelMarketUSDToCNYRate: value,
+		}}, &config.Config{})
+
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.Zero(t, settings.ModelMarketUSDToCNYRate, "value=%q", value)
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	svc := NewSettingService(&settingPublicRepoStub{
 		values: map[string]string{

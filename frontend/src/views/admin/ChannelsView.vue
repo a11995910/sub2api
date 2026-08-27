@@ -447,6 +447,7 @@
                   :key="idx"
                   :entry="entry"
                   :platform="section.platform"
+                  enable-price-currency
                   enable-time-pricing
                   enable-tier-multipliers
                   @update="updatePricingEntry(sIdx, idx, $event)"
@@ -861,6 +862,7 @@ function addPricingEntry(sectionIdx: number) {
   form.platforms[sectionIdx].model_pricing.push({
     models: [],
     billing_mode: 'token',
+    price_currency: 'USD',
     input_price: null,
     output_price: null,
     cache_write_price: null,
@@ -897,6 +899,7 @@ async function syncLatestModels(sectionIdx: number) {
     form.platforms[sectionIdx].model_pricing.push({
       models: newModels,
       billing_mode: 'token',
+      price_currency: 'USD',
       input_price: null,
       output_price: null,
       cache_write_price: null,
@@ -1124,6 +1127,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         platform: section.platform,
         models: entry.models,
         billing_mode: entry.billing_mode,
+        price_currency: entry.price_currency ?? 'USD',
         input_price: pricingInputToAPI(entry.billing_mode, entry.input_price),
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),

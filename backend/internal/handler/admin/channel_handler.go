@@ -60,6 +60,7 @@ type channelModelPricingRequest struct {
 	Platform         string                     `json:"platform" binding:"omitempty,max=50"`
 	Models           []string                   `json:"models" binding:"required,min=1,max=100"`
 	BillingMode      string                     `json:"billing_mode" binding:"omitempty,oneof=token per_request image video"`
+	PriceCurrency    string                     `json:"price_currency" binding:"omitempty,oneof=USD CNY"`
 	InputPrice       *float64                   `json:"input_price" binding:"omitempty,min=0"`
 	OutputPrice      *float64                   `json:"output_price" binding:"omitempty,min=0"`
 	CacheWritePrice  *float64                   `json:"cache_write_price" binding:"omitempty,min=0"`
@@ -131,6 +132,7 @@ type channelModelPricingResponse struct {
 	Platform         string                      `json:"platform"`
 	Models           []string                    `json:"models"`
 	BillingMode      string                      `json:"billing_mode"`
+	PriceCurrency    string                      `json:"price_currency"`
 	InputPrice       *float64                    `json:"input_price"`
 	OutputPrice      *float64                    `json:"output_price"`
 	CacheWritePrice  *float64                    `json:"cache_write_price"`
@@ -258,6 +260,7 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		Platform:         platform,
 		Models:           models,
 		BillingMode:      billingMode,
+		PriceCurrency:    string(p.PriceCurrency.OrDefault()),
 		InputPrice:       p.InputPrice,
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
@@ -352,6 +355,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest, allowChannelMult
 			Platform:         platform,
 			Models:           r.Models,
 			BillingMode:      billingMode,
+			PriceCurrency:    service.PriceCurrency(r.PriceCurrency).OrDefault(),
 			InputPrice:       r.InputPrice,
 			OutputPrice:      r.OutputPrice,
 			CacheWritePrice:  r.CacheWritePrice,

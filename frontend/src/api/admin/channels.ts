@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { BillingMode, ChannelStatus, BillingModelSource } from '@/constants/channel'
+import type { BillingMode, ChannelStatus, BillingModelSource, PriceCurrency } from '@/constants/channel'
 
 export type { BillingMode } from '@/constants/channel'
 
@@ -42,6 +42,8 @@ export interface ChannelModelPricing {
   platform: string
   models: string[]
   billing_mode: BillingMode
+  /** 原价展示币种；旧后端缺失时前端按 USD 兼容。 */
+  price_currency?: PriceCurrency
   input_price: number | null
   output_price: number | null
   cache_write_price: number | null

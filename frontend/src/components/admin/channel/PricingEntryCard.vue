@@ -44,6 +44,12 @@
         >
           {{ billingModeLabel }}
         </span>
+        <span
+          v-if="enablePriceCurrency"
+          class="flex-shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-600 dark:text-gray-300"
+        >
+          {{ normalizedPriceCurrency }}
+        </span>
       </div>
 
       <!-- Expanded: show the label "Pricing Entry" or similar -->
@@ -68,8 +74,8 @@
     >
       <div class="collapsible-inner">
         <!-- Header: Models + Billing Mode -->
-        <div class="mt-3 flex items-start gap-2">
-          <div class="flex-1">
+        <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+          <div class="min-w-0 flex-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.models') }} <span class="text-red-500">*</span>
             </label>
@@ -81,7 +87,7 @@
               class="mt-1"
             />
           </div>
-          <div class="w-40">
+          <div class="w-full sm:w-40">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.billingMode') }}
             </label>
@@ -92,6 +98,21 @@
               class="mt-1"
             />
           </div>
+          <div
+            v-if="enablePriceCurrency"
+            class="w-full sm:w-40"
+            data-testid="pricing-price-currency"
+          >
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.channels.form.priceCurrency') }}
+            </label>
+            <Select
+              :modelValue="normalizedPriceCurrency"
+              @update:modelValue="onPriceCurrencyUpdate($event as PriceCurrency)"
+              :options="priceCurrencyOptions"
+              class="mt-1"
+            />
+          </div>
         </div>
 
         <!-- Token mode -->
@@ -99,7 +120,7 @@
           <!-- Default prices (fallback when no interval matches) -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.defaultPrices', '默认价格（未命中区间时使用）') }}
-            <span class="ml-1 font-normal text-gray-400">灵石/MTok</span>
+            <span class="ml-1 font-normal text-gray-400">{{ tokenPriceUnit }}</span>
           </label>
           <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-6">
             <div>
@@ -164,6 +185,7 @@
                 :key="idx"
                 :interval="iv"
                 :mode="entry.billing_mode"
+                :currency-symbol="priceCurrencySymbol"
                 :enable-multipliers="enableTierMultipliers"
                 @update="updateInterval(idx, $event)"
                 @remove="removeInterval(idx)"
@@ -183,7 +205,7 @@
           <!-- Default per-request price -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ t('admin.channels.form.defaultPerRequestPrice', '默认单次价格（未命中层级时使用）') }}
-            <span class="ml-1 font-normal text-gray-400">灵石</span>
+            <span class="ml-1 font-normal text-gray-400">{{ requestPriceUnit }}</span>
           </label>
           <div class="mt-1 w-48">
             <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
@@ -205,6 +227,7 @@
               :key="idx"
               :interval="iv"
               :mode="entry.billing_mode"
+              :currency-symbol="priceCurrencySymbol"
               @update="updateInterval(idx, $event)"
               @remove="removeInterval(idx)"
             />
@@ -219,7 +242,7 @@
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
             {{ entry.billing_mode === 'video' ? t('admin.channels.form.defaultVideoPrice') : t('admin.channels.form.defaultImagePrice') }}
             <span class="ml-1 font-normal text-gray-400">
-              {{ entry.billing_mode === 'video' ? t('admin.channels.form.perSecondUnit') : '灵石' }}
+              {{ entry.billing_mode === 'video' ? perSecondPriceUnit : requestPriceUnit }}
             </span>
           </label>
           <div class="mt-1 w-48">
@@ -241,6 +264,7 @@
               :key="idx"
               :interval="iv"
               :mode="entry.billing_mode"
+              :currency-symbol="priceCurrencySymbol"
               @update="updateInterval(idx, $event)"
               @remove="removeInterval(idx)"
             />
@@ -263,6 +287,11 @@ import TimePricingSection from './TimePricingSection.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { getPlatformTagClass, perTokenToMTok, pricingInputToForm, transitionPricingBillingMode } from './types'
 import type { BillingMode } from '@/api/admin/channels'
+import {
+  PRICE_CURRENCY_CNY,
+  PRICE_CURRENCY_USD,
+  type PriceCurrency,
+} from '@/constants/channel'
 import channelsAPI from '@/api/admin/channels'
 
 const { t } = useI18n()
@@ -274,11 +303,13 @@ const props = withDefaults(defineProps<{
   hideTokenIntervals?: boolean
   enableTimePricing?: boolean
   enableTierMultipliers?: boolean
+  enablePriceCurrency?: boolean
 }>(), {
   allowedBillingModes: () => ['token', 'per_request', 'image', 'video'],
   hideTokenIntervals: false,
   enableTimePricing: false,
   enableTierMultipliers: false,
+  enablePriceCurrency: false,
 })
 
 const emit = defineEmits<{
@@ -312,10 +343,32 @@ const billingModeLabel = computed(() => {
   return opt ? opt.label : props.entry.billing_mode
 })
 
+const normalizedPriceCurrency = computed<PriceCurrency>(() =>
+  props.entry.price_currency === PRICE_CURRENCY_CNY ? PRICE_CURRENCY_CNY : PRICE_CURRENCY_USD,
+)
+const priceCurrencyOptions = computed(() => [
+  { value: PRICE_CURRENCY_USD, label: t('admin.channels.form.priceCurrencyUSD') },
+  { value: PRICE_CURRENCY_CNY, label: t('admin.channels.form.priceCurrencyCNY') },
+])
+const priceCurrencySymbol = computed(() => {
+  if (!props.enablePriceCurrency) return undefined
+  return normalizedPriceCurrency.value === PRICE_CURRENCY_CNY ? '¥' : '$'
+})
+const requestPriceUnit = computed(() => priceCurrencySymbol.value ?? '灵石')
+const tokenPriceUnit = computed(() => `${requestPriceUnit.value}/MTok`)
+const perSecondPriceUnit = computed(() =>
+  priceCurrencySymbol.value ? `${priceCurrencySymbol.value}/秒` : t('admin.channels.form.perSecondUnit'),
+)
+
 function onBillingModeUpdate(nextMode: BillingMode) {
   if (!props.allowedBillingModes.includes(nextMode)) return
   const updated = transitionPricingBillingMode(props.entry, nextMode)
   if (updated !== props.entry) emit('update', updated)
+}
+
+function onPriceCurrencyUpdate(currency: PriceCurrency) {
+  if (currency !== PRICE_CURRENCY_USD && currency !== PRICE_CURRENCY_CNY) return
+  emit('update', { ...props.entry, price_currency: currency })
 }
 
 function emitField(field: keyof PricingFormEntry, value: string) {
@@ -376,6 +429,9 @@ async function onModelsUpdate(newModels: string[]) {
   const hasPrice = e.input_price != null || e.output_price != null ||
                    e.cache_write_price != null || e.cache_read_price != null
   if (hasPrice) return
+
+  // 默认价格目录是 USD；人民币条目由管理员按上游人民币价手工填写。
+  if (props.enablePriceCurrency && normalizedPriceCurrency.value === PRICE_CURRENCY_CNY) return
 
   // 查询第一个新增模型的默认价格
   try {

@@ -132,6 +132,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := normalizeCheckinSettings(settings); err != nil {
 		return nil, err
 	}
+	if math.IsNaN(settings.ModelMarketUSDToCNYRate) || math.IsInf(settings.ModelMarketUSDToCNYRate, 0) || settings.ModelMarketUSDToCNYRate < 0 {
+		return nil, infraerrors.BadRequest("INVALID_MODEL_MARKET_USD_TO_CNY_RATE", "model market USD to CNY rate must be a non-negative number")
+	}
 	if err := s.normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
 		return nil, err
 	}
@@ -480,6 +483,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)
 	updates[SettingKeyModelPlazaRequireAuth] = strconv.FormatBool(settings.ModelPlazaRequireAuth)
 	updates[SettingKeyModelPlazaDescription] = settings.ModelPlazaDescription
+	updates[SettingKeyModelMarketUSDToCNYRate] = strconv.FormatFloat(settings.ModelMarketUSDToCNYRate, 'f', -1, 64)
 	updates[SettingKeyPluginManagementEnabled] = strconv.FormatBool(settings.PluginManagementEnabled)
 
 	// Affiliate (邀请返利) feature switch

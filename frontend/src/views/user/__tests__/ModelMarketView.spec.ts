@@ -7,6 +7,8 @@ const getAvailableChannels = vi.hoisted(() => vi.fn())
 const getAvailableGroups = vi.hoisted(() => vi.fn())
 const getUserGroupRates = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
+const fetchPublicSettings = vi.hoisted(() => vi.fn())
+const cachedPublicSettings = vi.hoisted(() => ({ model_market_usd_to_cny_rate: 7.2 }))
 const push = vi.hoisted(() => vi.fn())
 
 const messages: Record<string, string> = {
@@ -71,6 +73,8 @@ vi.mock('@/api/groups', () => ({
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
+    fetchPublicSettings,
+    cachedPublicSettings,
   }),
 }))
 
@@ -176,6 +180,9 @@ describe('ModelMarketView', () => {
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
     showError.mockReset()
+    fetchPublicSettings.mockReset()
+    cachedPublicSettings.model_market_usd_to_cny_rate = 7.2
+    fetchPublicSettings.mockResolvedValue(cachedPublicSettings)
     push.mockReset()
   })
 
@@ -251,7 +258,7 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain('gpt-4.1')
     expect(modelCard(wrapper, 'gpt-4.1').get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
     expect(wrapper.text()).toContain('$1')
-    expect(wrapper.text()).toContain('比官方参考低 85.9%')
+    expect(wrapper.text()).toContain('比官方参考低 86.1%')
     expect(wrapper.text()).not.toContain('image-2')
 
     await groupButtons[1].trigger('click')
@@ -259,6 +266,100 @@ describe('ModelMarketView', () => {
 
     await groupButtons[2].trigger('click')
     expect(wrapper.text()).toContain('image-2')
+  })
+
+  it('人民币渠道原价显示人民币符号并按一灵石等于一元计算优惠', async () => {
+    const cnyGroup = groupFixture({
+      id: 11,
+      name: '国产模型分组',
+      platform: 'zhipu',
+      rate_multiplier: 0.5,
+    })
+    getAvailableGroups.mockResolvedValue([cnyGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '国产模型渠道',
+      description: '',
+      platforms: [{
+        platform: 'zhipu',
+        groups: [cnyGroup],
+        supported_models: [{
+          name: 'glm-5',
+          platform: 'zhipu',
+          kind: 'token',
+          pricing: {
+            billing_mode: 'token',
+            price_currency: 'CNY',
+            input_price: 0.000002,
+            output_price: 0.000008,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: null,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const card = modelCard(wrapper, 'glm-5')
+    expect(card.text()).toContain('1 灵石')
+    expect(card.get('[data-testid="token-official-price"]').text()).toBe('¥2')
+    expect(card.get('[data-testid="token-price-discount"]').text()).toBe('优惠 50.0%')
+    expect(card.text()).not.toContain('$2')
+  })
+
+  it('美元汇率未配置时保留美元原价但不显示优惠', async () => {
+    cachedPublicSettings.model_market_usd_to_cny_rate = 0
+    const usdGroup = groupFixture({ id: 12, rate_multiplier: 0.5 })
+    getAvailableGroups.mockResolvedValue([usdGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '美元渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [usdGroup],
+        supported_models: [{
+          name: 'gpt-usd',
+          platform: 'openai',
+          kind: 'token',
+          pricing: {
+            billing_mode: 'token',
+            price_currency: 'USD',
+            input_price: 0.000002,
+            output_price: 0.000008,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const card = modelCard(wrapper, 'gpt-usd')
+    expect(card.get('[data-testid="token-official-price"]').text()).toBe('$2')
+    expect(card.find('[data-testid="token-price-discount"]').exists()).toBe(false)
   })
 
   it('同平台模型只展示到持久号池支持的分组', async () => {

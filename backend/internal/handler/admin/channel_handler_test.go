@@ -58,6 +58,24 @@ func TestChannelModelPricingRequestRejectsUnknownBillingMode(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestChannelModelPricingRequestAcceptsSupportedPriceCurrencies(t *testing.T) {
+	for _, currency := range []string{"USD", "CNY"} {
+		err := bindChannelModelPricingRequestForTest(t, `{
+			"models":["m"],
+			"price_currency":"`+currency+`"
+		}`)
+		require.NoError(t, err)
+	}
+}
+
+func TestChannelModelPricingRequestRejectsUnknownPriceCurrency(t *testing.T) {
+	err := bindChannelModelPricingRequestForTest(t, `{
+		"models":["m"],
+		"price_currency":"EUR"
+	}`)
+	require.Error(t, err)
+}
+
 func TestCreateChannelRequestAcceptsVideoBillingMode(t *testing.T) {
 	err := bindCreateChannelRequestForTest(t, `{
 		"name":"视频渠道",
@@ -552,6 +570,16 @@ func TestPricingToResponse_TimePricing(t *testing.T) {
 func TestPricingToResponse_TimePricingNil(t *testing.T) {
 	got := pricingToResponse(&service.ChannelModelPricing{})
 	require.Nil(t, got.TimePricing)
+	require.Equal(t, "USD", got.PriceCurrency)
+}
+
+func TestPricingRequestToService_PreservesPriceCurrency(t *testing.T) {
+	got := pricingRequestToService([]channelModelPricingRequest{{
+		Models:        []string{"glm-5"},
+		PriceCurrency: "CNY",
+	}}, true)
+	require.Len(t, got, 1)
+	require.Equal(t, service.PriceCurrencyCNY, got[0].PriceCurrency)
 }
 
 // ---------------------------------------------------------------------------

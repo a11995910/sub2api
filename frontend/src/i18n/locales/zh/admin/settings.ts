@@ -52,6 +52,14 @@ export default {
           priceDescription: '价格说明（Markdown）',
           priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
         },
+        modelMarketPricing: {
+          title: '模型行情价格换算',
+          description: '独立配置用户模型行情页 /model-market 的价格比较口径，与内置模型广场开关无关。',
+          configureLink: '前往 渠道管理 > 渠道定价 为每条模型定价选择原价币种',
+          usdToCnyRate: '美元兑人民币汇率',
+          usdToCnyRateHint: '仅用于美元原价与灵石价格的优惠比较。人民币原价固定按 1 灵石 = 1 元计算；请按需维护当前汇率。',
+          usdToCnyRateDisabled: '0 = 不显示美元优惠',
+        },
         pluginManagement: {
           title: '插件管理',
           description: '控制管理员侧边栏是否显示插件管理入口。此开关不控制插件运行状态。',

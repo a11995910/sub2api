@@ -80,6 +80,35 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('0.5x')
   })
 
+  it('CNY Token 定价的实付输入/输出/缓存和分时价格使用 ¥,官方参考价仍使用 $', () => {
+    const model = tokenModel({
+      pricing: {
+        ...tokenModel().pricing!,
+        price_currency: 'CNY'
+      },
+      time_pricing: {
+        timezone: 'Asia/Shanghai',
+        periods: [{ start_time: '00:00', end_time: '08:00', multiplier: 0.5 }]
+      }
+    })
+    const rows = mountTable([model], 0.8).findAll('tbody tr')
+
+    const baseCells = rows[0].findAll('td')
+    expect(baseCells[1].text()).toContain('¥2.40')
+    expect(baseCells[2].text()).toContain('¥12.00')
+    expect(baseCells[3].text()).toContain('¥3.00')
+    expect(baseCells[3].text()).toContain('¥0.24')
+    expect(baseCells[4].text()).toContain('$3.00')
+    expect(baseCells[5].text()).toContain('$15.00')
+    expect(baseCells[6].text()).toContain('$3.75')
+
+    const periodCells = rows[1].findAll('td')
+    expect(periodCells[1].text()).toContain('¥1.20')
+    expect(periodCells[2].text()).toContain('¥6.00')
+    expect(periodCells[3].text()).toContain('¥1.50')
+    expect(periodCells[4].text()).toContain('$3.00')
+  })
+
   it('用户专属倍率覆盖分组倍率,并划线展示原倍率', () => {
     const wrapper = mountTable([tokenModel()], 1, 0.8)
     const text = wrapper.text()
@@ -227,6 +256,45 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('modelPlaza.table.perRequest')
     // 单位后缀跟在价格后(按次 → / 次)
     expect(text).toContain('modelPlaza.table.perUnitRequest')
+  })
+
+  it.each([
+    ['per_request', 'modelPlaza.table.perUnitRequest'],
+    ['image', 'modelPlaza.table.perUnitImage'],
+    ['video', 'modelPlaza.table.perUnitRequest']
+  ] as const)('CNY %s 阶梯按次价格使用 ¥ 并保留对应单位', (billingMode, unitKey) => {
+    const model = tokenModel({
+      name: `cny-${billingMode}`,
+      pricing: {
+        billing_mode: billingMode,
+        price_currency: 'CNY',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: null,
+        intervals: [
+          {
+            min_tokens: 0,
+            max_tokens: null,
+            tier_label: '标准',
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            per_request_price: 0.04
+          }
+        ]
+      },
+      official_pricing: null
+    })
+    const text = mountTable([model], 0.5).text()
+
+    expect(text).toContain('¥0.02')
+    expect(text).toContain(unitKey)
+    expect(text).not.toContain('$0.02')
   })
 
   it('token 模型阶梯定价内联进输入/输出列,按倍率折算', () => {
@@ -498,6 +566,24 @@ describe('PlazaModelPricingTable 长上下文阶梯', () => {
     expect(cells[6].text()).toContain('$12.50')
     expect(cells[6].text()).toContain('$1.00')
     expect(cells[6].text()).not.toContain('(1h')
+  })
+
+  it('CNY 长上下文阶梯的渠道实付价使用 ¥,LiteLLM 官方阶梯仍使用 $', () => {
+    const model = ladderModel({
+      pricing: {
+        ...ladderModel().pricing!,
+        price_currency: 'CNY'
+      }
+    })
+    const cells = mountTable([model], 0.5).findAll('tbody td')
+
+    expect(cells[1].text()).toContain('¥2.50')
+    expect(cells[1].text()).toContain('¥5.00')
+    expect(cells[2].text()).toContain('¥15.00')
+    expect(cells[3].text()).toContain('¥3.125')
+    expect(cells[4].text()).toContain('$5.00')
+    expect(cells[5].text()).toContain('$30.00')
+    expect(cells[6].text()).toContain('$6.25')
   })
 
   it('整单计价的档位标签带 tooltip;边际计价在模型名旁加徽章并换用边际说明', () => {

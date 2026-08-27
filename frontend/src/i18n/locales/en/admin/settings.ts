@@ -52,6 +52,14 @@ export default {
           priceDescription: 'Pricing notes (Markdown)',
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
         },
+        modelMarketPricing: {
+          title: 'Model Market Price Conversion',
+          description: 'Configures price comparisons on /model-market independently of the built-in Model Plaza switch.',
+          configureLink: 'Choose a list-price currency for each rule in Channel Management > Channel Pricing',
+          usdToCnyRate: 'USD to CNY exchange rate',
+          usdToCnyRateHint: 'Used only to compare USD list prices with spirit-stone prices. CNY list prices always use 1 spirit stone = 1 CNY; keep this rate current.',
+          usdToCnyRateDisabled: '0 = hide USD discounts',
+        },
         pluginManagement: {
           title: 'Plugin Management',
           description: 'Controls whether the plugin management entry appears in the admin sidebar. This switch does not control plugin runtime state.',

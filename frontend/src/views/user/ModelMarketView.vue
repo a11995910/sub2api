@@ -175,20 +175,20 @@
                 <PriceTile
                   label="1K"
                   :value="formatSelectedImageTier('1k')"
-                  :official-value="formatSelectedOfficialImageTier('1k')"
-                  :discount-value="formatSelectedImageTierDiscount('1k')"
+                  :official-value="formatSelectedOfficialImageTier('1k', model.pricing?.price_currency)"
+                  :discount-value="formatSelectedImageTierDiscount('1k', model.pricing?.price_currency)"
                 />
                 <PriceTile
                   label="2K"
                   :value="formatSelectedImageTier('2k')"
-                  :official-value="formatSelectedOfficialImageTier('2k')"
-                  :discount-value="formatSelectedImageTierDiscount('2k')"
+                  :official-value="formatSelectedOfficialImageTier('2k', model.pricing?.price_currency)"
+                  :discount-value="formatSelectedImageTierDiscount('2k', model.pricing?.price_currency)"
                 />
                 <PriceTile
                   label="4K"
                   :value="formatSelectedImageTier('4k')"
-                  :official-value="formatSelectedOfficialImageTier('4k')"
-                  :discount-value="formatSelectedImageTierDiscount('4k')"
+                  :official-value="formatSelectedOfficialImageTier('4k', model.pricing?.price_currency)"
+                  :discount-value="formatSelectedImageTierDiscount('4k', model.pricing?.price_currency)"
                 />
               </template>
               <template v-else-if="model.kind === 'video'">
@@ -203,8 +203,8 @@
                 <PriceTile
                   :label="t('modelMarket.columns.perRequest')"
                   :value="formatSelectedPrice(model.pricing?.per_request_price, 1, model.pricing?.billing_mode)"
-                  :official-value="formatOfficialPrice(model.pricing?.per_request_price, 1)"
-                  :discount-value="formatSelectedDiscount(model.pricing?.per_request_price, 1, model.pricing?.billing_mode)"
+                  :official-value="formatOfficialPrice(model.pricing?.per_request_price, 1, model.pricing?.price_currency)"
+                  :discount-value="formatSelectedDiscount(model.pricing?.per_request_price, 1, model.pricing?.billing_mode, model.pricing?.price_currency)"
                 />
                 <PriceTile :label="t('modelMarket.columns.multiplier')" :value="selectedTextRateLabel" compact />
                 <PriceTile :label="t('modelMarket.columns.cacheRead')" value="-" />
@@ -215,8 +215,8 @@
                   :output-value="formatSelectedPrice(model.pricing?.output_price, perMillionScale, model.pricing?.billing_mode)"
                   :cache-read-value="formatSelectedPrice(model.pricing?.cache_read_price, perMillionScale, model.pricing?.billing_mode)"
                   :cache-write-value="formatSelectedPrice(model.pricing?.cache_write_price, perMillionScale, model.pricing?.billing_mode)"
-                  :official-input-value="formatOfficialPrice(model.pricing?.input_price, perMillionScale)"
-                  :discount-value="formatSelectedDiscount(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode)"
+                  :official-input-value="formatOfficialPrice(model.pricing?.input_price, perMillionScale, model.pricing?.price_currency)"
+                  :discount-value="formatSelectedDiscount(model.pricing?.input_price, perMillionScale, model.pricing?.billing_mode, model.pricing?.price_currency)"
                 />
               </template>
             </div>
@@ -249,7 +249,7 @@ import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { formatScaled, formatUSDScaled } from '@/utils/pricing'
+import { formatOriginalCurrencyScaled, formatScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
 import { filterGroupsByModelAvailability, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
@@ -262,6 +262,8 @@ import {
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
   BILLING_MODE_VIDEO,
+  PRICE_CURRENCY_CNY,
+  type PriceCurrency,
   type BillingMode,
 } from '@/constants/channel'
 import type { Group, GroupPlatform } from '@/types'
@@ -329,7 +331,10 @@ const searchQuery = ref('')
 const selectedGroupId = ref<number | null>(null)
 const modelSort = ref<ModelSort>('recommended')
 const perMillionScale = 1_000_000
-const usdToSpiritStoneRate = 7.1
+const usdToSpiritStoneRate = computed(() => {
+  const rate = Number(appStore.cachedPublicSettings?.model_market_usd_to_cny_rate)
+  return Number.isFinite(rate) && rate > 0 ? rate : 0
+})
 
 const toAvailableGroup = (group: Group): UserAvailableGroup => ({
   id: group.id,
@@ -364,6 +369,7 @@ const pricingSignature = (pricing: UserSupportedModelPricing | null): string => 
   if (!pricing) return 'no-pricing'
   return JSON.stringify({
     billing_mode: pricing.billing_mode,
+    price_currency: pricing.price_currency,
     input_price: pricing.billing_mode === BILLING_MODE_VIDEO ? null : pricing.input_price,
     output_price: pricing.output_price,
     cache_write_price: pricing.cache_write_price,
@@ -530,16 +536,28 @@ function formatPrice(
   return formatScaled(value * effectiveMultiplier(group, mode), scale)
 }
 
-function formatOfficialPrice(value: number | null | undefined, scale: number): string {
-  return formatUSDScaled(value ?? null, scale)
+function formatOfficialPrice(
+  value: number | null | undefined,
+  scale: number,
+  currency?: PriceCurrency,
+): string {
+  return formatOriginalCurrencyScaled(value ?? null, scale, currency)
 }
 
-function formatDiscountPercent(value: number | null | undefined, scale: number, group: UserAvailableGroup, mode?: BillingMode): string {
+function formatDiscountPercent(
+  value: number | null | undefined,
+  scale: number,
+  group: UserAvailableGroup,
+  mode?: BillingMode,
+  currency?: PriceCurrency,
+): string {
   if (value == null) return ''
   const official = value * scale
   if (!Number.isFinite(official) || official <= 0) return ''
   const current = value * effectiveMultiplier(group, mode) * scale
-  const officialConverted = official * usdToSpiritStoneRate
+  const conversionRate = currency === PRICE_CURRENCY_CNY ? 1 : usdToSpiritStoneRate.value
+  if (conversionRate <= 0) return ''
+  const officialConverted = official * conversionRate
   if (!Number.isFinite(current) || officialConverted <= 0 || current >= officialConverted) return ''
   const discount = (current / officialConverted - 1) * 100
   return `${discount.toFixed(1)}%`
@@ -551,14 +569,22 @@ function formatImageTier(group: UserAvailableGroup, tier: '1k' | '2k' | '4k'): s
   return formatScaled(value * effectiveImageRate(group), 1)
 }
 
-function formatOfficialImageTier(group: UserAvailableGroup, tier: '1k' | '2k' | '4k'): string {
+function formatOfficialImageTier(
+  group: UserAvailableGroup,
+  tier: '1k' | '2k' | '4k',
+  currency?: PriceCurrency,
+): string {
   const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
-  return formatUSDScaled(typeof value === 'number' ? value : null, 1)
+  return formatOriginalCurrencyScaled(typeof value === 'number' ? value : null, 1, currency)
 }
 
-function formatImageTierDiscount(group: UserAvailableGroup, tier: '1k' | '2k' | '4k'): string {
+function formatImageTierDiscount(
+  group: UserAvailableGroup,
+  tier: '1k' | '2k' | '4k',
+  currency?: PriceCurrency,
+): string {
   const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
-  return formatDiscountPercent(typeof value === 'number' ? value : null, 1, group, BILLING_MODE_IMAGE)
+  return formatDiscountPercent(typeof value === 'number' ? value : null, 1, group, BILLING_MODE_IMAGE, currency)
 }
 
 function formatSelectedPrice(value: number | null | undefined, scale: number, mode?: BillingMode): string {
@@ -567,10 +593,15 @@ function formatSelectedPrice(value: number | null | undefined, scale: number, mo
   return formatPrice(value, scale, group, mode)
 }
 
-function formatSelectedDiscount(value: number | null | undefined, scale: number, mode?: BillingMode): string {
+function formatSelectedDiscount(
+  value: number | null | undefined,
+  scale: number,
+  mode?: BillingMode,
+  currency?: PriceCurrency,
+): string {
   const group = selectedGroup.value?.group
   if (!group) return ''
-  return formatDiscountPercent(value, scale, group, mode)
+  return formatDiscountPercent(value, scale, group, mode, currency)
 }
 
 function formatSelectedImageTier(tier: '1k' | '2k' | '4k'): string {
@@ -579,16 +610,16 @@ function formatSelectedImageTier(tier: '1k' | '2k' | '4k'): string {
   return formatImageTier(group, tier)
 }
 
-function formatSelectedOfficialImageTier(tier: '1k' | '2k' | '4k'): string {
+function formatSelectedOfficialImageTier(tier: '1k' | '2k' | '4k', currency?: PriceCurrency): string {
   const group = selectedGroup.value?.group
   if (!group) return '-'
-  return formatOfficialImageTier(group, tier)
+  return formatOfficialImageTier(group, tier, currency)
 }
 
-function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k'): string {
+function formatSelectedImageTierDiscount(tier: '1k' | '2k' | '4k', currency?: PriceCurrency): string {
   const group = selectedGroup.value?.group
   if (!group) return ''
-  return formatImageTierDiscount(group, tier)
+  return formatImageTierDiscount(group, tier, currency)
 }
 
 function selectedVideoQuote(model: GroupMarketModel, resolution: VideoResolution) {
@@ -678,6 +709,7 @@ async function loadModels() {
         console.error('Failed to load user group rates:', err)
         return {} as Record<number, number>
       }),
+      appStore.fetchPublicSettings(),
     ])
     channels.value = list
     availableGroups.value = groups

@@ -57,6 +57,7 @@ function createPublicSettings(overrides: Partial<PublicSettings> = {}): PublicSe
     available_channels_enabled: false,
     model_plaza_enabled: false,
     model_plaza_require_auth: false,
+    model_market_usd_to_cny_rate: 0,
     plugin_management_enabled: false,
     service_quota_enabled: false,
     affiliate_enabled: false,

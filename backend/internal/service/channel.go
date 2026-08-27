@@ -35,6 +35,32 @@ func (m BillingMode) IsValidUsageFilter() bool {
 	return false
 }
 
+// PriceCurrency 渠道定价原价币种，仅定义展示和比较口径，不改变价格数值。
+type PriceCurrency string
+
+const (
+	PriceCurrencyUSD PriceCurrency = "USD"
+	PriceCurrencyCNY PriceCurrency = "CNY"
+)
+
+// IsValid 检查原价币种是否合法；空值兼容迁移前的内存对象并按 USD 处理。
+func (c PriceCurrency) IsValid() bool {
+	switch c {
+	case PriceCurrencyUSD, PriceCurrencyCNY, "":
+		return true
+	default:
+		return false
+	}
+}
+
+// OrDefault 返回可供接口和持久化使用的币种，历史空值统一回退为 USD。
+func (c PriceCurrency) OrDefault() PriceCurrency {
+	if c == "" {
+		return PriceCurrencyUSD
+	}
+	return c
+}
+
 const (
 	BillingModelSourceRequested     = "requested"
 	BillingModelSourceUpstream      = "upstream"
@@ -95,13 +121,14 @@ type ChannelModelPricing struct {
 	Platform         string              `json:"platform"`          // 所属平台（anthropic/openai/gemini/...）
 	Models           []string            `json:"models"`            // 绑定的模型列表
 	BillingMode      BillingMode         `json:"billing_mode"`      // 计费模式
+	PriceCurrency    PriceCurrency       `json:"price_currency"`    // 原价币种（USD/CNY），不改变价格数值
 	InputPrice       *float64            `json:"input_price"`       // token 模式为每 token 输入价；video 模式历史保留字段，不参与计费
-	OutputPrice      *float64            `json:"output_price"`      // 每 token 输出价格（USD）
-	CacheWritePrice  *float64            `json:"cache_write_price"` // 缓存写入价格
-	CacheReadPrice   *float64            `json:"cache_read_price"`  // 缓存读取价格
+	OutputPrice      *float64            `json:"output_price"`      // 每 token 输出原价（PriceCurrency）
+	CacheWritePrice  *float64            `json:"cache_write_price"` // 每 token 缓存写入原价（PriceCurrency）
+	CacheReadPrice   *float64            `json:"cache_read_price"`  // 每 token 缓存读取原价（PriceCurrency）
 	FastMultiplier   *float64            `json:"fast_multiplier"`   // Fast/Priority 服务层级倍率
 	FlexMultiplier   *float64            `json:"flex_multiplier"`   // Flex 服务层级倍率
-	ImageInputPrice  *float64            `json:"image_input_price"` // 图片输入 token 价格；未配置时回退文本输入价
+	ImageInputPrice  *float64            `json:"image_input_price"` // 图片输入 token 原价；未配置时回退文本输入价
 	ImageOutputPrice *float64            `json:"image_output_price"`
 	PerRequestPrice  *float64            `json:"per_request_price"`
 	Intervals        []PricingInterval   `json:"intervals"`

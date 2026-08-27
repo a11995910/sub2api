@@ -14,6 +14,11 @@ export type BillingMode =
   | typeof BILLING_MODE_IMAGE
   | typeof BILLING_MODE_VIDEO
 
+/** Channel list-price currencies (must match service.PriceCurrency* constants in Go). */
+export const PRICE_CURRENCY_USD = 'USD' as const
+export const PRICE_CURRENCY_CNY = 'CNY' as const
+export type PriceCurrency = typeof PRICE_CURRENCY_USD | typeof PRICE_CURRENCY_CNY
+
 /** Billing-model-source values (must match service.BillingModelSource* constants in Go). */
 export const BILLING_MODEL_SOURCE_REQUESTED = 'requested' as const
 export const BILLING_MODEL_SOURCE_UPSTREAM = 'upstream' as const

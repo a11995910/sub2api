@@ -26,3 +26,15 @@ export function formatUSDScaled(value: number | null, scale: number, minFraction
   if (value == null) return '-'
   return `$${formatPriceNumber(value * scale, minFractionDigits)}`
 }
+
+/** 按渠道原价币种格式化；未知或缺失币种按 USD 兼容。 */
+export function formatOriginalCurrencyScaled(
+  value: number | null,
+  scale: number,
+  currency: 'USD' | 'CNY' | null | undefined,
+  minFractionDigits = 0,
+): string {
+  if (value == null) return '-'
+  const symbol = currency === 'CNY' ? '¥' : '$'
+  return `${symbol}${formatPriceNumber(value * scale, minFractionDigits)}`
+}

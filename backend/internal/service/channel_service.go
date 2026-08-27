@@ -665,6 +665,9 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 		if err := checkBillingModeValid(p.BillingMode); err != nil {
 			return err
 		}
+		if err := checkPriceCurrencyValid(p.PriceCurrency); err != nil {
+			return err
+		}
 	}
 	if err := validateNoConflictingModels(pricing); err != nil {
 		return err
@@ -960,6 +963,16 @@ func checkBillingModeValid(mode BillingMode) error {
 	return infraerrors.BadRequest(
 		"INVALID_BILLING_MODE",
 		fmt.Sprintf("invalid billing mode: %s", mode),
+	)
+}
+
+func checkPriceCurrencyValid(currency PriceCurrency) error {
+	if currency.IsValid() {
+		return nil
+	}
+	return infraerrors.BadRequest(
+		"INVALID_PRICE_CURRENCY",
+		fmt.Sprintf("invalid price currency: %s", currency),
 	)
 }
 

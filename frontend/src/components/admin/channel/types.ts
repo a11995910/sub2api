@@ -1,4 +1,5 @@
 import type { BillingMode, ChannelTimePricing, PricingInterval } from '@/api/admin/channels'
+import type { PriceCurrency } from '@/constants/channel'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -21,6 +22,7 @@ export interface IntervalFormEntry {
 export interface PricingFormEntry {
   models: string[]
   billing_mode: BillingMode
+  price_currency?: PriceCurrency
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null

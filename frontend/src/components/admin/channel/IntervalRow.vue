@@ -15,22 +15,22 @@
             type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
         </div>
         <div>
-           <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">灵石/M</span></label>
+           <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">{{ tokenPriceUnit }}</span></label>
           <input :value="interval.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
             type="number" step="any" min="0" class="input mt-0.5 text-xs" />
         </div>
         <div>
-           <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', '输出') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">灵石/M</span></label>
+           <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', '输出') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">{{ tokenPriceUnit }}</span></label>
           <input :value="interval.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
             type="number" step="any" min="0" class="input mt-0.5 text-xs" />
         </div>
         <div>
-           <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePriceShort', '缓存W') }} <span class="text-gray-300">灵石/M</span></label>
+           <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePriceShort', '缓存W') }} <span class="text-gray-300">{{ tokenPriceUnit }}</span></label>
           <input :value="interval.cache_write_price" @input="emitField('cache_write_price', ($event.target as HTMLInputElement).value)"
             type="number" step="any" min="0" class="input mt-0.5 text-xs" />
         </div>
         <div>
-           <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPriceShort', '缓存R') }} <span class="text-gray-300">灵石/M</span></label>
+           <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPriceShort', '缓存R') }} <span class="text-gray-300">{{ tokenPriceUnit }}</span></label>
           <input :value="interval.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
             type="number" step="any" min="0" class="input mt-0.5 text-xs" />
         </div>
@@ -79,7 +79,7 @@
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ mode === 'video' ? t('admin.channels.form.perSecondPrice') : t('admin.channels.form.perRequestPrice', '单次价格') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">{{ mode === 'video' ? t('admin.channels.form.perSecondUnit') : '灵石' }}</span></label>
+        <label class="text-xs text-gray-400">{{ mode === 'video' ? t('admin.channels.form.perSecondPrice') : t('admin.channels.form.perRequestPrice', '单次价格') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">{{ mode === 'video' ? perSecondPriceUnit : requestPriceUnit }}</span></label>
         <input :value="interval.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
@@ -104,6 +104,7 @@ const props = defineProps<{
   interval: IntervalFormEntry
   mode: BillingMode
   enableMultipliers?: boolean
+  currencySymbol?: string
 }>()
 
 const emit = defineEmits<{
@@ -124,6 +125,12 @@ const isEmpty = computed(() => {
     (iv.cache_read_multiplier == null || iv.cache_read_multiplier === '') &&
     (iv.per_request_price == null || iv.per_request_price === '')
 })
+
+const requestPriceUnit = computed(() => props.currencySymbol ?? '灵石')
+const tokenPriceUnit = computed(() => `${requestPriceUnit.value}/M`)
+const perSecondPriceUnit = computed(() =>
+  props.currencySymbol ? `${props.currencySymbol}/秒` : t('admin.channels.form.perSecondUnit'),
+)
 
 function emitField(field: keyof IntervalFormEntry, value: string | number | null) {
   emit('update', { ...props.interval, [field]: value === '' ? null : value })
