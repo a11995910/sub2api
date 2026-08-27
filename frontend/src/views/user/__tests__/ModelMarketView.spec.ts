@@ -7,6 +7,10 @@ const getAvailableChannels = vi.hoisted(() => vi.fn())
 const getAvailableGroups = vi.hoisted(() => vi.fn())
 const getUserGroupRates = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
+const fetchPublicSettings = vi.hoisted(() => vi.fn())
+const appStoreState = vi.hoisted(() => ({
+  cachedPublicSettings: null as null | { model_market_usd_to_cny_rate?: number },
+}))
 const push = vi.hoisted(() => vi.fn())
 
 const messages: Record<string, string> = {
@@ -32,7 +36,8 @@ const messages: Record<string, string> = {
   'modelMarket.noModelsInGroup': '当前分组暂无匹配模型',
   'modelMarket.effectiveRate': '生效倍率',
   'modelMarket.currentPrice': '当前',
-  'modelMarket.officialPrice': '官方',
+  'modelMarket.officialPrice': '渠道原价',
+  'modelMarket.approxCNY': '约 {value}',
   'modelMarket.discount': '优惠',
   'modelMarket.test': '去测试',
   'modelMarket.sort.label': '模型排序',
@@ -46,8 +51,8 @@ const messages: Record<string, string> = {
   'modelMarket.outputMeaning': '模型回复内容',
   'modelMarket.cacheReadMeaning': '重复内容命中缓存',
   'modelMarket.cacheWriteMeaning': '首次写入可复用缓存',
-  'modelMarket.officialReference': '官方输入参考',
-  'modelMarket.discountCompared': '比官方参考低 {value}',
+  'modelMarket.officialReference': '渠道计费基准',
+  'modelMarket.discountCompared': '比渠道计费基准低 {value}',
   'modelMarket.columns.input': '输入',
   'modelMarket.columns.output': '输出',
   'modelMarket.columns.cacheRead': '缓存读取',
@@ -77,6 +82,10 @@ vi.mock('@/api/groups', () => ({
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
+    fetchPublicSettings,
+    get cachedPublicSettings() {
+      return appStoreState.cachedPublicSettings
+    },
   }),
 }))
 
@@ -190,6 +199,9 @@ describe('ModelMarketView', () => {
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
     showError.mockReset()
+    fetchPublicSettings.mockReset()
+    appStoreState.cachedPublicSettings = { model_market_usd_to_cny_rate: 7.2 }
+    fetchPublicSettings.mockResolvedValue(appStoreState.cachedPublicSettings)
     push.mockReset()
   })
 
@@ -283,7 +295,7 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain('gpt-4.1')
     expect(modelCard(wrapper, 'gpt-4.1').get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
     expect(wrapper.text()).toContain('$1')
-    expect(modelCard(wrapper, 'gpt-4.1').find('[data-testid="token-price-discount"]').exists()).toBe(false)
+    expect(modelCard(wrapper, 'gpt-4.1').get('[data-testid="token-price-discount"]').text()).toBe('优惠 86.1%')
     expect(wrapper.text()).not.toContain('image-2')
 
     await groupButtons.find((button) => button.text().trim() === '暂无模型分组')!.trigger('click')
@@ -291,6 +303,8 @@ describe('ModelMarketView', () => {
 
     await groupButtons.find((button) => button.text().trim() === '图片分组')!.trigger('click')
     expect(wrapper.text()).toContain('image-2')
+    expect(modelCard(wrapper, 'image-2').text()).toContain('约 ¥7.2')
+    expect(modelCard(wrapper, 'image-2').text()).toContain('优惠72.2%')
   })
 
   it('人民币渠道原价显示人民币符号并按一灵石等于一元计算优惠', async () => {
@@ -345,7 +359,7 @@ describe('ModelMarketView', () => {
     expect(card.text()).not.toContain('$2')
   })
 
-  it('美元原价按一美元等于一灵石计算倍率优惠', async () => {
+  it('美元渠道原价按汇率折算人民币后计算优惠', async () => {
     const usdGroup = groupFixture({ id: 12, rate_multiplier: 0.5 })
     getAvailableGroups.mockResolvedValue([usdGroup])
     getUserGroupRates.mockResolvedValue({})
@@ -383,7 +397,94 @@ describe('ModelMarketView', () => {
 
     const card = modelCard(wrapper, 'gpt-usd')
     expect(card.get('[data-testid="token-official-price"]').text()).toBe('$2')
-    expect(card.get('[data-testid="token-price-discount"]').text()).toBe('优惠 50.0%')
+    expect(card.get('[data-testid="token-base-price-cny"]').text()).toContain('约 ¥14.4')
+    expect(card.get('[data-testid="token-price-discount"]').text()).toBe('优惠 93.1%')
+  })
+
+  it('公共设置缺少汇率时隐藏美元折合价和优惠', async () => {
+    appStoreState.cachedPublicSettings = null
+    fetchPublicSettings.mockResolvedValue(null)
+    const usdGroup = groupFixture({ id: 13, rate_multiplier: 0.5 })
+    getAvailableGroups.mockResolvedValue([usdGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '美元渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [usdGroup],
+        supported_models: [{
+          name: 'gpt-usd-no-rate',
+          platform: 'openai',
+          kind: 'token',
+          pricing: {
+            billing_mode: 'token',
+            price_currency: 'USD',
+            input_price: 0.000002,
+            output_price: 0.000008,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const card = modelCard(wrapper, 'gpt-usd-no-rate')
+    expect(fetchPublicSettings).toHaveBeenCalledTimes(1)
+    expect(card.get('[data-testid="token-official-price"]').text()).toBe('$2')
+    expect(card.find('[data-testid="token-base-price-cny"]').exists()).toBe(false)
+    expect(card.find('[data-testid="token-price-discount"]').exists()).toBe(false)
+  })
+
+  it('美元按次渠道价使用同一汇率计算优惠', async () => {
+    const group = groupFixture({ id: 14, rate_multiplier: 0.5 })
+    getAvailableGroups.mockResolvedValue([group])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '美元按次渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [group],
+        supported_models: [{
+          name: 'gpt-per-request',
+          platform: 'openai',
+          kind: 'token',
+          pricing: {
+            billing_mode: 'per_request',
+            price_currency: 'USD',
+            per_request_price: 2,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const text = modelCard(wrapper, 'gpt-per-request').text()
+    expect(text).toContain('当前1 灵石')
+    expect(text).toContain('渠道原价$2· 约 ¥14.4')
+    expect(text).toContain('优惠93.1%')
   })
 
   it('全部分组下同一模型按各自生效倍率独立展示价格', async () => {

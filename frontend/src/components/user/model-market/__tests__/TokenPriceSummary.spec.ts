@@ -15,10 +15,10 @@ const messages: Record<string, string> = {
   'modelMarket.columns.output': '输出',
   'modelMarket.columns.cacheRead': '缓存读取',
   'modelMarket.columns.cacheWrite': '缓存写入',
-  'modelMarket.officialPrice': '官方原价',
+  'modelMarket.officialPrice': '渠道原价',
   'modelMarket.discount': '优惠',
-  'modelMarket.officialReference': '官方输入参考',
-  'modelMarket.discountCompared': '比官方参考低 {value}',
+  'modelMarket.officialReference': '渠道计费基准',
+  'modelMarket.discountCompared': '比渠道计费基准低 {value}',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -45,6 +45,7 @@ describe('TokenPriceSummary', () => {
         outputValue: '2 灵石',
         cacheReadValue: '0.25 灵石',
         officialInputValue: '$1',
+        officialInputCNYValue: '约 ¥7.2',
         discountValue: '-85.9%',
       },
       global: {
@@ -60,6 +61,7 @@ describe('TokenPriceSummary', () => {
     expect(trigger.text()).toContain('输入价格')
     expect(trigger.text()).toContain('1 灵石')
     expect(wrapper.get('[data-testid="token-official-price"]').text()).toBe('$1')
+    expect(wrapper.get('[data-testid="token-base-price-cny"]').text()).toContain('约 ¥7.2')
     expect(wrapper.get('[data-testid="token-price-discount"]').text()).toBe('优惠 85.9%')
     expect(wrapper.get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
     expect(trigger.text()).not.toContain('2 灵石')
@@ -68,9 +70,9 @@ describe('TokenPriceSummary', () => {
     expect(tooltip.text()).toContain('2 灵石')
     expect(tooltip.text()).toContain('重复内容命中缓存')
     expect(tooltip.text()).toContain('0.25 灵石')
-    expect(tooltip.text()).toContain('官方输入参考')
+    expect(tooltip.text()).toContain('渠道计费基准')
     expect(tooltip.text()).toContain('$1')
-    expect(tooltip.text()).toContain('比官方参考低 85.9%')
+    expect(tooltip.text()).toContain('比渠道计费基准低 85.9%')
     expect(trigger.attributes('aria-describedby')).toBe(tooltip.attributes('id'))
   })
 

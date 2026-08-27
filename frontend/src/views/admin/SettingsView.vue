@@ -7248,6 +7248,24 @@
               <Toggle v-model="form.model_plaza_require_auth" />
             </div>
 
+            <div>
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.features.modelPlaza.usdToCnyRate') }}
+              </label>
+              <p class="mb-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.features.modelPlaza.usdToCnyRateHint') }}
+              </p>
+              <input
+                v-model.number="form.model_market_usd_to_cny_rate"
+                type="number"
+                min="0.01"
+                max="100"
+                step="0.01"
+                class="input max-w-xs"
+                data-testid="model-market-usd-to-cny-rate"
+              />
+            </div>
+
             <div v-if="form.model_plaza_enabled">
               <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.features.modelPlaza.priceDescription') }}
@@ -10158,6 +10176,7 @@ const form = reactive<SettingsForm>({
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
   model_plaza_description: '',
+  model_market_usd_to_cny_rate: 7.2,
   // Plugin management menu visibility; plugin runtime is unaffected.
   plugin_management_enabled: false,
   // Affiliate (邀请返利) feature switch
@@ -11552,6 +11571,15 @@ async function saveSettings() {
       appStore.showError(t("admin.settings.features.checkin.rewardRequiredError"));
       return;
     }
+    const modelMarketUSDToCNYRate = Number(form.model_market_usd_to_cny_rate);
+    if (
+      !Number.isFinite(modelMarketUSDToCNYRate) ||
+      modelMarketUSDToCNYRate < 0.01 ||
+      modelMarketUSDToCNYRate > 100
+    ) {
+      appStore.showError(t("admin.settings.features.modelPlaza.usdToCnyRateInvalid"));
+      return;
+    }
     // Validate URL fields — novalidate disables browser-native checks, so we validate here
     const isValidHttpUrl = (url: string): boolean => {
       if (!url) return true;
@@ -11934,6 +11962,7 @@ async function saveSettings() {
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,
       model_plaza_description: form.model_plaza_description,
+      model_market_usd_to_cny_rate: modelMarketUSDToCNYRate,
       plugin_management_enabled: form.plugin_management_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,

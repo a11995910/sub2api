@@ -132,6 +132,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := normalizeCheckinSettings(settings); err != nil {
 		return nil, err
 	}
+	modelMarketUSDToCNYRate, err := normalizeModelMarketUSDToCNYRateForUpdate(settings.ModelMarketUSDToCNYRate)
+	if err != nil {
+		return nil, err
+	}
+	settings.ModelMarketUSDToCNYRate = modelMarketUSDToCNYRate
 	if err := s.normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
 		return nil, err
 	}
@@ -480,6 +485,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)
 	updates[SettingKeyModelPlazaRequireAuth] = strconv.FormatBool(settings.ModelPlazaRequireAuth)
 	updates[SettingKeyModelPlazaDescription] = settings.ModelPlazaDescription
+	updates[SettingKeyModelMarketUSDToCNYRate] = strconv.FormatFloat(settings.ModelMarketUSDToCNYRate, 'f', -1, 64)
 	updates[SettingKeyPluginManagementEnabled] = strconv.FormatBool(settings.PluginManagementEnabled)
 
 	// Affiliate (邀请返利) feature switch
@@ -585,6 +591,30 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
 	return updates, nil
+}
+
+func ValidateModelMarketUSDToCNYRate(value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) ||
+		value < MinModelMarketUSDToCNYRate || value > MaxModelMarketUSDToCNYRate {
+		return infraerrors.BadRequest(
+			"INVALID_MODEL_MARKET_USD_TO_CNY_RATE",
+			"model market USD to CNY rate must be between 0.01 and 100",
+		)
+	}
+	return nil
+}
+
+func normalizeModelMarketUSDToCNYRateForUpdate(value float64) (float64, error) {
+	// SystemSettings is also used by internal whole-document callers where a zero
+	// value means the newly added field was omitted. HTTP updates validate the
+	// pointer value before this compatibility fallback is reached.
+	if value == 0 {
+		return DefaultModelMarketUSDToCNYRate, nil
+	}
+	if err := ValidateModelMarketUSDToCNYRate(value); err != nil {
+		return 0, err
+	}
+	return value, nil
 }
 
 func defaultAccountSchedulingThresholds() map[string]int {

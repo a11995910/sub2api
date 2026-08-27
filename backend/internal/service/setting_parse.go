@@ -211,6 +211,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyModelPlazaEnabled:       "false",
 		SettingKeyModelPlazaRequireAuth:   "false",
 		SettingKeyModelPlazaDescription:   "",
+		SettingKeyModelMarketUSDToCNYRate: strconv.FormatFloat(DefaultModelMarketUSDToCNYRate, 'f', -1, 64),
 		SettingKeyPluginManagementEnabled: "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
@@ -859,6 +860,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
 	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
 	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
+	result.ModelMarketUSDToCNYRate = parseModelMarketUSDToCNYRate(settings[SettingKeyModelMarketUSDToCNYRate])
 	result.PluginManagementEnabled = settings[SettingKeyPluginManagementEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
@@ -1015,6 +1017,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	})
 
 	return result
+}
+
+func parseModelMarketUSDToCNYRate(raw string) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) ||
+		value < MinModelMarketUSDToCNYRate || value > MaxModelMarketUSDToCNYRate {
+		return DefaultModelMarketUSDToCNYRate
+	}
+	return value
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

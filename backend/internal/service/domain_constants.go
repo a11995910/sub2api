@@ -538,6 +538,10 @@ const (
 	// the Model Plaza page (global pricing notes, exchange rate, promotions, ...).
 	SettingKeyModelPlazaDescription = "model_plaza_description"
 
+	// SettingKeyModelMarketUSDToCNYRate converts USD channel base prices to CNY only
+	// when the custom model market calculates and displays discounts.
+	SettingKeyModelMarketUSDToCNYRate = "model_market_usd_to_cny_rate"
+
 	// SettingKeyPluginManagementEnabled controls sidebar visibility only; it does
 	// not stop or otherwise change already loaded plugin runtimes.
 	SettingKeyPluginManagementEnabled = "plugin_management_enabled"
@@ -698,6 +702,12 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+)
+
+const (
+	DefaultModelMarketUSDToCNYRate = 7.2
+	MinModelMarketUSDToCNYRate     = 0.01
+	MaxModelMarketUSDToCNYRate     = 100.0
 )
 
 // SettingKeyDefaultPlatformQuotas —— 系统全局：每用户 × 平台日/周/月 USD 上限（JSON）。
