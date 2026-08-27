@@ -53,6 +53,12 @@ const messages: Record<string, string> = {
   'modelMarket.columns.cacheRead': '缓存读取',
   'modelMarket.columns.perRequest': '按次',
   'modelMarket.columns.multiplier': '倍率',
+  'modelPlaza.filters.platformLabel': '平台',
+  'modelPlaza.filters.groupLabel': '分组',
+  'modelPlaza.filters.rateLabel': '倍率',
+  'modelPlaza.filters.modelLabel': '模型',
+  'modelPlaza.filters.all': '全部',
+  'modelPlaza.filters.searchPlaceholder': '搜索模型名称',
 }
 
 vi.mock('@/api/channels', () => ({
@@ -166,6 +172,14 @@ function modelCard(wrapper: ReturnType<typeof mount>, modelName: string) {
   return card!
 }
 
+function groupSection(wrapper: ReturnType<typeof mount>, groupName: string) {
+  const section = wrapper.findAll('[data-testid="market-group-section"]').find((item) =>
+    item.find('[data-testid="market-group-title"]').text().trim() === groupName,
+  )
+  expect(section, `未找到分组区域 ${groupName}`).toBeDefined()
+  return section!
+}
+
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const IconStub = { template: '<span />' }
 const PlatformIconStub = { template: '<span />' }
@@ -179,13 +193,19 @@ describe('ModelMarketView', () => {
     push.mockReset()
   })
 
-  it('展示用户可用分组全集，并把图片分组排在最后', async () => {
-    const textGroup = groupFixture({ id: 1, name: '文本分组', allow_image_generation: false })
+  it('使用官方四维筛选器展示全部分组，并直接显示分组说明', async () => {
+    const textGroup = groupFixture({
+      id: 1,
+      name: '文本分组',
+      description: '适合稳定调用的低倍率分组。',
+      allow_image_generation: false,
+    })
     const emptyGroup = groupFixture({ id: 2, name: '暂无模型分组', platform: 'anthropic', allow_image_generation: false })
     const imageGroup = groupFixture({
       id: 3,
       name: '图片分组',
       allow_image_generation: true,
+      rate_multiplier: 2,
       image_rate_independent: true,
       image_rate_multiplier: 2,
       image_price_1k: 1,
@@ -234,30 +254,42 @@ describe('ModelMarketView', () => {
 
     await flushPromises()
 
-    const groupButtons = wrapper.findAll('button').filter((button) =>
-      ['文本分组', '暂无模型分组', '图片分组'].some((name) => button.text().includes(name)),
-    )
-    const groupButtonTexts = groupButtons.map((button) => button.text())
+    expect(wrapper.find('[data-testid="group-grid"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="platform-filter-option"]')).toHaveLength(3)
+    expect(wrapper.findAll('[data-testid="group-filter-option"]')).toHaveLength(4)
+    expect(wrapper.findAll('[data-testid="rate-filter-option"]')).toHaveLength(3)
+    expect(wrapper.get('[data-testid="model-search"]').attributes('placeholder')).toBe('搜索模型名称')
+    expect(wrapper.findAll('[data-testid="market-group-section"]')).toHaveLength(3)
+    expect(wrapper.text()).toContain('适合稳定调用的低倍率分组。')
+    expect(wrapper.text()).toContain('gpt-4.1')
+    expect(wrapper.text()).toContain('image-2')
 
-    expect(groupButtonTexts).toEqual([
-      expect.stringContaining('文本分组'),
-      expect.stringContaining('暂无模型分组'),
-      expect.stringContaining('图片分组'),
-    ])
-    expect(wrapper.get('[data-testid="group-grid"]').classes()).toContain('grid')
-    expect(wrapper.get('[data-testid="group-grid"]').classes()).not.toContain('overflow-x-auto')
+    const platformButtons = wrapper.findAll('[data-testid="platform-filter-option"]')
+    await platformButtons.find((button) => button.text().trim() === 'anthropic')!.trigger('click')
+    expect(wrapper.findAll('[data-testid="market-group-title"]').map((title) => title.text())).toEqual(['暂无模型分组'])
+    await platformButtons.find((button) => button.text().trim() === '全部')!.trigger('click')
 
-    await groupButtons[0].trigger('click')
+    const rateButtons = wrapper.findAll('[data-testid="rate-filter-option"]')
+    await rateButtons.find((button) => button.text().trim() === '2x')!.trigger('click')
+    expect(wrapper.findAll('[data-testid="market-group-title"]').map((title) => title.text())).toEqual(['图片分组'])
+    await rateButtons.find((button) => button.text().trim() === '全部')!.trigger('click')
+
+    await wrapper.get('[data-testid="model-search"]').setValue('gpt-4.1')
+    expect(wrapper.findAll('[data-testid="market-group-title"]').map((title) => title.text())).toEqual(['文本分组'])
+    await wrapper.get('[data-testid="model-search"]').setValue('')
+
+    const groupButtons = wrapper.findAll('[data-testid="group-filter-option"]')
+    await groupButtons.find((button) => button.text().trim() === '文本分组')!.trigger('click')
     expect(wrapper.text()).toContain('gpt-4.1')
     expect(modelCard(wrapper, 'gpt-4.1').get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
     expect(wrapper.text()).toContain('$1')
     expect(modelCard(wrapper, 'gpt-4.1').find('[data-testid="token-price-discount"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('image-2')
 
-    await groupButtons[1].trigger('click')
+    await groupButtons.find((button) => button.text().trim() === '暂无模型分组')!.trigger('click')
     expect(wrapper.text()).toContain('当前分组暂无匹配模型')
 
-    await groupButtons[2].trigger('click')
+    await groupButtons.find((button) => button.text().trim() === '图片分组')!.trigger('click')
     expect(wrapper.text()).toContain('image-2')
   })
 
@@ -354,6 +386,48 @@ describe('ModelMarketView', () => {
     expect(card.get('[data-testid="token-price-discount"]').text()).toBe('优惠 50.0%')
   })
 
+  it('全部分组下同一模型按各自生效倍率独立展示价格', async () => {
+    const lowRateGroup = groupFixture({ id: 31, name: '低倍率分组', rate_multiplier: 0.5 })
+    const highRateGroup = groupFixture({ id: 32, name: '高倍率分组', rate_multiplier: 2 })
+    getAvailableGroups.mockResolvedValue([highRateGroup, lowRateGroup])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '共享模型渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [lowRateGroup, highRateGroup],
+        supported_models: [{
+          name: 'gpt-shared',
+          platform: 'openai',
+          kind: 'token',
+          group_ids: [31, 32],
+          pricing: {
+            billing_mode: 'token',
+            price_currency: 'USD',
+            input_price: 0.000002,
+            output_price: 0.000008,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(groupSection(wrapper, '低倍率分组').text()).toContain('1 灵石')
+    expect(groupSection(wrapper, '高倍率分组').text()).toContain('4 灵石')
+  })
+
   it('同平台模型只展示到持久号池支持的分组', async () => {
     const supportedGroup = groupFixture({ id: 74, name: 'pro正价分组' })
     const unsupportedGroup = groupFixture({ id: 75, name: '其他正价分组' })
@@ -386,9 +460,9 @@ describe('ModelMarketView', () => {
     })
     await flushPromises()
 
-    const supportedButton = wrapper.findAll('[data-testid="group-option"]')
+    const supportedButton = wrapper.findAll('[data-testid="group-filter-option"]')
       .find((button) => button.text().includes('pro正价分组'))
-    const unsupportedButton = wrapper.findAll('[data-testid="group-option"]')
+    const unsupportedButton = wrapper.findAll('[data-testid="group-filter-option"]')
       .find((button) => button.text().includes('其他正价分组'))
     expect(supportedButton).toBeDefined()
     expect(unsupportedButton).toBeDefined()
@@ -401,11 +475,12 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain('当前分组暂无匹配模型')
   })
 
-  it('默认优先 GPT 分组和 GPT 模型，并支持按名称重新排序', async () => {
+  it('按生效倍率与名称排列分组，并支持组内模型重新排序', async () => {
     const claudeGroup = groupFixture({
       id: 20,
       name: 'Claude 分组',
       platform: 'anthropic',
+      rate_multiplier: 0.8,
     })
     const gptGroup = groupFixture({
       id: 21,
@@ -465,19 +540,18 @@ describe('ModelMarketView', () => {
     })
     await flushPromises()
 
-    const groupButtons = wrapper.findAll('[data-testid="group-option"]')
-    expect(groupButtons.map((button) => button.text())).toEqual([
-      expect.stringContaining('GPT 分组'),
-      expect.stringContaining('Claude 分组'),
+    expect(wrapper.findAll('[data-testid="market-group-title"]').map((title) => title.text())).toEqual([
+      'Claude 分组',
+      'GPT 分组',
     ])
-    expect(wrapper.get('[data-testid="selected-group-title"]').text()).toBe('GPT 分组')
-    expect(wrapper.findAll('article').map((card) => card.get('h3').text())).toEqual(['gpt-5.6', 'alpha-chat'])
+    const gptSection = groupSection(wrapper, 'GPT 分组')
+    expect(gptSection.findAll('article').map((card) => card.get('h3').text())).toEqual(['gpt-5.6', 'alpha-chat'])
 
     await wrapper.get('select[name="model-sort"]').setValue('name-asc')
-    expect(wrapper.findAll('article').map((card) => card.get('h3').text())).toEqual(['alpha-chat', 'gpt-5.6'])
+    expect(groupSection(wrapper, 'GPT 分组').findAll('article').map((card) => card.get('h3').text())).toEqual(['alpha-chat', 'gpt-5.6'])
 
     await wrapper.get('select[name="model-sort"]').setValue('name-desc')
-    expect(wrapper.findAll('article').map((card) => card.get('h3').text())).toEqual(['gpt-5.6', 'alpha-chat'])
+    expect(groupSection(wrapper, 'GPT 分组').findAll('article').map((card) => card.get('h3').text())).toEqual(['gpt-5.6', 'alpha-chat'])
   })
 
   it.each([

@@ -9,6 +9,8 @@ import type { BillingMode, PriceCurrency } from '@/constants/channel'
 export interface UserAvailableGroup {
   id: number
   name: string
+  /** 面向用户展示的分组说明；渠道目录旧响应可能缺失，模型广场会从 /groups/available 补齐。 */
+  description?: string | null
   platform: string
   /** 'standard' | 'subscription' — 订阅分组视觉加深，和 API 密钥页保持一致。 */
   subscription_type: string
