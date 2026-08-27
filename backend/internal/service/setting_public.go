@@ -238,7 +238,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
-		SettingKeyModelMarketUSDToCNYRate,
 		SettingKeyPluginManagementEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyCheckinEnabled,
@@ -378,7 +377,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
-		ModelMarketUSDToCNYRate: parseNonNegativeFloatSetting(settings[SettingKeyModelMarketUSDToCNYRate]),
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
@@ -646,7 +644,6 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled   bool    `json:"available_channels_enabled"`
 	ModelPlazaEnabled          bool    `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth      bool    `json:"model_plaza_require_auth"`
-	ModelMarketUSDToCNYRate    float64 `json:"model_market_usd_to_cny_rate"`
 	PluginManagementEnabled    bool    `json:"plugin_management_enabled"`
 	AffiliateEnabled           bool    `json:"affiliate_enabled"`
 	CheckinEnabled             bool    `json:"checkin_enabled"`
@@ -736,7 +733,6 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
-		ModelMarketUSDToCNYRate:              settings.ModelMarketUSDToCNYRate,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		CheckinEnabled:                       settings.CheckinEnabled,

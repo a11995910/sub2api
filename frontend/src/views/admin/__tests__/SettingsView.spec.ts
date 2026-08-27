@@ -552,7 +552,6 @@ const baseSettingsResponse = {
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
   model_plaza_description: "",
-  model_market_usd_to_cny_rate: 7.2,
   affiliate_enabled: false,
   // 平台限额嵌套字段（新后端契约）
   default_platform_quotas: {
@@ -591,16 +590,6 @@ async function openPaymentTab(wrapper: ReturnType<typeof mountView>) {
 
   expect(paymentTabButton).toBeDefined();
   await paymentTabButton?.trigger("click");
-  await flushPromises();
-}
-
-async function openFeaturesTab(wrapper: ReturnType<typeof mountView>) {
-  const featuresTabButton = wrapper
-    .findAll("button")
-    .find((node) => node.text().includes("admin.settings.tabs.features"));
-
-  expect(featuresTabButton).toBeDefined();
-  await featuresTabButton?.trigger("click");
   await flushPromises();
 }
 
@@ -763,27 +752,6 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ compact_home_enabled: true }),
-    );
-  });
-
-  it("loads and saves the standalone model market exchange rate while the public plaza is disabled", async () => {
-    const wrapper = mountView();
-    await flushPromises();
-    await openFeaturesTab(wrapper);
-
-    const marketCard = wrapper.get('[data-testid="model-market-pricing-settings"]');
-    const plazaCard = wrapper.get('[data-testid="model-plaza-settings"]');
-    const input = marketCard.get('[data-testid="model-market-usd-to-cny-rate"]');
-    expect(marketCard.text()).toContain("admin.settings.features.modelMarketPricing.title");
-    expect(plazaCard.find('[data-testid="model-market-usd-to-cny-rate"]').exists()).toBe(false);
-    expect((input.element as HTMLInputElement).value).toBe("7.2");
-
-    await input.setValue("7.2345");
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-
-    expect(updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ model_market_usd_to_cny_rate: 7.2345 }),
     );
   });
 

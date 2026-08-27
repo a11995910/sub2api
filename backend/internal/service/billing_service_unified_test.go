@@ -60,6 +60,30 @@ func TestCalculateCostUnified_TokenMode(t *testing.T) {
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_CNYTokenPricingUsesRawValueAsSpiritStoneBasis(t *testing.T) {
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:      "anthropic",
+		Models:        []string{"cny-token-model"},
+		BillingMode:   BillingModeToken,
+		PriceCurrency: PriceCurrencyCNY,
+		InputPrice:    testPtrFloat64(2e-6),
+		OutputPrice:   testPtrFloat64(8e-6),
+	}})
+
+	cost, err := resolver.billingService.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "cny-token-model",
+		GroupID:        groupIDPtr(),
+		Tokens:         UsageTokens{InputTokens: 1_000_000, OutputTokens: 500_000},
+		RateMultiplier: 0.5,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 6.0, cost.TotalCost, 1e-10)
+	require.InDelta(t, 3.0, cost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+}
+
 func TestCalculateCostUnified_TokenModeAppliesRateMultiplierToImageTokens(t *testing.T) {
 	bs := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, bs)
@@ -122,6 +146,29 @@ func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	require.InDelta(t, 0.15, cost.TotalCost, 1e-10)
 	// ActualCost = 0.15 * 2.0 = 0.30
 	require.InDelta(t, 0.30, cost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
+}
+
+func TestCalculateCostUnified_CNYPerRequestPricingUsesRawValueAsSpiritStoneBasis(t *testing.T) {
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"cny-request-model"},
+		BillingMode:     BillingModePerRequest,
+		PriceCurrency:   PriceCurrencyCNY,
+		PerRequestPrice: testPtrFloat64(6),
+	}})
+
+	cost, err := resolver.billingService.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "cny-request-model",
+		GroupID:        groupIDPtr(),
+		RequestCount:   2,
+		RateMultiplier: 0.5,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 12.0, cost.TotalCost, 1e-10)
+	require.InDelta(t, 6.0, cost.ActualCost, 1e-10)
 	require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
 }
 

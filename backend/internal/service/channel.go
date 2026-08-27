@@ -35,7 +35,7 @@ func (m BillingMode) IsValidUsageFilter() bool {
 	return false
 }
 
-// PriceCurrency 渠道定价原价币种，仅定义展示和比较口径，不改变价格数值。
+// PriceCurrency 定义渠道价格的填写、展示和比较口径；价格数值不换算，直接进入灵石计费。
 type PriceCurrency string
 
 const (
@@ -121,7 +121,7 @@ type ChannelModelPricing struct {
 	Platform         string              `json:"platform"`          // 所属平台（anthropic/openai/gemini/...）
 	Models           []string            `json:"models"`            // 绑定的模型列表
 	BillingMode      BillingMode         `json:"billing_mode"`      // 计费模式
-	PriceCurrency    PriceCurrency       `json:"price_currency"`    // 原价币种（USD/CNY），不改变价格数值
+	PriceCurrency    PriceCurrency       `json:"price_currency"`    // 原价币种（USD/CNY）；数值不换算，直接进入灵石计费
 	InputPrice       *float64            `json:"input_price"`       // token 模式为每 token 输入价；video 模式历史保留字段，不参与计费
 	OutputPrice      *float64            `json:"output_price"`      // 每 token 输出原价（PriceCurrency）
 	CacheWritePrice  *float64            `json:"cache_write_price"` // 每 token 缓存写入原价（PriceCurrency）

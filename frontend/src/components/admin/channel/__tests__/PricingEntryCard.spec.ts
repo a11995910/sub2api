@@ -151,6 +151,14 @@ describe('PricingEntryCard', () => {
     expect(wrapper.emitted<[{ price_currency: string }]>('update')?.[0]?.[0]).toMatchObject({
       price_currency: 'CNY',
     })
+
+    const cnyWrapper = mountCard(
+      makeEntry({ billing_mode: 'token', price_currency: 'CNY' }),
+      undefined,
+      false,
+      true,
+    )
+    expect(cnyWrapper.text()).toContain('¥/MTok')
   })
 
   it('未由渠道管理开启时不显示原价币种入口', () => {

@@ -355,10 +355,9 @@ type UpdateSettingsRequest struct {
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
 	// Model Plaza feature switches + description
-	ModelPlazaEnabled       *bool    `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth   *bool    `json:"model_plaza_require_auth"`
-	ModelPlazaDescription   *string  `json:"model_plaza_description"`
-	ModelMarketUSDToCNYRate *float64 `json:"model_market_usd_to_cny_rate"`
+	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription *string `json:"model_plaza_description"`
 
 	// Plugin management menu visibility switch; plugin runtime is unaffected.
 	PluginManagementEnabled *bool `json:"plugin_management_enabled"`
@@ -2045,12 +2044,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ModelPlazaDescription
 		}(),
-		ModelMarketUSDToCNYRate: func() float64 {
-			if req.ModelMarketUSDToCNYRate != nil {
-				return *req.ModelMarketUSDToCNYRate
-			}
-			return previousSettings.ModelMarketUSDToCNYRate
-		}(),
 		PluginManagementEnabled: func() bool {
 			if req.PluginManagementEnabled != nil {
 				return *req.PluginManagementEnabled
@@ -2497,7 +2490,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
 		ModelPlazaDescription:   updatedSettings.ModelPlazaDescription,
-		ModelMarketUSDToCNYRate: updatedSettings.ModelMarketUSDToCNYRate,
 		PluginManagementEnabled: updatedSettings.PluginManagementEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,

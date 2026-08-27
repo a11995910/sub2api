@@ -7214,44 +7214,6 @@
           </div>
         </div>
 
-        <div class="card" data-testid="model-market-pricing-settings">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.features.modelMarketPricing.title') }}
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.features.modelMarketPricing.description') }}
-            </p>
-            <p class="mt-1.5 text-xs">
-              <router-link
-                to="/admin/channels/pricing"
-                class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
-              >
-                {{ t('admin.settings.features.modelMarketPricing.configureLink') }}
-                <span aria-hidden="true">→</span>
-              </router-link>
-            </p>
-          </div>
-          <div class="p-6">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t('admin.settings.features.modelMarketPricing.usdToCnyRate') }}
-            </label>
-            <p class="mb-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.features.modelMarketPricing.usdToCnyRateHint') }}
-            </p>
-            <input
-              :value="form.model_market_usd_to_cny_rate || ''"
-              @input="form.model_market_usd_to_cny_rate = Math.max(0, parseFloat(($event.target as HTMLInputElement).value) || 0)"
-              type="number"
-              step="0.0001"
-              min="0"
-              class="input max-w-xs"
-              data-testid="model-market-usd-to-cny-rate"
-              :placeholder="t('admin.settings.features.modelMarketPricing.usdToCnyRateDisabled')"
-            />
-          </div>
-        </div>
-
         <div class="card" data-testid="model-plaza-settings">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -10192,8 +10154,6 @@ const form = reactive<SettingsForm>({
   channel_monitor_show_quota: false,
   // Available Channels feature switch
   available_channels_enabled: false,
-  // 模型行情价格换算，与内置模型广场开关独立。
-  model_market_usd_to_cny_rate: 0,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
@@ -11970,9 +11930,6 @@ async function saveSettings() {
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
-      // 模型行情价格换算，与内置模型广场开关独立。
-      model_market_usd_to_cny_rate:
-        Number(form.model_market_usd_to_cny_rate) || 0,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,

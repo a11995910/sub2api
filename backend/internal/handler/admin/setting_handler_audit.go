@@ -621,9 +621,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ModelPlazaDescription != after.ModelPlazaDescription {
 		changed = append(changed, "model_plaza_description")
 	}
-	if before.ModelMarketUSDToCNYRate != after.ModelMarketUSDToCNYRate {
-		changed = append(changed, "model_market_usd_to_cny_rate")
-	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}

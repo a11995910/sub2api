@@ -515,31 +515,6 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
-func TestSettingService_UpdateSettings_ModelMarketUSDToCNYRate(t *testing.T) {
-	repo := &settingUpdateRepoStub{}
-	svc := NewSettingService(repo, &config.Config{})
-
-	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		ModelMarketUSDToCNYRate: 7.2345,
-	})
-	require.NoError(t, err)
-	require.Equal(t, "7.2345", repo.updates[SettingKeyModelMarketUSDToCNYRate])
-}
-
-func TestSettingService_UpdateSettings_RejectsInvalidModelMarketUSDToCNYRate(t *testing.T) {
-	for _, value := range []float64{-1, math.NaN(), math.Inf(1)} {
-		repo := &settingUpdateRepoStub{}
-		svc := NewSettingService(repo, &config.Config{})
-
-		err := svc.UpdateSettings(context.Background(), &SystemSettings{
-			ModelMarketUSDToCNYRate: value,
-		})
-		require.Error(t, err)
-		require.Equal(t, "INVALID_MODEL_MARKET_USD_TO_CNY_RATE", infraerrors.Reason(err))
-		require.Nil(t, repo.updates)
-	}
-}
-
 func TestSettingService_UpdateSettings_QuickLink(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

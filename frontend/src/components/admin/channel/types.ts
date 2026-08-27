@@ -187,7 +187,7 @@ export function transitionPricingBillingMode(
   }
 }
 
-// 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
+// 价格转换：后端存每 token 价格，前端按所选币种显示每百万 Token 价格。
 const MTOK = 1_000_000
 
 export function toNullableNumber(val: number | string | null | undefined): number | null {
@@ -202,13 +202,13 @@ export function isValidPositiveMultiplier(val: number | string | null | undefine
   return Number.isFinite(multiplier) && multiplier > 0
 }
 
-/** 前端显示值($/MTok) → 后端存储值(per-token) */
+/** 前端每百万 Token 显示值 → 后端每 Token 存储值。 */
 export function mTokToPerToken(val: number | string | null | undefined): number | null {
   const num = toNullableNumber(val)
   return num === null ? null : parseFloat((num / MTOK).toPrecision(10))
 }
 
-/** 后端存储值(per-token) → 前端显示值($/MTok) */
+/** 后端每 Token 存储值 → 前端每百万 Token 显示值。 */
 export function perTokenToMTok(val: number | null | undefined): number | null {
   if (val === null || val === undefined) return null
   // toPrecision(10) 消除 IEEE 754 浮点乘法精度误差，如 5e-8 * 1e6 = 0.04999...96 → 0.05

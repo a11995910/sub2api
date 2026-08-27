@@ -745,7 +745,6 @@ export interface SystemSettings {
   model_plaza_enabled: boolean;
   model_plaza_require_auth: boolean;
   model_plaza_description: string;
-  model_market_usd_to_cny_rate: number;
   plugin_management_enabled: boolean;
 
   // Affiliate (邀请返利) feature switch
@@ -1058,7 +1057,6 @@ export interface UpdateSettingsRequest {
   model_plaza_enabled?: boolean;
   model_plaza_require_auth?: boolean;
   model_plaza_description?: string;
-  model_market_usd_to_cny_rate?: number;
   plugin_management_enabled?: boolean;
 
   // Affiliate (邀请返利) feature switch
