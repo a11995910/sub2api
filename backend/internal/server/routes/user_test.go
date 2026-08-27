@@ -69,3 +69,27 @@ func TestVideoTestTaskRoutesRequireJWTAuthentication(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, recorder.Code, "%s %s", route.method, route.path)
 	}
 }
+
+func TestChannelCatalogRouteRequiresJWTAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	v1 := router.Group("/api/v1")
+	RegisterUserRoutes(
+		v1,
+		&handler.Handlers{AvailableChannel: &handler.AvailableChannelHandler{}},
+		servermiddleware.JWTAuthMiddleware(func(c *gin.Context) {
+			c.AbortWithStatus(http.StatusUnauthorized)
+		}),
+		servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
+		nil,
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(
+		recorder,
+		httptest.NewRequest(http.MethodGet, "/api/v1/channels/catalog", nil),
+	)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}

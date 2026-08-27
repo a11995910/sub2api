@@ -8,7 +8,7 @@
 
 ## 分组展示
 
-`GET /api/v1/channels/available` 会按渠道和平台返回用户可访问的分组。用户侧分组字段包含：
+`GET /api/v1/channels/available` 会按渠道和平台返回用户可访问的分组，并受 `available_channels_enabled` 控制。`GET /api/v1/channels/catalog` 使用相同的响应结构和权限过滤，但不受该页面开关影响，专供登录后的模型广场和模型测试台读取模型目录。用户侧分组字段包含：
 
 - `rate_multiplier`：分组默认文本倍率。
 - `allow_image_generation`：该分组是否允许图片生成。
@@ -34,7 +34,7 @@
 
 ## 模型与可见号池
 
-`GET /api/v1/channels/available` 的 `platforms[].supported_models[]` 会返回 `group_ids`，表示当前用户可见且持久账号池实际支持该模型的分组 ID。渠道定价和渠道模型映射仍负责提供候选模型；后端再逐个检查每个分组中 `active + schedulable` 的账号，只有至少一个账号的模型映射允许该模型时，才把分组写入 `group_ids`。账号没有配置模型映射时，继续遵守现有调度语义，由账号类型决定默认可用模型。
+两个渠道目录接口的 `platforms[].supported_models[]` 都会返回 `group_ids`，表示当前用户可见且持久账号池实际支持该模型的分组 ID。渠道定价和渠道模型映射仍负责提供候选模型；后端再逐个检查每个分组中 `active + schedulable` 的账号，只有至少一个账号的模型映射允许该模型时，才把分组写入 `group_ids`。账号没有配置模型映射时，继续遵守现有调度语义，由账号类型决定默认可用模型。
 
 可见号池只读取持久配置，不使用临时限流、过载、临时不可调度、过期窗口或运行时阻断状态。因此短期上游波动不会让模型广场和模型测试台中的模型反复出现、消失；管理员把账号停用或关闭持久 `schedulable` 后，模型可见性才会随之更新。
 

@@ -61,6 +61,7 @@ describe('User UI request marker', () => {
     '/groups/available',
     '/groups/rates',
     '/channels/available',
+    '/channels/catalog',
     '/usage',
     '/usage/stats',
     '/usage/dashboard/snapshot-v2',

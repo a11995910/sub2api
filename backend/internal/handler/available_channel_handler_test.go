@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,111 @@ func TestUserAvailableChannel_Unauthenticated401(t *testing.T) {
 	h.List(c)
 
 	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUserChannelCatalog_Unauthenticated401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &AvailableChannelHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channels/catalog", nil)
+
+	h.ListCatalog(c)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+type availableChannelServiceStub struct {
+	channels []service.AvailableChannel
+	calls    int
+}
+
+func (s *availableChannelServiceStub) ListAvailable(context.Context) ([]service.AvailableChannel, error) {
+	s.calls++
+	return s.channels, nil
+}
+
+type availableChannelGroupServiceStub struct {
+	groups []service.Group
+	calls  int
+}
+
+func (s *availableChannelGroupServiceStub) GetAvailableGroups(context.Context, int64) ([]service.Group, error) {
+	s.calls++
+	return s.groups, nil
+}
+
+type availableChannelSettingServiceStub struct {
+	enabled bool
+	calls   int
+}
+
+func (s *availableChannelSettingServiceStub) GetAvailableChannelsRuntime(context.Context) service.AvailableChannelsRuntime {
+	s.calls++
+	return service.AvailableChannelsRuntime{Enabled: s.enabled}
+}
+
+func TestUserChannelCatalog_IgnoresAvailableChannelsFeatureSwitch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	channelSvc := &availableChannelServiceStub{channels: []service.AvailableChannel{{
+		Name:   "Codex OpenAI",
+		Status: service.StatusActive,
+		Groups: []service.AvailableGroupRef{{
+			ID: 74, Name: "pro正价分组", Platform: service.PlatformOpenAI, RateMultiplier: 0.26,
+		}},
+		SupportedModels: []service.SupportedModel{{
+			Name: "gpt-5.6-sol", Platform: service.PlatformOpenAI,
+		}},
+	}}}
+	groupSvc := &availableChannelGroupServiceStub{groups: []service.Group{{
+		ID: 74, Name: "pro正价分组", Platform: service.PlatformOpenAI,
+	}}}
+	settingSvc := &availableChannelSettingServiceStub{enabled: false}
+	accountRepo := &modelAvailabilityAccountRepoStub{accountsByGroup: map[int64][]service.Account{
+		74: {{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}},
+	}}
+	h := &AvailableChannelHandler{
+		channelService: channelSvc,
+		apiKeyService:  groupSvc,
+		settingService: settingSvc,
+		accountRepo:    accountRepo,
+	}
+
+	availableRecorder := httptest.NewRecorder()
+	availableContext, _ := gin.CreateTestContext(availableRecorder)
+	availableContext.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channels/available", nil)
+	availableContext.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9})
+	h.List(availableContext)
+
+	require.Equal(t, http.StatusOK, availableRecorder.Code)
+	var availableResponse struct {
+		Data []userAvailableChannel `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(availableRecorder.Body.Bytes(), &availableResponse))
+	require.Empty(t, availableResponse.Data)
+	require.Equal(t, 1, settingSvc.calls)
+	require.Zero(t, channelSvc.calls)
+	require.Zero(t, groupSvc.calls)
+
+	catalogRecorder := httptest.NewRecorder()
+	catalogContext, _ := gin.CreateTestContext(catalogRecorder)
+	catalogContext.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channels/catalog", nil)
+	catalogContext.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9})
+	h.ListCatalog(catalogContext)
+
+	require.Equal(t, http.StatusOK, catalogRecorder.Code)
+	var catalogResponse struct {
+		Data []userAvailableChannel `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(catalogRecorder.Body.Bytes(), &catalogResponse))
+	require.Len(t, catalogResponse.Data, 1)
+	require.Equal(t, "Codex OpenAI", catalogResponse.Data[0].Name)
+	require.Len(t, catalogResponse.Data[0].Platforms, 1)
+	require.Equal(t, "gpt-5.6-sol", catalogResponse.Data[0].Platforms[0].SupportedModels[0].Name)
+	require.Equal(t, []int64{74}, catalogResponse.Data[0].Platforms[0].SupportedModels[0].GroupIDs)
+	require.Equal(t, 1, settingSvc.calls, "模型目录不应读取可用渠道开关")
+	require.Equal(t, 1, channelSvc.calls)
+	require.Equal(t, 1, groupSvc.calls)
 }
 
 func TestFilterUserVisibleGroups_IntersectionOnly(t *testing.T) {

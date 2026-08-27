@@ -109,6 +109,14 @@ export async function getAvailable(options?: { signal?: AbortSignal }): Promise<
   return data
 }
 
-export const userChannelsAPI = { getAvailable }
+/** 列出模型广场和模型测试台使用的目录，不受「可用渠道」页面开关影响。 */
+export async function getCatalog(options?: { signal?: AbortSignal }): Promise<UserAvailableChannel[]> {
+  const { data } = await apiClient.get<UserAvailableChannel[]>('/channels/catalog', {
+    signal: options?.signal
+  })
+  return data
+}
+
+export const userChannelsAPI = { getAvailable, getCatalog }
 
 export default userChannelsAPI

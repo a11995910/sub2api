@@ -964,7 +964,7 @@ async function loadData() {
   loading.value = true
   try {
     const [list, rates, keys] = await Promise.all([
-      userChannelsAPI.getAvailable(),
+      userChannelsAPI.getCatalog(),
       userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
         console.error('Failed to load user group rates:', err)
         return {} as Record<number, number>

@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AvailableChannelHandler 处理用户侧「可用渠道」查询。
+// AvailableChannelHandler 处理用户侧「可用渠道」与模型目录查询。
 //
 // 用户侧接口委托 ChannelService.ListAvailable，并在返回前做四层过滤：
 //  1. 行过滤：只保留状态为 Active 且与当前用户可访问分组有交集的渠道；
@@ -22,10 +22,22 @@ import (
 //  4. 字段白名单：仅返回用户需要的字段（省略 BillingModelSource / RestrictModels
 //     / 内部 ID / Status 等管理字段）。
 type AvailableChannelHandler struct {
-	channelService *service.ChannelService
-	apiKeyService  *service.APIKeyService
-	settingService *service.SettingService
+	channelService availableChannelService
+	apiKeyService  availableChannelGroupService
+	settingService availableChannelSettingService
 	accountRepo    modelAvailabilityAccountRepository
+}
+
+type availableChannelService interface {
+	ListAvailable(ctx context.Context) ([]service.AvailableChannel, error)
+}
+
+type availableChannelGroupService interface {
+	GetAvailableGroups(ctx context.Context, userID int64) ([]service.Group, error)
+}
+
+type availableChannelSettingService interface {
+	GetAvailableChannelsRuntime(ctx context.Context) service.AvailableChannelsRuntime
 }
 
 type modelAvailabilityAccountRepository interface {
@@ -44,12 +56,15 @@ func NewAvailableChannelHandler(
 	settingService *service.SettingService,
 	accountRepo service.AccountRepository,
 ) *AvailableChannelHandler {
-	return &AvailableChannelHandler{
+	h := &AvailableChannelHandler{
 		channelService: channelService,
 		apiKeyService:  apiKeyService,
-		settingService: settingService,
 		accountRepo:    accountRepo,
 	}
+	if settingService != nil {
+		h.settingService = settingService
+	}
+	return h
 }
 
 // featureEnabled 返回 available-channels 开关是否启用。默认关闭（opt-in）。
@@ -151,6 +166,16 @@ type userAvailableChannel struct {
 // List 列出当前用户可见的「可用渠道」。
 // GET /api/v1/channels/available
 func (h *AvailableChannelHandler) List(c *gin.Context) {
+	h.list(c, true)
+}
+
+// ListCatalog 列出当前用户的模型目录，不受「可用渠道」页面开关影响。
+// GET /api/v1/channels/catalog
+func (h *AvailableChannelHandler) ListCatalog(c *gin.Context) {
+	h.list(c, false)
+}
+
+func (h *AvailableChannelHandler) list(c *gin.Context, requireFeature bool) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
@@ -159,7 +184,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 
 	// Feature 未启用时返回空数组（不暴露渠道信息）。检查放在认证之后，
 	// 保持与未开关前的 401 行为一致：未登录先 401，登录后再按开关决定。
-	if !h.featureEnabled(c) {
+	if requireFeature && !h.featureEnabled(c) {
 		response.Success(c, []userAvailableChannel{})
 		return
 	}

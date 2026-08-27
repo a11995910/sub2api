@@ -57,7 +57,7 @@ const messages: Record<string, string> = {
 
 vi.mock('@/api/channels', () => ({
   default: {
-    getAvailable: getAvailableChannels,
+    getCatalog: getAvailableChannels,
   },
 }))
 

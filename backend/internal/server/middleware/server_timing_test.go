@@ -109,6 +109,7 @@ func TestIsUserTimingPath(t *testing.T) {
 		{"/api/v1/groups/rates", true},
 		{"/api/v1/groups", false},
 		{"/api/v1/channels/available", true},
+		{"/api/v1/channels/catalog", true},
 		{"/api/v1/channels", false},
 		{"/api/v1/usage/stats", true},
 		{"/api/v1/announcements", true},

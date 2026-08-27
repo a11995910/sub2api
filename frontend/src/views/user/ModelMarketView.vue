@@ -692,7 +692,7 @@ async function loadModels() {
   loading.value = true
   try {
     const [list, groups, rates] = await Promise.all([
-      userChannelsAPI.getAvailable(),
+      userChannelsAPI.getCatalog(),
       userGroupsAPI.getAvailable().then((items) => items.map(toAvailableGroup)),
       userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
         console.error('Failed to load user group rates:', err)

@@ -19,7 +19,8 @@
 黑名单在以下入口统一生效：
 
 - `/api/v1/groups/available` 不返回被当前用户屏蔽的公开分组，依赖该接口的 API Key 创建、编辑、行内切换、模型广场和 OAuth 账号池分组候选也不会展示该分组。
-- `/api/v1/channels/available` 基于同一可用分组集合生成用户可见渠道和模型关系，被屏蔽分组不会通过渠道视图重新出现。
+- `/api/v1/channels/available` 基于同一可用分组集合生成用户可见渠道和模型关系，被屏蔽分组不会通过渠道视图重新出现；该接口继续受“可用渠道”页面开关控制。
+- `/api/v1/channels/catalog` 复用相同的权限、模型号池和字段白名单过滤，供登录后的模型广场与模型测试台使用，不受“可用渠道”页面开关影响。
 - 用户创建或修改 API Key 时不能绑定被屏蔽分组；管理员修改该用户的 Key 分组时也不能绑定该分组。
 - 已经绑定该分组的存量 API Key 不会被自动迁移或解绑，但请求鉴权返回 `403 GROUP_NOT_ALLOWED`，防止旧绑定绕过黑名单。
 - 分组自动承接不会进入该用户已屏蔽的目标分组。黑名单只限制分组可用性，不删除已有用户专属倍率；解除屏蔽后原倍率可以继续使用。
@@ -215,7 +216,7 @@ POST /api/v1/payment/plans/:id/purchase-with-balance
 
 页面复用现有用户接口和 OpenAI 兼容网关：
 
-- `/api/v1/channels/available`：读取用户可见模型、可用分组及图片、视频价格。
+- `/api/v1/channels/catalog`：读取用户可见模型、可用分组及图片、视频价格。
 - `/api/v1/groups/rates`：读取用户专属分组倍率。
 - `/api/v1/keys`：读取当前用户 active API Key，作为测试入口的主选择项。
 - `/v1/chat/completions`：文本模型测试端点。
