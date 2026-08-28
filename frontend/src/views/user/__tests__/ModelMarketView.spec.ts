@@ -9,7 +9,10 @@ const getUserGroupRates = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
 const appStoreState = vi.hoisted(() => ({
-  cachedPublicSettings: null as null | { model_market_usd_to_cny_rate?: number },
+  cachedPublicSettings: null as null | {
+    model_market_usd_to_cny_rate?: number
+    server_utc_offset?: string
+  },
 }))
 const push = vi.hoisted(() => vi.fn())
 
@@ -20,6 +23,7 @@ const messages: Record<string, string> = {
   'availableChannels.pricing.billingModeImage': '图片',
   'availableChannels.pricing.billingModeVideo': '视频',
   'common.error': '错误',
+  'common.promoDiscountLabel': '限时 {zhe} 折',
   'common.refresh': '刷新',
   'modelTest.perSecond': '秒',
   'modelMarket.title': '模型广场',
@@ -63,6 +67,7 @@ const messages: Record<string, string> = {
   'modelPlaza.filters.modelLabel': '模型',
   'modelPlaza.filters.all': '全部',
   'modelPlaza.filters.searchPlaceholder': '搜索模型名称',
+  'modelPlaza.detail.promoNote': '{discount}，活动窗口 {window}（站点时区 {tz}）',
 }
 
 vi.mock('@/api/channels', () => ({
@@ -199,7 +204,10 @@ describe('ModelMarketView', () => {
     getUserGroupRates.mockReset()
     showError.mockReset()
     fetchPublicSettings.mockReset()
-    appStoreState.cachedPublicSettings = { model_market_usd_to_cny_rate: 7.2 }
+    appStoreState.cachedPublicSettings = {
+      model_market_usd_to_cny_rate: 7.2,
+      server_utc_offset: '+08:00',
+    }
     fetchPublicSettings.mockResolvedValue(appStoreState.cachedPublicSettings)
     push.mockReset()
   })
@@ -306,6 +314,88 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).toContain('image-2')
     expect(modelCard(wrapper, 'image-2').text()).not.toContain('约 ¥')
     expect(modelCard(wrapper, 'image-2').text()).toContain('优惠72.2%')
+  })
+
+  it('活动分组显示折前折后倍率和时间窗，并按折后倍率计算文本图片视频价格', async () => {
+    const promoGroup = groupFixture({
+      id: 4,
+      name: '限时活动分组',
+      platform: 'grok',
+      allow_image_generation: true,
+      rate_multiplier: 2,
+      image_rate_independent: true,
+      image_rate_multiplier: 1.5,
+      image_price_1k: 1,
+      image_price_2k: 2,
+      image_price_4k: 4,
+      video_rate_independent: true,
+      video_rate_multiplier: 0.5,
+      video_price_720p: 0.1,
+      promo_discount_enabled: true,
+      promo_discount_start: '2026-08-28 12:00',
+      promo_discount_end: '2026-08-31 12:00',
+      promo_discount_rate: 0.8,
+      promo_active: true,
+    })
+    getAvailableGroups.mockResolvedValue([promoGroup])
+    getUserGroupRates.mockResolvedValue({ 4: 1.25 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'Grok 活动渠道',
+      description: '',
+      platforms: [{
+        platform: 'grok',
+        groups: [promoGroup],
+        supported_models: [
+          {
+            name: 'grok-chat',
+            platform: 'grok',
+            kind: 'token',
+            pricing: {
+              billing_mode: 'token',
+              price_currency: 'CNY',
+              input_price: 0.000001,
+              output_price: 0.000002,
+              intervals: [],
+            },
+          },
+          {
+            name: 'grok-imagine-image',
+            platform: 'grok',
+            kind: 'image',
+            pricing: { billing_mode: 'image', price_currency: 'CNY', intervals: [] },
+          },
+          {
+            name: 'grok-imagine-video',
+            platform: 'grok',
+            kind: 'video',
+            pricing: videoPricingFixture(0.2),
+          },
+        ],
+      }],
+    }])
+
+    const wrapper = mount(ModelMarketView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Icon: IconStub,
+          PlatformIcon: PlatformIconStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const section = groupSection(wrapper, '限时活动分组')
+    const rateBadge = section.get('[data-testid="market-group-rate"]')
+    expect(rateBadge.get('.line-through').text()).toBe('1.25x')
+    expect(rateBadge.text()).toContain('1.00x 倍率')
+    expect(section.get('[data-testid="market-group-promo"]').text()).toBe('限时 80 折')
+    expect(section.get('[data-testid="market-group-promo-note"]').text()).toContain(
+      '活动窗口 2026-08-28 12:00 ~ 2026-08-31 12:00（站点时区 UTC+08:00）',
+    )
+    expect(modelCard(wrapper, 'grok-chat').get('[data-testid="token-input-price"]').text()).toContain('输入价格1 灵石')
+    expect(modelCard(wrapper, 'grok-imagine-image').text()).toContain('当前1.2 灵石')
+    expect(modelCard(wrapper, 'grok-imagine-video').text()).toContain('720p / 秒当前0.04 灵石')
   })
 
   it('人民币渠道原价显示人民币符号并按一灵石等于一元计算优惠', async () => {

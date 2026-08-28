@@ -81,7 +81,20 @@
                   class="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
                   data-testid="market-group-rate"
                 >
-                  {{ t('modelMarket.rateBadge', { rate: formatRate(effectiveTextRate(marketGroup.group)) }) }}
+                  <template v-if="hasActivePromoDiscount(marketGroup.group)">
+                    <span class="mr-1.5 line-through opacity-50">{{ formatRate(baseTextRate(marketGroup.group)) }}x</span>
+                    <span>{{ t('modelMarket.rateBadge', { rate: formatRate(effectiveTextRate(marketGroup.group)) }) }}</span>
+                  </template>
+                  <template v-else>
+                    {{ t('modelMarket.rateBadge', { rate: formatRate(effectiveTextRate(marketGroup.group)) }) }}
+                  </template>
+                </span>
+                <span
+                  v-if="hasActivePromoDiscount(marketGroup.group)"
+                  class="inline-flex shrink-0 items-center rounded bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                  data-testid="market-group-promo"
+                >
+                  {{ promoDiscountLabel(marketGroup.group) }}
                 </span>
                 <span v-if="marketGroup.group.is_exclusive" class="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
                   {{ t('availableChannels.exclusive') }}
@@ -92,6 +105,14 @@
               </div>
               <p v-if="marketGroup.group.description?.trim()" class="mt-2 whitespace-pre-line text-pretty text-base text-gray-600 sm:text-sm dark:text-gray-300">
                 {{ marketGroup.group.description }}
+              </p>
+              <p
+                v-if="promoDiscountNote(marketGroup.group)"
+                class="mt-2 inline-flex items-center gap-1 text-xs text-rose-600 dark:text-rose-400"
+                data-testid="market-group-promo-note"
+              >
+                <Icon name="sparkles" size="xs" class="shrink-0" />
+                {{ promoDiscountNote(marketGroup.group) }}
               </p>
             </div>
             <button
@@ -231,6 +252,13 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
 import { formatOriginalCurrencyScaled, formatScaled } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
+import {
+  activePromoDiscountMultiplier,
+  applyActivePromoDiscount,
+  formatPromoDiscountWindow,
+  promoDiscountZhe,
+  serverTimezoneLabel,
+} from '@/utils/peak-rate'
 import { filterGroupsByModelAvailability, resolveModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   resolveVideoPriceQuote,
@@ -496,16 +524,40 @@ watch(rates, (items) => {
   }
 })
 
-function effectiveTextRate(group: UserAvailableGroup): number {
+function baseTextRate(group: UserAvailableGroup): number {
   return userGroupRates.value[group.id] ?? group.rate_multiplier ?? 1
 }
 
+function effectiveTextRate(group: UserAvailableGroup): number {
+  return applyActivePromoDiscount(baseTextRate(group), group)
+}
+
 function effectiveImageRate(group: UserAvailableGroup): number {
-  return group.image_rate_independent ? group.image_rate_multiplier : effectiveTextRate(group)
+  const baseRate = group.image_rate_independent ? group.image_rate_multiplier : baseTextRate(group)
+  return applyActivePromoDiscount(baseRate, group)
 }
 
 function effectiveVideoRate(group: UserAvailableGroup): number {
-  return group.video_rate_independent ? (group.video_rate_multiplier ?? 1) : effectiveTextRate(group)
+  const baseRate = group.video_rate_independent ? (group.video_rate_multiplier ?? 1) : baseTextRate(group)
+  return applyActivePromoDiscount(baseRate, group)
+}
+
+function hasActivePromoDiscount(group: UserAvailableGroup): boolean {
+  return activePromoDiscountMultiplier(group) < 1
+}
+
+function promoDiscountLabel(group: UserAvailableGroup): string {
+  const zhe = promoDiscountZhe(group.promo_discount_rate)
+  return zhe === null ? '' : t('common.promoDiscountLabel', { zhe, off: 100 - zhe })
+}
+
+function promoDiscountNote(group: UserAvailableGroup): string {
+  if (!hasActivePromoDiscount(group)) return ''
+  return t('modelPlaza.detail.promoNote', {
+    discount: promoDiscountLabel(group),
+    window: formatPromoDiscountWindow(group),
+    tz: serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset),
+  })
 }
 
 function effectiveMultiplier(group: UserAvailableGroup, mode?: BillingMode): number {

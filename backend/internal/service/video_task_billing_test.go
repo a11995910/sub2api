@@ -271,15 +271,25 @@ func TestVideoTaskSubmissionUncertainIncludesTransportAndServerFailures(t *testi
 	require.True(t, IsVideoTaskSubmissionUncertain(NewVideoTaskSubmissionUncertainError(errors.New("response parse failed"))))
 }
 
-func TestEstimateVideoCostUsesExistingPerSecondPricingAndMultiplier(t *testing.T) {
+func TestEstimateVideoCostUsesExistingPerSecondPricingMultiplierAndPromo(t *testing.T) {
 	price := 0.08
 	svc := newOpenAIRecordUsageServiceForTest(nil, nil, nil, nil)
-	apiKey := &APIKey{Group: &Group{VideoPrice720P: &price}}
+	pricingAt := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	promoStart := pricingAt.Add(-time.Hour)
+	promoEnd := pricingAt.Add(time.Hour)
+	apiKey := &APIKey{Group: &Group{
+		VideoPrice720P:       &price,
+		PromoDiscountEnabled: true,
+		PromoDiscountStart:   &promoStart,
+		PromoDiscountEnd:     &promoEnd,
+		PromoDiscountRate:    0.5,
+	}}
+	ctx := context.WithValue(context.Background(), openAIPricingAtCtxKey{}, pricingAt)
 
-	cost, err := svc.EstimateVideoCost(context.Background(), apiKey, "video-model", "720p", 10)
+	cost, err := svc.EstimateVideoCost(ctx, apiKey, "video-model", "720p", 10)
 
 	require.NoError(t, err)
-	expected := svc.billingService.CalculateVideoCost("video-model", "720p", 1, 10, &VideoPriceConfig{Price720P: &price}, 1.1)
+	expected := svc.billingService.CalculateVideoCost("video-model", "720p", 1, 10, &VideoPriceConfig{Price720P: &price}, 0.55)
 	require.InDelta(t, expected.ActualCost, cost.ActualCost, 0.00000001)
 }
 

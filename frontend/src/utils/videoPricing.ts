@@ -4,6 +4,7 @@ import {
   BILLING_MODE_VIDEO,
 } from '@/constants/channel'
 import { isSeedanceVideoModel } from '@/utils/modelKind'
+import { applyActivePromoDiscount } from '@/utils/peak-rate'
 
 export type VideoResolution = '480p' | '720p' | '1080p'
 export type VideoBillingUnit = 'second' | 'request'
@@ -50,10 +51,10 @@ function groupVideoPrice(group: UserAvailableGroup, resolution: VideoResolution)
 }
 
 function effectiveVideoRate(input: VideoPriceInput): number {
-  if (input.group.video_rate_independent) {
-    return input.group.video_rate_multiplier ?? 1
-  }
-  return input.userGroupRate ?? input.group.rate_multiplier ?? 1
+  const baseRate = input.group.video_rate_independent
+    ? input.group.video_rate_multiplier ?? 1
+    : input.userGroupRate ?? input.group.rate_multiplier ?? 1
+  return applyActivePromoDiscount(baseRate, input.group)
 }
 
 function quote(

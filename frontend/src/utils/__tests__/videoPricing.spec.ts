@@ -137,6 +137,22 @@ describe('resolveVideoPriceQuote', () => {
     })).toMatchObject({ basePrice: 0.08, effectivePrice: 0.12 })
   })
 
+  it('活动折扣叠加在视频独立倍率之后', () => {
+    expect(resolveVideoPriceQuote({
+      group: groupFixture({
+        video_rate_independent: true,
+        video_rate_multiplier: 1.5,
+        promo_discount_enabled: true,
+        promo_discount_rate: 0.8,
+        promo_active: true,
+      }),
+      pricing: pricingFixture(BILLING_MODE_VIDEO, 0.08),
+      modelName: 'grok-imagine-video-1.5',
+      resolution: '480p',
+      userGroupRate: 3,
+    })).toMatchObject({ basePrice: 0.08, effectivePrice: 0.096 })
+  })
+
   it('未启用视频独立倍率时优先使用用户专属分组倍率', () => {
     expect(resolveVideoPriceQuote({
       group: groupFixture({ rate_multiplier: 2 }),

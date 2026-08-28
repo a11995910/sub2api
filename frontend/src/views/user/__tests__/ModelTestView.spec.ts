@@ -405,6 +405,57 @@ describe('ModelTestView', () => {
     expect(modelSelect.value).not.toBe('')
   })
 
+  it('活动期间按用户专属倍率叠加折扣展示文本倍率与价格预览', async () => {
+    const promoGroup = groupFixture({
+      id: 41,
+      name: '活动文本分组',
+      rate_multiplier: 2,
+      promo_discount_enabled: true,
+      promo_discount_start: '2026-08-28 12:00',
+      promo_discount_end: '2026-08-31 12:00',
+      promo_discount_rate: 0.5,
+      promo_active: true,
+    })
+    const promoKey = apiKeyFixture({
+      id: 410,
+      name: '活动 Key',
+      key: 'sk-promo-key-1234567890',
+      group_id: 41,
+      group: promoGroup,
+    })
+    getUserGroupRates.mockResolvedValue({ 41: 1.5 })
+    getAvailableChannels.mockResolvedValue([{
+      name: 'OpenAI 活动渠道',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [promoGroup],
+        supported_models: [{
+          name: 'gpt-promo',
+          platform: 'openai',
+          kind: 'token',
+          pricing: {
+            billing_mode: 'token',
+            input_price: 0.000002,
+            output_price: 0.000004,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_output_price: null,
+            per_request_price: null,
+            intervals: [],
+          },
+        }],
+      }],
+    }])
+    listKeys.mockResolvedValue({ items: [promoKey], pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(summaryValue(wrapper, '当前倍率')).toBe('0.75x')
+    expect(summaryValue(wrapper, '价格预览')).toBe('输入 1.5 灵石 / 输出 3 灵石')
+  })
+
   it('用户切换 API Key 后，会改为该 Key 所属分组并刷新可选模型', async () => {
     listKeys.mockResolvedValue({ items: [textKey, imageKey], pages: 1 })
 

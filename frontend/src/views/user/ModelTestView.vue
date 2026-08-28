@@ -428,6 +428,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatMultiplier } from '@/utils/formatters'
 import { formatScaled } from '@/utils/pricing'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
+import { applyActivePromoDiscount } from '@/utils/peak-rate'
 import { filterGroupsByModelAvailability, filterModelsByIntent, isSeedanceVideoModel, resolveModelKind, selectAvailableModelKind, type ModelKind } from '@/utils/modelKind'
 import {
   isFixedResolutionVideoModel,
@@ -837,16 +838,22 @@ watch(
   { deep: true },
 )
 
-function effectiveTextRate(group: UserAvailableGroup): number {
+function baseTextRate(group: UserAvailableGroup): number {
   return userGroupRates.value[group.id] ?? group.rate_multiplier ?? 1
 }
 
+function effectiveTextRate(group: UserAvailableGroup): number {
+  return applyActivePromoDiscount(baseTextRate(group), group)
+}
+
 function effectiveImageRate(group: UserAvailableGroup): number {
-  return group.image_rate_independent ? group.image_rate_multiplier : effectiveTextRate(group)
+  const baseRate = group.image_rate_independent ? group.image_rate_multiplier : baseTextRate(group)
+  return applyActivePromoDiscount(baseRate, group)
 }
 
 function effectiveVideoRate(group: UserAvailableGroup): number {
-  return group.video_rate_independent ? (group.video_rate_multiplier ?? 1) : effectiveTextRate(group)
+  const baseRate = group.video_rate_independent ? (group.video_rate_multiplier ?? 1) : baseTextRate(group)
+  return applyActivePromoDiscount(baseRate, group)
 }
 
 function effectiveMultiplier(group: UserAvailableGroup, mode?: BillingMode): number {

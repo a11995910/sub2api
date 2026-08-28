@@ -2304,10 +2304,13 @@ func TestOpenAIGatewayServiceRecordUsage_ImageIndependentMultiplierUsesImageRate
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
-func TestGrokVideoBillingUsesSeparateVideoRateMultiplier(t *testing.T) {
+func TestGrokVideoBillingUsesSeparateVideoRateMultiplierAndPromoDiscount(t *testing.T) {
 	imagePrice2K := 0.4
 	videoPrice480P := 0.08
 	groupID := int64(126)
+	pricingAt := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	promoStart := pricingAt.Add(-time.Hour)
+	promoEnd := pricingAt.Add(time.Hour)
 
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
@@ -2338,10 +2341,15 @@ func TestGrokVideoBillingUsesSeparateVideoRateMultiplier(t *testing.T) {
 				VideoRateIndependent: true,
 				VideoRateMultiplier:  0.25,
 				VideoPrice480P:       &videoPrice480P,
+				PromoDiscountEnabled: true,
+				PromoDiscountStart:   &promoStart,
+				PromoDiscountEnd:     &promoEnd,
+				PromoDiscountRate:    0.8,
 			},
 		},
-		User:    &User{ID: 20126},
-		Account: &Account{ID: 30126, Platform: PlatformGrok},
+		User:      &User{ID: 20126},
+		Account:   &Account{ID: 30126, Platform: PlatformGrok},
+		PricingAt: pricingAt,
 	})
 
 	require.NoError(t, err)
@@ -2350,8 +2358,8 @@ func TestGrokVideoBillingUsesSeparateVideoRateMultiplier(t *testing.T) {
 	require.Equal(t, 0, usageRepo.lastLog.ImageCount)
 	require.Nil(t, usageRepo.lastLog.ImageSize)
 	require.InDelta(t, 0.08, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.02, usageRepo.lastLog.ActualCost, 1e-12)
-	require.InDelta(t, 0.25, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.InDelta(t, 0.016, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.RateMultiplier, 1e-12)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
 	require.Equal(t, 1, usageRepo.lastLog.VideoCount)

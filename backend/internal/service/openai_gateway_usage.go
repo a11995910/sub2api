@@ -194,7 +194,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	baseMultiplier := multiplier
 	pricingAt := openAIUsagePricingAt(input)
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
-	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
+	videoMultiplier := resolvePromoDiscountedVideoRateMultiplier(apiKey, baseMultiplier, pricingAt)
 
 	var cost *CostBreakdown
 	var err error
@@ -830,7 +830,17 @@ func (s *OpenAIGatewayService) EstimateVideoCost(
 		VideoResolution:      resolution,
 		VideoDurationSeconds: durationSeconds,
 	}
-	cost := s.calculateOpenAIVideoCost(ctx, result.BillingModel, apiKey, result, resolveVideoRateMultiplier(apiKey, baseMultiplier))
+	pricingAt := OpenAIPricingAtFromContext(ctx)
+	if pricingAt.IsZero() {
+		pricingAt = timezone.Now()
+	}
+	cost := s.calculateOpenAIVideoCost(
+		ctx,
+		result.BillingModel,
+		apiKey,
+		result,
+		resolvePromoDiscountedVideoRateMultiplier(apiKey, baseMultiplier, pricingAt),
+	)
 	if cost == nil {
 		return nil, errors.New("video pricing is unavailable")
 	}

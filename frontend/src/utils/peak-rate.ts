@@ -43,6 +43,33 @@ export interface PromoDiscountFields {
 }
 
 /**
+ * 返回服务端已判定生效的活动折扣因子。活动窗口由服务端按站点时区计算，
+ * 前端只消费 promo_active，避免浏览器时区造成价格展示偏差。
+ */
+export function activePromoDiscountMultiplier(fields?: PromoDiscountFields | null): number {
+  const rate = fields?.promo_discount_rate
+  if (
+    !fields?.promo_active ||
+    !fields.promo_discount_enabled ||
+    typeof rate !== 'number' ||
+    !Number.isFinite(rate) ||
+    rate <= 0 ||
+    rate >= 1
+  ) {
+    return 1
+  }
+  return rate
+}
+
+/** 在基础倍率上叠加当前活动折扣，并消除常见的浮点尾差。 */
+export function applyActivePromoDiscount(
+  baseRate: number,
+  fields?: PromoDiscountFields | null
+): number {
+  return Math.round(baseRate * activePromoDiscountMultiplier(fields) * 1e12) / 1e12
+}
+
+/**
  * 折扣倍率（0.95）→ 折数数值（95，保留 1 位小数去除浮点噪声）；非法值返回 null。
  * zh 展示 "限时 95 折"，en 展示 "5% off"（100 - 折数）。
  */

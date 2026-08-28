@@ -21,11 +21,11 @@ export interface UserAvailableGroup {
   peak_end: string
   peak_rate_multiplier: number
   /** 限时活动折扣：起止为站点时区墙钟字符串，promo_active 为响应生成时刻是否生效。 */
-  promo_discount_enabled: boolean
-  promo_discount_start: string
-  promo_discount_end: string
-  promo_discount_rate: number
-  promo_active: boolean
+  promo_discount_enabled?: boolean
+  promo_discount_start?: string
+  promo_discount_end?: string
+  promo_discount_rate?: number
+  promo_active?: boolean
   /** true = 专属分组（小范围授权）；false = 公开分组。 */
   is_exclusive: boolean
   /** 是否允许该分组使用图片生成能力。 */
