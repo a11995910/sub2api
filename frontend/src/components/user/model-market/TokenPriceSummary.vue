@@ -33,13 +33,6 @@
           >
             {{ officialInputValue }}
           </span>
-          <span
-            v-if="officialInputCNYValue"
-            class="shrink-0 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
-            data-testid="token-base-price-cny"
-          >
-            · {{ officialInputCNYValue }}
-          </span>
         </p>
         <p
           v-if="normalizedDiscount"
@@ -91,7 +84,6 @@
         <p v-if="showOfficialPrice" class="text-sm text-gray-300">
           {{ t('modelMarket.officialReference') }}
           <span class="font-mono tabular-nums text-white">{{ officialInputValue }}</span>
-          <span v-if="officialInputCNYValue" class="font-mono tabular-nums text-gray-300"> · {{ officialInputCNYValue }}</span>
         </p>
         <p v-if="normalizedDiscount" class="text-sm font-medium text-emerald-300">
           {{ t('modelMarket.discountCompared', { value: normalizedDiscount }) }}
@@ -114,12 +106,10 @@ const props = withDefaults(defineProps<{
   cacheReadValue: string
   cacheWriteValue?: string
   officialInputValue?: string
-  officialInputCNYValue?: string
   discountValue?: string
 }>(), {
   cacheWriteValue: '',
   officialInputValue: '',
-  officialInputCNYValue: '',
   discountValue: '',
 })
 

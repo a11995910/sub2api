@@ -45,7 +45,6 @@ describe('TokenPriceSummary', () => {
         outputValue: '2 灵石',
         cacheReadValue: '0.25 灵石',
         officialInputValue: '$1',
-        officialInputCNYValue: '约 ¥7.2',
         discountValue: '-85.9%',
       },
       global: {
@@ -61,7 +60,7 @@ describe('TokenPriceSummary', () => {
     expect(trigger.text()).toContain('输入价格')
     expect(trigger.text()).toContain('1 灵石')
     expect(wrapper.get('[data-testid="token-official-price"]').text()).toBe('$1')
-    expect(wrapper.get('[data-testid="token-base-price-cny"]').text()).toContain('约 ¥7.2')
+    expect(wrapper.text()).not.toContain('约 ¥')
     expect(wrapper.get('[data-testid="token-price-discount"]').text()).toBe('优惠 85.9%')
     expect(wrapper.get('[data-testid="token-price-unit"]').text()).toBe('每百万 Token')
     expect(trigger.text()).not.toContain('2 灵石')

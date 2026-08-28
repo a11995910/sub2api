@@ -32,12 +32,11 @@ const messages: Record<string, string> = {
   'modelMarket.noPricing': '未配置定价',
   'modelMarket.intervalCount': '阶梯 {count} 档',
   'modelMarket.subscriptionGroup': '订阅分组',
-  'modelMarket.groupSummary': '{count} 个模型，当前倍率 x{rate}',
+  'modelMarket.rateBadge': '{rate}x 倍率',
   'modelMarket.noModelsInGroup': '当前分组暂无匹配模型',
   'modelMarket.effectiveRate': '生效倍率',
   'modelMarket.currentPrice': '当前',
   'modelMarket.officialPrice': '渠道原价',
-  'modelMarket.approxCNY': '约 {value}',
   'modelMarket.discount': '优惠',
   'modelMarket.test': '去测试',
   'modelMarket.sort.label': '模型排序',
@@ -273,6 +272,8 @@ describe('ModelMarketView', () => {
     expect(wrapper.get('[data-testid="model-search"]').attributes('placeholder')).toBe('搜索模型名称')
     expect(wrapper.findAll('[data-testid="market-group-section"]')).toHaveLength(3)
     expect(wrapper.text()).toContain('适合稳定调用的低倍率分组。')
+    expect(groupSection(wrapper, '文本分组').get('[data-testid="market-group-rate"]').text()).toBe('1.00x 倍率')
+    expect(groupSection(wrapper, '文本分组').text()).not.toContain('个模型，当前倍率')
     expect(wrapper.text()).toContain('gpt-4.1')
     expect(wrapper.text()).toContain('image-2')
 
@@ -303,7 +304,7 @@ describe('ModelMarketView', () => {
 
     await groupButtons.find((button) => button.text().trim() === '图片分组')!.trigger('click')
     expect(wrapper.text()).toContain('image-2')
-    expect(modelCard(wrapper, 'image-2').text()).toContain('约 ¥7.2')
+    expect(modelCard(wrapper, 'image-2').text()).not.toContain('约 ¥')
     expect(modelCard(wrapper, 'image-2').text()).toContain('优惠72.2%')
   })
 
@@ -359,7 +360,7 @@ describe('ModelMarketView', () => {
     expect(card.text()).not.toContain('$2')
   })
 
-  it('美元渠道原价按汇率折算人民币后计算优惠', async () => {
+  it('美元渠道原价按汇率计算优惠但不显示折合人民币', async () => {
     const usdGroup = groupFixture({ id: 12, rate_multiplier: 0.5 })
     getAvailableGroups.mockResolvedValue([usdGroup])
     getUserGroupRates.mockResolvedValue({})
@@ -397,11 +398,11 @@ describe('ModelMarketView', () => {
 
     const card = modelCard(wrapper, 'gpt-usd')
     expect(card.get('[data-testid="token-official-price"]').text()).toBe('$2')
-    expect(card.get('[data-testid="token-base-price-cny"]').text()).toContain('约 ¥14.4')
+    expect(card.text()).not.toContain('约 ¥')
     expect(card.get('[data-testid="token-price-discount"]').text()).toBe('优惠 93.1%')
   })
 
-  it('公共设置缺少汇率时隐藏美元折合价和优惠', async () => {
+  it('公共设置缺少汇率时隐藏美元渠道优惠', async () => {
     appStoreState.cachedPublicSettings = null
     fetchPublicSettings.mockResolvedValue(null)
     const usdGroup = groupFixture({ id: 13, rate_multiplier: 0.5 })
@@ -442,7 +443,6 @@ describe('ModelMarketView', () => {
     const card = modelCard(wrapper, 'gpt-usd-no-rate')
     expect(fetchPublicSettings).toHaveBeenCalledTimes(1)
     expect(card.get('[data-testid="token-official-price"]').text()).toBe('$2')
-    expect(card.find('[data-testid="token-base-price-cny"]').exists()).toBe(false)
     expect(card.find('[data-testid="token-price-discount"]').exists()).toBe(false)
   })
 
@@ -483,7 +483,8 @@ describe('ModelMarketView', () => {
 
     const text = modelCard(wrapper, 'gpt-per-request').text()
     expect(text).toContain('当前1 灵石')
-    expect(text).toContain('渠道原价$2· 约 ¥14.4')
+    expect(text).toContain('渠道原价$2')
+    expect(text).not.toContain('约 ¥')
     expect(text).toContain('优惠93.1%')
   })
 
@@ -527,6 +528,8 @@ describe('ModelMarketView', () => {
 
     expect(groupSection(wrapper, '低倍率分组').text()).toContain('1 灵石')
     expect(groupSection(wrapper, '高倍率分组').text()).toContain('4 灵石')
+    expect(groupSection(wrapper, '低倍率分组').get('[data-testid="market-group-rate"]').text()).toBe('0.50x 倍率')
+    expect(groupSection(wrapper, '高倍率分组').get('[data-testid="market-group-rate"]').text()).toBe('2.00x 倍率')
   })
 
   it('同平台模型只展示到持久号池支持的分组', async () => {

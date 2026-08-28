@@ -77,6 +77,12 @@
                 <h2 class="min-w-0 text-balance text-lg font-semibold text-gray-900 dark:text-white" data-testid="market-group-title">
                   {{ marketGroup.group.name }}
                 </h2>
+                <span
+                  class="inline-flex shrink-0 items-center rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  data-testid="market-group-rate"
+                >
+                  {{ t('modelMarket.rateBadge', { rate: formatRate(effectiveTextRate(marketGroup.group)) }) }}
+                </span>
                 <span v-if="marketGroup.group.is_exclusive" class="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
                   {{ t('availableChannels.exclusive') }}
                 </span>
@@ -86,9 +92,6 @@
               </div>
               <p v-if="marketGroup.group.description?.trim()" class="mt-2 whitespace-pre-line text-pretty text-base text-gray-600 sm:text-sm dark:text-gray-300">
                 {{ marketGroup.group.description }}
-              </p>
-              <p class="mt-1 text-base text-gray-500 sm:text-sm dark:text-gray-400">
-                {{ t('modelMarket.groupSummary', { count: marketGroup.models.length, rate: formatRate(effectiveTextRate(marketGroup.group)) }) }}
               </p>
             </div>
             <button
@@ -152,21 +155,18 @@
                   label="1K"
                   :value="formatImageTier(marketGroup.group, '1k')"
                   :official-value="formatOfficialImageTier(marketGroup.group, '1k', model.pricing?.price_currency)"
-                  :official-c-n-y-value="formatOfficialImageTierCNY(marketGroup.group, '1k', model.pricing?.price_currency)"
                   :discount-value="formatImageTierDiscount(marketGroup.group, '1k', model.pricing?.price_currency)"
                 />
                 <PriceTile
                   label="2K"
                   :value="formatImageTier(marketGroup.group, '2k')"
                   :official-value="formatOfficialImageTier(marketGroup.group, '2k', model.pricing?.price_currency)"
-                  :official-c-n-y-value="formatOfficialImageTierCNY(marketGroup.group, '2k', model.pricing?.price_currency)"
                   :discount-value="formatImageTierDiscount(marketGroup.group, '2k', model.pricing?.price_currency)"
                 />
                 <PriceTile
                   label="4K"
                   :value="formatImageTier(marketGroup.group, '4k')"
                   :official-value="formatOfficialImageTier(marketGroup.group, '4k', model.pricing?.price_currency)"
-                  :official-c-n-y-value="formatOfficialImageTierCNY(marketGroup.group, '4k', model.pricing?.price_currency)"
                   :discount-value="formatImageTierDiscount(marketGroup.group, '4k', model.pricing?.price_currency)"
                 />
               </template>
@@ -183,7 +183,6 @@
                   :label="t('modelMarket.columns.perRequest')"
                   :value="formatPrice(model.pricing?.per_request_price, 1, marketGroup.group, model.pricing?.billing_mode)"
                   :official-value="formatOfficialPrice(model.pricing?.per_request_price, 1, model.pricing?.price_currency)"
-                  :official-c-n-y-value="formatOfficialPriceCNY(model.pricing?.per_request_price, 1, model.pricing?.price_currency)"
                   :discount-value="formatDiscountPercent(model.pricing?.per_request_price, 1, marketGroup.group, model.pricing?.billing_mode, model.pricing?.price_currency)"
                 />
                 <PriceTile :label="t('modelMarket.columns.multiplier')" :value="`x${formatRate(effectiveTextRate(marketGroup.group))}`" compact />
@@ -196,7 +195,6 @@
                   :cache-read-value="formatPrice(model.pricing?.cache_read_price, perMillionScale, marketGroup.group, model.pricing?.billing_mode)"
                   :cache-write-value="formatPrice(model.pricing?.cache_write_price, perMillionScale, marketGroup.group, model.pricing?.billing_mode)"
                   :official-input-value="formatOfficialPrice(model.pricing?.input_price, perMillionScale, model.pricing?.price_currency)"
-                  :official-input-c-n-y-value="formatOfficialPriceCNY(model.pricing?.input_price, perMillionScale, model.pricing?.price_currency)"
                   :discount-value="formatDiscountPercent(model.pricing?.input_price, perMillionScale, marketGroup.group, model.pricing?.billing_mode, model.pricing?.price_currency)"
                 />
               </template>
@@ -256,7 +254,6 @@ const PriceTile = defineComponent({
     label: { type: String, required: true },
     value: { type: String, required: true },
     officialValue: { type: String, default: '' },
-    officialCNYValue: { type: String, default: '' },
     discountValue: { type: String, default: '' },
     compact: { type: Boolean, default: false },
   },
@@ -273,12 +270,7 @@ const PriceTile = defineComponent({
           !props.compact && props.officialValue && props.officialValue !== '-'
             ? h('div', { class: 'flex items-baseline justify-between gap-3' }, [
                 h('span', { class: 'shrink-0 text-xs text-gray-500 dark:text-gray-400' }, t('modelMarket.officialPrice')),
-                h('span', { class: 'min-w-0 text-right font-mono text-sm font-medium text-gray-600 dark:text-gray-300' }, [
-                  h('span', { class: 'whitespace-nowrap', title: props.officialValue }, props.officialValue),
-                  props.officialCNYValue
-                    ? h('span', { class: 'ml-1 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400' }, `· ${props.officialCNYValue}`)
-                    : null,
-                ]),
+                h('span', { class: 'min-w-0 whitespace-nowrap text-right font-mono text-sm font-medium text-gray-600 dark:text-gray-300', title: props.officialValue }, props.officialValue),
               ])
             : null,
           !props.compact && props.discountValue
@@ -552,19 +544,6 @@ function basePriceInCNY(
   return rate == null ? null : base * rate
 }
 
-function formatOfficialPriceCNY(
-  value: number | null | undefined,
-  scale: number,
-  currency?: PriceCurrency,
-): string {
-  if (currency === PRICE_CURRENCY_CNY) return ''
-  const valueCNY = basePriceInCNY(value, scale, currency)
-  if (valueCNY == null) return ''
-  return t('modelMarket.approxCNY', {
-    value: formatOriginalCurrencyScaled(valueCNY, 1, PRICE_CURRENCY_CNY),
-  })
-}
-
 function formatDiscountPercent(
   value: number | null | undefined,
   scale: number,
@@ -594,15 +573,6 @@ function formatOfficialImageTier(
 ): string {
   const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
   return formatOriginalCurrencyScaled(typeof value === 'number' ? value : null, 1, currency)
-}
-
-function formatOfficialImageTierCNY(
-  group: UserAvailableGroup,
-  tier: '1k' | '2k' | '4k',
-  currency?: PriceCurrency,
-): string {
-  const value = tier === '1k' ? group.image_price_1k : tier === '2k' ? group.image_price_2k : group.image_price_4k
-  return formatOfficialPriceCNY(typeof value === 'number' ? value : null, 1, currency)
 }
 
 function formatImageTierDiscount(
