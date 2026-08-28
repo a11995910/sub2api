@@ -272,6 +272,17 @@
               class="font-bold text-gray-700 dark:text-gray-300"
               >{{ requestRate(m) }}x</span
             >
+            <template v-else-if="discountedRate !== null && prePromoRate !== null">
+              <!-- 限时活动：折前倍率划线 + 折后限时倍率 -->
+              <span
+                class="mr-1 text-gray-400 line-through dark:text-dark-500"
+                :title="promoNote || undefined"
+                >{{ prePromoRate }}x</span
+              >
+              <span class="font-bold text-rose-600 dark:text-rose-400" :title="promoNote || undefined"
+                >{{ discountedRate }}x</span
+              >
+            </template>
             <template v-else-if="hasCustomRate">
               <span class="mr-1 text-gray-400 line-through dark:text-dark-500">{{ rateMultiplier }}x</span>
               <span class="font-bold text-primary-600 dark:text-primary-400">{{ effectiveRate }}x</span>
@@ -315,6 +326,14 @@ const props = defineProps<{
    */
   peakWindow?: string
   peakRateMultiplier?: number | null
+  /**
+   * 限时活动折扣倍率（如 0.95）；null/缺省 = 活动未生效。
+   * 生效时表格所有实付价按 生效倍率 × promoRate 计算，倍率列划线展示折前倍率。
+   */
+  promoRate?: number | null
+  promoActive?: boolean
+  /** 限时注脚（分组头部同款），用于倍率列 tooltip；空串省略。 */
+  promoNote?: string
 }>()
 
 const { t } = useI18n()
@@ -349,6 +368,27 @@ const hasCustomRate = computed(
   () => props.userRateMultiplier != null && props.userRateMultiplier !== props.rateMultiplier
 )
 
+/** 限时活动生效时，在生效倍率上再乘折扣倍率（去掉浮点噪声）。 */
+function withPromo(rate: number): number {
+  const promo = props.promoRate
+  if (!promo || promo <= 0 || promo >= 1) return rate
+  return Math.round(rate * promo * 1000) / 1000
+}
+
+/** 活动生效时的折前倍率（划线展示用）；未生效返回 null。 */
+const prePromoRate = computed(() => {
+  const promo = props.promoRate
+  if (!promo || promo <= 0 || promo >= 1) return null
+  return effectiveRate.value
+})
+
+/** 活动生效时的折后倍率；未生效返回 null。 */
+const discountedRate = computed(() => {
+  const promo = props.promoRate
+  if (!promo || promo <= 0 || promo >= 1) return null
+  return withPromo(effectiveRate.value)
+})
+
 function billingMode(m: PlazaModel): BillingMode {
   return (m.pricing?.billing_mode || BILLING_MODE_TOKEN) as BillingMode
 }
@@ -381,9 +421,9 @@ const rows = computed<PlazaRow[]>(() =>
   })
 )
 
-/** 时段行的生效倍率 = 生效倍率 × 时段倍率(去掉浮点噪声)。 */
+/** 时段行的生效倍率 = 生效倍率 × 时段倍率 × 活动折扣(去掉浮点噪声)。 */
 function periodRate(period: PlazaTimePricingPeriod): number {
-  return Math.round(effectiveRate.value * period.multiplier * 1000) / 1000
+  return withPromo(Math.round(effectiveRate.value * period.multiplier * 1000) / 1000)
 }
 
 /** 实付价 = 渠道单价 × 生效倍率(时段行再乘时段倍率),按渠道原价币种 / 1M token 展示。 */
@@ -393,7 +433,7 @@ function paidPerMillion(
   period: PlazaTimePricingPeriod | null = null
 ): string {
   if (value == null) return '-'
-  const rate = period ? periodRate(period) : effectiveRate.value
+  const rate = period ? periodRate(period) : withPromo(effectiveRate.value)
   return formatOriginalCurrencyScaled(
     value * rate,
     PER_MILLION,
@@ -407,9 +447,10 @@ function usesIndependentImageRate(m: PlazaModel): boolean {
   return billingMode(m) === BILLING_MODE_IMAGE && props.imageRateIndependent === true
 }
 
-/** 按次/按图片行的生效倍率。 */
+/** 按次/按图片行的生效倍率（活动生效时同样乘入折扣）。 */
 function requestRate(m: PlazaModel): number {
-  return usesIndependentImageRate(m) ? (props.imageRateMultiplier ?? 1) : effectiveRate.value
+  const base = usesIndependentImageRate(m) ? (props.imageRateMultiplier ?? 1) : effectiveRate.value
+  return withPromo(base)
 }
 
 /** 按次 / 按图片单价(乘该行生效倍率,不换算 1M)。 */

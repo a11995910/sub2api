@@ -36,6 +36,14 @@ const (
 	FieldPeakEnd = "peak_end"
 	// FieldPeakRateMultiplier holds the string denoting the peak_rate_multiplier field in the database.
 	FieldPeakRateMultiplier = "peak_rate_multiplier"
+	// FieldPromoDiscountEnabled holds the string denoting the promo_discount_enabled field in the database.
+	FieldPromoDiscountEnabled = "promo_discount_enabled"
+	// FieldPromoDiscountStart holds the string denoting the promo_discount_start field in the database.
+	FieldPromoDiscountStart = "promo_discount_start"
+	// FieldPromoDiscountEnd holds the string denoting the promo_discount_end field in the database.
+	FieldPromoDiscountEnd = "promo_discount_end"
+	// FieldPromoDiscountRate holds the string denoting the promo_discount_rate field in the database.
+	FieldPromoDiscountRate = "promo_discount_rate"
 	// FieldIsExclusive holds the string denoting the is_exclusive field in the database.
 	FieldIsExclusive = "is_exclusive"
 	// FieldOauthPoolVisible holds the string denoting the oauth_pool_visible field in the database.
@@ -267,6 +275,10 @@ var Columns = []string{
 	FieldPeakStart,
 	FieldPeakEnd,
 	FieldPeakRateMultiplier,
+	FieldPromoDiscountEnabled,
+	FieldPromoDiscountStart,
+	FieldPromoDiscountEnd,
+	FieldPromoDiscountRate,
 	FieldIsExclusive,
 	FieldOauthPoolVisible,
 	FieldStatus,
@@ -386,6 +398,10 @@ var (
 	PeakEndValidator func(string) error
 	// DefaultPeakRateMultiplier holds the default value on creation for the "peak_rate_multiplier" field.
 	DefaultPeakRateMultiplier float64
+	// DefaultPromoDiscountEnabled holds the default value on creation for the "promo_discount_enabled" field.
+	DefaultPromoDiscountEnabled bool
+	// DefaultPromoDiscountRate holds the default value on creation for the "promo_discount_rate" field.
+	DefaultPromoDiscountRate float64
 	// DefaultIsExclusive holds the default value on creation for the "is_exclusive" field.
 	DefaultIsExclusive bool
 	// DefaultOauthPoolVisible holds the default value on creation for the "oauth_pool_visible" field.
@@ -552,6 +568,26 @@ func ByPeakEnd(opts ...sql.OrderTermOption) OrderOption {
 // ByPeakRateMultiplier orders the results by the peak_rate_multiplier field.
 func ByPeakRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPeakRateMultiplier, opts...).ToFunc()
+}
+
+// ByPromoDiscountEnabled orders the results by the promo_discount_enabled field.
+func ByPromoDiscountEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromoDiscountEnabled, opts...).ToFunc()
+}
+
+// ByPromoDiscountStart orders the results by the promo_discount_start field.
+func ByPromoDiscountStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromoDiscountStart, opts...).ToFunc()
+}
+
+// ByPromoDiscountEnd orders the results by the promo_discount_end field.
+func ByPromoDiscountEnd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromoDiscountEnd, opts...).ToFunc()
+}
+
+// ByPromoDiscountRate orders the results by the promo_discount_rate field.
+func ByPromoDiscountRate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromoDiscountRate, opts...).ToFunc()
 }
 
 // ByIsExclusive orders the results by the is_exclusive field.

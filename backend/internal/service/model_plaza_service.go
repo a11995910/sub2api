@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // PlazaOfficialPricing 模型广场展示用的官方参考价（USD per token），与计费同源：
@@ -47,7 +49,15 @@ type PlazaGroup struct {
 	PeakStart          string
 	PeakEnd            string
 	PeakRateMultiplier float64
-	IsExclusive        bool
+	// 限时活动折扣：起止为站点时区墙钟字符串（YYYY-MM-DD HH:mm），
+	// PromoActive 为响应生成时刻是否处于活动窗口（含折扣生效），由服务端现算，
+	// 前端不做时区换算。
+	PromoDiscountEnabled bool
+	PromoDiscountStart   string
+	PromoDiscountEnd     string
+	PromoDiscountRate    float64
+	PromoActive          bool
+	IsExclusive          bool
 	// 图片按次实付倍率：ImageRateIndependent 为 true 时，图片计费模型的实付
 	// = 档位价 × ImageRateMultiplier，不乘分组/用户专属倍率（与计费口径一致）。
 	ImageRateIndependent bool
@@ -129,6 +139,11 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 			PeakStart:                 g.PeakStart,
 			PeakEnd:                   g.PeakEnd,
 			PeakRateMultiplier:        g.PeakRateMultiplier,
+			PromoDiscountEnabled:      g.PromoDiscountEnabled,
+			PromoDiscountStart:        FormatPromoDiscountTime(g.PromoDiscountStart),
+			PromoDiscountEnd:          FormatPromoDiscountTime(g.PromoDiscountEnd),
+			PromoDiscountRate:         g.PromoDiscountRate,
+			PromoActive:               g.PromoDiscountMultiplierAt(timezone.Now()) != 1.0,
 			IsExclusive:               g.IsExclusive,
 			ImageRateIndependent:      g.ImageRateIndependent,
 			ImageRateMultiplier:       g.ImageRateMultiplier,

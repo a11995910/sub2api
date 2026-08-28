@@ -90,6 +90,11 @@ type userAvailableGroup struct {
 	PeakStart                      string   `json:"peak_start"`
 	PeakEnd                        string   `json:"peak_end"`
 	PeakRateMultiplier             float64  `json:"peak_rate_multiplier"`
+	PromoDiscountEnabled           bool     `json:"promo_discount_enabled"`
+	PromoDiscountStart             string   `json:"promo_discount_start"`
+	PromoDiscountEnd               string   `json:"promo_discount_end"`
+	PromoDiscountRate              float64  `json:"promo_discount_rate"`
+	PromoActive                    bool     `json:"promo_active"`
 	IsExclusive                    bool     `json:"is_exclusive"`
 	AllowImageGeneration           bool     `json:"allow_image_generation"`
 	ImageSuperResolutionEnabled    bool     `json:"image_super_resolution_enabled"`
@@ -362,6 +367,11 @@ func filterUserVisibleGroups(
 			PeakStart:                      g.PeakStart,
 			PeakEnd:                        g.PeakEnd,
 			PeakRateMultiplier:             g.PeakRateMultiplier,
+			PromoDiscountEnabled:           g.PromoDiscountEnabled,
+			PromoDiscountStart:             g.PromoDiscountStart,
+			PromoDiscountEnd:               g.PromoDiscountEnd,
+			PromoDiscountRate:              g.PromoDiscountRate,
+			PromoActive:                    g.PromoActive,
 			IsExclusive:                    g.IsExclusive,
 			AllowImageGeneration:           g.AllowImageGeneration,
 			ImageSuperResolutionEnabled:    g.ImageSuperResolutionEnabled,

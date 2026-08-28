@@ -105,6 +105,26 @@ func PeakRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPeakRateMultiplier, v))
 }
 
+// PromoDiscountEnabled applies equality check predicate on the "promo_discount_enabled" field. It's identical to PromoDiscountEnabledEQ.
+func PromoDiscountEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountEnabled, v))
+}
+
+// PromoDiscountStart applies equality check predicate on the "promo_discount_start" field. It's identical to PromoDiscountStartEQ.
+func PromoDiscountStart(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountEnd applies equality check predicate on the "promo_discount_end" field. It's identical to PromoDiscountEndEQ.
+func PromoDiscountEnd(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountRate applies equality check predicate on the "promo_discount_rate" field. It's identical to PromoDiscountRateEQ.
+func PromoDiscountRate(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountRate, v))
+}
+
 // IsExclusive applies equality check predicate on the "is_exclusive" field. It's identical to IsExclusiveEQ.
 func IsExclusive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldIsExclusive, v))
@@ -883,6 +903,156 @@ func PeakRateMultiplierLT(v float64) predicate.Group {
 // PeakRateMultiplierLTE applies the LTE predicate on the "peak_rate_multiplier" field.
 func PeakRateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldPeakRateMultiplier, v))
+}
+
+// PromoDiscountEnabledEQ applies the EQ predicate on the "promo_discount_enabled" field.
+func PromoDiscountEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountEnabled, v))
+}
+
+// PromoDiscountEnabledNEQ applies the NEQ predicate on the "promo_discount_enabled" field.
+func PromoDiscountEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPromoDiscountEnabled, v))
+}
+
+// PromoDiscountStartEQ applies the EQ predicate on the "promo_discount_start" field.
+func PromoDiscountStartEQ(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountStartNEQ applies the NEQ predicate on the "promo_discount_start" field.
+func PromoDiscountStartNEQ(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountStartIn applies the In predicate on the "promo_discount_start" field.
+func PromoDiscountStartIn(vs ...time.Time) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPromoDiscountStart, vs...))
+}
+
+// PromoDiscountStartNotIn applies the NotIn predicate on the "promo_discount_start" field.
+func PromoDiscountStartNotIn(vs ...time.Time) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPromoDiscountStart, vs...))
+}
+
+// PromoDiscountStartGT applies the GT predicate on the "promo_discount_start" field.
+func PromoDiscountStartGT(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountStartGTE applies the GTE predicate on the "promo_discount_start" field.
+func PromoDiscountStartGTE(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountStartLT applies the LT predicate on the "promo_discount_start" field.
+func PromoDiscountStartLT(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountStartLTE applies the LTE predicate on the "promo_discount_start" field.
+func PromoDiscountStartLTE(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPromoDiscountStart, v))
+}
+
+// PromoDiscountStartIsNil applies the IsNil predicate on the "promo_discount_start" field.
+func PromoDiscountStartIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPromoDiscountStart))
+}
+
+// PromoDiscountStartNotNil applies the NotNil predicate on the "promo_discount_start" field.
+func PromoDiscountStartNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPromoDiscountStart))
+}
+
+// PromoDiscountEndEQ applies the EQ predicate on the "promo_discount_end" field.
+func PromoDiscountEndEQ(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountEndNEQ applies the NEQ predicate on the "promo_discount_end" field.
+func PromoDiscountEndNEQ(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountEndIn applies the In predicate on the "promo_discount_end" field.
+func PromoDiscountEndIn(vs ...time.Time) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPromoDiscountEnd, vs...))
+}
+
+// PromoDiscountEndNotIn applies the NotIn predicate on the "promo_discount_end" field.
+func PromoDiscountEndNotIn(vs ...time.Time) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPromoDiscountEnd, vs...))
+}
+
+// PromoDiscountEndGT applies the GT predicate on the "promo_discount_end" field.
+func PromoDiscountEndGT(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountEndGTE applies the GTE predicate on the "promo_discount_end" field.
+func PromoDiscountEndGTE(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountEndLT applies the LT predicate on the "promo_discount_end" field.
+func PromoDiscountEndLT(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountEndLTE applies the LTE predicate on the "promo_discount_end" field.
+func PromoDiscountEndLTE(v time.Time) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPromoDiscountEnd, v))
+}
+
+// PromoDiscountEndIsNil applies the IsNil predicate on the "promo_discount_end" field.
+func PromoDiscountEndIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPromoDiscountEnd))
+}
+
+// PromoDiscountEndNotNil applies the NotNil predicate on the "promo_discount_end" field.
+func PromoDiscountEndNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPromoDiscountEnd))
+}
+
+// PromoDiscountRateEQ applies the EQ predicate on the "promo_discount_rate" field.
+func PromoDiscountRateEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPromoDiscountRate, v))
+}
+
+// PromoDiscountRateNEQ applies the NEQ predicate on the "promo_discount_rate" field.
+func PromoDiscountRateNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPromoDiscountRate, v))
+}
+
+// PromoDiscountRateIn applies the In predicate on the "promo_discount_rate" field.
+func PromoDiscountRateIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPromoDiscountRate, vs...))
+}
+
+// PromoDiscountRateNotIn applies the NotIn predicate on the "promo_discount_rate" field.
+func PromoDiscountRateNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPromoDiscountRate, vs...))
+}
+
+// PromoDiscountRateGT applies the GT predicate on the "promo_discount_rate" field.
+func PromoDiscountRateGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPromoDiscountRate, v))
+}
+
+// PromoDiscountRateGTE applies the GTE predicate on the "promo_discount_rate" field.
+func PromoDiscountRateGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPromoDiscountRate, v))
+}
+
+// PromoDiscountRateLT applies the LT predicate on the "promo_discount_rate" field.
+func PromoDiscountRateLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPromoDiscountRate, v))
+}
+
+// PromoDiscountRateLTE applies the LTE predicate on the "promo_discount_rate" field.
+func PromoDiscountRateLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPromoDiscountRate, v))
 }
 
 // IsExclusiveEQ applies the EQ predicate on the "is_exclusive" field.

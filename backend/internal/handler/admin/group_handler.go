@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/platform/liveattestation"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -132,6 +133,10 @@ type CreateGroupRequest struct {
 	PeakStart                       string                        `json:"peak_start"`
 	PeakEnd                         string                        `json:"peak_end"`
 	PeakRateMultiplier              *float64                      `json:"peak_rate_multiplier"`
+	PromoDiscountEnabled            bool                          `json:"promo_discount_enabled"`
+	PromoDiscountStart              *string                       `json:"promo_discount_start"`
+	PromoDiscountEnd                *string                       `json:"promo_discount_end"`
+	PromoDiscountRate               *float64                      `json:"promo_discount_rate"`
 	ProfitControlEnabled            bool                          `json:"profit_control_enabled"`
 	ProfitMinMargin                 *float64                      `json:"profit_min_margin"`
 	ProfitSafetyBuffer              *float64                      `json:"profit_safety_buffer"`
@@ -214,6 +219,10 @@ type UpdateGroupRequest struct {
 	PeakStart                       *string                       `json:"peak_start"`
 	PeakEnd                         *string                       `json:"peak_end"`
 	PeakRateMultiplier              *float64                      `json:"peak_rate_multiplier"`
+	PromoDiscountEnabled            *bool                         `json:"promo_discount_enabled"`
+	PromoDiscountStart              *string                       `json:"promo_discount_start"`
+	PromoDiscountEnd                *string                       `json:"promo_discount_end"`
+	PromoDiscountRate               *float64                      `json:"promo_discount_rate"`
 	ProfitControlEnabled            *bool                         `json:"profit_control_enabled"`
 	ProfitMinMargin                 *float64                      `json:"profit_min_margin"`
 	ProfitSafetyBuffer              *float64                      `json:"profit_safety_buffer"`
@@ -537,6 +546,18 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 活动折扣时间字符串预解析（naive 时间按站点时区解释）；配置合法性由 service 统一校验。
+	promoDiscountStart, err := parsePromoDiscountTime(req.PromoDiscountStart)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	promoDiscountEnd, err := parsePromoDiscountTime(req.PromoDiscountEnd)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	// platform 是 omitempty：预校验必须用与 CreateGroup 落库一致的归一化平台，
 	// 否则省略 platform 的请求会被误判成「平台不支持利润控制」。
 	if err := service.ValidateProfitControlConfig(service.NormalizeGroupPlatform(req.Platform), req.ProfitControlEnabled, float64ValueOrDefault(req.ProfitMinMargin, 0), float64ValueOrDefault(req.ProfitSafetyBuffer, 0)); err != nil {
@@ -580,6 +601,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
 		PeakRateMultiplier:              req.PeakRateMultiplier,
+		PromoDiscountEnabled:            req.PromoDiscountEnabled,
+		PromoDiscountStart:              promoDiscountStart,
+		PromoDiscountEnd:                promoDiscountEnd,
+		PromoDiscountRate:               req.PromoDiscountRate,
 		ProfitControlEnabled:            req.ProfitControlEnabled,
 		ProfitMinMargin:                 req.ProfitMinMargin,
 		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
@@ -706,6 +731,19 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		}
 	}
 
+	// 活动折扣时间字符串预解析（naive 时间按站点时区解释）；未提交（nil）表示不修改，
+	// 配置合法性由 service 统一校验。
+	promoDiscountStart, err := parsePromoDiscountTime(req.PromoDiscountStart)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	promoDiscountEnd, err := parsePromoDiscountTime(req.PromoDiscountEnd)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -743,6 +781,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
 		PeakRateMultiplier:              req.PeakRateMultiplier,
+		PromoDiscountEnabled:            req.PromoDiscountEnabled,
+		PromoDiscountStart:              promoDiscountStart,
+		PromoDiscountEnd:                promoDiscountEnd,
+		PromoDiscountRate:               req.PromoDiscountRate,
 		ProfitControlEnabled:            req.ProfitControlEnabled,
 		ProfitMinMargin:                 req.ProfitMinMargin,
 		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
@@ -1113,4 +1155,34 @@ func (h *GroupHandler) UpdateSortOrder(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Sort order updated successfully"})
+}
+
+// parsePromoDiscountTime 把活动折扣时间字符串解析为 time.Time。
+//   - nil / 空串 → (nil, nil)，表示未提交该字段（Update 时不修改）；
+//   - 支持 RFC3339（带时区，按其时区解释）与常见本地格式
+//     （2006-01-02 15:04[:05]、2006-01-02T15:04[:05]、2006-01-02），
+//     naive 时间按站点时区（timezone.Location）解释，与管理端展示口径一致；
+//   - 格式非法返回错误。
+func parsePromoDiscountTime(value *string) (*time.Time, error) {
+	if value == nil {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(*value)
+	if raw == "" {
+		return nil, nil
+	}
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, raw, timezone.Location()); err == nil {
+			return &t, nil
+		}
+	}
+	return nil, fmt.Errorf("promo_discount 时间格式非法: %q（应为 YYYY-MM-DD HH:mm 或 RFC3339）", raw)
 }

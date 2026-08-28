@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // normalizePlanCurrency validates and normalizes the display-only currency label.
@@ -82,10 +83,16 @@ type PlanGroupInfo struct {
 	PeakStart          string   `json:"peak_start"`
 	PeakEnd            string   `json:"peak_end"`
 	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`
-	ModelScopes        []string `json:"supported_model_scopes"`
+	// 限时活动折扣：起止为站点时区墙钟字符串，PromoActive 为查询时刻是否生效
+	PromoDiscountEnabled bool     `json:"promo_discount_enabled"`
+	PromoDiscountStart   string   `json:"promo_discount_start"`
+	PromoDiscountEnd     string   `json:"promo_discount_end"`
+	PromoDiscountRate    float64  `json:"promo_discount_rate"`
+	PromoActive          bool     `json:"promo_active"`
+	DailyLimitUSD        *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd"`
+	ModelScopes          []string `json:"supported_model_scopes"`
 }
 
 // GetGroupInfoMap returns a map of group_id → PlanGroupInfo for the given plans.
@@ -107,18 +114,30 @@ func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbe
 	}
 	m := make(map[int64]PlanGroupInfo, len(groups))
 	for _, g := range groups {
+		// 借用 Group.PromoDiscountMultiplierAt 做活动窗口判定，字段口径与分组表一致。
+		promoGroup := Group{
+			PromoDiscountEnabled: g.PromoDiscountEnabled,
+			PromoDiscountStart:   g.PromoDiscountStart,
+			PromoDiscountEnd:     g.PromoDiscountEnd,
+			PromoDiscountRate:    g.PromoDiscountRate,
+		}
 		m[int64(g.ID)] = PlanGroupInfo{
-			Platform:           g.Platform,
-			Name:               g.Name,
-			RateMultiplier:     g.RateMultiplier,
-			PeakRateEnabled:    g.PeakRateEnabled,
-			PeakStart:          g.PeakStart,
-			PeakEnd:            g.PeakEnd,
-			PeakRateMultiplier: g.PeakRateMultiplier,
-			DailyLimitUSD:      g.DailyLimitUsd,
-			WeeklyLimitUSD:     g.WeeklyLimitUsd,
-			MonthlyLimitUSD:    g.MonthlyLimitUsd,
-			ModelScopes:        g.SupportedModelScopes,
+			Platform:             g.Platform,
+			Name:                 g.Name,
+			RateMultiplier:       g.RateMultiplier,
+			PeakRateEnabled:      g.PeakRateEnabled,
+			PeakStart:            g.PeakStart,
+			PeakEnd:              g.PeakEnd,
+			PeakRateMultiplier:   g.PeakRateMultiplier,
+			PromoDiscountEnabled: promoGroup.PromoDiscountEnabled,
+			PromoDiscountStart:   FormatPromoDiscountTime(promoGroup.PromoDiscountStart),
+			PromoDiscountEnd:     FormatPromoDiscountTime(promoGroup.PromoDiscountEnd),
+			PromoDiscountRate:    promoGroup.PromoDiscountRate,
+			PromoActive:          promoGroup.PromoDiscountMultiplierAt(timezone.Now()) != 1.0,
+			DailyLimitUSD:        g.DailyLimitUsd,
+			WeeklyLimitUSD:       g.WeeklyLimitUsd,
+			MonthlyLimitUSD:      g.MonthlyLimitUsd,
+			ModelScopes:          g.SupportedModelScopes,
 		}
 	}
 	return m

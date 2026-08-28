@@ -129,20 +129,25 @@ type UpstreamBillingProbeResult struct {
 }
 
 type upstreamBillingProbeResponse struct {
-	Object                  string   `json:"object"`
-	SchemaVersion           int      `json:"schema_version"`
-	BillingScope            string   `json:"billing_scope"`
-	GroupRateMultiplier     *float64 `json:"group_rate_multiplier"`
-	UserRateMultiplier      *float64 `json:"user_rate_multiplier"`
-	ResolvedRateMultiplier  *float64 `json:"resolved_rate_multiplier"`
-	PeakRateEnabled         *bool    `json:"peak_rate_enabled"`
-	PeakStart               *string  `json:"peak_start"`
-	PeakEnd                 *string  `json:"peak_end"`
-	PeakRateMultiplier      *float64 `json:"peak_rate_multiplier"`
-	AppliedPeakMultiplier   *float64 `json:"applied_peak_multiplier"`
-	EffectiveRateMultiplier *float64 `json:"effective_rate_multiplier"`
-	Timezone                *string  `json:"timezone"`
-	ObservedAt              string   `json:"observed_at"`
+	Object                  string     `json:"object"`
+	SchemaVersion           int        `json:"schema_version"`
+	BillingScope            string     `json:"billing_scope"`
+	GroupRateMultiplier     *float64   `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64   `json:"user_rate_multiplier"`
+	ResolvedRateMultiplier  *float64   `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         *bool      `json:"peak_rate_enabled"`
+	PeakStart               *string    `json:"peak_start"`
+	PeakEnd                 *string    `json:"peak_end"`
+	PeakRateMultiplier      *float64   `json:"peak_rate_multiplier"`
+	AppliedPeakMultiplier   *float64   `json:"applied_peak_multiplier"`
+	PromoDiscountEnabled    *bool      `json:"promo_discount_enabled"`
+	PromoDiscountStart      *time.Time `json:"promo_discount_start"`
+	PromoDiscountEnd        *time.Time `json:"promo_discount_end"`
+	PromoDiscountRate       *float64   `json:"promo_discount_rate"`
+	AppliedPromoMultiplier  *float64   `json:"applied_promo_multiplier"`
+	EffectiveRateMultiplier *float64   `json:"effective_rate_multiplier"`
+	Timezone                *string    `json:"timezone"`
+	ObservedAt              string     `json:"observed_at"`
 }
 
 // GetUpstreamBillingProbeSettings returns defaults when the setting is absent.
@@ -835,6 +840,23 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 		data["applied_peak_multiplier"] = *response.AppliedPeakMultiplier
 		data["timezone"] = *response.Timezone
 	}
+	// 活动折扣：响应可能来自旧版本网关（无该字段），按未启用处理，保证向前兼容。
+	promoEnabled := response.PromoDiscountEnabled != nil && *response.PromoDiscountEnabled
+	data["promo_discount_enabled"] = promoEnabled
+	if promoEnabled {
+		if response.PromoDiscountStart == nil || response.PromoDiscountEnd == nil ||
+			response.PromoDiscountRate == nil || response.AppliedPromoMultiplier == nil ||
+			response.PromoDiscountStart.IsZero() || response.PromoDiscountEnd.IsZero() ||
+			!validPromoDiscountRate(*response.PromoDiscountRate) ||
+			*response.AppliedPromoMultiplier < 0 ||
+			math.IsNaN(*response.AppliedPromoMultiplier) || math.IsInf(*response.AppliedPromoMultiplier, 0) {
+			return nil, fmt.Errorf("incomplete promo billing response")
+		}
+		data["promo_discount_start"] = response.PromoDiscountStart.UTC().Format(time.RFC3339Nano)
+		data["promo_discount_end"] = response.PromoDiscountEnd.UTC().Format(time.RFC3339Nano)
+		data["promo_discount_rate"] = *response.PromoDiscountRate
+		data["applied_promo_multiplier"] = *response.AppliedPromoMultiplier
+	}
 	appliedPeak, ok := upstreamBillingPeakMultiplierAt(data, observedAt)
 	if !ok {
 		return nil, fmt.Errorf("invalid peak billing response")
@@ -846,7 +868,18 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 	} else if response.AppliedPeakMultiplier != nil && !equalBillingMultiplier(*response.AppliedPeakMultiplier, 1) {
 		return nil, fmt.Errorf("inconsistent applied peak multiplier")
 	}
-	if !equalBillingMultiplier(*response.EffectiveRateMultiplier, *response.ResolvedRateMultiplier*appliedPeak) {
+	appliedPromo, ok := upstreamBillingPromoMultiplierAt(data, observedAt)
+	if !ok {
+		return nil, fmt.Errorf("invalid promo billing response")
+	}
+	if promoEnabled {
+		if !equalBillingMultiplier(*response.AppliedPromoMultiplier, appliedPromo) {
+			return nil, fmt.Errorf("inconsistent applied promo multiplier")
+		}
+	} else if response.AppliedPromoMultiplier != nil && !equalBillingMultiplier(*response.AppliedPromoMultiplier, 1) {
+		return nil, fmt.Errorf("inconsistent applied promo multiplier")
+	}
+	if !equalBillingMultiplier(*response.EffectiveRateMultiplier, *response.ResolvedRateMultiplier*appliedPeak*appliedPromo) {
 		return nil, fmt.Errorf("inconsistent effective billing multiplier")
 	}
 	return data, nil
@@ -865,6 +898,12 @@ func upstreamBillingRateAt(data map[string]any, now time.Time) (float64, bool) {
 		return 0, false
 	}
 	base *= appliedPeak
+	// 活动折扣按当前时刻从快照里的活动窗口现算，与高峰因子同理不落静态列。
+	appliedPromo, ok := upstreamBillingPromoMultiplierAt(data, now)
+	if !ok {
+		return 0, false
+	}
+	base *= appliedPromo
 	if math.IsNaN(base) || math.IsInf(base, 0) {
 		return 0, false
 	}
@@ -930,6 +969,40 @@ func upstreamBillingPeakMultiplierAt(data map[string]any, now time.Time) (float6
 	minute := local.Hour()*60 + local.Minute()
 	if minute >= startMinute && minute < endMinute {
 		return peakMultiplier, true
+	}
+	return 1, true
+}
+
+// upstreamBillingPromoMultiplierAt 从探针快照 data 里按时刻 now 现算活动折扣因子。
+// 快照未携带 promo 字段（旧版网关或未启用）时返回 (1, true)；
+// 携带后字段缺失/非法返回 (0, false)。窗口为绝对时间戳，左闭右开。
+func upstreamBillingPromoMultiplierAt(data map[string]any, now time.Time) (float64, bool) {
+	promoEnabled, ok := data["promo_discount_enabled"].(bool)
+	if !ok {
+		return 1, true
+	}
+	if !promoEnabled {
+		return 1, true
+	}
+	startRaw, startOK := data["promo_discount_start"].(string)
+	endRaw, endOK := data["promo_discount_end"].(string)
+	rate, rateOK := resolveAccountExtraNumber(data, "promo_discount_rate")
+	if !startOK || !endOK || !rateOK {
+		return 0, false
+	}
+	start, err := time.Parse(time.RFC3339Nano, startRaw)
+	if err != nil || start.IsZero() {
+		return 0, false
+	}
+	end, err := time.Parse(time.RFC3339Nano, endRaw)
+	if err != nil || end.IsZero() || !end.After(start) {
+		return 0, false
+	}
+	if !validPromoDiscountRate(rate) {
+		return 0, false
+	}
+	if !now.Before(start) && now.Before(end) {
+		return rate, true
 	}
 	return 1, true
 }

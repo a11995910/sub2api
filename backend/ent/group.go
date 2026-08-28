@@ -40,6 +40,14 @@ type Group struct {
 	PeakEnd string `json:"peak_end,omitempty"`
 	// 高峰时段叠加倍率，仅在 peak_rate_enabled 且处于 [peak_start, peak_end) 时乘入文本倍率
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier,omitempty"`
+	// 是否启用限时活动折扣
+	PromoDiscountEnabled bool `json:"promo_discount_enabled,omitempty"`
+	// 活动开始时间（含）
+	PromoDiscountStart *time.Time `json:"promo_discount_start,omitempty"`
+	// 活动结束时间（不含），必须晚于开始时间
+	PromoDiscountEnd *time.Time `json:"promo_discount_end,omitempty"`
+	// 活动折扣倍率（如 0.95 表示 95 折），仅在启用且处于活动窗口内乘入最终计费倍率
+	PromoDiscountRate float64 `json:"promo_discount_rate,omitempty"`
 	// IsExclusive holds the value of the "is_exclusive" field.
 	IsExclusive bool `json:"is_exclusive,omitempty"`
 	// 是否向有权访问该分组的用户公开 OAuth 账号名称与缓存额度快照
@@ -300,15 +308,15 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage2kEnhancementEnabled, group.FieldImage4kEnhancementEnabled, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldPromoDiscountEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage2kEnhancementEnabled, group.FieldImage4kEnhancementEnabled, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldCacheHitTargetTolerancePercent, group.FieldCacheHitHalfLifeDays, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldPromoDiscountRate, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldCacheHitTargetTolerancePercent, group.FieldCacheHitHalfLifeDays, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldAutoFallbackGroupID, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImageResponseFormat, group.FieldImage4kEnhancementModel, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
-		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
+		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt, group.FieldPromoDiscountStart, group.FieldPromoDiscountEnd:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -392,6 +400,32 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field peak_rate_multiplier", values[i])
 			} else if value.Valid {
 				_m.PeakRateMultiplier = value.Float64
+			}
+		case group.FieldPromoDiscountEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field promo_discount_enabled", values[i])
+			} else if value.Valid {
+				_m.PromoDiscountEnabled = value.Bool
+			}
+		case group.FieldPromoDiscountStart:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field promo_discount_start", values[i])
+			} else if value.Valid {
+				_m.PromoDiscountStart = new(time.Time)
+				*_m.PromoDiscountStart = value.Time
+			}
+		case group.FieldPromoDiscountEnd:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field promo_discount_end", values[i])
+			} else if value.Valid {
+				_m.PromoDiscountEnd = new(time.Time)
+				*_m.PromoDiscountEnd = value.Time
+			}
+		case group.FieldPromoDiscountRate:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field promo_discount_rate", values[i])
+			} else if value.Valid {
+				_m.PromoDiscountRate = value.Float64
 			}
 		case group.FieldIsExclusive:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -937,6 +971,22 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("peak_rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PeakRateMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("promo_discount_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PromoDiscountEnabled))
+	builder.WriteString(", ")
+	if v := _m.PromoDiscountStart; v != nil {
+		builder.WriteString("promo_discount_start=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.PromoDiscountEnd; v != nil {
+		builder.WriteString("promo_discount_end=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("promo_discount_rate=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PromoDiscountRate))
 	builder.WriteString(", ")
 	builder.WriteString("is_exclusive=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsExclusive))

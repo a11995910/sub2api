@@ -1038,6 +1038,17 @@ export default {
         peakMultiplier: 'Peak multiplier',
         multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
       },
+      promoDiscount: {
+        enable: 'Enable limited-time promo discount',
+        discountRate: 'Discount (%)',
+        discountHint: 'Enter 95 for 95% of the original rate: during the window the group rate is multiplied by 95%, restoring automatically when it ends',
+        start: 'Promo start',
+        end: 'Promo end',
+        preview: 'Rate preview during promo: {base}x → {promo}x',
+        activeBadge: 'ACTIVE',
+        invalidRate: 'Promo discount must be greater than 0 and less than 100',
+        invalidWindow: 'Promo start and end are required, and end must be after start'
+      },
       profitControl: {
         enable: 'Enable profit control',
         enabledHint: 'Scheduling only admits accounts whose account multiplier ≤ the request\'s effective downstream multiplier × (1 − min margin − safety buffer). Account multipliers may be maintained manually or synchronized from probes; existing ordering, stickiness and breakers keep working among qualified accounts. Image/video scheduling is not covered yet.',

@@ -69,6 +69,12 @@ export interface ModelPlazaGroup {
   peak_start: string
   peak_end: string
   peak_rate_multiplier: number
+  /** 限时活动折扣：起止为站点时区墙钟字符串，promo_active 为响应生成时刻是否生效。 */
+  promo_discount_enabled: boolean
+  promo_discount_start: string
+  promo_discount_end: string
+  promo_discount_rate: number
+  promo_active: boolean
   is_exclusive: boolean
   /** 生图独立倍率：true 时图片计费模型的实付倍率取 image_rate_multiplier，不取分组/专属倍率。 */
   image_rate_independent: boolean

@@ -159,6 +159,11 @@
                   :peak-start="row.group.peak_start"
                   :peak-end="row.group.peak_end"
                   :peak-rate-multiplier="row.group.peak_rate_multiplier"
+                  :promo-discount-enabled="row.group.promo_discount_enabled"
+                  :promo-discount-start="row.group.promo_discount_start"
+                  :promo-discount-end="row.group.promo_discount_end"
+                  :promo-discount-rate="row.group.promo_discount_rate"
+                  :promo-active="row.group.promo_active"
                 />
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
@@ -493,6 +498,11 @@
                 :peak-start="(option as unknown as GroupOption).peakStart"
                 :peak-end="(option as unknown as GroupOption).peakEnd"
                 :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                :promo-discount-enabled="(option as unknown as GroupOption).promoDiscountEnabled"
+                :promo-discount-start="(option as unknown as GroupOption).promoDiscountStart"
+                :promo-discount-end="(option as unknown as GroupOption).promoDiscountEnd"
+                :promo-discount-rate="(option as unknown as GroupOption).promoDiscountRate"
+                :promo-active="(option as unknown as GroupOption).promoActive"
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
             </template>
@@ -507,6 +517,11 @@
                 :peak-start="(option as unknown as GroupOption).peakStart"
                 :peak-end="(option as unknown as GroupOption).peakEnd"
                 :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                :promo-discount-enabled="(option as unknown as GroupOption).promoDiscountEnabled"
+                :promo-discount-start="(option as unknown as GroupOption).promoDiscountStart"
+                :promo-discount-end="(option as unknown as GroupOption).promoDiscountEnd"
+                :promo-discount-rate="(option as unknown as GroupOption).promoDiscountRate"
+                :promo-active="(option as unknown as GroupOption).promoActive"
                 :description="(option as unknown as GroupOption).description"
                 :allow-image-generation="(option as unknown as GroupOption).allowImageGeneration"
                 :access-countdown="(option as unknown as GroupOption).accessCountdown"
@@ -1158,6 +1173,11 @@
               :peak-start="option.peakStart"
               :peak-end="option.peakEnd"
               :peak-rate-multiplier="option.peakRateMultiplier"
+              :promo-discount-enabled="option.promoDiscountEnabled"
+              :promo-discount-start="option.promoDiscountStart"
+              :promo-discount-end="option.promoDiscountEnd"
+              :promo-discount-rate="option.promoDiscountRate"
+              :promo-active="option.promoActive"
               :description="option.description"
               :allow-image-generation="option.allowImageGeneration"
               :access-countdown="option.accessCountdown"
@@ -1228,6 +1248,11 @@ interface GroupOption {
   peakStart: string
   peakEnd: string
   peakRateMultiplier: number
+  promoDiscountEnabled: boolean
+  promoDiscountStart: string
+  promoDiscountEnd: string
+  promoDiscountRate: number
+  promoActive: boolean
   subscriptionType: SubscriptionType
   platform: GroupPlatform
   allowImageGeneration: boolean
@@ -1488,6 +1513,11 @@ const groupOptions = computed(() =>
     peakStart: group.peak_start,
     peakEnd: group.peak_end,
     peakRateMultiplier: group.peak_rate_multiplier,
+    promoDiscountEnabled: group.promo_discount_enabled,
+    promoDiscountStart: group.promo_discount_start,
+    promoDiscountEnd: group.promo_discount_end,
+    promoDiscountRate: group.promo_discount_rate,
+    promoActive: group.promo_active,
     subscriptionType: group.subscription_type,
     platform: group.platform,
     allowImageGeneration: group.allow_image_generation,

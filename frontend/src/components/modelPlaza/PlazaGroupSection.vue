@@ -16,6 +16,11 @@
           :peak-start="group.peak_start"
           :peak-end="group.peak_end"
           :peak-rate-multiplier="group.peak_rate_multiplier"
+          :promo-discount-enabled="group.promo_discount_enabled"
+          :promo-discount-start="group.promo_discount_start"
+          :promo-discount-end="group.promo_discount_end"
+          :promo-discount-rate="group.promo_discount_rate"
+          :promo-active="group.promo_active"
           always-show-rate
         />
         <span
@@ -43,6 +48,13 @@
         {{ peakNote }}
       </p>
       <p
+        v-if="promoNote"
+        class="mt-1.5 inline-flex items-center gap-1 text-xs text-rose-600 dark:text-rose-400"
+      >
+        <Icon name="sparkles" size="xs" class="h-3 w-3" />
+        {{ promoNote }}
+      </p>
+      <p
         v-if="longContextNote"
         class="mt-1.5 flex items-center gap-1 text-xs text-gray-500 dark:text-dark-400"
       >
@@ -63,6 +75,9 @@
         :image-rate-multiplier="group.image_rate_multiplier"
         :peak-window="peakWindow"
         :peak-rate-multiplier="group.peak_rate_multiplier"
+        :promo-rate="promoRate"
+        :promo-active="group.promo_active"
+        :promo-note="promoNote"
       />
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
@@ -80,7 +95,13 @@ import PlazaModelPricingTable from './PlazaModelPricingTable.vue'
 import type { ModelPlazaGroup } from '@/api/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBorderStrongClass } from '@/utils/platformColors'
-import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
+import {
+  hasPeakRate,
+  formatPeakRateWindow,
+  formatPromoDiscountWindow,
+  promoDiscountZhe,
+  serverTimezoneLabel
+} from '@/utils/peak-rate'
 import { useAppStore } from '@/stores/app'
 
 const props = defineProps<{
@@ -104,6 +125,27 @@ const peakNote = computed(() => {
   return t('modelPlaza.detail.peakNote', {
     window: peakWindow.value,
     multiplier: props.group.peak_rate_multiplier
+  })
+})
+
+// ===== 限时活动折扣 =====
+
+/** 折扣倍率（0.95）；未配置/非法为 null。价格表按 折前倍率 × promoRate 计算实付价。 */
+const promoRate = computed(() =>
+  props.group.promo_active && props.group.promo_discount_enabled ? props.group.promo_discount_rate : null
+)
+
+const promoZhe = computed(() => promoDiscountZhe(props.group.promo_discount_rate))
+
+/** 限时注脚："限时 95 折，2026-09-01 00:00 ~ 2026-09-08 00:00（站点时区 UTC+08:00）" */
+const promoNote = computed(() => {
+  if (!props.group.promo_active || !props.group.promo_discount_enabled || promoZhe.value === null) {
+    return ''
+  }
+  return t('modelPlaza.detail.promoNote', {
+    discount: t('common.promoDiscountLabel', { zhe: promoZhe.value, off: 100 - promoZhe.value }),
+    window: formatPromoDiscountWindow(props.group),
+    tz: serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
   })
 })
 

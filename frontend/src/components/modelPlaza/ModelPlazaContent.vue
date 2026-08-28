@@ -98,9 +98,12 @@ const descriptionHtml = computed(() => {
   return DOMPurify.sanitize(marked.parse(md) as string)
 })
 
-/** 生效倍率 = 用户专属倍率 ?? 分组默认倍率。 */
+/** 生效倍率 = (用户专属倍率 ?? 分组默认倍率) × 限时活动折扣（活动未生效时不乘）。 */
 function effectiveRate(g: ModelPlazaGroup): number {
-  return g.user_rate_multiplier ?? g.rate_multiplier
+  const base = g.user_rate_multiplier ?? g.rate_multiplier
+  const promo = g.promo_active && g.promo_discount_enabled ? g.promo_discount_rate : null
+  if (!promo || promo <= 0 || promo >= 1) return base
+  return Math.round(base * promo * 1000) / 1000
 }
 
 const platforms = computed(() =>

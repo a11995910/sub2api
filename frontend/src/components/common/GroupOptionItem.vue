@@ -41,13 +41,25 @@
         </span>
         <!-- Rate pill (platform color) -->
         <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
-          <template v-if="hasCustomRate">
+          <template v-if="hasPromoRate">
+            <!-- 限时活动：原倍率删除线 + 折后限时倍率 -->
+            <span class="mr-1 line-through opacity-50">{{ promoBaseRate }}x</span>
+            <span class="font-bold">{{ promoEffectiveRate }}x</span>
+          </template>
+          <template v-else-if="hasCustomRate">
             <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
             <span class="font-bold">{{ userRateMultiplier }}x</span>
           </template>
           <template v-else>
             {{ rateMultiplier }}x {{ t('admin.groups.rateLabel') }}
           </template>
+        </span>
+        <span
+          v-if="hasPromoRate"
+          class="inline-flex items-center whitespace-nowrap rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+          :title="promoRateTitle"
+        >
+          {{ promoChipText }}
         </span>
         <span
           v-if="hasPeakRate"
@@ -79,7 +91,12 @@ import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
-import { formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
+import {
+  formatPeakRateWindow,
+  formatPromoDiscountWindow,
+  promoDiscountZhe,
+  serverTimezoneLabel
+} from '@/utils/peak-rate'
 
 const { t } = useI18n()
 
@@ -93,6 +110,12 @@ interface Props {
   peakStart?: string
   peakEnd?: string
   peakRateMultiplier?: number
+  // 限时活动折扣（服务端已判定 promoActive，前端不再换算时区）
+  promoDiscountEnabled?: boolean
+  promoDiscountStart?: string
+  promoDiscountEnd?: string
+  promoDiscountRate?: number
+  promoActive?: boolean
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -107,7 +130,9 @@ const props = withDefaults(defineProps<Props>(), {
   userRateMultiplier: null,
   allowImageGeneration: false,
   accessCountdown: null,
-  peakRateEnabled: false
+  peakRateEnabled: false,
+  promoDiscountEnabled: false,
+  promoActive: false
 })
 
 // Whether user has a custom rate different from default
@@ -140,6 +165,57 @@ const peakRateText = computed(() => {
 
 const peakRateTitle = computed(() => {
   return t('common.peakRateTooltip', { window: peakRateText.value })
+})
+
+// ===== 限时活动折扣 =====
+
+/** 倍率格式化：最多 2 位小数并去掉尾零 */
+function formatRate(value: number): string {
+  return String(parseFloat(value.toFixed(2)))
+}
+
+const promoZhe = computed(() => promoDiscountZhe(props.promoDiscountRate))
+
+const hasPromoRate = computed(() => {
+  return Boolean(
+    props.promoActive &&
+      props.promoDiscountEnabled &&
+      promoZhe.value !== null &&
+      promoZhe.value < 100 &&
+      props.rateMultiplier !== undefined
+  )
+})
+
+/** 折前生效倍率：有用户专属倍率按专属倍率打折，否则按分组默认倍率 */
+const promoBaseRate = computed(() => {
+  return hasCustomRate.value && props.userRateMultiplier != null
+    ? props.userRateMultiplier
+    : (props.rateMultiplier ?? 0)
+})
+
+const promoEffectiveRate = computed(() => {
+  return formatRate(promoBaseRate.value * (props.promoDiscountRate ?? 1))
+})
+
+const promoChipText = computed(() => {
+  const zhe = promoZhe.value
+  if (zhe === null) return t('common.promoRateChip')
+  return t('common.promoDiscountLabel', { zhe, off: 100 - zhe })
+})
+
+const promoRateTitle = computed(() => {
+  return t('common.promoRateTooltip', {
+    discount: t('common.promoDiscountLabel', {
+      zhe: promoZhe.value ?? 100,
+      off: 100 - (promoZhe.value ?? 0)
+    }),
+    window: formatPromoDiscountWindow({
+      promo_discount_enabled: props.promoDiscountEnabled,
+      promo_discount_start: props.promoDiscountStart,
+      promo_discount_end: props.promoDiscountEnd
+    }),
+    tz: serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
+  })
 })
 
 // Rate pill color matches platform badge color

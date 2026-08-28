@@ -11,7 +11,12 @@
     <span class="truncate">{{ name }}</span>
     <!-- Right side label -->
     <span v-if="showLabel" :class="labelClass">
-      <template v-if="hasCustomRate">
+      <template v-if="hasPromoRate && !isSubscription">
+        <!-- 限时活动：原倍率删除线 + 折后限时倍率高亮（标准分组直接替换倍率展示） -->
+        <span class="line-through opacity-50 mr-0.5">{{ promoBaseRate }}x</span>
+        <span class="font-bold">{{ promoEffectiveRate }}x</span>
+      </template>
+      <template v-else-if="hasCustomRate">
         <!-- 原倍率删除线 + 专属倍率高亮 -->
         <span class="line-through opacity-50 mr-0.5">{{ rateMultiplier }}x</span>
         <span class="font-bold">{{ userRateMultiplier }}x</span>
@@ -19,6 +24,14 @@
       <template v-else>
         {{ labelText }}
       </template>
+    </span>
+    <!-- 限时活动徽标：订阅分组（label 显示天数）或需要强调时展示折后倍率 -->
+    <span v-if="hasPromoRate" :class="promoRateClass" :title="promoRateTitle">
+      <template v-if="isSubscription">
+        <span class="line-through opacity-50 mr-0.5">{{ promoBaseRate }}x</span>
+        <span class="font-bold">{{ promoEffectiveRate }}x</span>
+      </template>
+      {{ promoChipText }}
     </span>
     <span v-if="hasPeakRate" :class="peakRateClass" :title="peakRateTitle">
       {{ peakRateText }}
@@ -31,7 +44,12 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionType, GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
-import { formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
+import {
+  formatPeakRateWindow,
+  formatPromoDiscountWindow,
+  promoDiscountZhe,
+  serverTimezoneLabel
+} from '@/utils/peak-rate'
 import PlatformIcon from './PlatformIcon.vue'
 
 interface Props {
@@ -44,6 +62,12 @@ interface Props {
   peakStart?: string
   peakEnd?: string
   peakRateMultiplier?: number
+  // 限时活动折扣（服务端已判定 promoActive，前端不再换算时区）
+  promoDiscountEnabled?: boolean
+  promoDiscountStart?: string
+  promoDiscountEnd?: string
+  promoDiscountRate?: number
+  promoActive?: boolean
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
@@ -60,6 +84,8 @@ const props = withDefaults(defineProps<Props>(), {
   daysRemaining: null,
   userRateMultiplier: null,
   peakRateEnabled: false,
+  promoDiscountEnabled: false,
+  promoActive: false,
   alwaysShowRate: false
 })
 
@@ -97,6 +123,62 @@ const peakRateText = computed(() => {
 
 const peakRateTitle = computed(() => {
   return t('common.peakRateTooltip', { window: peakRateText.value })
+})
+
+// ===== 限时活动折扣 =====
+
+/** 倍率格式化：最多 2 位小数并去掉尾零（1.9、1.85、2） */
+function formatRate(value: number): string {
+  return String(parseFloat(value.toFixed(2)))
+}
+
+const promoZhe = computed(() => promoDiscountZhe(props.promoDiscountRate))
+
+const hasPromoRate = computed(() => {
+  return Boolean(
+    props.showRate &&
+      props.promoActive &&
+      props.promoDiscountEnabled &&
+      promoZhe.value !== null &&
+      promoZhe.value < 100 &&
+      props.rateMultiplier !== undefined
+  )
+})
+
+/** 折前生效倍率：有用户专属倍率按专属倍率打折，否则按分组默认倍率 */
+const promoBaseRate = computed(() => {
+  return hasCustomRate.value && props.userRateMultiplier != null
+    ? props.userRateMultiplier
+    : (props.rateMultiplier ?? 0)
+})
+
+const promoEffectiveRate = computed(() => {
+  return formatRate(promoBaseRate.value * (props.promoDiscountRate ?? 1))
+})
+
+const promoChipText = computed(() => {
+  const zhe = promoZhe.value
+  if (zhe === null) return t('common.promoRateChip')
+  return t('common.promoDiscountLabel', { zhe, off: 100 - zhe })
+})
+
+const promoRateTitle = computed(() => {
+  return t('common.promoRateTooltip', {
+    discount: t('common.promoDiscountLabel', {
+      zhe: promoZhe.value ?? 100,
+      off: 100 - (promoZhe.value ?? 0)
+    }),
+    window: formatPromoDiscountWindow({
+      promo_discount_enabled: props.promoDiscountEnabled,
+      promo_discount_start: props.promoDiscountStart,
+      promo_discount_end: props.promoDiscountEnd
+    }),
+    tz: serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
+  })
+})
+
+const promoRateClass = computed(() => {
+  return 'px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
 })
 
 // 是否显示右侧标签

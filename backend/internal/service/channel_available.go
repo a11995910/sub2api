@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // AvailableGroupRef 渠道视图中关联分组的简要信息。
@@ -13,15 +15,21 @@ import (
 // 订阅 vs 标准（SubscriptionType）、默认倍率（RateMultiplier）与高峰倍率规则。
 // 用户专属倍率不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
 type AvailableGroupRef struct {
-	ID                             int64
-	Name                           string
-	Platform                       string
-	SubscriptionType               string
-	RateMultiplier                 float64
-	PeakRateEnabled                bool
-	PeakStart                      string
-	PeakEnd                        string
-	PeakRateMultiplier             float64
+	ID                 int64
+	Name               string
+	Platform           string
+	SubscriptionType   string
+	RateMultiplier     float64
+	PeakRateEnabled    bool
+	PeakStart          string
+	PeakEnd            string
+	PeakRateMultiplier float64
+	// 限时活动折扣：起止为站点时区墙钟字符串，PromoActive 为查询时刻是否生效
+	PromoDiscountEnabled           bool
+	PromoDiscountStart             string
+	PromoDiscountEnd               string
+	PromoDiscountRate              float64
+	PromoActive                    bool
 	IsExclusive                    bool
 	AllowImageGeneration           bool
 	ImageSuperResolutionEnabled    bool
@@ -88,6 +96,11 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			PeakStart:                      g.PeakStart,
 			PeakEnd:                        g.PeakEnd,
 			PeakRateMultiplier:             g.PeakRateMultiplier,
+			PromoDiscountEnabled:           g.PromoDiscountEnabled,
+			PromoDiscountStart:             FormatPromoDiscountTime(g.PromoDiscountStart),
+			PromoDiscountEnd:               FormatPromoDiscountTime(g.PromoDiscountEnd),
+			PromoDiscountRate:              g.PromoDiscountRate,
+			PromoActive:                    g.PromoDiscountMultiplierAt(timezone.Now()) != 1.0,
 			IsExclusive:                    g.IsExclusive,
 			AllowImageGeneration:           g.AllowImageGeneration,
 			ImageSuperResolutionEnabled:    g.ImageSuperResolutionEnabled,

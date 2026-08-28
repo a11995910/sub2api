@@ -255,10 +255,23 @@
             </div>
           </template>
 
-          <template #cell-rate_multiplier="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300"
-              >{{ value }}x</span
-            >
+          <template #cell-rate_multiplier="{ row, value }">
+            <span class="inline-flex items-center gap-1.5">
+              <template v-if="row.promo_active && row.promo_discount_rate > 0 && row.promo_discount_rate < 1">
+                <span class="text-sm text-gray-400 line-through dark:text-dark-500">{{ value }}x</span>
+                <span class="text-sm font-semibold text-rose-600 dark:text-rose-400">{{
+                  promoDisplayRate(value, row.promo_discount_rate)
+                }}x</span>
+                <span
+                  class="inline-flex items-center rounded-md bg-rose-50 px-1.5 py-0.5 text-xs font-medium text-rose-600 dark:bg-rose-900/20 dark:text-rose-400"
+                  :title="promoActiveTitle(row)"
+                  >{{ t("admin.groups.promoDiscount.activeBadge") }}</span
+                >
+              </template>
+              <template v-else>
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}x</span>
+              </template>
+            </span>
           </template>
 
           <template #cell-is_exclusive="{ row, value }">
@@ -1395,6 +1408,63 @@
               />
             </div>
           </div>
+        </div>
+
+        <!-- 限时活动折扣（所有分组类型可用） -->
+        <div class="border-t pt-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="createForm.promo_discount_enabled"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>{{ t("admin.groups.promoDiscount.enable") }}</span>
+          </label>
+          <div v-if="createForm.promo_discount_enabled" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label class="input-label">{{ t("admin.groups.promoDiscount.discountRate") }}</label>
+              <input
+                v-model.number="createForm.promo_discount_rate_percent"
+                type="number"
+                min="1"
+                max="99"
+                step="0.1"
+                class="input"
+                placeholder="95"
+                :title="t('admin.groups.promoDiscount.discountHint')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.promoDiscount.start") }}</label>
+              <input
+                v-model="createForm.promo_discount_start"
+                type="datetime-local"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.promoDiscount.end") }}</label>
+              <input
+                v-model="createForm.promo_discount_end"
+                type="datetime-local"
+                class="input"
+              />
+            </div>
+          </div>
+          <p v-if="createForm.promo_discount_enabled" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.promoDiscount.discountHint") }}
+          </p>
+          <p
+            v-if="createForm.promo_discount_enabled && promoPreview(createForm.rate_multiplier, createForm.promo_discount_rate_percent)"
+            class="mt-1 text-xs font-medium text-rose-600 dark:text-rose-400"
+          >
+            {{
+              t("admin.groups.promoDiscount.preview", {
+                base: createForm.rate_multiplier,
+                promo: promoPreview(createForm.rate_multiplier, createForm.promo_discount_rate_percent)
+              })
+            }}
+          </p>
         </div>
 
         <!-- 分组利润控制（五个平台 token 请求） -->
@@ -3338,6 +3408,63 @@
               />
             </div>
           </div>
+        </div>
+
+        <!-- 限时活动折扣（所有分组类型可用） -->
+        <div class="border-t pt-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="editForm.promo_discount_enabled"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>{{ t("admin.groups.promoDiscount.enable") }}</span>
+          </label>
+          <div v-if="editForm.promo_discount_enabled" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label class="input-label">{{ t("admin.groups.promoDiscount.discountRate") }}</label>
+              <input
+                v-model.number="editForm.promo_discount_rate_percent"
+                type="number"
+                min="1"
+                max="99"
+                step="0.1"
+                class="input"
+                placeholder="95"
+                :title="t('admin.groups.promoDiscount.discountHint')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.promoDiscount.start") }}</label>
+              <input
+                v-model="editForm.promo_discount_start"
+                type="datetime-local"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.promoDiscount.end") }}</label>
+              <input
+                v-model="editForm.promo_discount_end"
+                type="datetime-local"
+                class="input"
+              />
+            </div>
+          </div>
+          <p v-if="editForm.promo_discount_enabled" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t("admin.groups.promoDiscount.discountHint") }}
+          </p>
+          <p
+            v-if="editForm.promo_discount_enabled && promoPreview(editForm.rate_multiplier, editForm.promo_discount_rate_percent)"
+            class="mt-1 text-xs font-medium text-rose-600 dark:text-rose-400"
+          >
+            {{
+              t("admin.groups.promoDiscount.preview", {
+                base: editForm.rate_multiplier,
+                promo: promoPreview(editForm.rate_multiplier, editForm.promo_discount_rate_percent)
+              })
+            }}
+          </p>
         </div>
 
         <!-- 分组利润控制（五个平台 token 请求） -->
@@ -5854,6 +5981,11 @@ const createForm = reactive({
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  // 限时活动折扣；界面按折数百分比输入（95 = 95 折），提交时转小数（0.95）
+  promo_discount_enabled: false,
+  promo_discount_rate_percent: 95,
+  promo_discount_start: "",
+  promo_discount_end: "",
   // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
   profit_control_enabled: false,
   profit_min_margin_percent: 0,
@@ -6227,6 +6359,11 @@ const editForm = reactive({
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  // 限时活动折扣；界面按折数百分比输入（95 = 95 折），提交时转小数（0.95）
+  promo_discount_enabled: false,
+  promo_discount_rate_percent: 95,
+  promo_discount_start: "",
+  promo_discount_end: "",
   // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
   profit_control_enabled: false,
   profit_min_margin_percent: 0,
@@ -6766,6 +6903,10 @@ const closeCreateModal = () => {
   createForm.peak_start = "";
   createForm.peak_end = "";
   createForm.peak_rate_multiplier = 1.0;
+  createForm.promo_discount_enabled = false;
+  createForm.promo_discount_rate_percent = 95;
+  createForm.promo_discount_start = "";
+  createForm.promo_discount_end = "";
   createForm.profit_control_enabled = false;
   createForm.profit_min_margin_percent = 0;
   createForm.profit_safety_buffer_percent = 0;
@@ -6815,6 +6956,59 @@ const normalizeRateMultiplier = (
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
+};
+
+// ===== 限时活动折扣表单辅助 =====
+
+/** 折后倍率展示值：base × rate（如 2 × 0.95 → 1.9），保留最多 2 位小数并去尾零。 */
+const promoDisplayRate = (base: number, rate: number): string => {
+  return String(parseFloat((base * rate).toFixed(2)));
+};
+
+/** 表单预览值：折扣百分比合法时返回折后倍率字符串，否则返回空串。 */
+const promoPreview = (base: number, percent: number): string => {
+  const p = Number(percent);
+  if (!Number.isFinite(p) || p <= 0 || p >= 100) return "";
+  return promoDisplayRate(base, p / 100);
+};
+
+/** 列表"活动中"徽章标题：折扣 + 活动窗口（站点时区墙钟）。 */
+const promoActiveTitle = (row: {
+  promo_discount_rate?: number;
+  promo_discount_start?: string;
+  promo_discount_end?: string;
+}): string => {
+  const rate = row.promo_discount_rate ?? 1;
+  const zhe = Math.round(rate * 1000) / 10;
+  const zheText = Number.isInteger(zhe) ? String(zhe) : zhe.toFixed(1);
+  const window = [row.promo_discount_start, row.promo_discount_end]
+    .filter(Boolean)
+    .join(" ~ ");
+  return `${t("admin.groups.promoDiscount.discountRate")}: ${zheText}${window ? ` (${window})` : ""}`;
+};
+
+/** 活动折扣表单校验：启用时折扣 ∈ (0,100) 且窗口起止齐全、结束晚于开始。 */
+const validatePromoForm = (form: {
+  promo_discount_enabled: boolean;
+  promo_discount_rate_percent: number;
+  promo_discount_start: string;
+  promo_discount_end: string;
+}): boolean => {
+  if (!form.promo_discount_enabled) return true;
+  const percent = Number(form.promo_discount_rate_percent);
+  if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+    appStore.showError(t("admin.groups.promoDiscount.invalidRate"));
+    return false;
+  }
+  if (
+    !form.promo_discount_start ||
+    !form.promo_discount_end ||
+    form.promo_discount_end <= form.promo_discount_start
+  ) {
+    appStore.showError(t("admin.groups.promoDiscount.invalidWindow"));
+    return false;
+  }
+  return true;
 };
 
 // 利润控制表单辅助（换算与校验逻辑见 groupsProfitControl.ts，便于单测）。
@@ -6914,6 +7108,10 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      promo_discount_enabled: createForm.promo_discount_enabled,
+      promo_discount_start: createForm.promo_discount_start || undefined,
+      promo_discount_end: createForm.promo_discount_end || undefined,
+      promo_discount_rate: createForm.promo_discount_rate_percent / 100,
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
         createForm.platform,
@@ -7016,6 +7214,7 @@ const handleCreateGroup = async () => {
     requestData.peak_rate_multiplier = normalizeRateMultiplier(
       createForm.peak_rate_multiplier,
     );
+    if (!validatePromoForm(createForm)) return;
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -7100,6 +7299,12 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
   editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
+  editForm.promo_discount_enabled = group.promo_discount_enabled ?? false;
+  const promoRate = group.promo_discount_rate ?? 1;
+  editForm.promo_discount_rate_percent = promoRate > 0 && promoRate < 1 ? promoRate * 100 : 95;
+  // 后端为站点时区墙钟字符串（YYYY-MM-DD HH:mm），datetime-local 需要 T 分隔
+  editForm.promo_discount_start = (group.promo_discount_start || "").replace(" ", "T");
+  editForm.promo_discount_end = (group.promo_discount_end || "").replace(" ", "T");
   editForm.profit_control_enabled = group.profit_control_enabled ?? false;
   editForm.profit_min_margin_percent = decimalToPercent(
     group.profit_min_margin ?? 0,
@@ -7177,6 +7382,10 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.promo_discount_enabled = false;
+  editForm.promo_discount_rate_percent = 95;
+  editForm.promo_discount_start = "";
+  editForm.promo_discount_end = "";
   editForm.profit_control_enabled = false;
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
@@ -7246,6 +7455,10 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      promo_discount_enabled: editForm.promo_discount_enabled,
+      promo_discount_start: editForm.promo_discount_start || undefined,
+      promo_discount_end: editForm.promo_discount_end || undefined,
+      promo_discount_rate: editForm.promo_discount_rate_percent / 100,
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,
         editForm.platform,
@@ -7360,6 +7573,7 @@ const handleUpdateGroup = async () => {
     payload.peak_rate_multiplier = normalizeRateMultiplier(
       editForm.peak_rate_multiplier,
     );
+    if (!validatePromoForm(editForm)) return;
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();

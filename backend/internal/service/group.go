@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -115,6 +116,13 @@ type Group struct {
 	PeakStart          string
 	PeakEnd            string
 	PeakRateMultiplier float64
+	// 限时活动折扣：promo_discount_enabled 为 true 且当前时刻处于
+	// [PromoDiscountStart, PromoDiscountEnd) 时，最终计费倍率额外乘以
+	// PromoDiscountRate（如 0.95 表示 95 折）。详见 PromoDiscountMultiplierAt。
+	PromoDiscountEnabled bool
+	PromoDiscountStart   *time.Time
+	PromoDiscountEnd     *time.Time
+	PromoDiscountRate    float64
 	IsExclusive        bool
 	OAuthPoolVisible   bool
 	Status             string
@@ -222,7 +230,7 @@ type Group struct {
 
 	// 分组利润控制（五个 token 计费平台可启用）。
 	// 调度准入条件：账号倍率 U 满足 U <= D*(1-margin-buffer)，
-	// D 为请求用户当刻有效下游倍率（用户覆盖 ?? 分组默认，再乘高峰因子）。
+	// D 为请求用户当刻有效下游倍率（用户覆盖 ?? 分组默认，再乘高峰因子与活动折扣）。
 	// 只过滤候选账号，不改变既有排序/评分/粘性/熔断。
 	ProfitControlEnabled bool
 	ProfitMinMargin      float64 // 最低毛利率，小数存储（0.30=30%）
@@ -481,17 +489,88 @@ func NormalizePeakRateConfig(subscriptionType string, enabled bool, start, end s
 	return enabled, start, end, multiplier
 }
 
+// PromoDiscountMultiplierAt 返回指定时刻 now 的活动折扣因子（如 0.95 表示 95 折）。
+//   - 未启用 / 未配置起止时间 / 配置非法（end<=start 或折扣值非法） / 不在活动窗口 → 返回 1.0（安全降级）
+//   - 窗口为左闭右开 [PromoDiscountStart, PromoDiscountEnd)，到期瞬间自动恢复原倍率，无需定时任务
+//   - 起止为绝对时间戳（TIMESTAMPTZ），直接比较时刻，不依赖时区换算
+//
+// 该方法是纯函数，不读取任何外部状态，便于单测。适用于所有分组类型（不限于订阅分组）。
+func (g *Group) PromoDiscountMultiplierAt(now time.Time) float64 {
+	if g == nil || !g.PromoDiscountEnabled || g.PromoDiscountStart == nil || g.PromoDiscountEnd == nil {
+		return 1.0
+	}
+	if !validPromoDiscountRate(g.PromoDiscountRate) || !g.PromoDiscountEnd.After(*g.PromoDiscountStart) {
+		return 1.0
+	}
+	if !now.Before(*g.PromoDiscountStart) && now.Before(*g.PromoDiscountEnd) {
+		return g.PromoDiscountRate
+	}
+	return 1.0
+}
+
+// validPromoDiscountRate 判定折扣倍率是否合法：(0, 1]，非 NaN/Inf。0.95 表示 95 折。
+func validPromoDiscountRate(rate float64) bool {
+	return !math.IsNaN(rate) && !math.IsInf(rate, 0) && rate > 0 && rate <= 1
+}
+
+// FormatPromoDiscountTime 把活动折扣时间格式化为站点时区墙钟字符串（YYYY-MM-DD HH:mm），
+// 与管理端提交格式互逆；nil 返回空串（表示未配置）。service 与 dto 展示共用。
+func FormatPromoDiscountTime(t *time.Time) string {
+	if t == nil || t.IsZero() {
+		return ""
+	}
+	return t.In(timezone.Location()).Format("2006-01-02 15:04")
+}
+
+// ValidatePromoDiscountConfig 是活动折扣配置的唯一校验来源，handler 与 service 层共用。
+// enabled=true 时要求起止时间必填且 end>start，折扣 ∈ (0,1]（0.95=95 折）。
+// enabled=false 时放行（由 NormalizePromoDiscountConfig 兜底清洗数值）。
+// 校验失败返回 BadRequest 应用错误（ErrorFrom 映射为 400），避免落入 500。
+func ValidatePromoDiscountConfig(enabled bool, start, end *time.Time, rate float64) error {
+	if !enabled {
+		return nil
+	}
+	if start == nil || end == nil {
+		return infraerrors.BadRequest("PROMO_DISCOUNT_TIME_REQUIRED", "promo_discount_enabled 为 true 时活动开始与结束时间必填")
+	}
+	if !end.After(*start) {
+		return infraerrors.BadRequest("PROMO_DISCOUNT_WINDOW_INVALID", "活动结束时间必须晚于开始时间")
+	}
+	if !validPromoDiscountRate(rate) {
+		return infraerrors.BadRequest("PROMO_DISCOUNT_RATE_INVALID", "promo_discount_rate 必须在 (0,1] 区间内（如 0.95 表示 95 折）")
+	}
+	return nil
+}
+
+// NormalizePromoDiscountConfig 归一化最终落库的活动折扣配置，CreateGroup 与 UpdateGroup
+// 两条写路径共用（唯一收口）：关闭活动时保留已配置的合法起止时间（便于临时停用后再启用），
+// 但清掉非法折扣值，避免脏数据入库。
+// 与 ValidatePromoDiscountConfig 的分工：enabled=true 时校验已保证各字段合法，本函数为无操作；
+// enabled=false 时校验放行，由本函数兜底清洗。
+func NormalizePromoDiscountConfig(enabled bool, start, end *time.Time, rate float64) (bool, *time.Time, *time.Time, float64) {
+	if !enabled && !validPromoDiscountRate(rate) {
+		rate = 1.0
+	}
+	return enabled, start, end, rate
+}
+
 // computePeakAwareMultipliers 把"基础 token 倍率 base"（已含系统/分组/用户级倍率，但不含高峰）
-// 拆分为最终 token 倍率与图片按次倍率：图片按次倍率基于 base 现算、不受高峰影响；token 倍率在 base 上叠加高峰因子。
+// 拆分为最终 token 倍率与图片按次倍率：图片按次倍率基于 base 现算、不受高峰影响；token 倍率在
+// base 上叠加高峰因子与限时活动折扣（活动为分组整体让利，token 与图片按次倍率都乘入折扣因子）。
 // gateway_service.recordUsageCore 与 openai_gateway_service.RecordUsage 共用此函数，
-// 锁死"高峰因子只乘入 token 倍率、图片按次倍率不受影响"这一叠加顺序——任何调换都会被 group_peak_rate_test 覆盖。
+// 锁死"高峰因子只乘入 token 倍率、活动折扣乘入 token 与图片两条倍率"这一叠加顺序——
+// 任何调换都会被 group_peak_rate_test 与 group_promo_discount_test 覆盖。
 func computePeakAwareMultipliers(apiKey *APIKey, base float64, now time.Time) (text, image float64) {
-	image = resolveImageRateMultiplier(apiKey, base)
+	promo := 1.0
+	if apiKey != nil && apiKey.Group != nil {
+		promo = apiKey.Group.PromoDiscountMultiplierAt(now)
+	}
+	image = resolveImageRateMultiplier(apiKey, base) * promo
 	peak := 1.0
 	if apiKey != nil && apiKey.Group != nil {
 		peak = apiKey.Group.PeakMultiplierAt(now)
 	}
-	text = base * peak
+	text = base * peak * promo
 	return
 }
 

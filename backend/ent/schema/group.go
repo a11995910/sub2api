@@ -63,6 +63,22 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).
 			Comment("高峰时段叠加倍率，仅在 peak_rate_enabled 且处于 [peak_start, peak_end) 时乘入文本倍率"),
+		// 限时活动折扣（added by migration 232）
+		field.Bool("promo_discount_enabled").
+			Default(false).
+			Comment("是否启用限时活动折扣"),
+		field.Time("promo_discount_start").
+			Optional().
+			Nillable().
+			Comment("活动开始时间（含）"),
+		field.Time("promo_discount_end").
+			Optional().
+			Nillable().
+			Comment("活动结束时间（不含），必须晚于开始时间"),
+		field.Float("promo_discount_rate").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("活动折扣倍率（如 0.95 表示 95 折），仅在启用且处于活动窗口内乘入最终计费倍率"),
 		field.Bool("is_exclusive").
 			Default(false),
 		field.Bool("oauth_pool_visible").

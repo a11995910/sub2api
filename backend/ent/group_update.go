@@ -181,6 +181,81 @@ func (_u *GroupUpdate) AddPeakRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (_u *GroupUpdate) SetPromoDiscountEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetPromoDiscountEnabled(v)
+	return _u
+}
+
+// SetNillablePromoDiscountEnabled sets the "promo_discount_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePromoDiscountEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetPromoDiscountEnabled(*v)
+	}
+	return _u
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (_u *GroupUpdate) SetPromoDiscountStart(v time.Time) *GroupUpdate {
+	_u.mutation.SetPromoDiscountStart(v)
+	return _u
+}
+
+// SetNillablePromoDiscountStart sets the "promo_discount_start" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePromoDiscountStart(v *time.Time) *GroupUpdate {
+	if v != nil {
+		_u.SetPromoDiscountStart(*v)
+	}
+	return _u
+}
+
+// ClearPromoDiscountStart clears the value of the "promo_discount_start" field.
+func (_u *GroupUpdate) ClearPromoDiscountStart() *GroupUpdate {
+	_u.mutation.ClearPromoDiscountStart()
+	return _u
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (_u *GroupUpdate) SetPromoDiscountEnd(v time.Time) *GroupUpdate {
+	_u.mutation.SetPromoDiscountEnd(v)
+	return _u
+}
+
+// SetNillablePromoDiscountEnd sets the "promo_discount_end" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePromoDiscountEnd(v *time.Time) *GroupUpdate {
+	if v != nil {
+		_u.SetPromoDiscountEnd(*v)
+	}
+	return _u
+}
+
+// ClearPromoDiscountEnd clears the value of the "promo_discount_end" field.
+func (_u *GroupUpdate) ClearPromoDiscountEnd() *GroupUpdate {
+	_u.mutation.ClearPromoDiscountEnd()
+	return _u
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (_u *GroupUpdate) SetPromoDiscountRate(v float64) *GroupUpdate {
+	_u.mutation.ResetPromoDiscountRate()
+	_u.mutation.SetPromoDiscountRate(v)
+	return _u
+}
+
+// SetNillablePromoDiscountRate sets the "promo_discount_rate" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePromoDiscountRate(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetPromoDiscountRate(*v)
+	}
+	return _u
+}
+
+// AddPromoDiscountRate adds value to the "promo_discount_rate" field.
+func (_u *GroupUpdate) AddPromoDiscountRate(v float64) *GroupUpdate {
+	_u.mutation.AddPromoDiscountRate(v)
+	return _u
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_u *GroupUpdate) SetIsExclusive(v bool) *GroupUpdate {
 	_u.mutation.SetIsExclusive(v)
@@ -1840,6 +1915,27 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
 		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.PromoDiscountEnabled(); ok {
+		_spec.SetField(group.FieldPromoDiscountEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PromoDiscountStart(); ok {
+		_spec.SetField(group.FieldPromoDiscountStart, field.TypeTime, value)
+	}
+	if _u.mutation.PromoDiscountStartCleared() {
+		_spec.ClearField(group.FieldPromoDiscountStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PromoDiscountEnd(); ok {
+		_spec.SetField(group.FieldPromoDiscountEnd, field.TypeTime, value)
+	}
+	if _u.mutation.PromoDiscountEndCleared() {
+		_spec.ClearField(group.FieldPromoDiscountEnd, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PromoDiscountRate(); ok {
+		_spec.SetField(group.FieldPromoDiscountRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPromoDiscountRate(); ok {
+		_spec.AddField(group.FieldPromoDiscountRate, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
 	}
@@ -2724,6 +2820,81 @@ func (_u *GroupUpdateOne) SetNillablePeakRateMultiplier(v *float64) *GroupUpdate
 // AddPeakRateMultiplier adds value to the "peak_rate_multiplier" field.
 func (_u *GroupUpdateOne) AddPeakRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddPeakRateMultiplier(v)
+	return _u
+}
+
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (_u *GroupUpdateOne) SetPromoDiscountEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetPromoDiscountEnabled(v)
+	return _u
+}
+
+// SetNillablePromoDiscountEnabled sets the "promo_discount_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePromoDiscountEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPromoDiscountEnabled(*v)
+	}
+	return _u
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (_u *GroupUpdateOne) SetPromoDiscountStart(v time.Time) *GroupUpdateOne {
+	_u.mutation.SetPromoDiscountStart(v)
+	return _u
+}
+
+// SetNillablePromoDiscountStart sets the "promo_discount_start" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePromoDiscountStart(v *time.Time) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPromoDiscountStart(*v)
+	}
+	return _u
+}
+
+// ClearPromoDiscountStart clears the value of the "promo_discount_start" field.
+func (_u *GroupUpdateOne) ClearPromoDiscountStart() *GroupUpdateOne {
+	_u.mutation.ClearPromoDiscountStart()
+	return _u
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (_u *GroupUpdateOne) SetPromoDiscountEnd(v time.Time) *GroupUpdateOne {
+	_u.mutation.SetPromoDiscountEnd(v)
+	return _u
+}
+
+// SetNillablePromoDiscountEnd sets the "promo_discount_end" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePromoDiscountEnd(v *time.Time) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPromoDiscountEnd(*v)
+	}
+	return _u
+}
+
+// ClearPromoDiscountEnd clears the value of the "promo_discount_end" field.
+func (_u *GroupUpdateOne) ClearPromoDiscountEnd() *GroupUpdateOne {
+	_u.mutation.ClearPromoDiscountEnd()
+	return _u
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (_u *GroupUpdateOne) SetPromoDiscountRate(v float64) *GroupUpdateOne {
+	_u.mutation.ResetPromoDiscountRate()
+	_u.mutation.SetPromoDiscountRate(v)
+	return _u
+}
+
+// SetNillablePromoDiscountRate sets the "promo_discount_rate" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePromoDiscountRate(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPromoDiscountRate(*v)
+	}
+	return _u
+}
+
+// AddPromoDiscountRate adds value to the "promo_discount_rate" field.
+func (_u *GroupUpdateOne) AddPromoDiscountRate(v float64) *GroupUpdateOne {
+	_u.mutation.AddPromoDiscountRate(v)
 	return _u
 }
 
@@ -4415,6 +4586,27 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedPeakRateMultiplier(); ok {
 		_spec.AddField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PromoDiscountEnabled(); ok {
+		_spec.SetField(group.FieldPromoDiscountEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PromoDiscountStart(); ok {
+		_spec.SetField(group.FieldPromoDiscountStart, field.TypeTime, value)
+	}
+	if _u.mutation.PromoDiscountStartCleared() {
+		_spec.ClearField(group.FieldPromoDiscountStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PromoDiscountEnd(); ok {
+		_spec.SetField(group.FieldPromoDiscountEnd, field.TypeTime, value)
+	}
+	if _u.mutation.PromoDiscountEndCleared() {
+		_spec.ClearField(group.FieldPromoDiscountEnd, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PromoDiscountRate(); ok {
+		_spec.SetField(group.FieldPromoDiscountRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPromoDiscountRate(); ok {
+		_spec.AddField(group.FieldPromoDiscountRate, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)

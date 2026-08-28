@@ -140,6 +140,14 @@ type APIKeyAuthGroupSnapshot struct {
 	PeakEnd            string  `json:"peak_end"`
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
 
+	// 限时活动折扣：PromoDiscountEnabled 为 true 且请求时刻处于活动窗口时，
+	// 最终计费倍率额外乘以 PromoDiscountRate（详见 Group.PromoDiscountMultiplierAt）。
+	// 必须随快照缓存，否则扣费路径拿到的 apiKey.Group 缺字段、活动折扣失效。
+	PromoDiscountEnabled bool       `json:"promo_discount_enabled"`
+	PromoDiscountStart   *time.Time `json:"promo_discount_start,omitempty"`
+	PromoDiscountEnd     *time.Time `json:"promo_discount_end,omitempty"`
+	PromoDiscountRate    float64    `json:"promo_discount_rate"`
+
 	// 分组利润控制：调度准入门在直连热路径上读的就是这份快照——门解析
 	// （resolveOpenAIProfitControlGate / resolveProfitControlGroup）优先取
 	// 认证中间件放入 ctx 的 Group，而它正是本快照物化出来的对象，生产绝大

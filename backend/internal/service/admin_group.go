@@ -395,6 +395,16 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
+	promoDiscountRate := 1.0
+	if input.PromoDiscountRate != nil {
+		promoDiscountRate = *input.PromoDiscountRate
+	}
+	// 活动折扣与高峰倍率同一收口：先归一化清洗、后校验，Create 与 Update 共用。
+	promoDiscountEnabled, promoDiscountStart, promoDiscountEnd, promoDiscountRate := NormalizePromoDiscountConfig(input.PromoDiscountEnabled, input.PromoDiscountStart, input.PromoDiscountEnd, promoDiscountRate)
+	if err := ValidatePromoDiscountConfig(promoDiscountEnabled, promoDiscountStart, promoDiscountEnd, promoDiscountRate); err != nil {
+		return nil, err
+	}
+
 	profitMinMargin := 0.0
 	if input.ProfitMinMargin != nil {
 		profitMinMargin = *input.ProfitMinMargin
@@ -521,6 +531,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
 		PeakRateMultiplier:              peakRateMultiplier,
+		PromoDiscountEnabled:            promoDiscountEnabled,
+		PromoDiscountStart:              promoDiscountStart,
+		PromoDiscountEnd:                promoDiscountEnd,
+		PromoDiscountRate:               promoDiscountRate,
 		ProfitControlEnabled:            profitControlEnabled,
 		ProfitMinMargin:                 profitMinMargin,
 		ProfitSafetyBuffer:              profitSafetyBuffer,
@@ -881,6 +895,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。与 CreateGroup 同一收口。
 	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = NormalizePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier)
 	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {
+		return nil, err
+	}
+	if input.PromoDiscountEnabled != nil {
+		group.PromoDiscountEnabled = *input.PromoDiscountEnabled
+	}
+	if input.PromoDiscountStart != nil {
+		group.PromoDiscountStart = input.PromoDiscountStart
+	}
+	if input.PromoDiscountEnd != nil {
+		group.PromoDiscountEnd = input.PromoDiscountEnd
+	}
+	if input.PromoDiscountRate != nil {
+		group.PromoDiscountRate = *input.PromoDiscountRate
+	}
+	// 活动折扣与高峰倍率同一收口：Update 可能只传部分字段，需对合并后的最终配置统一
+	// 归一化与校验，防止单独修改 start/end 导致 end<=start 等非法配置入库。
+	group.PromoDiscountEnabled, group.PromoDiscountStart, group.PromoDiscountEnd, group.PromoDiscountRate = NormalizePromoDiscountConfig(group.PromoDiscountEnabled, group.PromoDiscountStart, group.PromoDiscountEnd, group.PromoDiscountRate)
+	if err := ValidatePromoDiscountConfig(group.PromoDiscountEnabled, group.PromoDiscountStart, group.PromoDiscountEnd, group.PromoDiscountRate); err != nil {
 		return nil, err
 	}
 	if input.ProfitControlEnabled != nil {

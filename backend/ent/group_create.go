@@ -162,6 +162,62 @@ func (_c *GroupCreate) SetNillablePeakRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (_c *GroupCreate) SetPromoDiscountEnabled(v bool) *GroupCreate {
+	_c.mutation.SetPromoDiscountEnabled(v)
+	return _c
+}
+
+// SetNillablePromoDiscountEnabled sets the "promo_discount_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePromoDiscountEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetPromoDiscountEnabled(*v)
+	}
+	return _c
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (_c *GroupCreate) SetPromoDiscountStart(v time.Time) *GroupCreate {
+	_c.mutation.SetPromoDiscountStart(v)
+	return _c
+}
+
+// SetNillablePromoDiscountStart sets the "promo_discount_start" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePromoDiscountStart(v *time.Time) *GroupCreate {
+	if v != nil {
+		_c.SetPromoDiscountStart(*v)
+	}
+	return _c
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (_c *GroupCreate) SetPromoDiscountEnd(v time.Time) *GroupCreate {
+	_c.mutation.SetPromoDiscountEnd(v)
+	return _c
+}
+
+// SetNillablePromoDiscountEnd sets the "promo_discount_end" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePromoDiscountEnd(v *time.Time) *GroupCreate {
+	if v != nil {
+		_c.SetPromoDiscountEnd(*v)
+	}
+	return _c
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (_c *GroupCreate) SetPromoDiscountRate(v float64) *GroupCreate {
+	_c.mutation.SetPromoDiscountRate(v)
+	return _c
+}
+
+// SetNillablePromoDiscountRate sets the "promo_discount_rate" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePromoDiscountRate(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetPromoDiscountRate(*v)
+	}
+	return _c
+}
+
 // SetIsExclusive sets the "is_exclusive" field.
 func (_c *GroupCreate) SetIsExclusive(v bool) *GroupCreate {
 	_c.mutation.SetIsExclusive(v)
@@ -1208,6 +1264,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultPeakRateMultiplier
 		_c.mutation.SetPeakRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.PromoDiscountEnabled(); !ok {
+		v := group.DefaultPromoDiscountEnabled
+		_c.mutation.SetPromoDiscountEnabled(v)
+	}
+	if _, ok := _c.mutation.PromoDiscountRate(); !ok {
+		v := group.DefaultPromoDiscountRate
+		_c.mutation.SetPromoDiscountRate(v)
+	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		v := group.DefaultIsExclusive
 		_c.mutation.SetIsExclusive(v)
@@ -1415,6 +1479,12 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.PeakRateMultiplier(); !ok {
 		return &ValidationError{Name: "peak_rate_multiplier", err: errors.New(`ent: missing required field "Group.peak_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.PromoDiscountEnabled(); !ok {
+		return &ValidationError{Name: "promo_discount_enabled", err: errors.New(`ent: missing required field "Group.promo_discount_enabled"`)}
+	}
+	if _, ok := _c.mutation.PromoDiscountRate(); !ok {
+		return &ValidationError{Name: "promo_discount_rate", err: errors.New(`ent: missing required field "Group.promo_discount_rate"`)}
 	}
 	if _, ok := _c.mutation.IsExclusive(); !ok {
 		return &ValidationError{Name: "is_exclusive", err: errors.New(`ent: missing required field "Group.is_exclusive"`)}
@@ -1670,6 +1740,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.PeakRateMultiplier(); ok {
 		_spec.SetField(group.FieldPeakRateMultiplier, field.TypeFloat64, value)
 		_node.PeakRateMultiplier = value
+	}
+	if value, ok := _c.mutation.PromoDiscountEnabled(); ok {
+		_spec.SetField(group.FieldPromoDiscountEnabled, field.TypeBool, value)
+		_node.PromoDiscountEnabled = value
+	}
+	if value, ok := _c.mutation.PromoDiscountStart(); ok {
+		_spec.SetField(group.FieldPromoDiscountStart, field.TypeTime, value)
+		_node.PromoDiscountStart = &value
+	}
+	if value, ok := _c.mutation.PromoDiscountEnd(); ok {
+		_spec.SetField(group.FieldPromoDiscountEnd, field.TypeTime, value)
+		_node.PromoDiscountEnd = &value
+	}
+	if value, ok := _c.mutation.PromoDiscountRate(); ok {
+		_spec.SetField(group.FieldPromoDiscountRate, field.TypeFloat64, value)
+		_node.PromoDiscountRate = value
 	}
 	if value, ok := _c.mutation.IsExclusive(); ok {
 		_spec.SetField(group.FieldIsExclusive, field.TypeBool, value)
@@ -2236,6 +2322,72 @@ func (u *GroupUpsert) UpdatePeakRateMultiplier() *GroupUpsert {
 // AddPeakRateMultiplier adds v to the "peak_rate_multiplier" field.
 func (u *GroupUpsert) AddPeakRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldPeakRateMultiplier, v)
+	return u
+}
+
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (u *GroupUpsert) SetPromoDiscountEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldPromoDiscountEnabled, v)
+	return u
+}
+
+// UpdatePromoDiscountEnabled sets the "promo_discount_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePromoDiscountEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldPromoDiscountEnabled)
+	return u
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (u *GroupUpsert) SetPromoDiscountStart(v time.Time) *GroupUpsert {
+	u.Set(group.FieldPromoDiscountStart, v)
+	return u
+}
+
+// UpdatePromoDiscountStart sets the "promo_discount_start" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePromoDiscountStart() *GroupUpsert {
+	u.SetExcluded(group.FieldPromoDiscountStart)
+	return u
+}
+
+// ClearPromoDiscountStart clears the value of the "promo_discount_start" field.
+func (u *GroupUpsert) ClearPromoDiscountStart() *GroupUpsert {
+	u.SetNull(group.FieldPromoDiscountStart)
+	return u
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (u *GroupUpsert) SetPromoDiscountEnd(v time.Time) *GroupUpsert {
+	u.Set(group.FieldPromoDiscountEnd, v)
+	return u
+}
+
+// UpdatePromoDiscountEnd sets the "promo_discount_end" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePromoDiscountEnd() *GroupUpsert {
+	u.SetExcluded(group.FieldPromoDiscountEnd)
+	return u
+}
+
+// ClearPromoDiscountEnd clears the value of the "promo_discount_end" field.
+func (u *GroupUpsert) ClearPromoDiscountEnd() *GroupUpsert {
+	u.SetNull(group.FieldPromoDiscountEnd)
+	return u
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (u *GroupUpsert) SetPromoDiscountRate(v float64) *GroupUpsert {
+	u.Set(group.FieldPromoDiscountRate, v)
+	return u
+}
+
+// UpdatePromoDiscountRate sets the "promo_discount_rate" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePromoDiscountRate() *GroupUpsert {
+	u.SetExcluded(group.FieldPromoDiscountRate)
+	return u
+}
+
+// AddPromoDiscountRate adds v to the "promo_discount_rate" field.
+func (u *GroupUpsert) AddPromoDiscountRate(v float64) *GroupUpsert {
+	u.Add(group.FieldPromoDiscountRate, v)
 	return u
 }
 
@@ -3530,6 +3682,83 @@ func (u *GroupUpsertOne) AddPeakRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdatePeakRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePeakRateMultiplier()
+	})
+}
+
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (u *GroupUpsertOne) SetPromoDiscountEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountEnabled(v)
+	})
+}
+
+// UpdatePromoDiscountEnabled sets the "promo_discount_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePromoDiscountEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountEnabled()
+	})
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (u *GroupUpsertOne) SetPromoDiscountStart(v time.Time) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountStart(v)
+	})
+}
+
+// UpdatePromoDiscountStart sets the "promo_discount_start" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePromoDiscountStart() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountStart()
+	})
+}
+
+// ClearPromoDiscountStart clears the value of the "promo_discount_start" field.
+func (u *GroupUpsertOne) ClearPromoDiscountStart() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPromoDiscountStart()
+	})
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (u *GroupUpsertOne) SetPromoDiscountEnd(v time.Time) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountEnd(v)
+	})
+}
+
+// UpdatePromoDiscountEnd sets the "promo_discount_end" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePromoDiscountEnd() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountEnd()
+	})
+}
+
+// ClearPromoDiscountEnd clears the value of the "promo_discount_end" field.
+func (u *GroupUpsertOne) ClearPromoDiscountEnd() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPromoDiscountEnd()
+	})
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (u *GroupUpsertOne) SetPromoDiscountRate(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountRate(v)
+	})
+}
+
+// AddPromoDiscountRate adds v to the "promo_discount_rate" field.
+func (u *GroupUpsertOne) AddPromoDiscountRate(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPromoDiscountRate(v)
+	})
+}
+
+// UpdatePromoDiscountRate sets the "promo_discount_rate" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePromoDiscountRate() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountRate()
 	})
 }
 
@@ -5172,6 +5401,83 @@ func (u *GroupUpsertBulk) AddPeakRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdatePeakRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePeakRateMultiplier()
+	})
+}
+
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (u *GroupUpsertBulk) SetPromoDiscountEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountEnabled(v)
+	})
+}
+
+// UpdatePromoDiscountEnabled sets the "promo_discount_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePromoDiscountEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountEnabled()
+	})
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (u *GroupUpsertBulk) SetPromoDiscountStart(v time.Time) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountStart(v)
+	})
+}
+
+// UpdatePromoDiscountStart sets the "promo_discount_start" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePromoDiscountStart() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountStart()
+	})
+}
+
+// ClearPromoDiscountStart clears the value of the "promo_discount_start" field.
+func (u *GroupUpsertBulk) ClearPromoDiscountStart() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPromoDiscountStart()
+	})
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (u *GroupUpsertBulk) SetPromoDiscountEnd(v time.Time) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountEnd(v)
+	})
+}
+
+// UpdatePromoDiscountEnd sets the "promo_discount_end" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePromoDiscountEnd() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountEnd()
+	})
+}
+
+// ClearPromoDiscountEnd clears the value of the "promo_discount_end" field.
+func (u *GroupUpsertBulk) ClearPromoDiscountEnd() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPromoDiscountEnd()
+	})
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (u *GroupUpsertBulk) SetPromoDiscountRate(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPromoDiscountRate(v)
+	})
+}
+
+// AddPromoDiscountRate adds v to the "promo_discount_rate" field.
+func (u *GroupUpsertBulk) AddPromoDiscountRate(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddPromoDiscountRate(v)
+	})
+}
+
+// UpdatePromoDiscountRate sets the "promo_discount_rate" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePromoDiscountRate() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePromoDiscountRate()
 	})
 }
 

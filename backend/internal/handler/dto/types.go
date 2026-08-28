@@ -143,16 +143,23 @@ type Group struct {
 	VideoRateIndependent           bool    `json:"video_rate_independent"`
 	VideoRateMultiplier            float64 `json:"video_rate_multiplier"`
 	// 高峰时段倍率配置
-	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
-	PeakStart          string   `json:"peak_start"`
-	PeakEnd            string   `json:"peak_end"`
-	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-	ImagePrice1K       *float64 `json:"image_price_1k"`
-	ImagePrice2K       *float64 `json:"image_price_2k"`
-	ImagePrice4K       *float64 `json:"image_price_4k"`
-	VideoPrice480P     *float64 `json:"video_price_480p"`
-	VideoPrice720P     *float64 `json:"video_price_720p"`
-	VideoPrice1080P    *float64 `json:"video_price_1080p"`
+	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
+	PeakStart          string  `json:"peak_start"`
+	PeakEnd            string  `json:"peak_end"`
+	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	// 限时活动折扣配置；起止为站点时区墙钟字符串（YYYY-MM-DD HH:mm），与请求口径一致；
+	// PromoActive 为响应生成时刻是否处于活动窗口（服务端现算，前端无需换算时区）
+	PromoDiscountEnabled bool     `json:"promo_discount_enabled"`
+	PromoDiscountStart   string   `json:"promo_discount_start"`
+	PromoDiscountEnd     string   `json:"promo_discount_end"`
+	PromoDiscountRate    float64  `json:"promo_discount_rate"`
+	PromoActive          bool     `json:"promo_active"`
+	ImagePrice1K         *float64 `json:"image_price_1k"`
+	ImagePrice2K         *float64 `json:"image_price_2k"`
+	ImagePrice4K         *float64 `json:"image_price_4k"`
+	VideoPrice480P       *float64 `json:"video_price_480p"`
+	VideoPrice720P       *float64 `json:"video_price_720p"`
+	VideoPrice1080P      *float64 `json:"video_price_1080p"`
 	// VideoModelPrices 可选按模型族×分辨率覆盖视频每秒单价 (USD/s)。
 	VideoModelPrices map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	// Codex alpha/search 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01

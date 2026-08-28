@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -332,6 +333,11 @@ func groupFromServiceBase(g *service.Group) Group {
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
+		PromoDiscountEnabled:            g.PromoDiscountEnabled,
+		PromoDiscountStart:              formatPromoDiscountTime(g.PromoDiscountStart),
+		PromoDiscountEnd:                formatPromoDiscountTime(g.PromoDiscountEnd),
+		PromoDiscountRate:               g.PromoDiscountRate,
+		PromoActive:                     g.PromoDiscountMultiplierAt(timezone.Now()) != 1.0,
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,
@@ -1100,4 +1106,9 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		UsedAt:      u.UsedAt,
 		User:        UserFromServiceShallow(u.User),
 	}
+}
+
+// formatPromoDiscountTime 活动折扣时间展示格式化，复用 service 层唯一实现。
+func formatPromoDiscountTime(t *time.Time) string {
+	return service.FormatPromoDiscountTime(t)
 }

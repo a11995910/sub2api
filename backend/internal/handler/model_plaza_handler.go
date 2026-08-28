@@ -86,7 +86,14 @@ type modelPlazaGroup struct {
 	PeakStart          string   `json:"peak_start"`
 	PeakEnd            string   `json:"peak_end"`
 	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-	IsExclusive        bool     `json:"is_exclusive"`
+	// 限时活动折扣：起止为站点时区墙钟字符串（YYYY-MM-DD HH:mm），
+	// PromoActive 为响应生成时刻是否处于活动窗口（服务端现算，前端无需换算时区）。
+	PromoDiscountEnabled bool    `json:"promo_discount_enabled"`
+	PromoDiscountStart   string  `json:"promo_discount_start"`
+	PromoDiscountEnd     string  `json:"promo_discount_end"`
+	PromoDiscountRate    float64 `json:"promo_discount_rate"`
+	PromoActive          bool    `json:"promo_active"`
+	IsExclusive          bool    `json:"is_exclusive"`
 	// 生图独立倍率：为 true 时图片计费模型的实付倍率取 ImageRateMultiplier，
 	// 不取分组/用户专属倍率。
 	ImageRateIndependent bool    `json:"image_rate_independent"`
@@ -203,6 +210,11 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 		PeakStart:                 g.PeakStart,
 		PeakEnd:                   g.PeakEnd,
 		PeakRateMultiplier:        g.PeakRateMultiplier,
+		PromoDiscountEnabled:      g.PromoDiscountEnabled,
+		PromoDiscountStart:        g.PromoDiscountStart,
+		PromoDiscountEnd:          g.PromoDiscountEnd,
+		PromoDiscountRate:         g.PromoDiscountRate,
+		PromoActive:               g.PromoActive,
 		IsExclusive:               g.IsExclusive,
 		ImageRateIndependent:      g.ImageRateIndependent,
 		ImageRateMultiplier:       g.ImageRateMultiplier,

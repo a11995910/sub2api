@@ -1065,6 +1065,10 @@ func filterSchedulerUpstreamBillingProbe(value any) map[string]any {
 		"peak_start",
 		"peak_end",
 		"peak_rate_multiplier",
+		"promo_discount_enabled",
+		"promo_discount_start",
+		"promo_discount_end",
+		"promo_discount_rate",
 		"timezone",
 	} {
 		if field, exists := data[key]; exists && field != nil {

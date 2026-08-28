@@ -1193,9 +1193,22 @@ func upstreamBillingRateSortExpression(extra string) string {
 		startMinute + " < " + endMinute
 	validPeakConfig := validPeakWindow + " AND " + peakMultiplierValue + " >= 0 AND " +
 		"EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = " + timezone + ")"
-	dynamicRate := "CASE WHEN " + peakEnabled + " = 'false' THEN (" + resolved + ")::numeric WHEN " + peakEnabled + " = 'true' AND " + validPeakConfig +
+	// 活动折扣与 Go 侧 upstreamBillingPromoMultiplierAt 同口径：绝对时间窗口左闭右开，
+	// 折扣值需落在 (0,1]；快照缺字段（旧版）一律按 1 处理。
+	promoEnabled := extra + " #>> '{upstream_billing_probe,data,promo_discount_enabled}'"
+	promoStart := extra + " #>> '{upstream_billing_probe,data,promo_discount_start}'"
+	promoEnd := extra + " #>> '{upstream_billing_probe,data,promo_discount_end}'"
+	promoRateJSON := extra + " #> '{upstream_billing_probe,data,promo_discount_rate}'"
+	promoRate := extra + " #>> '{upstream_billing_probe,data,promo_discount_rate}'"
+	promoRateValue := "(CASE WHEN jsonb_typeof(" + promoRateJSON + ") = 'number' THEN (" + promoRate + ")::numeric END)"
+	validPromoWindow := promoStart + " IS NOT NULL AND " + promoEnd + " IS NOT NULL AND " +
+		promoStart + "::timestamptz <= CURRENT_TIMESTAMP AND CURRENT_TIMESTAMP < " + promoEnd + "::timestamptz"
+	validPromoConfig := validPromoWindow + " AND " + promoRateValue + " > 0 AND " + promoRateValue + " <= 1"
+	promoFactor := "CASE WHEN " + promoEnabled + " = 'true' AND " + validPromoConfig +
+		" THEN " + promoRateValue + " ELSE 1 END"
+	dynamicRate := "CASE WHEN " + peakEnabled + " = 'false' THEN (" + resolved + ")::numeric * " + promoFactor + " WHEN " + peakEnabled + " = 'true' AND " + validPeakConfig +
 		" THEN (" + resolved + ")::numeric * CASE WHEN " + localMinute + " >= " + startMinute + " AND " + localMinute + " < " + endMinute +
-		" THEN " + peakMultiplierValue + " ELSE 1 END ELSE NULL END"
+		" THEN " + peakMultiplierValue + " ELSE 1 END * " + promoFactor + " ELSE NULL END"
 	legacySnapshot := "jsonb_typeof(" + resolvedJSON + ") IS NULL AND jsonb_typeof(" + peakEnabledJSON + ") IS NULL"
 
 	return "CASE WHEN " + status + " IN ('ok', 'failed') AND (jsonb_typeof(" + resolvedJSON + ") = 'number' OR jsonb_typeof(" + effectiveJSON + ") = 'number') THEN CASE WHEN jsonb_typeof(" +

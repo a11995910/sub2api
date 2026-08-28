@@ -23245,6 +23245,11 @@ type GroupMutation struct {
 	peak_end                                *string
 	peak_rate_multiplier                    *float64
 	addpeak_rate_multiplier                 *float64
+	promo_discount_enabled                  *bool
+	promo_discount_start                    *time.Time
+	promo_discount_end                      *time.Time
+	promo_discount_rate                     *float64
+	addpromo_discount_rate                  *float64
 	is_exclusive                            *bool
 	oauth_pool_visible                      *bool
 	status                                  *string
@@ -23893,6 +23898,196 @@ func (m *GroupMutation) AddedPeakRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetPeakRateMultiplier() {
 	m.peak_rate_multiplier = nil
 	m.addpeak_rate_multiplier = nil
+}
+
+// SetPromoDiscountEnabled sets the "promo_discount_enabled" field.
+func (m *GroupMutation) SetPromoDiscountEnabled(b bool) {
+	m.promo_discount_enabled = &b
+}
+
+// PromoDiscountEnabled returns the value of the "promo_discount_enabled" field in the mutation.
+func (m *GroupMutation) PromoDiscountEnabled() (r bool, exists bool) {
+	v := m.promo_discount_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromoDiscountEnabled returns the old "promo_discount_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPromoDiscountEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromoDiscountEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromoDiscountEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromoDiscountEnabled: %w", err)
+	}
+	return oldValue.PromoDiscountEnabled, nil
+}
+
+// ResetPromoDiscountEnabled resets all changes to the "promo_discount_enabled" field.
+func (m *GroupMutation) ResetPromoDiscountEnabled() {
+	m.promo_discount_enabled = nil
+}
+
+// SetPromoDiscountStart sets the "promo_discount_start" field.
+func (m *GroupMutation) SetPromoDiscountStart(t time.Time) {
+	m.promo_discount_start = &t
+}
+
+// PromoDiscountStart returns the value of the "promo_discount_start" field in the mutation.
+func (m *GroupMutation) PromoDiscountStart() (r time.Time, exists bool) {
+	v := m.promo_discount_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromoDiscountStart returns the old "promo_discount_start" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPromoDiscountStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromoDiscountStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromoDiscountStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromoDiscountStart: %w", err)
+	}
+	return oldValue.PromoDiscountStart, nil
+}
+
+// ClearPromoDiscountStart clears the value of the "promo_discount_start" field.
+func (m *GroupMutation) ClearPromoDiscountStart() {
+	m.promo_discount_start = nil
+	m.clearedFields[group.FieldPromoDiscountStart] = struct{}{}
+}
+
+// PromoDiscountStartCleared returns if the "promo_discount_start" field was cleared in this mutation.
+func (m *GroupMutation) PromoDiscountStartCleared() bool {
+	_, ok := m.clearedFields[group.FieldPromoDiscountStart]
+	return ok
+}
+
+// ResetPromoDiscountStart resets all changes to the "promo_discount_start" field.
+func (m *GroupMutation) ResetPromoDiscountStart() {
+	m.promo_discount_start = nil
+	delete(m.clearedFields, group.FieldPromoDiscountStart)
+}
+
+// SetPromoDiscountEnd sets the "promo_discount_end" field.
+func (m *GroupMutation) SetPromoDiscountEnd(t time.Time) {
+	m.promo_discount_end = &t
+}
+
+// PromoDiscountEnd returns the value of the "promo_discount_end" field in the mutation.
+func (m *GroupMutation) PromoDiscountEnd() (r time.Time, exists bool) {
+	v := m.promo_discount_end
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromoDiscountEnd returns the old "promo_discount_end" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPromoDiscountEnd(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromoDiscountEnd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromoDiscountEnd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromoDiscountEnd: %w", err)
+	}
+	return oldValue.PromoDiscountEnd, nil
+}
+
+// ClearPromoDiscountEnd clears the value of the "promo_discount_end" field.
+func (m *GroupMutation) ClearPromoDiscountEnd() {
+	m.promo_discount_end = nil
+	m.clearedFields[group.FieldPromoDiscountEnd] = struct{}{}
+}
+
+// PromoDiscountEndCleared returns if the "promo_discount_end" field was cleared in this mutation.
+func (m *GroupMutation) PromoDiscountEndCleared() bool {
+	_, ok := m.clearedFields[group.FieldPromoDiscountEnd]
+	return ok
+}
+
+// ResetPromoDiscountEnd resets all changes to the "promo_discount_end" field.
+func (m *GroupMutation) ResetPromoDiscountEnd() {
+	m.promo_discount_end = nil
+	delete(m.clearedFields, group.FieldPromoDiscountEnd)
+}
+
+// SetPromoDiscountRate sets the "promo_discount_rate" field.
+func (m *GroupMutation) SetPromoDiscountRate(f float64) {
+	m.promo_discount_rate = &f
+	m.addpromo_discount_rate = nil
+}
+
+// PromoDiscountRate returns the value of the "promo_discount_rate" field in the mutation.
+func (m *GroupMutation) PromoDiscountRate() (r float64, exists bool) {
+	v := m.promo_discount_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromoDiscountRate returns the old "promo_discount_rate" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPromoDiscountRate(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromoDiscountRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromoDiscountRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromoDiscountRate: %w", err)
+	}
+	return oldValue.PromoDiscountRate, nil
+}
+
+// AddPromoDiscountRate adds f to the "promo_discount_rate" field.
+func (m *GroupMutation) AddPromoDiscountRate(f float64) {
+	if m.addpromo_discount_rate != nil {
+		*m.addpromo_discount_rate += f
+	} else {
+		m.addpromo_discount_rate = &f
+	}
+}
+
+// AddedPromoDiscountRate returns the value that was added to the "promo_discount_rate" field in this mutation.
+func (m *GroupMutation) AddedPromoDiscountRate() (r float64, exists bool) {
+	v := m.addpromo_discount_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPromoDiscountRate resets all changes to the "promo_discount_rate" field.
+func (m *GroupMutation) ResetPromoDiscountRate() {
+	m.promo_discount_rate = nil
+	m.addpromo_discount_rate = nil
 }
 
 // SetIsExclusive sets the "is_exclusive" field.
@@ -27644,7 +27839,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 75)
+	fields := make([]string, 0, 79)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27674,6 +27869,18 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.peak_rate_multiplier != nil {
 		fields = append(fields, group.FieldPeakRateMultiplier)
+	}
+	if m.promo_discount_enabled != nil {
+		fields = append(fields, group.FieldPromoDiscountEnabled)
+	}
+	if m.promo_discount_start != nil {
+		fields = append(fields, group.FieldPromoDiscountStart)
+	}
+	if m.promo_discount_end != nil {
+		fields = append(fields, group.FieldPromoDiscountEnd)
+	}
+	if m.promo_discount_rate != nil {
+		fields = append(fields, group.FieldPromoDiscountRate)
 	}
 	if m.is_exclusive != nil {
 		fields = append(fields, group.FieldIsExclusive)
@@ -27898,6 +28105,14 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.PeakEnd()
 	case group.FieldPeakRateMultiplier:
 		return m.PeakRateMultiplier()
+	case group.FieldPromoDiscountEnabled:
+		return m.PromoDiscountEnabled()
+	case group.FieldPromoDiscountStart:
+		return m.PromoDiscountStart()
+	case group.FieldPromoDiscountEnd:
+		return m.PromoDiscountEnd()
+	case group.FieldPromoDiscountRate:
+		return m.PromoDiscountRate()
 	case group.FieldIsExclusive:
 		return m.IsExclusive()
 	case group.FieldOauthPoolVisible:
@@ -28057,6 +28272,14 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldPeakEnd(ctx)
 	case group.FieldPeakRateMultiplier:
 		return m.OldPeakRateMultiplier(ctx)
+	case group.FieldPromoDiscountEnabled:
+		return m.OldPromoDiscountEnabled(ctx)
+	case group.FieldPromoDiscountStart:
+		return m.OldPromoDiscountStart(ctx)
+	case group.FieldPromoDiscountEnd:
+		return m.OldPromoDiscountEnd(ctx)
+	case group.FieldPromoDiscountRate:
+		return m.OldPromoDiscountRate(ctx)
 	case group.FieldIsExclusive:
 		return m.OldIsExclusive(ctx)
 	case group.FieldOauthPoolVisible:
@@ -28265,6 +28488,34 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPeakRateMultiplier(v)
+		return nil
+	case group.FieldPromoDiscountEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromoDiscountEnabled(v)
+		return nil
+	case group.FieldPromoDiscountStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromoDiscountStart(v)
+		return nil
+	case group.FieldPromoDiscountEnd:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromoDiscountEnd(v)
+		return nil
+	case group.FieldPromoDiscountRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromoDiscountRate(v)
 		return nil
 	case group.FieldIsExclusive:
 		v, ok := value.(bool)
@@ -28735,6 +28986,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addpeak_rate_multiplier != nil {
 		fields = append(fields, group.FieldPeakRateMultiplier)
 	}
+	if m.addpromo_discount_rate != nil {
+		fields = append(fields, group.FieldPromoDiscountRate)
+	}
 	if m.adddaily_limit_usd != nil {
 		fields = append(fields, group.FieldDailyLimitUsd)
 	}
@@ -28840,6 +29094,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedRateMultiplier()
 	case group.FieldPeakRateMultiplier:
 		return m.AddedPeakRateMultiplier()
+	case group.FieldPromoDiscountRate:
+		return m.AddedPromoDiscountRate()
 	case group.FieldDailyLimitUsd:
 		return m.AddedDailyLimitUsd()
 	case group.FieldWeeklyLimitUsd:
@@ -28924,6 +29180,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddPeakRateMultiplier(v)
+		return nil
+	case group.FieldPromoDiscountRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPromoDiscountRate(v)
 		return nil
 	case group.FieldDailyLimitUsd:
 		v, ok := value.(float64)
@@ -29156,6 +29419,12 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldDescription) {
 		fields = append(fields, group.FieldDescription)
 	}
+	if m.FieldCleared(group.FieldPromoDiscountStart) {
+		fields = append(fields, group.FieldPromoDiscountStart)
+	}
+	if m.FieldCleared(group.FieldPromoDiscountEnd) {
+		fields = append(fields, group.FieldPromoDiscountEnd)
+	}
 	if m.FieldCleared(group.FieldDuplicateOperationID) {
 		fields = append(fields, group.FieldDuplicateOperationID)
 	}
@@ -29247,6 +29516,12 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldDescription:
 		m.ClearDescription()
+		return nil
+	case group.FieldPromoDiscountStart:
+		m.ClearPromoDiscountStart()
+		return nil
+	case group.FieldPromoDiscountEnd:
+		m.ClearPromoDiscountEnd()
 		return nil
 	case group.FieldDuplicateOperationID:
 		m.ClearDuplicateOperationID()
@@ -29357,6 +29632,18 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldPeakRateMultiplier:
 		m.ResetPeakRateMultiplier()
+		return nil
+	case group.FieldPromoDiscountEnabled:
+		m.ResetPromoDiscountEnabled()
+		return nil
+	case group.FieldPromoDiscountStart:
+		m.ResetPromoDiscountStart()
+		return nil
+	case group.FieldPromoDiscountEnd:
+		m.ResetPromoDiscountEnd()
+		return nil
+	case group.FieldPromoDiscountRate:
+		m.ResetPromoDiscountRate()
 		return nil
 	case group.FieldIsExclusive:
 		m.ResetIsExclusive()

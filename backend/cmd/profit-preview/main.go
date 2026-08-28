@@ -27,10 +27,15 @@ type inputGroup struct {
 	ProfitControlEnabled bool    `json:"profit_control_enabled"`
 	ProfitMinMargin      float64 `json:"profit_min_margin"`
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
-	PeakRateEnabled      bool    `json:"peak_rate_enabled"`
-	PeakStart            string  `json:"peak_start"`
-	PeakEnd              string  `json:"peak_end"`
-	PeakRateMultiplier   float64 `json:"peak_rate_multiplier"`
+	PeakRateEnabled      bool        `json:"peak_rate_enabled"`
+	PeakStart            string      `json:"peak_start"`
+	PeakEnd              string      `json:"peak_end"`
+	PeakRateMultiplier   float64     `json:"peak_rate_multiplier"`
+	// 限时活动折扣：时间为 RFC3339 时间戳；缺省时预览不乘折扣因子
+	PromoDiscountEnabled bool        `json:"promo_discount_enabled"`
+	PromoDiscountStart   *time.Time  `json:"promo_discount_start"`
+	PromoDiscountEnd     *time.Time  `json:"promo_discount_end"`
+	PromoDiscountRate    float64     `json:"promo_discount_rate"`
 }
 
 type inputAccount struct {
@@ -169,6 +174,10 @@ func parsePreviewInputs(raw []byte, assumeEnabled bool) ([]service.ProfitPreview
 			PeakStart:            entry.Group.PeakStart,
 			PeakEnd:              entry.Group.PeakEnd,
 			PeakRateMultiplier:   entry.Group.PeakRateMultiplier,
+			PromoDiscountEnabled: entry.Group.PromoDiscountEnabled,
+			PromoDiscountStart:   entry.Group.PromoDiscountStart,
+			PromoDiscountEnd:     entry.Group.PromoDiscountEnd,
+			PromoDiscountRate:    entry.Group.PromoDiscountRate,
 		}
 		accounts := make([]*service.Account, 0, len(entry.Accounts))
 		for _, a := range entry.Accounts {

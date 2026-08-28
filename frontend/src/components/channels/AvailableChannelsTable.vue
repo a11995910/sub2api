@@ -101,6 +101,11 @@
                     :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
                     :rate-multiplier="g.rate_multiplier"
                     :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                    :promo-discount-enabled="g.promo_discount_enabled"
+                    :promo-discount-start="g.promo_discount_start"
+                    :promo-discount-end="g.promo_discount_end"
+                    :promo-discount-rate="g.promo_discount_rate"
+                    :promo-active="g.promo_active"
                     always-show-rate
                   />
                   <span
@@ -110,6 +115,14 @@
                   >
                     <Icon name="clock" size="xs" class="h-3 w-3" />
                     {{ peakRateLabel(g) }}
+                  </span>
+                  <span
+                    v-if="hasPromoRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                    :title="promoRateTitle(g)"
+                  >
+                    <Icon name="sparkles" size="xs" class="h-3 w-3" />
+                    {{ promoRateLabel(g) }}
                   </span>
                 </div>
               </div>
@@ -135,6 +148,11 @@
                     :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
                     :rate-multiplier="g.rate_multiplier"
                     :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                    :promo-discount-enabled="g.promo_discount_enabled"
+                    :promo-discount-start="g.promo_discount_start"
+                    :promo-discount-end="g.promo_discount_end"
+                    :promo-discount-rate="g.promo_discount_rate"
+                    :promo-active="g.promo_active"
                     always-show-rate
                   />
                   <span
@@ -144,6 +162,14 @@
                   >
                     <Icon name="clock" size="xs" class="h-3 w-3" />
                     {{ peakRateLabel(g) }}
+                  </span>
+                  <span
+                    v-if="hasPromoRate(g)"
+                    class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                    :title="promoRateTitle(g)"
+                  >
+                    <Icon name="sparkles" size="xs" class="h-3 w-3" />
+                    {{ promoRateLabel(g) }}
                   </span>
                 </div>
               </div>
@@ -240,6 +266,11 @@
                         :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
                         :rate-multiplier="g.rate_multiplier"
                         :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                        :promo-discount-enabled="g.promo_discount_enabled"
+                        :promo-discount-start="g.promo_discount_start"
+                        :promo-discount-end="g.promo_discount_end"
+                        :promo-discount-rate="g.promo_discount_rate"
+                        :promo-active="g.promo_active"
                         always-show-rate
                       />
                       <span
@@ -249,6 +280,14 @@
                       >
                         <Icon name="clock" size="xs" class="h-3 w-3" />
                         {{ peakRateLabel(g) }}
+                      </span>
+                      <span
+                        v-if="hasPromoRate(g)"
+                        class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                        :title="promoRateTitle(g)"
+                      >
+                        <Icon name="sparkles" size="xs" class="h-3 w-3" />
+                        {{ promoRateLabel(g) }}
                       </span>
                     </div>
                   </div>
@@ -275,6 +314,11 @@
                         :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
                         :rate-multiplier="g.rate_multiplier"
                         :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                        :promo-discount-enabled="g.promo_discount_enabled"
+                        :promo-discount-start="g.promo_discount_start"
+                        :promo-discount-end="g.promo_discount_end"
+                        :promo-discount-rate="g.promo_discount_rate"
+                        :promo-active="g.promo_active"
                         always-show-rate
                       />
                       <span
@@ -284,6 +328,14 @@
                       >
                         <Icon name="clock" size="xs" class="h-3 w-3" />
                         {{ peakRateLabel(g) }}
+                      </span>
+                      <span
+                        v-if="hasPromoRate(g)"
+                        class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                        :title="promoRateTitle(g)"
+                      >
+                        <Icon name="sparkles" size="xs" class="h-3 w-3" />
+                        {{ promoRateLabel(g) }}
                       </span>
                     </div>
                   </div>
@@ -329,7 +381,13 @@ import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSecti
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBadgeClass } from '@/utils/platformColors'
 import { useAppStore } from '@/stores/app'
-import { hasPeakRate as groupHasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
+import {
+  hasPeakRate as groupHasPeakRate,
+  formatPeakRateWindow,
+  formatPromoDiscountWindow,
+  promoDiscountZhe,
+  serverTimezoneLabel
+} from '@/utils/peak-rate'
 
 const props = defineProps<{
   columns: {
@@ -375,5 +433,26 @@ function peakRateLabel(group: UserAvailableGroup): string {
 
 function peakRateTitle(group: UserAvailableGroup): string {
   return t('common.peakRateTooltip', { window: peakRateLabel(group) }) + t('common.peakRateImageNote')
+}
+
+// ===== 限时活动折扣 =====
+
+function hasPromoRate(group: UserAvailableGroup): boolean {
+  const zhe = promoDiscountZhe(group.promo_discount_rate)
+  return Boolean(group.promo_active && group.promo_discount_enabled && zhe !== null && zhe < 100)
+}
+
+function promoRateLabel(group: UserAvailableGroup): string {
+  const zhe = promoDiscountZhe(group.promo_discount_rate)
+  if (zhe === null) return t('common.promoRateChip')
+  return t('common.promoDiscountLabel', { zhe, off: 100 - zhe })
+}
+
+function promoRateTitle(group: UserAvailableGroup): string {
+  return t('common.promoRateTooltip', {
+    discount: promoRateLabel(group),
+    window: formatPromoDiscountWindow(group),
+    tz: serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
+  })
 }
 </script>

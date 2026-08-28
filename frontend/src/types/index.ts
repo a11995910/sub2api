@@ -642,6 +642,13 @@ export interface Group {
   peak_start: string
   peak_end: string
   peak_rate_multiplier: number
+  // 限时活动折扣：起止为站点时区墙钟字符串（YYYY-MM-DD HH:mm），
+  // promo_active 为响应生成时刻是否生效（服务端现算，前端无需换算时区）
+  promo_discount_enabled: boolean
+  promo_discount_start: string
+  promo_discount_end: string
+  promo_discount_rate: number
+  promo_active: boolean
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -870,6 +877,11 @@ export interface CreateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  // 限时活动折扣：时间为站点时区墙钟字符串（YYYY-MM-DD HH:mm）
+  promo_discount_enabled?: boolean
+  promo_discount_start?: string
+  promo_discount_end?: string
+  promo_discount_rate?: number
   // 分组利润控制（五个 token 平台；margin/buffer 为小数）
   profit_control_enabled?: boolean
   profit_min_margin?: number
@@ -945,6 +957,11 @@ export interface UpdateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  // 限时活动折扣（nil 表示不修改）：时间为站点时区墙钟字符串（YYYY-MM-DD HH:mm）
+  promo_discount_enabled?: boolean
+  promo_discount_start?: string
+  promo_discount_end?: string
+  promo_discount_rate?: number
   // 分组利润控制（五个 token 平台；margin/buffer 为小数）
   profit_control_enabled?: boolean
   profit_min_margin?: number
@@ -1114,6 +1131,11 @@ export interface UpstreamBillingData {
   peak_end?: string
   peak_rate_multiplier?: number
   applied_peak_multiplier?: number
+  promo_discount_enabled: boolean
+  promo_discount_start?: string
+  promo_discount_end?: string
+  promo_discount_rate?: number
+  applied_promo_multiplier?: number
   effective_rate_multiplier: number
   timezone?: string
   observed_at: string

@@ -42,6 +42,8 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 		downstream = s.ResolveUserGroupRateMultiplier(ctx, userID, billingGroup.ID, billingGroup.RateMultiplier)
 	}
 	downstream *= billingGroup.PeakMultiplierAt(pricingAt)
+	// D 与计费同源：活动折扣降低有效下游倍率，必须一并计入，否则门槛偏松。
+	downstream *= billingGroup.PromoDiscountMultiplierAt(pricingAt)
 	threshold := clampProfitControlThreshold(downstream * (1 - group.ProfitMinMargin - group.ProfitSafetyBuffer))
 
 	gate := &openAIProfitControlGate{

@@ -14,20 +14,25 @@ import (
 const keyBillingInfoSchemaVersion = 1
 
 type keyBillingInfoResponse struct {
-	Object                  string    `json:"object"`
-	SchemaVersion           int       `json:"schema_version"`
-	BillingScope            string    `json:"billing_scope"`
-	GroupRateMultiplier     float64   `json:"group_rate_multiplier"`
-	UserRateMultiplier      *float64  `json:"user_rate_multiplier,omitempty"`
-	ResolvedRateMultiplier  float64   `json:"resolved_rate_multiplier"`
-	PeakRateEnabled         bool      `json:"peak_rate_enabled"`
-	PeakStart               *string   `json:"peak_start,omitempty"`
-	PeakEnd                 *string   `json:"peak_end,omitempty"`
-	PeakRateMultiplier      *float64  `json:"peak_rate_multiplier,omitempty"`
-	AppliedPeakMultiplier   *float64  `json:"applied_peak_multiplier,omitempty"`
-	EffectiveRateMultiplier float64   `json:"effective_rate_multiplier"`
-	Timezone                *string   `json:"timezone,omitempty"`
-	ObservedAt              time.Time `json:"observed_at"`
+	Object                  string     `json:"object"`
+	SchemaVersion           int        `json:"schema_version"`
+	BillingScope            string     `json:"billing_scope"`
+	GroupRateMultiplier     float64    `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64   `json:"user_rate_multiplier,omitempty"`
+	ResolvedRateMultiplier  float64    `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         bool       `json:"peak_rate_enabled"`
+	PeakStart               *string    `json:"peak_start,omitempty"`
+	PeakEnd                 *string    `json:"peak_end,omitempty"`
+	PeakRateMultiplier      *float64   `json:"peak_rate_multiplier,omitempty"`
+	AppliedPeakMultiplier   *float64   `json:"applied_peak_multiplier,omitempty"`
+	PromoDiscountEnabled    bool       `json:"promo_discount_enabled"`
+	PromoDiscountStart      *time.Time `json:"promo_discount_start,omitempty"`
+	PromoDiscountEnd        *time.Time `json:"promo_discount_end,omitempty"`
+	PromoDiscountRate       *float64   `json:"promo_discount_rate,omitempty"`
+	AppliedPromoMultiplier  *float64   `json:"applied_promo_multiplier,omitempty"`
+	EffectiveRateMultiplier float64    `json:"effective_rate_multiplier"`
+	Timezone                *string    `json:"timezone,omitempty"`
+	ObservedAt              time.Time  `json:"observed_at"`
 }
 
 // KeyBillingInfo returns the token billing multiplier effective for the authenticated API key.
@@ -84,6 +89,9 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 		userRate = &resolvedRate
 	}
 	appliedPeak := apiKey.Group.PeakMultiplierAt(now)
+	// 活动折扣为分组整体让利：有效倍率 =（用户专属 ?? 分组默认）× 高峰因子 × 活动折扣，
+	// 与计费路径 computePeakAwareMultipliers 的叠加顺序保持一致。
+	appliedPromo := apiKey.Group.PromoDiscountMultiplierAt(now)
 
 	response := keyBillingInfoResponse{
 		Object:                  "sub2api.key_billing",
@@ -93,7 +101,8 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 		UserRateMultiplier:      userRate,
 		ResolvedRateMultiplier:  resolvedRate,
 		PeakRateEnabled:         apiKey.Group.PeakRateEnabled,
-		EffectiveRateMultiplier: resolvedRate * appliedPeak,
+		PromoDiscountEnabled:    apiKey.Group.PromoDiscountEnabled,
+		EffectiveRateMultiplier: resolvedRate * appliedPeak * appliedPromo,
 		ObservedAt:              now.UTC(),
 	}
 	if apiKey.Group.PeakRateEnabled {
@@ -103,6 +112,12 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 		response.AppliedPeakMultiplier = &appliedPeak
 		tz := timezone.Location().String()
 		response.Timezone = &tz
+	}
+	if apiKey.Group.PromoDiscountEnabled {
+		response.PromoDiscountStart = apiKey.Group.PromoDiscountStart
+		response.PromoDiscountEnd = apiKey.Group.PromoDiscountEnd
+		response.PromoDiscountRate = &apiKey.Group.PromoDiscountRate
+		response.AppliedPromoMultiplier = &appliedPromo
 	}
 	return response
 }

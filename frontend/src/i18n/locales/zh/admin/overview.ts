@@ -1035,6 +1035,17 @@ export default {
         peakMultiplier: '高峰倍率',
         multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
       },
+      promoDiscount: {
+        enable: '启用限时活动折扣',
+        discountRate: '折扣（%）',
+        discountHint: '填 95 表示 95 折：活动期间该分组在原倍率基础上再乘 95%，到期自动恢复',
+        start: '活动开始',
+        end: '活动结束',
+        preview: '活动期间倍率预览：{base}x → {promo}x',
+        activeBadge: '活动中',
+        invalidRate: '活动折扣必须大于 0 且小于 100',
+        invalidWindow: '活动开始与结束时间必填，且结束时间必须晚于开始时间'
+      },
       profitControl: {
         enable: '启用利润控制',
         enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',
