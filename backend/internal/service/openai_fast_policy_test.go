@@ -253,6 +253,119 @@ func TestApplyAPIKeyOpenAIFastDefaultToBody_StillHonorsFastPolicy(t *testing.T) 
 	require.False(t, gjson.GetBytes(updated, "service_tier").Exists(), "全局 filter 规则必须仍能剥离 Key 层注入的 priority")
 }
 
+func TestOpenAIGatewayService_Forward_APIKeyFastDefaultAppliesToHTTPResponses(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+	}{
+		{
+			name: "oauth_native_pro20_shape",
+			account: &Account{
+				ID:          1,
+				Name:        "openai-oauth-pro20",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"access_token":       "oauth-token",
+					"chatgpt_account_id": "chatgpt-account",
+				},
+				Extra: map[string]any{
+					"openai_passthrough":                        false,
+					"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeOff,
+				},
+				Status:      StatusActive,
+				Schedulable: true,
+			},
+		},
+		{
+			name: "apikey_passthrough",
+			account: &Account{
+				ID:          2,
+				Name:        "openai-apikey",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://example.com"},
+				Extra:       map[string]any{"use_responses_api": true, "openai_passthrough": true},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":"hello"}`)
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"resp_key_fast","object":"response","status":"completed","model":"gpt-5.6-sol","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`,
+				)),
+			}}
+			svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+			svc.cfg = &config.Config{Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			}}
+			svc.httpUpstream = upstream
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			c.Set("api_key", &APIKey{ID: 99, OpenAIFastModeEnabled: true})
+			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+			result, err := svc.Forward(context.Background(), c, tt.account, body)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+			require.NotNil(t, result.ServiceTier)
+			require.Equal(t, OpenAIFastTierPriority, *result.ServiceTier)
+		})
+	}
+}
+
+func TestOpenAIGatewayService_Forward_APIKeyFastDefaultStillHonorsPolicy(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+		ServiceTier: OpenAIFastTierPriority,
+		Action:      BetaPolicyActionFilter,
+		Scope:       BetaPolicyScopeAPIKey,
+	}}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"resp_key_fast_filter","object":"response","status":"completed","model":"gpt-5.6-sol","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`,
+		)),
+	}}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	svc.cfg = &config.Config{Security: config.SecurityConfig{
+		URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+	}}
+	svc.httpUpstream = upstream
+	account := &Account{
+		ID:          1,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://example.com"},
+		Extra:       map[string]any{"use_responses_api": true},
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("api_key", &APIKey{ID: 99, OpenAIFastModeEnabled: true})
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	result, err := svc.Forward(context.Background(), c, account,
+		[]byte(`{"model":"gpt-5.6-sol","stream":false,"input":"hello"}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "service_tier").Exists())
+	require.Nil(t, result.ServiceTier)
+}
+
 func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

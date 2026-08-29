@@ -151,6 +151,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		setOpenAIResponsesClientToolMapping(c, mapping)
 	}
 
+	// 在 passthrough 与普通 Responses 分流前统一应用 Key 层 Fast 默认值，
+	// 之后仍由各分支的系统 Fast/Flex policy 决定最终出站 tier。
+	body, _, err = applyAPIKeyOpenAIFastDefaultToBody(getAPIKeyFromContext(c), account, body)
+	if err != nil {
+		return nil, err
+	}
+
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
