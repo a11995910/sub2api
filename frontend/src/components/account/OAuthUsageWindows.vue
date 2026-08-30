@@ -7,6 +7,7 @@
       :resets-at="usage.five_hour.resets_at"
       :window-stats="showWindowStats ? usage.five_hour.window_stats : null"
       :show-now-when-idle="showNowWhenIdle"
+      :full-width="fullWidth"
       color="indigo"
     />
     <UsageProgressBar
@@ -16,6 +17,7 @@
       :resets-at="usage.seven_day.resets_at"
       :window-stats="showWindowStats ? usage.seven_day.window_stats : null"
       :show-now-when-idle="showNowWhenIdle"
+      :full-width="fullWidth"
       color="emerald"
     />
     <UsageProgressBar
@@ -23,6 +25,7 @@
       label="7d S"
       :utilization="usage.seven_day_sonnet.utilization"
       :resets-at="usage.seven_day_sonnet.resets_at"
+      :full-width="fullWidth"
       color="purple"
     />
     <UsageProgressBar
@@ -30,6 +33,7 @@
       label="7d F"
       :utilization="usage.seven_day_fable.utilization"
       :resets-at="usage.seven_day_fable.resets_at"
+      :full-width="fullWidth"
       color="amber"
     />
   </div>
@@ -56,11 +60,13 @@ const props = withDefaults(defineProps<{
   showWindowStats?: boolean
   showExtendedWindows?: boolean
   showNowWhenIdle?: boolean
+  fullWidth?: boolean
   emptyText?: string
 }>(), {
   showWindowStats: false,
   showExtendedWindows: false,
   showNowWhenIdle: false,
+  fullWidth: false,
   emptyText: '-'
 })
 

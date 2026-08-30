@@ -14,10 +14,7 @@
             <div class="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
             <div class="h-4 w-16 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           </div>
-          <div
-            class="grid grid-cols-1 gap-3 sm:grid-cols-2"
-            :class="authStore.isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-3 xl:grid-cols-4'"
-          >
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             <div
               v-for="cardIndex in 4"
               :key="cardIndex"
@@ -65,19 +62,7 @@
               {{ t('oauthAccountPool.groupCount', { count: groups.length }) }}
             </span>
             <span class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300">
-              {{ t('oauthAccountPool.visibleAccounts') }} {{ formatRequests(summary.account_count) }}
-            </span>
-            <span
-              v-if="authStore.isAdmin"
-              class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300"
-            >
-              {{ t('oauthAccountPool.totalRequests') }} {{ formatRequests(summary.requests ?? 0) }}
-            </span>
-            <span
-              v-if="authStore.isAdmin"
-              class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300"
-            >
-              {{ t('oauthAccountPool.totalTokens') }} {{ formatTokens(summary.tokens ?? 0) }}
+              {{ t('oauthAccountPool.visibleAccounts') }} {{ formatCount(summary.account_count) }}
             </span>
           </div>
         </div>
@@ -111,8 +96,8 @@
           </div>
 
           <div
-            class="grid grid-cols-1 gap-3 sm:grid-cols-2"
-            :class="authStore.isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-3 xl:grid-cols-4'"
+            data-testid="account-grid"
+            class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
           >
             <article
               v-for="(account, accountIndex) in group.accounts"
@@ -162,31 +147,24 @@
                 </div>
               </div>
 
-              <div
-                v-if="authStore.isAdmin && account.stats"
-                class="mt-3 border-y border-gray-100 py-2 dark:border-dark-700/80"
-              >
-                <div class="grid grid-cols-[minmax(3.75rem,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 px-1 text-[11px] text-gray-400 dark:text-gray-500">
-                  <span></span>
-                  <span class="text-right">{{ t('oauthAccountPool.requests') }}</span>
-                  <span class="text-right">{{ t('oauthAccountPool.tokens') }}</span>
-                </div>
-                <div
-                  v-for="row in accountStatRows(account)"
-                  :key="row.label"
-                  class="grid grid-cols-[minmax(3.75rem,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 px-1 py-1.5 text-xs"
+              <div class="mt-2.5 flex items-center justify-between gap-3 border-t border-gray-100 pt-2.5 text-xs dark:border-dark-700/80">
+                <span class="shrink-0 text-gray-500 dark:text-gray-400">
+                  {{ t('oauthAccountPool.expiresAt') }}
+                </span>
+                <time
+                  v-if="account.expires_at"
+                  :datetime="account.expires_at"
+                  class="min-w-0 truncate text-right font-medium tabular-nums text-gray-700 dark:text-gray-200"
+                  :title="formatDateTimeToMinute(account.expires_at)"
                 >
-                  <span class="font-medium text-gray-600 dark:text-gray-300">{{ row.label }}</span>
-                  <span class="text-right tabular-nums text-gray-900 dark:text-white">
-                    {{ formatRequests(row.stats.requests) }}
-                  </span>
-                  <span class="text-right tabular-nums text-gray-900 dark:text-white">
-                    {{ formatTokens(row.stats.tokens) }}
-                  </span>
-                </div>
+                  {{ formatDateTimeToMinute(account.expires_at) }}
+                </time>
+                <span v-else class="text-right font-medium text-gray-700 dark:text-gray-200">
+                  {{ t('oauthAccountPool.noExpiration') }}
+                </span>
               </div>
 
-              <div v-if="authStore.isAdmin && account.usage" class="mt-3">
+              <div class="mt-2.5 border-t border-gray-100 pt-2.5 dark:border-dark-700/80">
                 <p class="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400 sm:text-xs">
                   {{ t('oauthAccountPool.quotaStatus') }}
                 </p>
@@ -194,6 +172,7 @@
                   :usage="account.usage"
                   :empty-text="t('oauthAccountPool.noUsageSnapshot')"
                   :show-now-when-idle="true"
+                  :full-width="true"
                 />
               </div>
             </article>
@@ -218,29 +197,17 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OAuthUsageWindows from '@/components/account/OAuthUsageWindows.vue'
 import AccountConcurrencyBadge from '@/components/account/AccountConcurrencyBadge.vue'
-import { useAuthStore } from '@/stores/auth'
-import { formatCompactNumber } from '@/utils/format'
+import { formatCompactNumber, formatDateTimeToMinute } from '@/utils/format'
 
 type AccountPoolStatus = 'available' | 'active' | 'busy'
 
 const { t } = useI18n()
-const authStore = useAuthStore()
 const groups = ref<OAuthAccountPoolGroup[]>([])
-const summary = ref<OAuthAccountPoolSummary>({ account_count: 0, requests: 0, tokens: 0 })
+const summary = ref<OAuthAccountPoolSummary>({ account_count: 0 })
 const loading = ref(true)
 const error = ref(false)
 
-const formatRequests = (value: number) => formatCompactNumber(value, { allowBillions: false })
-const formatTokens = (value: number) => formatCompactNumber(value)
-
-const accountStatRows = (account: OAuthAccountPoolAccount) => {
-  if (!account.stats) return []
-  return [
-    { label: t('oauthAccountPool.period5h'), stats: account.stats.five_hour },
-    { label: t('oauthAccountPool.period7d'), stats: account.stats.seven_day },
-    { label: t('oauthAccountPool.cumulative'), stats: account.stats.total },
-  ]
-}
+const formatCount = (value: number) => formatCompactNumber(value, { allowBillions: false })
 
 const accountStatus = (account: OAuthAccountPoolAccount): AccountPoolStatus => {
   if (account.concurrency > 0 && account.current_concurrency >= account.concurrency) {
@@ -309,10 +276,10 @@ const loadPool = async () => {
   try {
     const result = await oauthAccountPoolAPI.get()
     groups.value = result.groups || []
-    summary.value = result.summary || { account_count: 0, requests: 0, tokens: 0 }
+    summary.value = result.summary || { account_count: 0 }
   } catch {
     groups.value = []
-    summary.value = { account_count: 0, requests: 0, tokens: 0 }
+    summary.value = { account_count: 0 }
     error.value = true
   } finally {
     loading.value = false

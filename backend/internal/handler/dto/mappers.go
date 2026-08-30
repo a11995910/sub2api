@@ -242,7 +242,7 @@ func maskOAuthAccountIdentifier(identifier string) string {
 	return string(localRunes[:visibleCount]) + strings.Repeat("*", len(localRunes)-visibleCount) + domainPart
 }
 
-func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealSensitiveDetails bool) *OAuthAccountPool {
+func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealIdentifier bool) *OAuthAccountPool {
 	if pool == nil {
 		return nil
 	}
@@ -252,10 +252,6 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealSensitive
 			AccountCount: pool.Summary.AccountCount,
 		},
 	}
-	if revealSensitiveDetails {
-		out.Summary.Requests = &pool.Summary.Requests
-		out.Summary.Tokens = &pool.Summary.Tokens
-	}
 	for i := range pool.Groups {
 		group := OAuthAccountPoolGroup{
 			Name:     pool.Groups[i].Name,
@@ -264,14 +260,10 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealSensitive
 				AccountCount: pool.Groups[i].Summary.AccountCount,
 			},
 		}
-		if revealSensitiveDetails {
-			group.Summary.Requests = &pool.Groups[i].Summary.Requests
-			group.Summary.Tokens = &pool.Groups[i].Summary.Tokens
-		}
 		for j := range pool.Groups[i].Accounts {
 			item := &pool.Groups[i].Accounts[j]
 			identifier := item.Identifier
-			if !revealSensitiveDetails {
+			if !revealIdentifier {
 				identifier = maskOAuthAccountIdentifier(identifier)
 			}
 			account := OAuthAccountPoolAccount{
@@ -279,17 +271,11 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealSensitive
 				PlanType:           item.PlanType,
 				CurrentConcurrency: item.CurrentConcurrency,
 				Concurrency:        item.Concurrency,
-			}
-			if revealSensitiveDetails {
-				account.Usage = &OAuthAccountPoolUsage{
+				ExpiresAt:          item.ExpiresAt,
+				Usage: &OAuthAccountPoolUsage{
 					FiveHour: oauthAccountPoolWindowFromService(item.FiveHour),
 					SevenDay: oauthAccountPoolWindowFromService(item.SevenDay),
-				}
-				account.Stats = &OAuthAccountPoolAccountStats{
-					FiveHour: OAuthAccountPoolRequestTokenStats(item.Stats.FiveHour),
-					SevenDay: OAuthAccountPoolRequestTokenStats(item.Stats.SevenDay),
-					Total:    OAuthAccountPoolRequestTokenStats(item.Stats.Total),
-				}
+				},
 			}
 			group.Accounts = append(group.Accounts, account)
 		}

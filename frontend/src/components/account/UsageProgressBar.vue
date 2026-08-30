@@ -26,7 +26,11 @@
     </div>
 
     <!-- Progress bar row -->
-    <div class="flex items-center gap-1">
+    <div
+      :class="fullWidth
+        ? 'grid grid-cols-[2rem_minmax(0,1fr)_2.25rem_auto] items-center gap-1.5'
+        : 'flex items-center gap-1'"
+    >
       <!-- Label badge (fixed width for alignment) -->
       <span
         :class="['w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium', labelClass]"
@@ -35,7 +39,13 @@
       </span>
 
       <!-- Progress bar container -->
-      <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+      <div
+        data-testid="usage-progress-track"
+        :class="[
+          'h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700',
+          fullWidth ? 'min-w-0 w-full' : 'w-8 shrink-0',
+        ]"
+      >
         <div
           :class="['h-full transition-all duration-300', barClass]"
           :style="{ width: barWidth }"
@@ -43,12 +53,12 @@
       </div>
 
       <!-- Percentage -->
-      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
+      <span :class="['shrink-0 text-right text-[10px] font-medium', fullWidth ? 'w-9' : 'w-8', textClass]">
         {{ displayPercent }}
       </span>
 
       <!-- Reset time -->
-      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
+      <span v-if="shouldShowResetTime" class="min-w-0 shrink-0 text-right text-[10px] text-gray-400">
         {{ formatResetTime }}
       </span>
     </div>
@@ -70,6 +80,7 @@ const props = defineProps<{
   windowStats?: WindowStats | null
   showNowWhenIdle?: boolean
   remainingCapacity?: boolean
+  fullWidth?: boolean
 }>()
 
 const { t } = useI18n()

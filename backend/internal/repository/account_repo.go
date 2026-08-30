@@ -1259,6 +1259,7 @@ func (r *accountRepository) ListActiveOAuthByGroupIDs(ctx context.Context, group
 				dbaccount.FieldPlatform,
 				dbaccount.FieldType,
 				dbaccount.FieldConcurrency,
+				dbaccount.FieldExpiresAt,
 				dbaccount.FieldCredentials,
 				dbaccount.FieldExtra,
 				dbaccount.FieldSessionWindowStart,
@@ -1269,6 +1270,7 @@ func (r *accountRepository) ListActiveOAuthByGroupIDs(ctx context.Context, group
 			).WithParent(func(parentQuery *dbent.AccountQuery) {
 				parentQuery.Select(
 					dbaccount.FieldID,
+					dbaccount.FieldExpiresAt,
 					dbaccount.FieldCredentials,
 					dbaccount.FieldExtra,
 				)
@@ -3517,6 +3519,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		parentAccount := accountEntityToService(parent)
 		out.ParentDisplayIdentifier = service.ResolveOAuthAccountDisplayIdentifier(parentAccount)
 		out.ParentPlanType = service.ResolveOAuthAccountPlanType(parentAccount)
+		out.ParentDisplayExpiresAt = service.ResolveOAuthAccountDisplayExpiresAt(parentAccount)
 	}
 	return out
 }

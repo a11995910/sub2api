@@ -646,6 +646,7 @@ func (s *AccountRepoSuite) TestListByGroup() {
 }
 
 func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_OrdersWithoutAmbiguousColumns() {
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC().Truncate(time.Second)
 	visibleGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-oauth-pool-visible"})
 	_, err := s.client.Group.UpdateOneID(visibleGroup.ID).
 		SetOauthPoolVisible(true).
@@ -653,7 +654,7 @@ func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_OrdersWithoutAmbiguousC
 	s.Require().NoError(err)
 	hiddenGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-oauth-pool-hidden"})
 
-	alpha := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-alpha"})
+	alpha := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-alpha", ExpiresAt: &expiresAt})
 	beta := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-beta"})
 	hidden := mustCreateAccount(s.T(), s.client, &service.Account{Name: "oauth-hidden"})
 	mustBindAccountToGroup(s.T(), s.client, beta.ID, visibleGroup.ID, 1)
@@ -666,10 +667,12 @@ func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_OrdersWithoutAmbiguousC
 	s.Require().Len(bindings, 2)
 	s.Require().Equal(visibleGroup.ID, bindings[0].GroupID)
 	s.Require().Equal(alpha.ID, bindings[0].Account.ID)
+	s.Require().Equal(expiresAt, *bindings[0].Account.ExpiresAt)
 	s.Require().Equal(beta.ID, bindings[1].Account.ID)
 }
 
 func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_LoadsRealIdentityAndShadowParent() {
+	parentExpiresAt := time.Now().Add(45 * 24 * time.Hour).UTC().Truncate(time.Second)
 	visibleGroup := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-oauth-pool-identity"})
 	_, err := s.client.Group.UpdateOneID(visibleGroup.ID).
 		SetOauthPoolVisible(true).
@@ -677,9 +680,13 @@ func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_LoadsRealIdentityAndSha
 	s.Require().NoError(err)
 
 	parent := mustCreateAccount(s.T(), s.client, &service.Account{
-		Name:        "parent-custom-name",
-		Platform:    service.PlatformOpenAI,
-		Credentials: map[string]any{"email": "parent@example.com", "plan_type": "pro"},
+		Name:     "parent-custom-name",
+		Platform: service.PlatformOpenAI,
+		Credentials: map[string]any{
+			"email":                   "parent@example.com",
+			"plan_type":               "pro",
+			"subscription_expires_at": parentExpiresAt.Format(time.RFC3339),
+		},
 	})
 	shadow := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:            "shadow-custom-name",
@@ -695,6 +702,7 @@ func (s *AccountRepoSuite) TestListActiveOAuthByGroupIDs_LoadsRealIdentityAndSha
 	s.Require().Len(bindings, 1)
 	s.Require().Equal("parent@example.com", service.ResolveOAuthAccountDisplayIdentifier(&bindings[0].Account))
 	s.Require().Equal("pro", service.ResolveOAuthAccountPlanType(&bindings[0].Account))
+	s.Require().Equal(parentExpiresAt, *service.ResolveOAuthAccountDisplayExpiresAt(&bindings[0].Account))
 }
 
 func (s *AccountRepoSuite) TestListActive() {

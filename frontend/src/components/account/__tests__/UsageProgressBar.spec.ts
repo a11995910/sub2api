@@ -146,4 +146,19 @@ describe('UsageProgressBar', () => {
     expect(wrapper.get('.h-1\\.5 > div').attributes('style')).toContain('width: 100%')
     expect(wrapper.get('.h-1\\.5 > div').classes()).toContain('bg-red-500')
   })
+
+  it('fullWidth=true 时进度轨道占满剩余宽度', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '5h',
+        utilization: 42,
+        resetsAt: '2026-03-17T02:30:00Z',
+        color: 'indigo',
+        fullWidth: true,
+      },
+    })
+
+    expect(wrapper.get('[data-testid="usage-progress-track"]').classes()).toContain('w-full')
+    expect(wrapper.get('[data-testid="usage-progress-track"]').classes()).not.toContain('w-8')
+  })
 })

@@ -53,15 +53,13 @@ type OAuthAccountPoolAccount struct {
 	PlanType           string
 	CurrentConcurrency int
 	Concurrency        int
+	ExpiresAt          *time.Time
 	FiveHour           *UsageProgress
 	SevenDay           *UsageProgress
-	Stats              OAuthAccountPoolAccountStats
 }
 
 type OAuthAccountPoolSummary struct {
 	AccountCount int
-	Requests     int64
-	Tokens       int64
 }
 
 type OAuthAccountPoolGroup struct {
@@ -80,7 +78,6 @@ type OAuthAccountPoolService struct {
 	apiKeyService       oauthAccountPoolGroupAccessReader
 	accountRepo         OAuthAccountPoolRepository
 	accountUsageService *AccountUsageService
-	statsReader         OAuthAccountPoolStatsReader
 	concurrencyReader   oauthAccountPoolConcurrencyReader
 }
 
@@ -93,7 +90,6 @@ func NewOAuthAccountPoolService(
 		apiKeyService:       apiKeyService,
 		accountRepo:         accountRepo,
 		accountUsageService: accountUsageService,
-		statsReader:         accountUsageService,
 		concurrencyReader:   apiKeyService,
 	}
 }
@@ -123,34 +119,20 @@ func (s *OAuthAccountPoolService) GetForUser(ctx context.Context, userID int64) 
 	if err != nil {
 		return nil, fmt.Errorf("list visible oauth accounts: %w", err)
 	}
-	if s.accountUsageService == nil || s.statsReader == nil {
+	if s.accountUsageService == nil {
 		return nil, fmt.Errorf("oauth account pool dependencies are unavailable")
 	}
 
-	now := time.Now()
 	usageByAccountID := make(map[int64]*UsageInfo, len(bindings))
-	windowsByAccountID := make(map[int64]OAuthAccountPoolStatsWindow, len(bindings))
+	accountIDs := make([]int64, 0, len(bindings))
 	for i := range bindings {
 		binding := &bindings[i]
+		if _, exists := usageByAccountID[binding.Account.ID]; exists {
+			continue
+		}
 		usage := s.accountUsageService.BuildCachedUsage(&binding.Account)
 		usageByAccountID[binding.Account.ID] = usage
-		windowsByAccountID[binding.Account.ID] = OAuthAccountPoolStatsWindow{
-			AccountID:     binding.Account.ID,
-			FiveHourStart: codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now),
-			SevenDayStart: codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now),
-		}
-	}
-	windows := make([]OAuthAccountPoolStatsWindow, 0, len(windowsByAccountID))
-	for _, window := range windowsByAccountID {
-		windows = append(windows, window)
-	}
-	statsByAccountID, err := s.statsReader.GetOAuthAccountPoolStats(ctx, windows)
-	if err != nil {
-		return nil, fmt.Errorf("get visible oauth account stats: %w", err)
-	}
-	accountIDs := make([]int64, 0, len(windows))
-	for _, window := range windows {
-		accountIDs = append(accountIDs, window.AccountID)
+		accountIDs = append(accountIDs, binding.Account.ID)
 	}
 	concurrencyByAccountID := make(map[int64]int, len(accountIDs))
 	if s.concurrencyReader != nil {
@@ -163,46 +145,29 @@ func (s *OAuthAccountPoolService) GetForUser(ctx context.Context, userID int64) 
 	for i := range bindings {
 		binding := &bindings[i]
 		usage := usageByAccountID[binding.Account.ID]
-		stats := statsByAccountID[binding.Account.ID]
 		accountsByGroupID[binding.GroupID] = append(accountsByGroupID[binding.GroupID], OAuthAccountPoolAccount{
 			Identifier:         ResolveOAuthAccountDisplayIdentifier(&binding.Account),
 			PlanType:           OAuthAccountPlanLabel(ResolveOAuthAccountPlanType(&binding.Account)),
 			CurrentConcurrency: concurrencyByAccountID[binding.Account.ID],
 			Concurrency:        binding.Account.Concurrency,
+			ExpiresAt:          ResolveOAuthAccountDisplayExpiresAt(&binding.Account),
 			FiveHour:           usage.FiveHour,
 			SevenDay:           usage.SevenDay,
-			Stats:              stats,
 		})
 	}
 
 	result := &OAuthAccountPool{Groups: make([]OAuthAccountPoolGroup, 0, len(visibleGroups))}
-	seenAccounts := make(map[int64]struct{}, len(windowsByAccountID))
 	for i := range visibleGroups {
 		accounts := accountsByGroupID[visibleGroups[i].ID]
 		if len(accounts) == 0 {
 			continue
 		}
-		groupSummary := OAuthAccountPoolSummary{AccountCount: len(accounts)}
-		for _, account := range accounts {
-			groupSummary.Requests += account.Stats.Total.Requests
-			groupSummary.Tokens += account.Stats.Total.Tokens
-		}
 		result.Groups = append(result.Groups, OAuthAccountPoolGroup{
 			Name:     visibleGroups[i].Name,
 			Accounts: accounts,
-			Summary:  groupSummary,
+			Summary:  OAuthAccountPoolSummary{AccountCount: len(accounts)},
 		})
 	}
-	for i := range bindings {
-		accountID := bindings[i].Account.ID
-		if _, exists := seenAccounts[accountID]; exists {
-			continue
-		}
-		seenAccounts[accountID] = struct{}{}
-		stats := statsByAccountID[accountID]
-		result.Summary.AccountCount++
-		result.Summary.Requests += stats.Total.Requests
-		result.Summary.Tokens += stats.Total.Tokens
-	}
+	result.Summary.AccountCount = len(accountIDs)
 	return result, nil
 }

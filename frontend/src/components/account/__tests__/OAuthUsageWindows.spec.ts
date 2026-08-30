@@ -12,6 +12,7 @@ const UsageProgressBarStub = defineComponent({
     resetsAt: { type: String, default: null },
     windowStats: { type: Object, default: null },
     showNowWhenIdle: Boolean,
+    fullWidth: Boolean,
     color: String,
   },
   template: '<div data-testid="usage-window">{{ label }}|{{ utilization }}|{{ color }}</div>',
@@ -39,6 +40,7 @@ describe('OAuthUsageWindows', () => {
         seven_day_sonnet: { utilization: 70, resets_at: null },
       },
       showNowWhenIdle: true,
+      fullWidth: true,
     })
 
     const windows = wrapper.findAllComponents(UsageProgressBarStub)
@@ -46,6 +48,7 @@ describe('OAuthUsageWindows', () => {
     expect(windows.map((window) => window.props('label'))).toEqual(['5h', '7d'])
     expect(windows[0].props('windowStats')).toBeNull()
     expect(windows[0].props('showNowWhenIdle')).toBe(true)
+    expect(windows[0].props('fullWidth')).toBe(true)
   })
 
   it('管理端可显式展示扩展窗口和窗口统计', () => {

@@ -5,21 +5,8 @@ export interface OAuthAccountPoolWindow {
   resets_at: string | null
 }
 
-export interface OAuthAccountPoolRequestTokenStats {
-  requests: number
-  tokens: number
-}
-
-export interface OAuthAccountPoolAccountStats {
-  five_hour: OAuthAccountPoolRequestTokenStats
-  seven_day: OAuthAccountPoolRequestTokenStats
-  total: OAuthAccountPoolRequestTokenStats
-}
-
 export interface OAuthAccountPoolSummary {
   account_count: number
-  requests?: number
-  tokens?: number
 }
 
 export interface OAuthAccountPoolAccount {
@@ -27,11 +14,11 @@ export interface OAuthAccountPoolAccount {
   plan_type: string
   current_concurrency: number
   concurrency: number
-  usage?: {
+  expires_at: string | null
+  usage: {
     five_hour: OAuthAccountPoolWindow | null
     seven_day: OAuthAccountPoolWindow | null
-  } | null
-  stats?: OAuthAccountPoolAccountStats
+  }
 }
 
 export interface OAuthAccountPoolGroup {

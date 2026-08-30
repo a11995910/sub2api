@@ -21,11 +21,6 @@ type oauthPoolRepoStub struct {
 	bindings          []OAuthAccountPoolBinding
 }
 
-type oauthPoolStatsStub struct {
-	windows []OAuthAccountPoolStatsWindow
-	stats   map[int64]OAuthAccountPoolAccountStats
-}
-
 type oauthPoolConcurrencyStub struct {
 	requestedAccountIDs []int64
 	counts              map[int64]int
@@ -36,11 +31,6 @@ func (s *oauthPoolConcurrencyStub) GetAccountConcurrencyBatch(_ context.Context,
 	return s.counts, nil
 }
 
-func (s *oauthPoolStatsStub) GetOAuthAccountPoolStats(_ context.Context, windows []OAuthAccountPoolStatsWindow) (map[int64]OAuthAccountPoolAccountStats, error) {
-	s.windows = append([]OAuthAccountPoolStatsWindow(nil), windows...)
-	return s.stats, nil
-}
-
 func (s *oauthPoolRepoStub) ListActiveOAuthByGroupIDs(_ context.Context, groupIDs []int64) ([]OAuthAccountPoolBinding, error) {
 	s.requestedGroupIDs = append([]int64(nil), groupIDs...)
 	return append([]OAuthAccountPoolBinding(nil), s.bindings...), nil
@@ -48,6 +38,8 @@ func (s *oauthPoolRepoStub) ListActiveOAuthByGroupIDs(_ context.Context, groupID
 
 func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) {
 	resetAt := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	accountExpiresAt := resetAt.Add(60 * 24 * time.Hour)
+	subscriptionExpiresAt := resetAt.Add(30 * 24 * time.Hour)
 	repo := &oauthPoolRepoStub{bindings: []OAuthAccountPoolBinding{
 		{
 			GroupID: 2,
@@ -57,9 +49,11 @@ func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) 
 				Platform:    PlatformOpenAI,
 				Type:        AccountTypeOAuth,
 				Concurrency: 15,
+				ExpiresAt:   &accountExpiresAt,
 				Credentials: map[string]any{
-					"email":     "owner@example.com",
-					"plan_type": "pro",
+					"email":                   "owner@example.com",
+					"plan_type":               "pro",
+					"subscription_expires_at": subscriptionExpiresAt.Format(time.RFC3339),
 				},
 				Extra: map[string]any{
 					"codex_5h_used_percent":  24.5,
@@ -71,13 +65,6 @@ func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) 
 			},
 		},
 	}}
-	statsReader := &oauthPoolStatsStub{stats: map[int64]OAuthAccountPoolAccountStats{
-		101: {
-			FiveHour: OAuthAccountPoolRequestTokenStats{Requests: 5, Tokens: 500},
-			SevenDay: OAuthAccountPoolRequestTokenStats{Requests: 70, Tokens: 7000},
-			Total:    OAuthAccountPoolRequestTokenStats{Requests: 120, Tokens: 12000},
-		},
-	}}
 	concurrencyReader := &oauthPoolConcurrencyStub{counts: map[int64]int{101: 6}}
 	svc := &OAuthAccountPoolService{
 		apiKeyService: oauthPoolGroupAccessStub{groups: []Group{
@@ -87,7 +74,6 @@ func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) 
 		}},
 		accountRepo:         repo,
 		accountUsageService: &AccountUsageService{},
-		statsReader:         statsReader,
 		concurrencyReader:   concurrencyReader,
 	}
 
@@ -102,26 +88,27 @@ func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) 
 	require.Equal(t, "Pro 20x", pool.Groups[0].Accounts[0].PlanType)
 	require.Equal(t, 6, pool.Groups[0].Accounts[0].CurrentConcurrency)
 	require.Equal(t, 15, pool.Groups[0].Accounts[0].Concurrency)
+	require.Equal(t, subscriptionExpiresAt, *pool.Groups[0].Accounts[0].ExpiresAt)
 	require.InDelta(t, 24.5, pool.Groups[0].Accounts[0].FiveHour.Utilization, 1e-9)
 	require.InDelta(t, 51.0, pool.Groups[0].Accounts[0].SevenDay.Utilization, 1e-9)
-	require.Equal(t, int64(5), pool.Groups[0].Accounts[0].Stats.FiveHour.Requests)
-	require.Equal(t, int64(12000), pool.Groups[0].Accounts[0].Stats.Total.Tokens)
-	require.Equal(t, OAuthAccountPoolSummary{AccountCount: 1, Requests: 120, Tokens: 12000}, pool.Groups[0].Summary)
+	require.Equal(t, OAuthAccountPoolSummary{AccountCount: 1}, pool.Groups[0].Summary)
 	require.Equal(t, pool.Groups[0].Summary, pool.Summary)
-	require.Len(t, statsReader.windows, 1)
 	require.Equal(t, []int64{101}, concurrencyReader.requestedAccountIDs)
 }
 
 func TestOAuthAccountIdentityNeverFallsBackToCustomName(t *testing.T) {
+	parentExpiresAt := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	account := &Account{
 		Name: "Pro 正价",
 		Extra: map[string]any{
 			"email_address": " extra@example.com ",
 		},
 		Credentials: map[string]any{
-			"email":     "credential@example.com",
-			"plan_type": "k12",
+			"email":                   "credential@example.com",
+			"plan_type":               "k12",
+			"subscription_expires_at": "2026-09-24T01:49:07Z",
 		},
+		ParentDisplayExpiresAt: &parentExpiresAt,
 	}
 
 	require.Equal(t, "extra@example.com", ResolveOAuthAccountDisplayIdentifier(account))
@@ -132,6 +119,8 @@ func TestOAuthAccountIdentityNeverFallsBackToCustomName(t *testing.T) {
 	require.Equal(t, "Plus", OAuthAccountPlanLabel("plus"))
 	require.Equal(t, "Free", OAuthAccountPlanLabel("basic"))
 	require.Equal(t, "future_enterprise", OAuthAccountPlanLabel("future_enterprise"))
+	require.Equal(t, time.Date(2026, 9, 24, 1, 49, 7, 0, time.UTC), *ResolveOAuthAccountDisplayExpiresAt(account))
+	require.Equal(t, parentExpiresAt, *ResolveOAuthAccountDisplayExpiresAt(&Account{ParentDisplayExpiresAt: &parentExpiresAt}))
 }
 
 func TestOAuthPoolStatsWindowStartMatchesCacheTTL(t *testing.T) {

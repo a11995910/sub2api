@@ -60,10 +60,11 @@ type Account struct {
 
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
 	QuotaDimension  string // 用量维度："" / "global" / "spark"
-	// ParentDisplayIdentifier 与 ParentPlanType 仅用于影子账号安全展示，
+	// ParentDisplayIdentifier、ParentPlanType 与 ParentDisplayExpiresAt 仅用于影子账号安全展示，
 	// 由只读查询从母账号解析，不持久化，也不包含任何 Token 或密钥。
 	ParentDisplayIdentifier string
 	ParentPlanType          string
+	ParentDisplayExpiresAt  *time.Time
 
 	Proxy         *Proxy
 	AccountGroups []AccountGroup

@@ -2,7 +2,7 @@
 
 ## 功能目标
 
-系统允许管理员在分组层面决定是否向有权使用该分组的用户公开 OAuth 号池状态。普通用户可以查看公开分组中的脱敏账号标识、套餐、实时连接数和运行状态；额度窗口及请求/Token 统计仅管理员可见，并可在自己的使用记录中核对请求实际命中的 OAuth 账号。
+系统允许管理员在分组层面决定是否向有权使用该分组的用户公开 OAuth 号池状态。用户可以查看公开分组中的账号标识、套餐、实时连接数、额度窗口和账号过期时间，并可在自己的使用记录中核对请求实际命中的 OAuth 账号。号池页面和接口不公开请求次数或 Token 用量。
 
 功能边界如下：
 
@@ -61,11 +61,12 @@ oauth_pool_visible
 - 套餐标签。
 - 当前连接数与账号并发总数，格式为 `当前值 / 总数`。
 - 根据实时连接数显示“可用”“使用中”或“繁忙”状态。
-- 管理员额外可查看 5 小时、7 天及累计请求/Token 统计，以及额度使用率和重置时间。
+- 5 小时和 7 天额度使用率、重置时间。
+- 账号过期时间；未设置时显示“永久有效”。
 
-页面顶部显示可见分组数和全部可见号池的唯一账号数。同一账号属于多个可见分组时，全局账号数只计算一次。管理员额外可见累计请求次数和 Token 用量，以及分组级统计。
+页面顶部显示可见分组数和全部可见号池的唯一账号数。同一账号属于多个可见分组时，全局账号数只计算一次。页面不显示全局、分组或账号级请求/Token 统计。
 
-实时连接徽标复用 `AccountConcurrencyBadge.vue`，状态颜色按负载区分：可用为绿色、使用中为蓝色、繁忙为黄色。管理员额度条继续复用 `OAuthUsageWindows.vue` 和 `UsageProgressBar.vue`。
+实时连接徽标复用 `AccountConcurrencyBadge.vue`，状态颜色按负载区分：可用为绿色、使用中为蓝色、繁忙为黄色。额度条复用 `OAuthUsageWindows.vue` 和 `UsageProgressBar.vue`，在号池卡片内启用全宽轨道。
 
 页面状态：
 
@@ -73,7 +74,7 @@ oauth_pool_visible
 - 无可见账号：显示统一空状态，不区分“没有可见分组”和“分组中只有非 OAuth 账号”。
 - 无账号标识：显示“账号信息不可用”，不使用自定义账号名称兜底。
 - 无套餐：显示“未知套餐”。
-- 普通用户不返回或展示额度、请求和 Token 用量字段；管理员无额度快照时，额度区域显示“暂无额度数据”。
+- 无额度快照：仍显示状态、并发和过期时间，额度区域显示“暂无额度数据”。
 - 请求失败：显示统一错误信息和重试按钮，不展示内部异常详情。
 - 响应式布局：移动端单列，中等屏幕双列，宽屏按三至四列紧凑网格展示；长邮箱允许换行且不覆盖套餐或连接徽标。
 
@@ -85,7 +86,7 @@ oauth_pool_visible
 GET /api/v1/oauth-account-pool
 ```
 
-接口使用现有 JWT 认证、用户模式守卫和面板限流。以下为管理员响应示例；普通用户响应会保留脱敏 `identifier`、`plan_type`、`current_concurrency` 和 `concurrency`，并省略 `usage`、`stats`、`requests` 和 `tokens`：
+接口使用现有 JWT 认证、用户模式守卫和面板限流。管理员可以看到完整账号标识，普通用户看到脱敏标识；其余响应结构一致。接口不返回 `stats`、`requests` 或 `tokens`，`usage` 仅包含额度百分比和重置时间：
 
 ```json
 {
@@ -98,6 +99,7 @@ GET /api/v1/oauth-account-pool
           "plan_type": "Pro 20x",
           "current_concurrency": 6,
           "concurrency": 15,
+          "expires_at": "2026-09-30T12:00:00Z",
           "usage": {
             "five_hour": {
               "utilization": 24.5,
@@ -107,30 +109,17 @@ GET /api/v1/oauth-account-pool
               "utilization": 51,
               "resets_at": "2026-08-03T10:00:00Z"
             }
-          },
-          "stats": {
-            "five_hour": { "requests": 5, "tokens": 500 },
-            "seven_day": { "requests": 70, "tokens": 7000 },
-            "total": { "requests": 120, "tokens": 12000 }
           }
         }
       ],
-      "summary": {
-        "account_count": 1,
-        "requests": 120,
-        "tokens": 12000
-      }
+      "summary": { "account_count": 1 }
     }
   ],
-  "summary": {
-    "account_count": 1,
-    "requests": 120,
-    "tokens": 12000
-  }
+  "summary": { "account_count": 1 }
 }
 ```
 
-管理员单个额度窗口没有缓存数据时返回 `null`。没有符合条件的账号时返回空 `groups` 和零值 `summary`，不返回包含空账号数组的分组。
+单个额度窗口没有缓存数据时返回 `null`。账号未设置过期时间时 `expires_at` 返回 `null`。没有符合条件的账号时返回空 `groups` 和零值 `summary`，不返回包含空账号数组的分组。
 
 ## 真实账号与套餐来源
 
@@ -153,7 +142,7 @@ GET /api/v1/oauth-account-pool
 
 匹配时忽略空格、下划线、连字符和大小写。未知非空套餐原样展示，避免把新的上游套餐误判为现有套餐。该映射只影响显示，不改变调度、计费或额度规则。
 
-## 额度、统计与连接数据
+## 额度、过期时间与连接数据
 
 ### 额度快照
 
@@ -165,18 +154,11 @@ GET /api/v1/oauth-account-pool
 
 号池服务不调用可能访问 OAuth 上游的 `AccountUsageService.GetUsage`。
 
-### 请求与 Token 统计
+### 账号过期时间
 
-统计只读取本地 `usage_logs`，Token 口径与管理端账号窗口统计一致：
+账号过期时间优先读取与套餐对应的 `accounts.credentials.subscription_expires_at`；没有订阅日期时回退 `accounts.expires_at`。影子账号复用母账号按同一规则解析的时间。OAuth Access Token 的 `expires_at` 不参与展示，避免把短期 Token 刷新时间误当成账号或套餐到期时间。两个来源均为空时显示“永久有效”。号池查询只读取已存储字段，不访问 OAuth 上游，也不更新账号状态。
 
-```sql
-COUNT(*)
-SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens)
-```
-
-5 小时和 7 天起点优先按对应额度的 `resets_at - 窗口时长` 计算；额度快照缺失或已过期时，分别回退为当前时间减 5 小时和 7 天。累计统计不限制开始时间。
-
-仓储通过一次批量 SQL 接收每个账号各自的 5h/7d 起点，并同时返回窗口和累计统计，避免逐账号查询。`usage_logs(account_id, created_at)` 和 `usage_logs(account_id)` 索引支持窗口及累计聚合。结果按账号缓存 1 分钟；额度快照缺失时允许滑动窗口起点在该 TTL 内小幅变化，以保证缓存有效，窗口起点推进超过 TTL 时自动失效。
+号池服务不读取 `usage_logs`，也不计算或返回 5 小时、7 天及累计请求/Token 统计。
 
 ### 当前连接与并发总数
 
@@ -213,7 +195,7 @@ SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens)
 
 - `groups.oauth_pool_visible`：分组公开开关，`BOOLEAN NOT NULL DEFAULT FALSE`。
 - `account_groups`：分组与账号关联，决定账号是否属于号池。
-- `accounts`：账号类型、状态、真实标识来源、套餐、并发总数和缓存额度来源。
+- `accounts`：账号类型、状态、真实标识来源、套餐、并发总数、账号过期时间和缓存额度来源。
 - `usage_logs.group_id`：请求实际命中的分组。
 - `usage_logs.account_id`：请求实际命中的账号。
 - Redis 账号并发槽位：当前活跃连接数来源。

@@ -1,6 +1,9 @@
 package service
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // ResolveOAuthAccountDisplayIdentifier 返回允许向有权用户展示的真实账号标识。
 // 只读取邮箱类字段，不回退管理员自定义名称，也不会返回任何凭据原文。
@@ -30,6 +33,21 @@ func ResolveOAuthAccountPlanType(account *Account) string {
 		return value
 	}
 	return strings.TrimSpace(account.ParentPlanType)
+}
+
+// ResolveOAuthAccountDisplayExpiresAt 返回与展示套餐对应的到期时间。
+// 订阅到期时间优先；缺失时回退账号调度到期时间。影子账号复用母账号解析结果。
+func ResolveOAuthAccountDisplayExpiresAt(account *Account) *time.Time {
+	if account == nil {
+		return nil
+	}
+	if expiresAt := account.GetCredentialAsTime("subscription_expires_at"); expiresAt != nil {
+		return expiresAt
+	}
+	if account.ParentDisplayExpiresAt != nil {
+		return account.ParentDisplayExpiresAt
+	}
+	return account.ExpiresAt
 }
 
 // OAuthAccountPlanLabel 将已知套餐归一化为用户可读标签。
