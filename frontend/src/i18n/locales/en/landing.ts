@@ -17,30 +17,6 @@ export default {
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
-    experience: {
-      homeLabel: 'Homepage',
-      primaryNav: 'Primary navigation',
-      mobileNav: 'Mobile navigation',
-      menuOpen: 'Open navigation menu',
-      menuClose: 'Close navigation menu',
-      guide: 'Setup guide',
-      modelMarket: 'Model market',
-      developerDocs: 'Developer docs',
-      eyebrow: 'Unified AI API layer',
-      headlineLead: 'One key.',
-      headlineTail: 'Infinite AI.',
-      startRouting: 'Start routing',
-      viewGuide: 'View setup guide',
-      routeStatus: 'Request routing is operational',
-      visualAlt: 'Multiple AI models converging on one API gateway through orbital routes',
-      routed: 'Routed',
-      featureHeading: 'Unified access, reliable routing, and transparent billing',
-      modelEyebrow: 'Model network',
-      modelTitle: 'Choose the right model for every task.',
-      modelDescription:
-        'Claude, GPT, Gemini, and more share one key, one balance, and one usage view.',
-      browseModels: 'Browse all models'
-    },
     tags: {
       subscriptionToApi: 'Subscription to API',
       stickySession: 'Session Persistence',

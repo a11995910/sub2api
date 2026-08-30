@@ -75,26 +75,11 @@ const OAuthButtonStub = defineComponent({
   }
 })
 
-const AuthLayoutStub = defineComponent({
-  props: {
-    variant: {
-      type: String,
-      default: 'default'
-    }
-  },
-  setup(props, { slots }) {
-    return () => h('div', { 'data-auth-variant': props.variant }, [
-      slots.default?.(),
-      slots.footer?.()
-    ])
-  }
-})
-
 function mountLogin() {
   return mount(LoginView, {
     global: {
       stubs: {
-        AuthLayout: AuthLayoutStub,
+        AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
         RouterLink: true,
         TurnstileWidget: CaptchaChallengeStub,
         Icon: true,
@@ -142,31 +127,6 @@ describe('Tencent captcha action gate', () => {
       configurable: true,
       value: locationState
     })
-  })
-
-  it('uses the premium auth layout and preserves the login field contract', async () => {
-    const wrapper = mountLogin()
-    await flushPromises()
-
-    expect(wrapper.get('[data-auth-variant="premium"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="premium-login"]').exists()).toBe(true)
-    expect(wrapper.get('#email').attributes()).toMatchObject({
-      name: 'email',
-      type: 'email',
-      autocomplete: 'email',
-      required: ''
-    })
-    expect(wrapper.get('#password').attributes()).toMatchObject({
-      name: 'password',
-      type: 'password',
-      autocomplete: 'current-password',
-      required: ''
-    })
-
-    await wrapper.get('[data-testid="password-visibility"]').trigger('click')
-    expect(wrapper.get('#password').attributes('type')).toBe('text')
-    expect(wrapper.get('[data-testid="password-login"]').attributes('type')).toBe('submit')
-    expect(wrapper.get('[data-testid="passkey-login"]').attributes('type')).toBe('button')
   })
 
   it('clicking login opens Tencent captcha before calling login', async () => {
@@ -245,7 +205,7 @@ describe('Tencent captcha action gate', () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    await wrapper.get('[data-testid="passkey-login"]').trigger('click')
+    await wrapper.get('button.btn-secondary.w-full').trigger('click')
     await flushPromises()
 
     expect(verifyActionMock).toHaveBeenCalledOnce()
@@ -261,7 +221,7 @@ describe('Tencent captcha action gate', () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    await wrapper.get('[data-testid="passkey-login"]').trigger('click')
+    await wrapper.get('button.btn-secondary.w-full').trigger('click')
     await flushPromises()
 
     expect(loginWithPasskeyMock).not.toHaveBeenCalled()

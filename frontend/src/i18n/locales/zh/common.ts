@@ -216,7 +216,7 @@ export default {
   // Auth
   auth: {
     welcomeBack: '欢迎回来',
-    signInToAccount: '登录您的账户以继续。',
+    signInToAccount: '登录您的账户以继续',
     signIn: '登录',
     signingIn: '登录中...',
     passkeySignIn: '使用 Passkey 登录',
@@ -236,8 +236,6 @@ export default {
     emailPlaceholder: '请输入邮箱',
     passwordLabel: '密码',
     passwordPlaceholder: '请输入密码',
-    showPassword: '显示密码',
-    hidePassword: '隐藏密码',
     createPasswordPlaceholder: '创建一个安全的密码',
     passwordHint: '至少 6 个字符',
     emailRequired: '请输入邮箱',
