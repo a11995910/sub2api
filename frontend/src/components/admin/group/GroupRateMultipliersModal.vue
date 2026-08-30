@@ -2,17 +2,43 @@
   <BaseDialog :show="show" :title="t('admin.groups.rateMultipliersTitle')" width="wide" @close="handleClose">
     <div v-if="group" class="space-y-4">
       <!-- 分组信息 -->
-      <div class="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm dark:bg-dark-700">
-        <span class="inline-flex items-center gap-1.5" :class="platformColorClass">
-          <PlatformIcon :platform="group.platform" size="sm" />
-          {{ t('admin.groups.platforms.' + group.platform) }}
-        </span>
-        <span class="text-gray-400">|</span>
-        <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
-        <span class="text-gray-400">|</span>
-        <span class="text-gray-600 dark:text-gray-400">
-          {{ t('admin.groups.columns.rateMultiplier') }}: {{ group.rate_multiplier }}x
-        </span>
+      <div class="rounded-lg bg-gray-50 px-4 py-2.5 dark:bg-dark-700">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          <span class="inline-flex items-center gap-1.5" :class="platformColorClass">
+            <PlatformIcon :platform="group.platform" size="sm" />
+            {{ t('admin.groups.platforms.' + group.platform) }}
+          </span>
+          <span class="text-gray-400">|</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ group.name }}</span>
+          <span class="text-gray-400">|</span>
+          <span class="text-gray-600 dark:text-gray-400">
+            {{ t('admin.groups.groupBaseRate') }}:
+            <span data-testid="group-base-rate" class="tabular-nums font-medium text-gray-900 dark:text-white">
+              {{ formatMultiplier(group.rate_multiplier) }}x
+            </span>
+          </span>
+          <template v-if="isPromoActive">
+            <span
+              data-testid="promo-rate-badge"
+              class="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+            >
+              {{ promoDiscountLabel }}
+            </span>
+            <span class="text-gray-600 dark:text-gray-400">
+              {{ t('admin.groups.promoGroupEffectiveRate') }}:
+              <span data-testid="promo-group-rate" class="tabular-nums font-semibold text-rose-700 dark:text-rose-300">
+                {{ promoGroupRate }}x
+              </span>
+            </span>
+          </template>
+        </div>
+        <p
+          v-if="isPromoActive"
+          data-testid="promo-summary"
+          class="mt-2 border-t border-gray-950/10 pt-2 text-sm text-gray-600 dark:border-white/10 dark:text-gray-300"
+        >
+          {{ t('admin.groups.promoRateAppliedHint', { discount: promoDiscountLabel, window: promoWindow }) }}
+        </p>
       </div>
 
       <!-- 操作区 -->
@@ -130,13 +156,20 @@
               <table class="w-full min-w-max text-sm">
                 <thead class="sticky top-0 z-[1]">
                   <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-700">
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userEmail') }}</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">ID</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userName') }}</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.rateMultiplier') }}</th>
-                    <th v-if="showFinalRate" class="px-3 py-2 text-left text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('admin.groups.finalRate') }}</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userEmail') }}</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">ID</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userName') }}</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userNotes') }}</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.columns.userStatus') }}</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.groups.userBaseRate') }}</th>
+                    <th
+                      v-if="isPromoActive"
+                      data-testid="promo-effective-rate-heading"
+                      class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-rose-700 dark:text-rose-300"
+                    >
+                      {{ t('admin.groups.promoEffectiveRate') }}
+                    </th>
+                    <th v-if="showBatchPreview" class="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('admin.groups.batchAdjustedRate') }}</th>
                     <th class="w-10 px-2 py-2"></th>
                   </tr>
                 </thead>
@@ -170,12 +203,20 @@
                         autocomplete="off"
                         :value="entry.rate_multiplier ?? ''"
                         :placeholder="String(props.group?.rate_multiplier ?? 1)"
+                        :data-testid="`rate-input-${entry.user_id}`"
                         class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
                         @change="updateLocalRate(entry.user_id, ($event.target as HTMLInputElement).value)"
                       />
                     </td>
-                    <td v-if="showFinalRate" class="whitespace-nowrap px-3 py-2 font-medium text-primary-600 dark:text-primary-400">
-                      {{ computeFinalRate(entry.rate_multiplier) }}
+                    <td
+                      v-if="isPromoActive"
+                      :data-testid="`promo-effective-rate-${entry.user_id}`"
+                      class="whitespace-nowrap px-3 py-2 tabular-nums font-semibold text-rose-700 dark:text-rose-300"
+                    >
+                      {{ computePromoEffectiveRate(entry.rate_multiplier) }}
+                    </td>
+                    <td v-if="showBatchPreview" class="whitespace-nowrap px-3 py-2 tabular-nums font-medium text-primary-600 dark:text-primary-400">
+                      {{ computeBatchPreviewRate(entry.rate_multiplier) }}
                     </td>
                     <td class="px-2 py-2">
                       <button
@@ -223,6 +264,7 @@
           </button>
           <button
             v-if="isDirty"
+            data-testid="save-rate-multipliers"
             type="button"
             class="btn btn-primary btn-sm px-4 py-1.5"
             :disabled="saving"
@@ -245,6 +287,13 @@ import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { GroupRateMultiplierEntry } from '@/api/admin/groups'
 import type { AdminGroup, AdminUser } from '@/types'
+import {
+  activePromoDiscountMultiplier,
+  applyActivePromoDiscount,
+  formatPromoDiscountWindow,
+  promoDiscountZhe
+} from '@/utils/peak-rate'
+import { formatMultiplier } from '@/utils/formatters'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -289,16 +338,34 @@ const platformColorClass = computed(() => {
   }
 })
 
-// 是否显示"最终倍率"预览列
-const showFinalRate = computed(() => {
+const promoMultiplier = computed(() => activePromoDiscountMultiplier(props.group))
+const isPromoActive = computed(() => promoMultiplier.value < 1)
+const promoDiscountLabel = computed(() => {
+  const zhe = promoDiscountZhe(promoMultiplier.value) ?? 100
+  return t('common.promoDiscountLabel', { zhe, off: 100 - zhe })
+})
+const promoWindow = computed(() => formatPromoDiscountWindow(props.group))
+const promoGroupRate = computed(() => {
+  const base = props.group?.rate_multiplier ?? 1
+  return formatMultiplier(applyActivePromoDiscount(base, props.group))
+})
+
+// 是否显示批量调整预览列
+const showBatchPreview = computed(() => {
   return batchFactor.value != null && batchFactor.value > 0 && batchFactor.value !== 1
 })
 
-// 计算最终倍率预览
-const computeFinalRate = (rate: number | null | undefined) => {
+// 计算批量调整后的基础倍率预览
+const computeBatchPreviewRate = (rate: number | null | undefined) => {
   const base = rate ?? props.group?.rate_multiplier ?? 1
   if (!batchFactor.value) return base
   return parseFloat((base * batchFactor.value).toFixed(6))
+}
+
+// 活动只影响实际结算；专属倍率配置仍保存折前基础值。
+const computePromoEffectiveRate = (rate: number | null | undefined) => {
+  if (rate == null) return '-'
+  return `${formatMultiplier(applyActivePromoDiscount(rate, props.group))}x`
 }
 
 // 检测是否有未保存的修改
