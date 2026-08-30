@@ -138,6 +138,13 @@ func RegisterUserRoutes(
 			checkin.POST("", h.Checkin.Checkin)
 		}
 
+		// 内置抽奖功能
+		lottery := authenticated.Group("/lottery")
+		{
+			lottery.GET("", h.Lottery.GetOverview)
+			lottery.POST("/draw", h.Lottery.Draw)
+		}
+
 		videoTestTasks := authenticated.Group("/model-test/video-tasks")
 		{
 			videoTestTasks.GET("", h.VideoTestTask.List)

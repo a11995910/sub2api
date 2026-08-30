@@ -61,6 +61,13 @@ export default {
           enabled: '显示插件管理菜单',
           enabledHint: '关闭后仅隐藏侧边栏菜单；已加载或正在运行的插件不会因此停止。',
         },
+        lottery: {
+          title: '抽奖功能',
+          description: '按用户每日 Token 用量发放可累计的抽奖机会，奖品以余额到账。默认关闭。',
+          configureLink: '配置用量门槛、发放模式和奖项',
+          enabled: '启用抽奖功能',
+          enabledHint: '关闭后用户入口与抽奖接口停用，已有抽奖机会和流水不会清零。',
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',

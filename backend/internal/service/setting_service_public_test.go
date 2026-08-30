@@ -120,6 +120,18 @@ func TestSettingService_GetPublicSettings_ExposesCheckinSettings(t *testing.T) {
 	require.InDelta(t, 16, settings.CheckinExtraReward16, 0.0001)
 }
 
+func TestSettingService_GetPublicSettings_ExposesLotteryFeatureSwitch(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{SettingKeyLotteryEnabled: "true"},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+
+	require.NoError(t, err)
+	require.True(t, settings.LotteryEnabled)
+}
+
 func TestSettingService_GetPublicSettings_FallsBackToLegacyCheckinRewardMax(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

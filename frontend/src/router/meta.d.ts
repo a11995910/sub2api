@@ -56,6 +56,12 @@ declare module 'vue-router' {
     requiresRiskControl?: boolean
 
     /**
+     * 是否要求抽奖功能开关已启用
+     * @default false
+     */
+    requiresLottery?: boolean
+
+    /**
      * i18n key for the page title
      */
     titleKey?: string

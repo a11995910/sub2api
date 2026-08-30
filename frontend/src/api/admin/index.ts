@@ -37,6 +37,7 @@ import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
 import videoTaskReviewsAPI from './videoTaskReviews'
 import pluginsAPI from './plugins'
+import lotteryAdminAPI from './lottery'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   audit: auditAPI,
   videoTaskReviews: videoTaskReviewsAPI,
-  plugins: pluginsAPI
+  plugins: pluginsAPI,
+  lottery: lotteryAdminAPI
 }
 
 export {
@@ -112,7 +114,8 @@ export {
   adminComplianceAPI,
   auditAPI,
   videoTaskReviewsAPI,
-  pluginsAPI
+  pluginsAPI,
+  lotteryAdminAPI
 }
 
 export default adminAPI
@@ -131,3 +134,4 @@ export type {
   PluginUISession,
   PluginTestResult
 } from './plugins'
+export type { LotteryConfigInput, LotteryPrizeInput, LotteryDrawPage } from './lottery'

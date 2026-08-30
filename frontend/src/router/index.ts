@@ -286,6 +286,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/lottery',
+    name: 'Lottery',
+    component: () => import('@/views/user/LotteryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresLottery: true,
+      title: 'Prize Draw',
+      titleKey: 'lottery.title',
+      descriptionKey: 'lottery.description'
+    }
+  },
+  {
     path: '/affiliate',
     name: 'Affiliate',
     component: () => import('@/views/user/AffiliateView.vue'),
@@ -608,6 +621,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Plugin Management',
       titleKey: 'admin.plugins.title',
       descriptionKey: 'admin.plugins.description'
+    }
+  },
+  {
+    path: '/admin/lottery',
+    name: 'AdminLottery',
+    component: () => import('@/views/admin/LotteryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Prize Draw Management',
+      titleKey: 'admin.lottery.title',
+      descriptionKey: 'admin.lottery.description'
     }
   },
   {
@@ -993,7 +1018,10 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl) && !appStore.publicSettingsLoaded) {
+  if (
+    (to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresLottery) &&
+    !appStore.publicSettingsLoaded
+  ) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -1022,6 +1050,15 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   if (to.path === '/checkin' && appStore.cachedPublicSettings?.checkin_enabled === false) {
+    next('/dashboard')
+    return
+  }
+
+  if (
+    to.meta.requiresLottery &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.lottery_enabled !== true
+  ) {
     next('/dashboard')
     return
   }

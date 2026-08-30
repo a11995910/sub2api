@@ -177,6 +177,7 @@ type SystemSettings struct {
 	AdminRechargeRebateEnabled         bool                         `json:"affiliate_admin_recharge_enabled"`
 	AffiliateSubscriptionRewardGroupID int64                        `json:"affiliate_subscription_reward_group_id"`
 	AffiliateSubscriptionRewardDays    int                          `json:"affiliate_subscription_reward_days"`
+	LotteryEnabled                     bool                         `json:"lottery_enabled"`
 	CheckinEnabled                     bool                         `json:"checkin_enabled"`
 	CheckinContent                     string                       `json:"checkin_content"`
 	CheckinDailyReward                 float64                      `json:"checkin_daily_reward"`
@@ -449,6 +450,7 @@ type PublicSettings struct {
 	ModelPlazaRequireAuth   bool    `json:"model_plaza_require_auth"`
 	ModelMarketUSDToCNYRate float64 `json:"model_market_usd_to_cny_rate"`
 	PluginManagementEnabled bool    `json:"plugin_management_enabled"`
+	LotteryEnabled          bool    `json:"lottery_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 

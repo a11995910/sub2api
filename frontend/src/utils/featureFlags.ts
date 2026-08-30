@@ -114,6 +114,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Plugin Management',
   }),
+  lottery: defineFlag({
+    key: 'lottery_enabled',
+    mode: 'opt-in',
+    label: 'Prize Draw',
+  }),
   payment: defineFlag({
     key: 'payment_enabled',
     mode: 'opt-out',

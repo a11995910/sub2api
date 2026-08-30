@@ -812,6 +812,17 @@ func TestSettingService_UpdateAndParseCheckinSettings(t *testing.T) {
 	require.InDelta(t, 5, got.CheckinExtraReward16, 0.0001)
 }
 
+func TestSettingService_UpdateAndParseLotteryFeatureSwitch(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{LotteryEnabled: true})
+
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyLotteryEnabled])
+	require.True(t, svc.parseSettings(repo.updates).LotteryEnabled)
+}
+
 func TestSettingService_UpdateSettings_RejectsEnabledCheckinWithoutReward(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

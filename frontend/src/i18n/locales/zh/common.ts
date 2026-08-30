@@ -181,6 +181,8 @@ export default {
     subscriptions: '订阅管理',
     accounts: '账号管理',
     plugins: '插件管理',
+    lottery: '抽奖中心',
+    lotteryManagement: '抽奖管理',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     ops: '运维监控',

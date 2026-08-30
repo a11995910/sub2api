@@ -240,6 +240,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyModelMarketUSDToCNYRate,
 		SettingKeyPluginManagementEnabled,
+		SettingKeyLotteryEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyCheckinEnabled,
 		SettingKeyCheckinContent,
@@ -380,6 +381,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
 		ModelMarketUSDToCNYRate: parseModelMarketUSDToCNYRate(settings[SettingKeyModelMarketUSDToCNYRate]),
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
+		LotteryEnabled:          settings[SettingKeyLotteryEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -648,6 +650,7 @@ type PublicSettingsInjectionPayload struct {
 	ModelPlazaRequireAuth      bool    `json:"model_plaza_require_auth"`
 	ModelMarketUSDToCNYRate    float64 `json:"model_market_usd_to_cny_rate"`
 	PluginManagementEnabled    bool    `json:"plugin_management_enabled"`
+	LotteryEnabled             bool    `json:"lottery_enabled"`
 	AffiliateEnabled           bool    `json:"affiliate_enabled"`
 	CheckinEnabled             bool    `json:"checkin_enabled"`
 	CheckinContent             string  `json:"checkin_content"`
@@ -738,6 +741,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		ModelMarketUSDToCNYRate:              settings.ModelMarketUSDToCNYRate,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
+		LotteryEnabled:                       settings.LotteryEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		CheckinEnabled:                       settings.CheckinEnabled,
 		CheckinContent:                       settings.CheckinContent,

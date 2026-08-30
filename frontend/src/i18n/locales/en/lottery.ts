@@ -1,0 +1,33 @@
+export default {
+  lottery: {
+    title: 'Prize draw',
+    description: 'Reach the daily usage threshold to earn draw chances. Unused chances never expire.',
+    disabled: 'The prize draw is currently disabled.',
+    availableChances: 'Available chances',
+    totalEarned: 'Total earned',
+    totalDrawn: 'Total draws',
+    todayAwarded: 'Earned today',
+    todayUsage: 'Usage today',
+    dailyOnceProgress: 'Reach {target}M to earn today\'s draw chance.',
+    perThresholdProgress: 'The next chance is awarded at {target}M total usage today.',
+    dailyOnceMode: 'Once per day',
+    perThresholdMode: 'Every threshold',
+    drawNow: 'Draw now',
+    drawing: 'Drawing',
+    noChance: 'No draw chances available',
+    loadFailed: 'Failed to load the prize draw.',
+    drawFailed: 'The draw failed. Please try again later.',
+    resultTitle: 'Draw result',
+    resultWin: 'You won {reward}',
+    resultThanks: 'Better luck next time',
+    prizeList: 'Prizes and odds',
+    probability: '{value}%',
+    recentDraws: 'Recent draws',
+    noDraws: 'No draws yet.',
+    drawTime: 'Draw time',
+    prize: 'Result',
+    reward: 'Reward',
+    balanceAfter: 'Balance after draw',
+    chanceAfter: 'Chances left'
+  }
+}

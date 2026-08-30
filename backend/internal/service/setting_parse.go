@@ -213,6 +213,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyModelPlazaDescription:   "",
 		SettingKeyModelMarketUSDToCNYRate: strconv.FormatFloat(DefaultModelMarketUSDToCNYRate, 'f', -1, 64),
 		SettingKeyPluginManagementEnabled: "false",
+		SettingKeyLotteryEnabled:          "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
@@ -862,6 +863,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
 	result.ModelMarketUSDToCNYRate = parseModelMarketUSDToCNYRate(settings[SettingKeyModelMarketUSDToCNYRate])
 	result.PluginManagementEnabled = settings[SettingKeyPluginManagementEnabled] == "true"
+	result.LotteryEnabled = settings[SettingKeyLotteryEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

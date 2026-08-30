@@ -31,6 +31,10 @@ Thumbs.db
 dist/
 build/
 
+# 插件 dist 是插件交付的一部分，不能被通用构建产物规则排除。
+!plugins/**/dist/
+!plugins/**/dist/**
+
 # Node modules (will be installed in container)
 frontend/node_modules/
 node_modules/
@@ -49,8 +53,12 @@ coverage/
 .env.*
 !.env.example
 
-# 本地闭源插件目录可能包含发布签名私钥，绝不能进入 Docker 构建上下文。
-/plugins/
+# 插件源码属于构建输入；运行配置和签名私钥绝不能进入 Docker 构建上下文。
+/plugins/**/.env*
+/plugins/**/*.env
+/plugins/**/*.private
+/plugins/**/*.key
+/plugins/**/*.pem
 
 # Local config
 config.yaml

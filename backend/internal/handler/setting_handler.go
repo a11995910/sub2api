@@ -118,6 +118,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
 		ModelMarketUSDToCNYRate: settings.ModelMarketUSDToCNYRate,
 		PluginManagementEnabled: settings.PluginManagementEnabled,
+		LotteryEnabled:          settings.LotteryEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 

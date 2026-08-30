@@ -61,6 +61,13 @@ export default {
           enabled: 'Show Plugin Management',
           enabledHint: 'Turning this off only hides the sidebar entry; loaded or running plugins are not stopped.',
         },
+        lottery: {
+          title: 'Prize Draw',
+          description: 'Grant persistent draw chances from each user\'s daily token usage and credit balance prizes. Disabled by default.',
+          configureLink: 'Configure usage threshold, grant mode, and prizes',
+          enabled: 'Enable Prize Draw',
+          enabledHint: 'When off, the user entry and draw APIs are disabled. Existing chances and draw history are retained.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',

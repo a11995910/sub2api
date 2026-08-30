@@ -217,6 +217,7 @@ const (
 	SettingKeyAffiliateAdminRechargeEnabled       = "affiliate_admin_recharge_enabled"       // 管理员充值是否产生返利
 	SettingKeyAffiliateSubscriptionRewardGroup    = "affiliate_subscription_reward_group_id" // 邀请充值产生返利后奖励给邀请人的分组 ID（0=关闭）
 	SettingKeyAffiliateSubscriptionRewardDays     = "affiliate_subscription_reward_days"     // 邀请充值产生返利后的奖励天数（0=关闭）
+	SettingKeyLotteryEnabled                      = "lottery_enabled"                        // 抽奖功能总开关
 	SettingKeyCheckinEnabled                      = "checkin_enabled"                        // 每日签到功能总开关
 	SettingKeyCheckinContent                      = "checkin_content"                        // 签到展示文案
 	SettingKeyCheckinDailyReward                  = "checkin_daily_reward"                   // 每日固定签到奖励

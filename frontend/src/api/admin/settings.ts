@@ -747,6 +747,7 @@ export interface SystemSettings {
   model_plaza_description: string;
   model_market_usd_to_cny_rate: number;
   plugin_management_enabled: boolean;
+  lottery_enabled: boolean;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
@@ -784,6 +785,7 @@ export interface UpdateSettingsRequest {
   affiliate_subscription_reward_group_id?: number;
   affiliate_subscription_reward_days?: number;
   checkin_enabled?: boolean;
+  lottery_enabled?: boolean;
   checkin_content?: string;
   checkin_daily_reward?: number;
   checkin_extra_reward_4?: number;

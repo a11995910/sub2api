@@ -107,6 +107,9 @@ func RegisterAdminRoutes(
 		// 本地进程插件管理
 		registerPluginRoutes(admin, h, stepUpAuth)
 
+		// 内置抽奖功能
+		registerLotteryRoutes(admin, h, stepUpAuth)
+
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
 
@@ -785,6 +788,15 @@ func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		plugins.PUT("/:id/config", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.SaveConfig)
 		plugins.POST("/:id/test", gin.HandlerFunc(stepUpAuth), h.Admin.Plugin.Test)
 		plugins.POST("/:id/ui-session", h.Admin.Plugin.CreateUISession)
+	}
+}
+
+func registerLotteryRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	lottery := admin.Group("/lottery")
+	{
+		lottery.GET("/config", h.Admin.Lottery.GetConfig)
+		lottery.PUT("/config", gin.HandlerFunc(stepUpAuth), h.Admin.Lottery.UpdateConfig)
+		lottery.GET("/draws", h.Admin.Lottery.ListDraws)
 	}
 }
 

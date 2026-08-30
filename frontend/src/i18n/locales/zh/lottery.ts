@@ -1,0 +1,33 @@
+export default {
+  lottery: {
+    title: '抽奖中心',
+    description: '达到当日用量门槛后获得抽奖机会，未使用的机会会一直保留。',
+    disabled: '抽奖活动暂未开启。',
+    availableChances: '可用机会',
+    totalEarned: '累计获得',
+    totalDrawn: '累计抽取',
+    todayAwarded: '今日获得',
+    todayUsage: '今日用量',
+    dailyOnceProgress: '达到 {target}M 后获得今日抽奖机会。',
+    perThresholdProgress: '下一次机会将在今日累计 {target}M 时获得。',
+    dailyOnceMode: '每日最多一次',
+    perThresholdMode: '每达门槛一次',
+    drawNow: '立即抽奖',
+    drawing: '抽奖中',
+    noChance: '暂无抽奖机会',
+    loadFailed: '抽奖信息加载失败。',
+    drawFailed: '抽奖失败，请稍后重试。',
+    resultTitle: '本次结果',
+    resultWin: '恭喜获得 {reward}',
+    resultThanks: '谢谢惠顾',
+    prizeList: '奖项与概率',
+    probability: '{value}%',
+    recentDraws: '最近抽奖记录',
+    noDraws: '还没有抽奖记录。',
+    drawTime: '抽奖时间',
+    prize: '结果',
+    reward: '奖励',
+    balanceAfter: '抽奖后余额',
+    chanceAfter: '剩余机会'
+  }
+}

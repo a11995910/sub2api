@@ -181,6 +181,8 @@ export default {
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     plugins: 'Plugins',
+    lottery: 'Prize draw',
+    lotteryManagement: 'Prize draw management',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
