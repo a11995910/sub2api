@@ -915,7 +915,10 @@ export default {
 
   oauthAccountPool: {
     title: '号池状态',
-    description: '查看可用分组中的 OAuth 账号、套餐与用量',
+    description: '查看可用分组中的 OAuth 账号、套餐与运行状态',
+    overviewLabel: '号池概览',
+    overviewDescription: '展示套餐与实时运行状态，方便快速了解当前服务可用性。',
+    groupCount: '{count} 个分组',
     accountCount: '{count} 个账号',
     visibleAccounts: '可见账号',
     totalRequests: '总请求次数',
@@ -926,6 +929,13 @@ export default {
     period7d: '7 天',
     cumulative: '累计',
     quotaStatus: '额度状态',
+    accountStatus: '运行状态',
+    connectionsShort: '实时连接',
+    status: {
+      available: '可用',
+      active: '使用中',
+      busy: '繁忙',
+    },
     connections: '当前连接数 / 并发总数',
     unknownIdentifier: '账号信息不可用',
     unknownPlan: '未知套餐',
@@ -2601,7 +2611,7 @@ export default {
       accountFilters: {
         title: '账号过滤控制',
         poolVisible: '号池对用户可见',
-        poolVisibleHint: '开启后，有权使用该分组的用户可查看 OAuth 账号名称和缓存额度。',
+        poolVisibleHint: '开启后，有权使用该分组的用户可查看脱敏 OAuth 账号标识、套餐与运行状态。',
         oauthOnly: '仅允许 OAuth 账号',
         oauthOnlyEnabled: '已启用 — 排除 API Key 类型账号',
         privacySetOnly: '仅允许隐私保护已设置的账号',

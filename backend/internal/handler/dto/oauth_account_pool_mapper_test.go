@@ -15,6 +15,8 @@ func TestOAuthAccountPoolFromServiceMasksIdentifiersForRegularUsers(t *testing.T
 			Summary: service.OAuthAccountPoolSummary{AccountCount: 1, Requests: 120, Tokens: 12000},
 			Accounts: []service.OAuthAccountPoolAccount{{
 				Identifier: "1072688154@qq.com",
+				FiveHour:   &service.UsageProgress{Utilization: 24},
+				SevenDay:   &service.UsageProgress{Utilization: 51},
 				Stats: service.OAuthAccountPoolAccountStats{
 					FiveHour: service.OAuthAccountPoolRequestTokenStats{Requests: 5, Tokens: 500},
 					SevenDay: service.OAuthAccountPoolRequestTokenStats{Requests: 70, Tokens: 7000},
@@ -34,15 +36,18 @@ func TestOAuthAccountPoolFromServiceMasksIdentifiersForRegularUsers(t *testing.T
 	require.Nil(t, regularUser.Groups[0].Summary.Requests)
 	require.Nil(t, regularUser.Groups[0].Summary.Tokens)
 	require.Nil(t, regularUser.Groups[0].Accounts[0].Stats)
+	require.Nil(t, regularUser.Groups[0].Accounts[0].Usage)
 	require.Equal(t, int64(120), *admin.Summary.Requests)
 	require.Equal(t, int64(12000), *admin.Summary.Tokens)
 	require.Equal(t, int64(120), admin.Groups[0].Accounts[0].Stats.Total.Requests)
+	require.NotNil(t, admin.Groups[0].Accounts[0].Usage)
 
 	regularPayload, err := json.Marshal(regularUser)
 	require.NoError(t, err)
 	require.NotContains(t, string(regularPayload), `"requests"`)
 	require.NotContains(t, string(regularPayload), `"tokens"`)
 	require.NotContains(t, string(regularPayload), `"stats"`)
+	require.NotContains(t, string(regularPayload), `"usage"`)
 }
 
 func TestMaskOAuthAccountIdentifierHandlesShortAndMalformedValues(t *testing.T) {

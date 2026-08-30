@@ -281,14 +281,16 @@ func OAuthAccountPoolFromService(pool *service.OAuthAccountPool, revealSensitive
 				Concurrency:        item.Concurrency,
 			}
 			if revealSensitiveDetails {
+				account.Usage = &OAuthAccountPoolUsage{
+					FiveHour: oauthAccountPoolWindowFromService(item.FiveHour),
+					SevenDay: oauthAccountPoolWindowFromService(item.SevenDay),
+				}
 				account.Stats = &OAuthAccountPoolAccountStats{
 					FiveHour: OAuthAccountPoolRequestTokenStats(item.Stats.FiveHour),
 					SevenDay: OAuthAccountPoolRequestTokenStats(item.Stats.SevenDay),
 					Total:    OAuthAccountPoolRequestTokenStats(item.Stats.Total),
 				}
 			}
-			account.Usage.FiveHour = oauthAccountPoolWindowFromService(item.FiveHour)
-			account.Usage.SevenDay = oauthAccountPoolWindowFromService(item.SevenDay)
 			group.Accounts = append(group.Accounts, account)
 		}
 		out.Groups = append(out.Groups, group)

@@ -83,7 +83,7 @@ func (Group) Fields() []ent.Field {
 			Default(false),
 		field.Bool("oauth_pool_visible").
 			Default(false).
-			Comment("是否向有权访问该分组的用户公开 OAuth 账号名称与缓存额度快照"),
+			Comment("是否向有权访问该分组的用户公开脱敏 OAuth 账号标识与运行状态"),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),

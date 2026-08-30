@@ -27,10 +27,10 @@ export interface OAuthAccountPoolAccount {
   plan_type: string
   current_concurrency: number
   concurrency: number
-  usage: {
+  usage?: {
     five_hour: OAuthAccountPoolWindow | null
     seven_day: OAuthAccountPoolWindow | null
-  }
+  } | null
   stats?: OAuthAccountPoolAccountStats
 }
 

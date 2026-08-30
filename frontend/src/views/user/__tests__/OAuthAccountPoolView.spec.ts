@@ -18,6 +18,9 @@ vi.mock('@/stores/auth', () => ({
 }))
 
 const messages: Record<string, string> = {
+  'oauthAccountPool.overviewLabel': '号池概览',
+  'oauthAccountPool.overviewDescription': '展示套餐与实时运行状态，方便快速了解当前服务可用性。',
+  'oauthAccountPool.groupCount': '{count} 个分组',
   'oauthAccountPool.accountCount': '{count} 个账号',
   'oauthAccountPool.visibleAccounts': '可见账号',
   'oauthAccountPool.totalRequests': '总请求次数',
@@ -28,6 +31,11 @@ const messages: Record<string, string> = {
   'oauthAccountPool.period7d': '7 天',
   'oauthAccountPool.cumulative': '累计',
   'oauthAccountPool.quotaStatus': '额度状态',
+  'oauthAccountPool.accountStatus': '运行状态',
+  'oauthAccountPool.connectionsShort': '实时连接',
+  'oauthAccountPool.status.available': '可用',
+  'oauthAccountPool.status.active': '使用中',
+  'oauthAccountPool.status.busy': '繁忙',
   'oauthAccountPool.connections': '当前连接数 / 并发总数',
   'oauthAccountPool.unknownIdentifier': '账号信息不可用',
   'oauthAccountPool.unknownPlan': '未知套餐',
@@ -103,7 +111,7 @@ describe('OAuthAccountPoolView', () => {
     authStore.isAdmin = false
   })
 
-  it('普通用户只展示账号、套餐、并发与额度状态，不展示请求和 Token 统计', async () => {
+  it('普通用户只展示脱敏账号、套餐、运行状态与并发，不展示任何用量', async () => {
     getPool.mockResolvedValue(buildPoolResponse())
 
     const wrapper = mountView()
@@ -122,12 +130,29 @@ describe('OAuthAccountPoolView', () => {
     expect(wrapper.text()).not.toContain('7 天')
     expect(wrapper.text()).not.toContain('12.0K')
     expect(wrapper.text()).not.toContain('Pro 正价')
+    expect(wrapper.text()).toContain('运行状态')
+    expect(wrapper.text()).toContain('使用中')
+    expect(wrapper.text()).toContain('实时连接')
+    expect(wrapper.text()).not.toContain('用量')
     expect(wrapper.get('[data-testid="account-concurrency"]').text()).toContain('6/15')
-    expect(wrapper.get('[data-testid="oauth-usage"]').text()).toBe('24')
+    expect(wrapper.find('[data-testid="oauth-usage"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('可见账号')
     expect(wrapper.get('[data-testid="pool-summary"]').text()).toContain('1')
     expect(wrapper.text()).not.toContain('account_id')
     expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('仅根据实时连接负载显示运行状态', async () => {
+    const response = buildPoolResponse()
+    response.groups[0].accounts[0].current_concurrency = 15
+    getPool.mockResolvedValue(response)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('繁忙')
+    expect(wrapper.text()).not.toContain('24%')
+    expect(wrapper.find('[data-testid="oauth-usage"]').exists()).toBe(false)
   })
 
   it('管理员继续展示请求和 Token 统计', async () => {

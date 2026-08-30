@@ -1,24 +1,27 @@
 <template>
   <AppLayout>
-    <div class="space-y-8">
-      <div v-if="loading" class="space-y-8" aria-busy="true">
-        <div
-          class="grid divide-x divide-gray-200 border-y border-gray-200 py-4 dark:divide-dark-700 dark:border-dark-700"
-          :class="authStore.isAdmin ? 'grid-cols-3' : 'grid-cols-1'"
-        >
-          <div v-for="item in authStore.isAdmin ? 3 : 1" :key="item" class="space-y-2 px-4 first:pl-0">
-            <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
-            <div class="h-6 w-24 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+    <div class="space-y-5 pb-8">
+      <div v-if="loading" class="space-y-5" aria-busy="true">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-dark-700">
+          <div class="space-y-2">
+            <div class="h-4 w-28 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+            <div class="h-3 w-48 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           </div>
+          <div class="h-7 w-36 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
         </div>
         <section v-for="groupIndex in 2" :key="groupIndex" class="space-y-3">
-          <div class="h-6 w-40 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="flex items-center justify-between border-b border-gray-200 pb-2.5 dark:border-dark-700">
+            <div class="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+            <div class="h-4 w-16 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+          </div>
+          <div
+            class="grid grid-cols-1 gap-3 sm:grid-cols-2"
+            :class="authStore.isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-3 xl:grid-cols-4'"
+          >
             <div
-              v-for="cardIndex in 2"
+              v-for="cardIndex in 4"
               :key="cardIndex"
-              class="animate-pulse rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
-              :class="authStore.isAdmin ? 'h-72' : 'h-48'"
+              class="h-32 animate-pulse rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
             ></div>
           </div>
         </section>
@@ -44,71 +47,84 @@
         :description="t('oauthAccountPool.emptyDescription')"
       />
 
-      <div v-else class="space-y-8">
-        <dl
+      <div v-else class="space-y-5">
+        <div
           data-testid="pool-summary"
-          class="grid divide-x divide-gray-200 border-y border-gray-200 py-4 dark:divide-dark-700 dark:border-dark-700"
-          :class="authStore.isAdmin ? 'grid-cols-3' : 'grid-cols-1'"
+          class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-dark-700"
         >
-          <div class="min-w-0 px-3 first:pl-0 sm:px-5">
-            <dt class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('oauthAccountPool.visibleAccounts') }}
-            </dt>
-            <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
-              {{ formatRequests(summary.account_count) }}
-            </dd>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-900 dark:text-white">
+              {{ t('oauthAccountPool.overviewLabel') }}
+            </p>
+            <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('oauthAccountPool.overviewDescription') }}
+            </p>
           </div>
-          <div v-if="authStore.isAdmin" class="min-w-0 px-3 sm:px-5">
-            <dt class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('oauthAccountPool.totalRequests') }}
-            </dt>
-            <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
-              {{ formatRequests(summary.requests ?? 0) }}
-            </dd>
+          <div class="flex shrink-0 flex-wrap items-center gap-2 text-sm tabular-nums">
+            <span class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+              {{ t('oauthAccountPool.groupCount', { count: groups.length }) }}
+            </span>
+            <span class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+              {{ t('oauthAccountPool.visibleAccounts') }} {{ formatRequests(summary.account_count) }}
+            </span>
+            <span
+              v-if="authStore.isAdmin"
+              class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+            >
+              {{ t('oauthAccountPool.totalRequests') }} {{ formatRequests(summary.requests ?? 0) }}
+            </span>
+            <span
+              v-if="authStore.isAdmin"
+              class="rounded-md bg-gray-100 px-2.5 py-1 text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+            >
+              {{ t('oauthAccountPool.totalTokens') }} {{ formatTokens(summary.tokens ?? 0) }}
+            </span>
           </div>
-          <div v-if="authStore.isAdmin" class="min-w-0 px-3 sm:px-5">
-            <dt class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('oauthAccountPool.totalTokens') }}
-            </dt>
-            <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
-              {{ formatTokens(summary.tokens ?? 0) }}
-            </dd>
-          </div>
-        </dl>
+        </div>
 
         <section
           v-for="(group, groupIndex) in groups"
           :key="`${group.name}-${groupIndex}`"
           class="space-y-3"
         >
-          <div class="flex flex-wrap items-end justify-between gap-2 border-b border-gray-200 pb-3 dark:border-dark-700">
-            <div class="flex min-w-0 items-center gap-3">
+          <div class="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 pb-2.5 dark:border-dark-700">
+            <div class="flex min-w-0 items-baseline gap-2.5">
               <h2 class="min-w-0 break-words text-base font-semibold text-gray-900 dark:text-white">
                 {{ group.name }}
               </h2>
-              <span class="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+              <span class="shrink-0 text-sm text-gray-500 dark:text-gray-400 sm:text-xs">
                 {{ t('oauthAccountPool.accountCount', { count: group.summary.account_count }) }}
               </span>
             </div>
-            <div
-              v-if="authStore.isAdmin"
-              class="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-gray-500 dark:text-gray-400"
+            <span
+              :class="[
+                'inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium sm:text-xs',
+                statusBadgeClass(groupStatus(group)),
+              ]"
             >
-              <span>{{ t('oauthAccountPool.totalRequests') }} {{ formatRequests(group.summary.requests ?? 0) }}</span>
-              <span>{{ t('oauthAccountPool.totalTokens') }} {{ formatTokens(group.summary.tokens ?? 0) }}</span>
-            </div>
+              <span
+                :class="['size-1.5 rounded-full', statusDotClass(groupStatus(group))]"
+                aria-hidden="true"
+              ></span>
+              {{ statusLabel(groupStatus(group)) }}
+            </span>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div
+            class="grid grid-cols-1 gap-3 sm:grid-cols-2"
+            :class="authStore.isAdmin ? 'lg:grid-cols-2' : 'lg:grid-cols-3 xl:grid-cols-4'"
+          >
             <article
               v-for="(account, accountIndex) in group.accounts"
               :key="`${account.identifier}-${accountIndex}`"
-              class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800"
-              :class="{ 'min-h-72': authStore.isAdmin }"
+              class="min-w-0 rounded-lg border border-gray-200/80 bg-white p-3.5 dark:border-dark-700 dark:bg-dark-800"
             >
               <div class="flex min-w-0 items-start justify-between gap-3">
-                <div class="flex min-w-0 items-start gap-2">
-                  <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>
+                <div class="flex min-w-0 items-start gap-2.5">
+                  <span
+                    :class="['mt-1.5 size-2 shrink-0 rounded-full', statusDotClass(accountStatus(account))]"
+                    aria-hidden="true"
+                  ></span>
                   <h3
                     class="min-w-0 break-all text-sm font-semibold leading-5 text-gray-900 dark:text-white"
                     :title="account.identifier || t('oauthAccountPool.unknownIdentifier')"
@@ -116,13 +132,27 @@
                     {{ account.identifier || t('oauthAccountPool.unknownIdentifier') }}
                   </h3>
                 </div>
-                <div class="flex shrink-0 flex-col items-end gap-1.5">
-                  <span
-                    class="rounded px-2 py-0.5 text-xs font-medium"
-                    :class="planBadgeClass(account.plan_type)"
-                  >
-                    {{ account.plan_type || t('oauthAccountPool.unknownPlan') }}
-                  </span>
+                <span
+                  class="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
+                  :class="planBadgeClass(account.plan_type)"
+                >
+                  {{ account.plan_type || t('oauthAccountPool.unknownPlan') }}
+                </span>
+              </div>
+
+              <div class="mt-3 flex items-end justify-between gap-3 border-t border-gray-100 pt-2.5 dark:border-dark-700/80">
+                <div class="min-w-0">
+                  <p class="text-sm text-gray-500 dark:text-gray-400 sm:text-xs">
+                    {{ t('oauthAccountPool.accountStatus') }}
+                  </p>
+                  <p class="mt-0.5 text-base font-medium text-gray-900 dark:text-white sm:text-sm">
+                    {{ statusLabel(accountStatus(account)) }}
+                  </p>
+                </div>
+                <div class="shrink-0 text-right">
+                  <p class="text-sm text-gray-500 dark:text-gray-400 sm:text-xs">
+                    {{ t('oauthAccountPool.connectionsShort') }}
+                  </p>
                   <AccountConcurrencyBadge
                     data-testid="account-concurrency"
                     :current="account.current_concurrency"
@@ -134,7 +164,7 @@
 
               <div
                 v-if="authStore.isAdmin && account.stats"
-                class="mt-5 border-y border-gray-100 py-2 dark:border-dark-700/80"
+                class="mt-3 border-y border-gray-100 py-2 dark:border-dark-700/80"
               >
                 <div class="grid grid-cols-[minmax(3.75rem,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-3 px-1 text-[11px] text-gray-400 dark:text-gray-500">
                   <span></span>
@@ -156,8 +186,8 @@
                 </div>
               </div>
 
-              <div class="mt-4">
-                <p class="mb-2 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+              <div v-if="authStore.isAdmin && account.usage" class="mt-3">
+                <p class="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400 sm:text-xs">
                   {{ t('oauthAccountPool.quotaStatus') }}
                 </p>
                 <OAuthUsageWindows
@@ -191,6 +221,8 @@ import AccountConcurrencyBadge from '@/components/account/AccountConcurrencyBadg
 import { useAuthStore } from '@/stores/auth'
 import { formatCompactNumber } from '@/utils/format'
 
+type AccountPoolStatus = 'available' | 'active' | 'busy'
+
 const { t } = useI18n()
 const authStore = useAuthStore()
 const groups = ref<OAuthAccountPoolGroup[]>([])
@@ -208,6 +240,52 @@ const accountStatRows = (account: OAuthAccountPoolAccount) => {
     { label: t('oauthAccountPool.period7d'), stats: account.stats.seven_day },
     { label: t('oauthAccountPool.cumulative'), stats: account.stats.total },
   ]
+}
+
+const accountStatus = (account: OAuthAccountPoolAccount): AccountPoolStatus => {
+  if (account.concurrency > 0 && account.current_concurrency >= account.concurrency) {
+    return 'busy'
+  }
+  if (account.current_concurrency > 0) return 'active'
+  return 'available'
+}
+
+const groupStatus = (group: OAuthAccountPoolGroup): AccountPoolStatus => {
+  const statuses = group.accounts.map(accountStatus)
+  if (statuses.includes('available')) return 'available'
+  if (statuses.includes('active')) return 'active'
+  return 'busy'
+}
+
+const statusLabel = (status: AccountPoolStatus) => {
+  const labels: Record<AccountPoolStatus, string> = {
+    available: t('oauthAccountPool.status.available'),
+    active: t('oauthAccountPool.status.active'),
+    busy: t('oauthAccountPool.status.busy'),
+  }
+  return labels[status]
+}
+
+const statusDotClass = (status: AccountPoolStatus) => {
+  switch (status) {
+    case 'busy':
+      return 'bg-amber-500'
+    case 'active':
+      return 'bg-sky-500'
+    default:
+      return 'bg-emerald-500'
+  }
+}
+
+const statusBadgeClass = (status: AccountPoolStatus) => {
+  switch (status) {
+    case 'busy':
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+    case 'active':
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+    default:
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  }
 }
 
 const planBadgeClass = (planType: string) => {

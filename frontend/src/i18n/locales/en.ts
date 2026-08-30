@@ -911,7 +911,10 @@ export default {
 
   oauthAccountPool: {
     title: 'Account Pool',
-    description: 'View OAuth accounts, plans, and usage for your available groups',
+    description: 'View OAuth accounts, plans, and runtime status for available groups',
+    overviewLabel: 'Pool overview',
+    overviewDescription: 'See plans and live runtime status at a glance.',
+    groupCount: '{count} groups',
     accountCount: '{count} accounts',
     visibleAccounts: 'Visible accounts',
     totalRequests: 'Total requests',
@@ -922,6 +925,13 @@ export default {
     period7d: '7 days',
     cumulative: 'All time',
     quotaStatus: 'Quota status',
+    accountStatus: 'Runtime status',
+    connectionsShort: 'Live connections',
+    status: {
+      available: 'Available',
+      active: 'In use',
+      busy: 'Busy',
+    },
     connections: 'Active connections / concurrency limit',
     unknownIdentifier: 'Account unavailable',
     unknownPlan: 'Unknown plan',
@@ -2469,7 +2479,7 @@ export default {
       accountFilters: {
         title: 'Account Filter Controls',
         poolVisible: 'Show account pool to users',
-        poolVisibleHint: 'Users with access to this group can see OAuth account names and cached quota windows.',
+        poolVisibleHint: 'Users with access to this group can see masked OAuth account identifiers, plans, and runtime status.',
         oauthOnly: 'Only allow OAuth accounts',
         oauthOnlyEnabled: 'Enabled — API Key accounts will be excluded',
         privacySetOnly: 'Only allow accounts with privacy protection set',

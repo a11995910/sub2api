@@ -254,6 +254,11 @@ type OAuthAccountPoolAccountStats struct {
 	Total    OAuthAccountPoolRequestTokenStats `json:"total"`
 }
 
+type OAuthAccountPoolUsage struct {
+	FiveHour *OAuthAccountPoolWindow `json:"five_hour"`
+	SevenDay *OAuthAccountPoolWindow `json:"seven_day"`
+}
+
 type OAuthAccountPoolSummary struct {
 	AccountCount int    `json:"account_count"`
 	Requests     *int64 `json:"requests,omitempty"`
@@ -261,15 +266,12 @@ type OAuthAccountPoolSummary struct {
 }
 
 type OAuthAccountPoolAccount struct {
-	Identifier         string `json:"identifier"`
-	PlanType           string `json:"plan_type"`
-	CurrentConcurrency int    `json:"current_concurrency"`
-	Concurrency        int    `json:"concurrency"`
-	Usage              struct {
-		FiveHour *OAuthAccountPoolWindow `json:"five_hour"`
-		SevenDay *OAuthAccountPoolWindow `json:"seven_day"`
-	} `json:"usage"`
-	Stats *OAuthAccountPoolAccountStats `json:"stats,omitempty"`
+	Identifier         string                        `json:"identifier"`
+	PlanType           string                        `json:"plan_type"`
+	CurrentConcurrency int                           `json:"current_concurrency"`
+	Concurrency        int                           `json:"concurrency"`
+	Usage              *OAuthAccountPoolUsage        `json:"usage,omitempty"`
+	Stats              *OAuthAccountPoolAccountStats `json:"stats,omitempty"`
 }
 
 type OAuthAccountPoolGroup struct {

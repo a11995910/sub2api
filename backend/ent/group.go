@@ -50,7 +50,7 @@ type Group struct {
 	PromoDiscountRate float64 `json:"promo_discount_rate,omitempty"`
 	// IsExclusive holds the value of the "is_exclusive" field.
 	IsExclusive bool `json:"is_exclusive,omitempty"`
-	// 是否向有权访问该分组的用户公开 OAuth 账号名称与缓存额度快照
+	// 是否向有权访问该分组的用户公开脱敏 OAuth 账号标识与运行状态
 	OauthPoolVisible bool `json:"oauth_pool_visible,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`

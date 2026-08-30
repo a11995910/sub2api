@@ -17,7 +17,7 @@ func NewOAuthAccountPoolHandler(service *service.OAuthAccountPoolService) *OAuth
 	return &OAuthAccountPoolHandler{service: service}
 }
 
-// List 返回当前用户有权查看的 OAuth 号池缓存状态。
+// List 返回当前用户有权查看的 OAuth 账号运行状态。
 // GET /api/v1/oauth-account-pool
 func (h *OAuthAccountPoolHandler) List(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
