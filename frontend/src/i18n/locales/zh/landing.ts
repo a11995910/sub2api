@@ -17,6 +17,30 @@ export default {
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    experience: {
+      homeLabel: '首页',
+      primaryNav: '主导航',
+      mobileNav: '移动端导航',
+      menuOpen: '打开导航菜单',
+      menuClose: '关闭导航菜单',
+      guide: '接入指南',
+      modelMarket: '模型广场',
+      developerDocs: '开发文档',
+      eyebrow: 'AI API 统一接入层',
+      headlineLead: '一个密钥。',
+      headlineTail: '连接无限 AI。',
+      startRouting: '开始接入',
+      viewGuide: '查看接入指南',
+      routeStatus: '请求路由运行正常',
+      visualAlt: '多个 AI 模型沿轨道汇聚到统一 API 网关',
+      routed: '已路由',
+      featureHeading: '统一接入、稳定调度与清晰计费',
+      modelEyebrow: '模型网络',
+      modelTitle: '按任务选择模型，不再被平台绑定。',
+      modelDescription:
+        'Claude、GPT、Gemini 与更多模型，共享同一套密钥、额度和用量视图。',
+      browseModels: '浏览全部模型'
+    },
     tags: {
       subscriptionToApi: '订阅转 API',
       stickySession: '会话保持',

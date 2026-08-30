@@ -56,14 +56,14 @@ function mountHome(settings: Record<string, unknown> = {}) {
 }
 
 function compactDestination(wrapper: ReturnType<typeof mountHome>) {
-  return wrapper.get('[data-testid="compact-home"]').findComponent(RouterLinkStub).props('to')
+  return wrapper.get('[data-testid="compact-home"] main').findComponent(RouterLinkStub).props('to')
 }
 
-function modelPlazaDestination(wrapper: ReturnType<typeof mountHome>) {
+function modelMarketDestinations(wrapper: ReturnType<typeof mountHome>) {
   return wrapper
     .findAllComponents(RouterLinkStub)
-    .find((link) => link.props('to') === '/model-plaza')
-    ?.props('to')
+    .map((link) => link.props('to'))
+    .filter((destination) => destination === '/model-market')
 }
 
 describe('HomeView compact mode', () => {
@@ -108,7 +108,41 @@ describe('HomeView compact mode', () => {
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
-    expect(wrapper.find('.terminal-container').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="default-home"]').text()).toContain('Test site')
+    expect(wrapper.get('[data-testid="default-home"]').text()).toContain('Test subtitle')
+  })
+
+  it('keeps provider labels attached to the animated orbit elements', () => {
+    const wrapper = mountHome()
+    const orbitLabels = wrapper.findAll('.orbit > .orbit-model')
+
+    expect(orbitLabels).toHaveLength(3)
+    expect(orbitLabels.map((label) => label.text())).toEqual(['GPT', 'home.providers.claude', 'home.providers.gemini'])
+  })
+
+  it('keeps the orbits centered when reduced motion disables their animations', () => {
+    const wrapper = mountHome()
+    const restingTransforms = [
+      ['.orbit--outer', 'translate(-50%, -50%) rotate(-12deg)', 'rotate(12deg)'],
+      ['.orbit--middle', 'translate(-50%, -50%) rotate(68deg)', 'rotate(-68deg)'],
+      ['.orbit--inner', 'translate(-50%, -50%) rotate(18deg)', 'rotate(-18deg)'],
+    ] as const
+
+    restingTransforms.forEach(([selector, orbitTransform, labelTransform]) => {
+      const orbit = wrapper.get(selector)
+
+      expect(getComputedStyle(orbit.element).transform).toBe(orbitTransform)
+      expect(getComputedStyle(orbit.get('.orbit-model').element).transform).toBe(labelTransform)
+    })
+  })
+
+  it('applies the landing dark theme class when the theme toggle is used', async () => {
+    const wrapper = mountHome()
+
+    await wrapper.get('button[aria-label="home.switchToDark"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="default-home"]').classes()).toContain('premium-home--dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 
   it('links unauthenticated visitors to login', () => {
@@ -131,54 +165,23 @@ describe('HomeView compact mode', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
   })
 
-  it('shows the model plaza link to anonymous visitors when public access is enabled', () => {
-    const wrapper = mountHome({
-      compact_home_enabled: true,
-      model_plaza_enabled: true,
-      model_plaza_require_auth: false,
-    })
-
-    expect(modelPlazaDestination(wrapper)).toBe('/model-plaza')
-  })
-
-  it('hides the model plaza link from anonymous visitors when sign-in is required', () => {
-    const wrapper = mountHome({
-      compact_home_enabled: true,
-      model_plaza_enabled: true,
-      model_plaza_require_auth: true,
-    })
-
-    expect(modelPlazaDestination(wrapper)).toBeUndefined()
-  })
-
-  it('shows the model plaza link to authenticated visitors when sign-in is required', () => {
-    authStore.isAuthenticated = true
-
-    const wrapper = mountHome({
-      compact_home_enabled: true,
-      model_plaza_enabled: true,
-      model_plaza_require_auth: true,
-    })
-
-    expect(modelPlazaDestination(wrapper)).toBe('/model-plaza')
-  })
-
-  it('shows the model plaza link in the default home header', () => {
-    const wrapper = mountHome({
-      model_plaza_enabled: true,
-      model_plaza_require_auth: false,
-    })
-
-    expect(modelPlazaDestination(wrapper)).toBe('/model-plaza')
-  })
-
-  it('hides the model plaza link when the feature is disabled', () => {
+  it('links the compact home to the custom model market even when the public plaza is disabled', () => {
     const wrapper = mountHome({
       compact_home_enabled: true,
       model_plaza_enabled: false,
-      model_plaza_require_auth: false,
     })
 
-    expect(modelPlazaDestination(wrapper)).toBeUndefined()
+    expect(modelMarketDestinations(wrapper)).toEqual(['/model-market'])
+    expect(wrapper.findAllComponents(RouterLinkStub).some((link) => link.props('to') === '/model-plaza')).toBe(false)
+  })
+
+  it('links the default home to the custom model market independently of public plaza settings', () => {
+    const wrapper = mountHome({
+      model_plaza_enabled: false,
+      model_plaza_require_auth: true,
+    })
+
+    expect(modelMarketDestinations(wrapper)).toEqual(['/model-market', '/model-market'])
+    expect(wrapper.findAllComponents(RouterLinkStub).some((link) => link.props('to') === '/model-plaza')).toBe(false)
   })
 })
