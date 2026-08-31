@@ -147,11 +147,23 @@
 
         <!-- 公开分组区域 -->
         <div v-if="publicGroups.length > 0">
-          <div class="mb-3 flex items-center gap-2">
+          <div class="mb-3 flex flex-wrap items-center gap-2">
             <div class="h-1.5 w-1.5 rounded-full bg-green-500"></div>
-            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ t('admin.users.publicGroups') }}</h4>
+            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              {{ restrictPublicGroups ? t('admin.users.publicGroupsRestricted') : t('admin.users.publicGroups') }}
+            </h4>
             <span class="text-xs text-gray-400">({{ publicGroupConfigs.filter(c => c.isSelected).length }}/{{ publicGroupConfigs.length }})</span>
+            <label class="ml-auto flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <input
+                type="checkbox"
+                :checked="restrictPublicGroups"
+                @change="toggleRestrictPublicGroups"
+                class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+              />
+              {{ t('admin.users.restrictPublicGroups') }}
+            </label>
           </div>
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.users.restrictPublicGroupsHint') }}</p>
           <div class="grid gap-3">
             <div
               v-for="config in publicGroupConfigs"
@@ -284,6 +296,7 @@ const originalGroupRates = ref<Record<number, number>>({}) // 记录原始专属
 const loadedGroupEligibility = ref<Record<number, boolean>>({})
 const loading = ref(false)
 const submitting = ref(false)
+const restrictPublicGroups = ref(false)
 
 // 分离专属分组和公开分组
 const exclusiveGroups = computed(() => groups.value.filter((g) => g.is_exclusive))
@@ -356,6 +369,7 @@ const load = async () => {
     const userGroupRates = props.user?.group_rates || {}
     const accessByGroup = props.user?.allowed_group_access || {}
     const blockedGroups = new Set(props.user?.blocked_groups || [])
+    restrictPublicGroups.value = props.user?.restrict_public_groups ?? false
 
     // 保存原始专属倍率，用于检测删除操作
     originalGroupRates.value = { ...userGroupRates }
@@ -368,8 +382,11 @@ const load = async () => {
       defaultRate: g.rate_multiplier,
       customRate: userGroupRates[g.id] ?? null,
       // 专属分组：检查是否在 allowed_groups 中
-      // 公开分组：未进入用户黑名单时选中。
-      isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : !blockedGroups.has(g.id),
+      // 公开分组：黑名单优先；开启限制时再以 allowed_groups 白名单为准。
+      isSelected: g.is_exclusive
+        ? userAllowedGroups.includes(g.id)
+        : !blockedGroups.has(g.id) &&
+          (!restrictPublicGroups.value || userAllowedGroups.includes(g.id)),
       accessMode: accessByGroup[g.id]?.expires_at ? 'temporary' : 'permanent',
       expiresAtLocal: toDateTimeLocal(accessByGroup[g.id]?.expires_at),
       source: accessByGroup[g.id]?.source || 'manual',
@@ -413,6 +430,16 @@ const updateExpiresAt = (groupId: number, value: string) => {
   config.expiresAtLocal = value
 }
 
+// 关闭白名单限制后恢复公开分组的黑名单状态。
+const toggleRestrictPublicGroups = () => {
+  restrictPublicGroups.value = !restrictPublicGroups.value
+  if (!restrictPublicGroups.value) {
+    const blockedGroups = new Set(props.user?.blocked_groups || [])
+    for (const config of groupConfigs.value) {
+      if (!config.isExclusive) config.isSelected = !blockedGroups.has(config.groupId)
+    }
+  }
+}
 const updateCustomRate = (groupId: number, value: string) => {
   const config = groupConfigs.value.find((c) => c.groupId === groupId)
   if (config) {
@@ -430,8 +457,11 @@ const handleSave = async () => {
   submitting.value = true
 
   try {
-    // 构建 allowed_groups（仅包含专属分组中被勾选的）
-    const allowedGroups = groupConfigs.value.filter((c) => c.isExclusive && c.isSelected).map((c) => c.groupId)
+    // 构建 allowed_groups：专属分组中被勾选的，以及开启限制后被勾选的公开分组。
+    // 未开启限制时不写入公开分组，保持 allowed_groups 的额外授权语义。
+    const allowedGroups = groupConfigs.value
+      .filter((c) => c.isSelected && (c.isExclusive || restrictPublicGroups.value))
+      .map((c) => c.groupId)
     const visibleGroupIDs = new Set(groupConfigs.value.map((c) => c.groupId))
     const blockedGroups = [
       ...(props.user.blocked_groups || []).filter(
@@ -477,6 +507,7 @@ const handleSave = async () => {
       allowed_groups: allowedGroups,
       blocked_groups: blockedGroups,
       allowed_group_access: allowedGroupAccess,
+      restrict_public_groups: restrictPublicGroups.value,
       group_rates: Object.keys(groupRates).length > 0 ? groupRates : undefined,
     })
 

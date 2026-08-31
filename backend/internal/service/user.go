@@ -29,7 +29,9 @@ type User struct {
 	// AllowedGroupAccess 保存管理员侧可见的专属分组授权元数据。
 	// key 为 group_id；AllowedGroups 仍保留为兼容旧接口的授权分组 ID 列表。
 	AllowedGroupAccess map[int64]UserGroupAccessMeta
-	TokenVersion       int64 // Incremented on password change to invalidate existing tokens
+	// RestrictPublicGroups 为 true 时，公开分组仅允许出现在 AllowedGroups 中。
+	RestrictPublicGroups bool
+	TokenVersion         int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool
@@ -78,18 +80,20 @@ func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }
 
-// CanBindGroup 判断用户是否可以绑定标准分组：公开分组使用黑名单，专属分组使用白名单。
+// CanBindGroup 判断用户是否可以绑定标准分组：公开分组默认开放，可由黑名单或
+// RestrictPublicGroups 收紧；专属分组始终使用白名单。
 func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
-	// 公开分组（非专属）：默认开放，但用户级黑名单优先。
 	if !isExclusive {
 		for _, id := range u.BlockedGroups {
 			if id == groupID {
 				return false
 			}
 		}
-		return true
+		if !u.RestrictPublicGroups {
+			return true
+		}
 	}
-	// 专属分组：需要在 AllowedGroups 中
+	// 专属分组，以及开启公开分组限制后的公开分组：需要在 AllowedGroups 中。
 	for _, id := range u.AllowedGroups {
 		if id == groupID {
 			return true

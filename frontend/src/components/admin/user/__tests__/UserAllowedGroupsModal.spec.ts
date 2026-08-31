@@ -42,7 +42,7 @@ const createGroup = (
   ...options
 } as Group)
 
-const createUser = (): AdminUser => ({
+const createUser = (overrides: Partial<AdminUser> = {}): AdminUser => ({
   id: 42,
   username: 'blocked-user',
   email: 'blocked@example.com',
@@ -57,13 +57,14 @@ const createUser = (): AdminUser => ({
   balance_notify_extra_emails: [],
   created_at: '2026-07-29T00:00:00Z',
   updated_at: '2026-07-29T00:00:00Z',
-  notes: ''
+  notes: '',
+  ...overrides
 })
 
-const mountModal = () => mount(UserAllowedGroupsModal, {
+const mountModal = (user = createUser()) => mount(UserAllowedGroupsModal, {
   props: {
     show: false,
-    user: createUser()
+    user
   },
   global: {
     stubs: {
@@ -115,5 +116,27 @@ describe('UserAllowedGroupsModal', () => {
     }))
     expect(wrapper.emitted('success')).toEqual([[]])
     expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  it('combines public-group allow list and blacklist with blacklist priority', async () => {
+    const wrapper = mountModal(createUser({
+      allowed_groups: [1, 2, 4],
+      blocked_groups: [2],
+      restrict_public_groups: true
+    }))
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="public-group-checkbox-1"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="public-group-checkbox-2"]').element as HTMLInputElement).checked).toBe(false)
+
+    await wrapper.findAll('button').at(-1)!.trigger('click')
+    await flushPromises()
+
+    expect(updateUser).toHaveBeenCalledWith(42, expect.objectContaining({
+      allowed_groups: [1, 4],
+      blocked_groups: [2],
+      restrict_public_groups: true
+    }))
   })
 })

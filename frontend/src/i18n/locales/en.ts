@@ -7756,7 +7756,7 @@ export default {
     amountTooHigh: 'Maximum amount is {max}',
     largeAmountDirectRecharge: 'Single payments are limited to CNY 500. You can pay CNY 500 multiple times.',
     amountNoMethod: 'No payment method available for this amount',
-    rechargeRatePreview: 'Current rate: 1 CNY = {usd} Spirit Stones',
+    rechargeRatePreview: 'Current rate: 1 {currency} = {usd} Spirit Stones',
     refundReason: 'Refund Reason',
     refundReasonPlaceholder: 'Please describe your refund reason',
     stripeLoadFailed: 'Failed to load payment component. Please refresh and try again.',

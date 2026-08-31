@@ -7926,7 +7926,7 @@ export default {
     amountTooHigh: '最高金额为 {max}',
     largeAmountDirectRecharge: '单次支付最高 500 元，可多次 500 元支付',
     amountNoMethod: '该金额没有可用的支付方式',
-    rechargeRatePreview: '当前倍率：1 CNY = {usd} 灵石',
+    rechargeRatePreview: '当前倍率：1 {currency} = {usd} 灵石',
     refundReason: '退款原因',
     refundReasonPlaceholder: '请描述您的退款原因',
     stripeLoadFailed: '支付组件加载失败，请刷新页面重试',

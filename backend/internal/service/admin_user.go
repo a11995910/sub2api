@@ -143,6 +143,8 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		RPMLimit:      input.RPMLimit,
 		Status:        StatusActive,
 		AllowedGroups: input.AllowedGroups,
+
+		RestrictPublicGroups: input.RestrictPublicGroups,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
@@ -345,6 +347,12 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		fields.BlockedGroups = true
 	}
 
+	oldRestrictPublicGroups := user.RestrictPublicGroups
+	if input.RestrictPublicGroups != nil {
+		user.RestrictPublicGroups = *input.RestrictPublicGroups
+		fields.RestrictPublicGroups = true
+	}
+
 	if input.AllowedGroupAccess != nil {
 		if s.entClient != nil {
 			tx, err := s.entClient.Tx(ctx)
@@ -390,8 +398,8 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
-		// allowed_groups 与 blocked_groups 都参与 API Key 分组授权判断；修改后必须立即失效旧快照。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || !sameInt64Set(user.BlockedGroups, oldBlockedGroups) {
+		// allowed_groups、blocked_groups 和公开分组限制都参与 API Key 分组授权判断；修改后必须立即失效旧快照。
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || user.RestrictPublicGroups != oldRestrictPublicGroups || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || !sameInt64Set(user.BlockedGroups, oldBlockedGroups) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
