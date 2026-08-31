@@ -28,6 +28,7 @@ const (
 	IngressRejectGroupUnassigned        IngressRejectReason = "group_unassigned"
 	IngressRejectInvalidAuthRateLimited IngressRejectReason = "invalid_auth_rate_limited"
 	IngressRejectAPIKeyAuthOverloaded   IngressRejectReason = "api_key_auth_overloaded"
+	IngressRejectBodyMemoryBudget       IngressRejectReason = "body_memory_budget_exhausted"
 )
 
 const ingressRejectReasonContextKey = "ingress_reject_reason"

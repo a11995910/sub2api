@@ -15,6 +15,12 @@ terminate healthy long generations and streams.
   image, video, and batch-image endpoints.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
+- `gateway.max_inflight_body_bytes: 536870912` is a process-wide estimated
+  request-body memory budget. Active requests reserve about twice their body
+  size (or the route limit for chunked bodies) until the request completes;
+  exhausted budget returns HTTP 429 instead of allowing unbounded body reads.
+- `gateway.body_admission_wait_seconds: 2` bounds how long a request waits for
+  that memory budget before returning HTTP 429.
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6
@@ -22,10 +28,12 @@ terminate healthy long generations and streams.
   per-instance safety net; multi-instance enforcement still belongs at the
   load balancer, CDN, or WAF.
 
-Do not add a single application-wide request semaphore: an SSE request may
-legitimately occupy it for many minutes. Apply connection and unauthenticated
-request controls at the edge; authenticated user/API-key concurrency remains
-the application's responsibility.
+The body budget is deliberately limited to estimated request-body memory and is
+released at the end of each request. It is not a replacement for authenticated
+user/API-key concurrency limits: keep those limits low enough that long-lived
+requests cannot monopolize the service. For an 8 GiB host also running media
+workers, start large or bursty API keys around 8-16 concurrent requests and
+increase only after observing memory and first-byte latency.
 
 ## Trusted client IPs
 

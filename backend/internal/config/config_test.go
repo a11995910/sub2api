@@ -98,6 +98,8 @@ func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	require.False(t, cfg.Server.TrustedProxiesConfigured)
 	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
 	require.Equal(t, int64(32*1024*1024), cfg.Gateway.TextMaxBodySize)
+	require.Equal(t, int64(512*1024*1024), cfg.Gateway.MaxInflightBodyBytes)
+	require.Equal(t, 2, cfg.Gateway.BodyAdmissionWaitSeconds)
 	require.True(t, cfg.APIKeyAuth.InvalidAbuse.Enabled)
 	require.Equal(t, 120, cfg.APIKeyAuth.InvalidAbuse.Threshold)
 	require.Equal(t, 16384, cfg.APIKeyAuth.InvalidAbuse.Capacity)
@@ -1850,6 +1852,16 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway text body exceeds media body",
 			mutate:  func(c *Config) { c.Gateway.TextMaxBodySize = c.Gateway.MaxBodySize + 1 },
 			wantErr: "gateway.text_max_body_size",
+		},
+		{
+			name:    "gateway in-flight body budget",
+			mutate:  func(c *Config) { c.Gateway.MaxInflightBodyBytes = 0 },
+			wantErr: "gateway.max_inflight_body_bytes",
+		},
+		{
+			name:    "gateway body admission wait",
+			mutate:  func(c *Config) { c.Gateway.BodyAdmissionWaitSeconds = -1 },
+			wantErr: "gateway.body_admission_wait_seconds",
 		},
 		{
 			name:    "gateway models list read limit",
