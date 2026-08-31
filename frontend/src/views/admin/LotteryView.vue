@@ -40,7 +40,7 @@
                     name="usage_threshold_m"
                     type="number"
                     min="0.000001"
-                    step="0.001"
+                    step="any"
                     class="input min-w-0 flex-1 max-sm:text-base"
                   />
                   <span class="shrink-0 text-sm text-gray-500 dark:text-gray-400">
@@ -128,7 +128,7 @@
                     :name="`prizes[${index}].reward_amount`"
                     type="number"
                     min="0.00000001"
-                    step="0.01"
+                    step="any"
                     class="input mt-1 w-full tabular-nums max-sm:text-base sm:mt-0"
                   />
                 </div>
@@ -144,7 +144,7 @@
                       type="number"
                       min="0.01"
                       max="100"
-                      step="0.01"
+                      step="any"
                       class="input w-full pr-8 tabular-nums max-sm:text-base"
                     />
                     <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-400">%</span>

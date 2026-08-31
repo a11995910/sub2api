@@ -17,29 +17,38 @@
       <template v-else-if="overview">
         <div
           v-if="!overview.config.enabled"
-          class="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+          class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
           role="status"
         >
           {{ t('lottery.disabled') }}
         </div>
 
-        <section class="grid gap-8 xl:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)]">
-          <div class="card min-w-0 border border-gray-200 p-5 dark:border-dark-700 sm:p-7">
-            <div class="mx-auto flex max-w-lg flex-col items-center">
-              <div class="relative aspect-square w-full max-w-[25rem]">
+        <section class="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)]">
+          <!-- 转盘主体卡片 -->
+          <div
+            class="relative min-w-0 overflow-hidden rounded-2xl border border-primary-100 bg-gradient-to-b from-primary-50/90 via-white to-white p-6 dark:border-primary-900/40 dark:from-primary-950/40 dark:via-dark-900 dark:to-dark-900 sm:p-8"
+          >
+            <div
+              class="pointer-events-none absolute -top-24 left-1/2 h-56 w-[30rem] -translate-x-1/2 rounded-full bg-primary-400/20 blur-3xl dark:bg-primary-500/15"
+              aria-hidden="true"
+            ></div>
+
+            <div class="relative mx-auto flex max-w-lg flex-col items-center">
+              <div class="relative aspect-square w-full max-w-[24rem]">
                 <div class="lottery-pointer" aria-hidden="true"></div>
-                <div class="lottery-wheel-shell absolute inset-4 sm:inset-5">
+                <div class="lottery-wheel-shell absolute inset-3 sm:inset-4">
                   <div
+                    ref="wheelRef"
                     class="lottery-wheel"
                     :class="{ 'lottery-wheel-spinning': spinning }"
                     :style="wheelStyle"
                     aria-hidden="true"
                   ></div>
                   <div class="lottery-wheel-center">
-                    <span class="text-3xl font-semibold tabular-nums text-gray-900 dark:text-white">
+                    <span class="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
                       {{ overview.state.available_chances }}
                     </span>
-                    <span class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    <span class="mt-1 text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
                       {{ t('lottery.availableChances') }}
                     </span>
                   </div>
@@ -48,7 +57,7 @@
 
               <button
                 type="button"
-                class="btn btn-primary mt-5 min-w-36"
+                class="btn btn-primary mt-6 min-w-40 shadow-lg shadow-primary-600/25 transition-transform hover:-translate-y-0.5"
                 :disabled="!canDraw"
                 @click="handleDraw"
               >
@@ -58,13 +67,18 @@
 
               <div
                 v-if="lastResult"
-                class="mt-5 w-full border-t border-gray-200 pt-5 text-center dark:border-dark-700"
+                class="mt-6 w-full rounded-xl border border-gray-200/80 bg-white/80 px-5 py-4 text-center backdrop-blur-sm dark:border-dark-700 dark:bg-dark-800/70"
                 aria-live="polite"
               >
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
                   {{ t('lottery.resultTitle') }}
                 </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <p
+                  class="mt-1.5 text-lg font-semibold"
+                  :class="lastResult.reward_amount > 0
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-gray-700 dark:text-gray-300'"
+                >
                   {{ resultText }}
                 </p>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -74,71 +88,75 @@
             </div>
           </div>
 
-          <div class="min-w-0 space-y-7">
-            <dl class="grid grid-cols-2 border-y border-gray-200 dark:border-dark-700">
-              <div class="border-b border-r border-gray-200 py-4 pr-4 dark:border-dark-700">
-                <dt class="truncate text-sm text-gray-500 dark:text-gray-400">{{ t('lottery.totalEarned') }}</dt>
-                <dd class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white">
+          <!-- 右侧信息栏 -->
+          <div class="min-w-0 space-y-6">
+            <!-- 统计卡片 -->
+            <dl class="grid grid-cols-2 gap-3">
+              <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                <dt class="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('lottery.totalEarned') }}</dt>
+                <dd class="mt-1.5 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
                   {{ overview.state.total_earned }}
                 </dd>
               </div>
-              <div class="border-b border-gray-200 py-4 pl-4 dark:border-dark-700">
-                <dt class="truncate text-sm text-gray-500 dark:text-gray-400">{{ t('lottery.totalDrawn') }}</dt>
-                <dd class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white">
+              <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                <dt class="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('lottery.totalDrawn') }}</dt>
+                <dd class="mt-1.5 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
                   {{ overview.state.total_drawn }}
                 </dd>
               </div>
-              <div class="border-r border-gray-200 py-4 pr-4 dark:border-dark-700">
-                <dt class="truncate text-sm text-gray-500 dark:text-gray-400">{{ t('lottery.todayAwarded') }}</dt>
-                <dd class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white">
+              <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                <dt class="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('lottery.todayAwarded') }}</dt>
+                <dd class="mt-1.5 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
                   {{ overview.state.today_awarded_chances }}
                 </dd>
               </div>
-              <div class="py-4 pl-4">
-                <dt class="truncate text-sm text-gray-500 dark:text-gray-400">{{ t('lottery.todayUsage') }}</dt>
-                <dd class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white">
-                  {{ formatMillions(overview.today_usage_m) }}M
+              <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                <dt class="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('lottery.todayUsage') }}</dt>
+                <dd class="mt-1.5 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
+                  {{ formatMillions(overview.today_usage_m) }}<span class="ml-0.5 text-sm font-semibold text-gray-400">M</span>
                 </dd>
               </div>
             </dl>
 
-            <div>
+            <!-- 今日进度 -->
+            <div class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/60">
               <div class="flex items-center justify-between gap-4 text-sm">
-                <span class="font-medium text-gray-800 dark:text-gray-200">{{ awardModeLabel }}</span>
-                <span class="shrink-0 tabular-nums text-gray-500 dark:text-gray-400">
+                <span class="font-semibold text-gray-800 dark:text-gray-200">{{ awardModeLabel }}</span>
+                <span class="shrink-0 rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-primary-700 dark:bg-primary-950/60 dark:text-primary-300">
                   {{ formatPercent(overview.today_progress_percent) }}%
                 </span>
               </div>
-              <div class="mt-2 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+              <div class="mt-3 h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
                 <div
-                  class="h-full rounded-full bg-primary-600"
+                  class="h-full rounded-full bg-gradient-to-r from-primary-500 to-primary-400 transition-[width] duration-500"
                   :style="{ width: `${Math.min(100, overview.today_progress_percent)}%` }"
                 ></div>
               </div>
-              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              <p class="mt-2.5 text-sm text-gray-500 dark:text-gray-400">
                 {{ progressDescription }}
               </p>
             </div>
 
-            <div>
-              <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+            <!-- 奖项与概率 -->
+            <div class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/60">
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('lottery.prizeList') }}
               </h2>
-              <ul class="mt-3 divide-y divide-gray-950/5 dark:divide-white/10" role="list">
+              <ul class="mt-3 space-y-1" role="list">
                 <li
                   v-for="(prize, index) in visiblePrizes"
                   :key="prize.id"
-                  class="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"
+                  class="flex min-w-0 items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/50"
                 >
                   <span
-                    class="size-3 shrink-0 rounded-sm"
+                    class="size-3 shrink-0 rounded-full ring-2 ring-white dark:ring-dark-800"
                     :style="{ backgroundColor: segmentColor(index, prize.is_thanks) }"
                     aria-hidden="true"
                   ></span>
                   <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
                     {{ prize.name }}
                   </span>
-                  <span class="shrink-0 text-sm tabular-nums text-gray-500 dark:text-gray-400">
+                  <span class="shrink-0 text-sm font-medium tabular-nums text-gray-500 dark:text-gray-400">
                     {{ t('lottery.probability', { value: formatPercent(prize.probability_percent) }) }}
                   </span>
                 </li>
@@ -147,24 +165,25 @@
           </div>
         </section>
 
-        <section>
+        <!-- 最近抽奖记录 -->
+        <section class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/60 sm:p-6">
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ t('lottery.recentDraws') }}
           </h2>
-          <div v-if="overview.recent_draws.length" class="-mx-4 -my-2 mt-3 overflow-x-auto whitespace-nowrap sm:-mx-6 lg:-mx-8">
-            <div class="inline-block min-w-full px-4 py-2 align-middle sm:px-6 lg:px-8">
+          <div v-if="overview.recent_draws.length" class="-mx-5 -my-2 mt-3 overflow-x-auto whitespace-nowrap sm:-mx-6">
+            <div class="inline-block min-w-full px-5 py-2 align-middle sm:px-6">
               <table class="w-full divide-y divide-gray-200 dark:divide-dark-700">
                 <thead>
                   <tr>
-                    <th class="whitespace-nowrap py-3 pr-4 text-left text-sm font-medium text-gray-500">{{ t('lottery.drawTime') }}</th>
-                    <th class="whitespace-nowrap px-4 py-3 text-left text-sm font-medium text-gray-500">{{ t('lottery.prize') }}</th>
-                    <th class="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-500">{{ t('lottery.reward') }}</th>
-                    <th class="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-500">{{ t('lottery.chanceAfter') }}</th>
-                    <th class="whitespace-nowrap py-3 pl-4 text-right text-sm font-medium text-gray-500">{{ t('lottery.balanceAfter') }}</th>
+                    <th class="whitespace-nowrap py-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ t('lottery.drawTime') }}</th>
+                    <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ t('lottery.prize') }}</th>
+                    <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ t('lottery.reward') }}</th>
+                    <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ t('lottery.chanceAfter') }}</th>
+                    <th class="whitespace-nowrap py-3 pl-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ t('lottery.balanceAfter') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-950/5 dark:divide-white/10">
-                  <tr v-for="draw in overview.recent_draws" :key="draw.id">
+                  <tr v-for="draw in overview.recent_draws" :key="draw.id" class="transition-colors hover:bg-gray-50/70 dark:hover:bg-dark-700/40">
                     <td class="py-3 pr-4 text-sm text-gray-500 dark:text-gray-400">{{ formatDateTime(draw.created_at) }}</td>
                     <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{{ draw.prize_name }}</td>
                     <td class="px-4 py-3 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ formatSpiritStones(draw.reward_amount) }}</td>
@@ -175,7 +194,7 @@
               </table>
             </div>
           </div>
-          <p v-else class="mt-3 border-t border-gray-200 py-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
+          <p v-else class="mt-3 border-t border-gray-100 py-10 text-center text-sm text-gray-400 dark:border-dark-700/70 dark:text-gray-500">
             {{ t('lottery.noDraws') }}
           </p>
         </section>
@@ -206,10 +225,12 @@ const spinning = ref(false)
 const overview = ref<LotteryOverview | null>(null)
 const lastResult = ref<LotteryDraw | null>(null)
 const wheelRotation = ref(0)
+const wheelRef = ref<HTMLElement | null>(null)
 let resultTimer: number | undefined
 
-const prizeColors = ['#dc2626', '#d97706', '#059669', '#2563eb', '#7c3aed']
-const thanksColor = '#71717a'
+// 奖项配色：高饱和糖果色系，转盘上区分度更高
+const prizeColors = ['#6366f1', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6']
+const thanksColor = '#cbd5e1'
 
 const visiblePrizes = computed(() => overview.value?.config.prizes.filter((prize) => prize.probability_percent > 0) ?? [])
 const wheelSegments = computed(() => {
@@ -227,7 +248,7 @@ const wheelBackground = computed(() => {
   return `conic-gradient(${stops.join(', ')})`
 })
 const wheelStyle = computed(() => ({
-  background: wheelBackground.value,
+  background: `repeating-conic-gradient(rgb(255 255 255 / 22%) 0deg 1deg, transparent 1deg 30deg), ${wheelBackground.value}`,
   transform: `rotate(${wheelRotation.value}deg)`
 }))
 const canDraw = computed(() => Boolean(
@@ -305,12 +326,19 @@ async function handleDraw() {
   try {
     const result = await lotteryAPI.draw()
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    spinning.value = !reduceMotion
-    wheelRotation.value = targetRotation(result.draw.prize_id)
+    const nextRotation = targetRotation(result.draw.prize_id)
     if (reduceMotion) {
+      wheelRotation.value = nextRotation
       applyDrawResult(result)
       return
     }
+    // 先保持旧角度并清除动画类，再在下一帧写入目标角度，确保 transition 能捕获起点和终点
+    spinning.value = false
+    void wheelRef.value?.offsetWidth
+    requestAnimationFrame(() => {
+      spinning.value = true
+      wheelRotation.value = nextRotation
+    })
     resultTimer = window.setTimeout(() => applyDrawResult(result), 3300)
   } catch (error: unknown) {
     drawing.value = false
@@ -326,18 +354,25 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 转盘外环：双层柔和投影，营造浮起质感 */
 .lottery-wheel-shell {
-  border: 1px solid rgb(17 24 39 / 12%);
   border-radius: 50%;
-  box-shadow: 0 16px 40px rgb(17 24 39 / 12%);
+  background: linear-gradient(180deg, #ffffff, #eef2ff);
+  box-shadow:
+    0 20px 45px rgb(79 70 229 / 14%),
+    0 2px 8px rgb(17 24 39 / 8%);
+  padding: 0.625rem;
 }
 
+/* 转盘盘面：扇区 conic-gradient 由 :style 的 background 注入，此处叠加网格纹理 */
 .lottery-wheel {
   position: absolute;
-  inset: 0;
-  border: 10px solid white;
+  inset: 0.625rem;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgb(17 24 39 / 10%);
+  background-image: repeating-conic-gradient(rgb(255 255 255 / 22%) 0deg 1deg, transparent 1deg 30deg);
+  box-shadow:
+    inset 0 0 0 6px rgb(255 255 255 / 90%),
+    inset 0 2px 12px rgb(17 24 39 / 18%);
 }
 
 .lottery-wheel-spinning {
@@ -348,51 +383,58 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 50% auto auto 50%;
   display: flex;
-  width: 7.5rem;
-  height: 7.5rem;
+  width: 7.25rem;
+  height: 7.25rem;
   transform: translate(-50%, -50%);
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgb(17 24 39 / 10%);
   border-radius: 50%;
-  background: white;
-  box-shadow: 0 8px 24px rgb(17 24 39 / 16%);
+  background: #ffffff;
+  box-shadow:
+    0 0 0 6px rgb(255 255 255 / 55%),
+    0 8px 24px rgb(17 24 39 / 18%);
 }
 
+/* 顶部指针：主色渐变三角 */
 .lottery-pointer {
   position: absolute;
-  top: 0;
+  top: -0.25rem;
   left: 50%;
   z-index: 2;
   width: 0;
   height: 0;
   transform: translateX(-50%);
-  border-right: 0.875rem solid transparent;
-  border-left: 0.875rem solid transparent;
-  border-top: 2rem solid rgb(17 24 39);
-  filter: drop-shadow(0 2px 2px rgb(17 24 39 / 20%));
+  border-right: 0.8rem solid transparent;
+  border-left: 0.8rem solid transparent;
+  border-top: 1.9rem solid rgb(79 70 229);
+  filter: drop-shadow(0 3px 3px rgb(79 70 229 / 35%));
 }
 
 :global(.dark) .lottery-wheel-shell {
-  border-color: rgb(255 255 255 / 10%);
-  box-shadow: none;
+  background: linear-gradient(180deg, rgb(31 41 55), rgb(17 24 39));
+  box-shadow:
+    0 20px 45px rgb(0 0 0 / 40%),
+    0 0 0 1px rgb(255 255 255 / 8%);
 }
 
 :global(.dark) .lottery-wheel {
-  border-color: rgb(31 41 55);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  background-image: repeating-conic-gradient(rgb(255 255 255 / 10%) 0deg 1deg, transparent 1deg 30deg);
+  box-shadow:
+    inset 0 0 0 6px rgb(31 41 55 / 95%),
+    inset 0 2px 12px rgb(0 0 0 / 45%);
 }
 
 :global(.dark) .lottery-wheel-center {
-  border-color: rgb(255 255 255 / 10%);
-  background: rgb(31 41 55);
-  box-shadow: none;
+  background: rgb(17 24 39);
+  box-shadow:
+    0 0 0 6px rgb(255 255 255 / 8%),
+    0 8px 24px rgb(0 0 0 / 45%);
 }
 
 :global(.dark) .lottery-pointer {
-  border-top-color: rgb(229 231 235);
-  filter: none;
+  border-top-color: rgb(129 140 248);
+  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 45%));
 }
 
 @media (prefers-reduced-motion: reduce) {
