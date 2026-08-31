@@ -23,6 +23,15 @@ const (
 	RunModeSimple   = "simple"
 )
 
+const (
+	// minBodyAdmissionBudgetBytes 避免配置值小于请求读取器、解压器等固定开销，
+	// 使“估算内存预算”在生产配置中仍具有实际保护意义。
+	minBodyAdmissionBudgetBytes int64 = 1 << 20
+	// maxBodyAdmissionWaitSeconds 是请求体准入等待秒数可安全转换为
+	// time.Duration 的最大值。
+	maxBodyAdmissionWaitSeconds = int64(math.MaxInt64 / int64(time.Second))
+)
+
 // 使用量记录队列溢出策略
 const (
 	UsageRecordOverflowPolicyDrop   = "drop"
@@ -974,6 +983,12 @@ type GatewayConfig struct {
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
 	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
+	// MaxInflightBodyBytes 限制已认证网关请求在解析和转发期间预计保留的内存。
+	MaxInflightBodyBytes int64 `mapstructure:"max_inflight_body_bytes"`
+	// BodyAdmissionWaitSeconds 限制请求等待请求体准入的最长时间（秒）。
+	BodyAdmissionWaitSeconds int `mapstructure:"body_admission_wait_seconds"`
+	// MaxInflightBodyReads 限制进程内同时上传或读取请求体的数量；非正数表示不限制。
+	MaxInflightBodyReads int `mapstructure:"max_inflight_body_reads"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 上游模型列表响应体读取上限（字节）
@@ -2512,6 +2527,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
+	viper.SetDefault("gateway.max_inflight_body_bytes", int64(512*1024*1024))
+	viper.SetDefault("gateway.body_admission_wait_seconds", 2)
+	viper.SetDefault("gateway.max_inflight_body_reads", 64)
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("video_storage.storage_path", "data/generated-videos")
 	viper.SetDefault("video_storage.max_bytes", int64(512*1024*1024))
@@ -3321,6 +3339,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.TextMaxBodySize <= 0 || c.Gateway.TextMaxBodySize > c.Gateway.MaxBodySize {
 		return fmt.Errorf("gateway.text_max_body_size must be positive and no greater than gateway.max_body_size")
+	}
+	if c.Gateway.MaxInflightBodyBytes < minBodyAdmissionBudgetBytes {
+		return fmt.Errorf("gateway.max_inflight_body_bytes must be at least %d bytes", minBodyAdmissionBudgetBytes)
+	}
+	if c.Gateway.BodyAdmissionWaitSeconds < 0 || int64(c.Gateway.BodyAdmissionWaitSeconds) > maxBodyAdmissionWaitSeconds {
+		return fmt.Errorf("gateway.body_admission_wait_seconds must be between 0 and %d seconds", maxBodyAdmissionWaitSeconds)
+	}
+	if c.Gateway.MaxInflightBodyReads < 0 {
+		return fmt.Errorf("gateway.max_inflight_body_reads must be non-negative")
 	}
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")

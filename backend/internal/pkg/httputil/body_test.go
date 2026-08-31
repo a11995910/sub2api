@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -75,6 +76,45 @@ func TestReadRequestBodyWithPrealloc_DecodesGzip(t *testing.T) {
 	}
 	if string(got) != samplePayload {
 		t.Fatalf("body mismatch: got %q", got)
+	}
+}
+
+func TestReadRequestBodyWithPreallocHonorsRequestDecompressedLimit(t *testing.T) {
+	var buf bytes.Buffer
+	payload := bytes.Repeat([]byte("x"), 128)
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(payload); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	req := newRequestWithBody(t, buf.Bytes(), "gzip")
+	req = WithDecompressedBodyLimit(req, 64)
+	_, err := ReadRequestBodyWithPrealloc(req)
+	var maxErr *http.MaxBytesError
+	if !errors.As(err, &maxErr) {
+		t.Fatalf("expected MaxBytesError, got %v", err)
+	}
+	if maxErr.Limit != 64 {
+		t.Fatalf("decompressed limit = %d, want 64", maxErr.Limit)
+	}
+}
+
+func TestReadLenientJSONRequestBodyWithPreallocHonorsRequestLimitDuringNormalization(t *testing.T) {
+	// 原始请求体未超过文本路由上限，但控制字节转义后会变长；规范化
+	// 阶段也必须继承请求级上限，不能退回到调用方的全局上限。
+	body := []byte{'{', '"', 'x', '"', ':', '"', '\x01', '"', '}'}
+	req := newRequestWithBody(t, body, "")
+	req = WithDecompressedBodyLimit(req, int64(len(body)+1))
+	_, err := ReadLenientJSONRequestBodyWithPrealloc(req, 1024)
+	var maxErr *http.MaxBytesError
+	if !errors.As(err, &maxErr) {
+		t.Fatalf("expected MaxBytesError, got %v", err)
+	}
+	if maxErr.Limit != int64(len(body)+1) {
+		t.Fatalf("normalized body limit = %d, want %d", maxErr.Limit, len(body)+1)
 	}
 }
 

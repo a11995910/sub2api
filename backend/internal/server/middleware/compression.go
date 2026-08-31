@@ -45,6 +45,14 @@ type compressionResponseWriter struct {
 	gzipWriter *gzip.Writer
 }
 
+// Unwrap 允许 http.ResponseController 穿透压缩层访问底层连接能力。
+func (w *compressionResponseWriter) Unwrap() http.ResponseWriter {
+	if w == nil {
+		return nil
+	}
+	return w.ResponseWriter
+}
+
 func (w *compressionResponseWriter) WriteHeader(statusCode int) {
 	w.status = statusCode
 }

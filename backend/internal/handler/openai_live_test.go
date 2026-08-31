@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -63,6 +64,57 @@ func TestParseLiveCallRequestRejectsInvalidJSONShape(t *testing.T) {
 		context.Request = request
 		_, err := parseLiveCallRequest(context)
 		require.Error(t, err)
+	}
+}
+
+func TestLiveReturns413ForActualOversizeJSONAndMultipart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var multipartBody bytes.Buffer
+	multipartWriter := multipart.NewWriter(&multipartBody)
+	require.NoError(t, multipartWriter.WriteField("sdp", "v=0\r\n"))
+	require.NoError(t, multipartWriter.WriteField("session", `{"model":"gpt-live-test","instructions":"`+string(bytes.Repeat([]byte("x"), 128))+`"}`))
+	require.NoError(t, multipartWriter.Close())
+
+	tests := []struct {
+		name        string
+		contentType string
+		body        []byte
+	}{
+		{
+			name:        "json",
+			contentType: "application/json",
+			body:        []byte(`{"sdp":"v=0\\r\\n","session":{"model":"gpt-live-test","instructions":"` + string(bytes.Repeat([]byte("x"), 128)) + `"}}`),
+		},
+		{
+			name:        "multipart",
+			contentType: multipartWriter.FormDataContentType(),
+			body:        multipartBody.Bytes(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &OpenAIGatewayHandler{}
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+					Group: &service.Group{Platform: service.PlatformOpenAI, AllowLive: true},
+				})
+				c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 1})
+				c.Next()
+			})
+			router.POST("/v1/live", middleware2.RequestBodyLimit(32), h.Live)
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/live", bytes.NewReader(tt.body))
+			req.ContentLength = -1
+			req.Header.Del("Content-Length")
+			req.Header.Set("Content-Type", tt.contentType)
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+
+			require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+			require.Contains(t, recorder.Body.String(), "Request body too large")
+		})
 	}
 }
 

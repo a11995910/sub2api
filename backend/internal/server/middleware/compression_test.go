@@ -45,6 +45,20 @@ func TestResponseCompression_CompressesJSON(t *testing.T) {
 	}
 }
 
+func TestCompressionResponseWriterUnwraps(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	base := c.Writer
+	writer := &compressionResponseWriter{ResponseWriter: base}
+	if got := writer.Unwrap(); got != base {
+		t.Fatalf("Unwrap() = %T, want original Gin writer", got)
+	}
+	var nilWriter *compressionResponseWriter
+	if got := nilWriter.Unwrap(); got != nil {
+		t.Fatalf("nil Unwrap() = %T, want nil", got)
+	}
+}
+
 func TestResponseCompression_SkipsGatewayStreams(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

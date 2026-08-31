@@ -191,7 +191,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 
 	body, err := readGrokVoiceGatewayBody(c)
 	if err != nil {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		h.writeGrokVoiceBodyReadError(c, err)
 		return
 	}
 	if endpoint == "tts" {
@@ -360,6 +360,14 @@ func readGrokVoiceGatewayBody(c *gin.Context) ([]byte, error) {
 		return nil, errors.New("request body is required")
 	}
 	return io.ReadAll(c.Request.Body)
+}
+
+func (h *OpenAIGatewayHandler) writeGrokVoiceBodyReadError(c *gin.Context, err error) {
+	if maxErr, ok := extractMaxBytesError(err); ok {
+		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		return
+	}
+	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 }
 
 // extractGrokTTSInputText pulls the primary spoken text from a TTS JSON body.

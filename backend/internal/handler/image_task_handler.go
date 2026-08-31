@@ -130,13 +130,25 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		"poll_url":   pollURL,
 	})
 
-	go h.run(task.ID, platform, taskCtx, recorder, cancel)
+	// 异步 worker 会继续持有请求体副本；把入口租约一并转交，直到
+	// worker 结束后再归还预算，避免后台任务绕过进程级 body 内存保护。
+	admissionLease := middleware2.TakeRequestBodyAdmissionLease(c)
+	go func() {
+		if admissionLease != nil {
+			defer admissionLease.Release()
+		}
+		h.run(task.ID, platform, taskCtx, recorder, cancel)
+	}()
 }
 
 func (h *AsyncImageHandler) DispatchGenerations(syncHandler gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 		if err != nil {
+			if maxErr, ok := extractMaxBytesError(err); ok {
+				imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+				return
+			}
 			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 			return
 		}
@@ -418,8 +430,10 @@ func imageGenerationTaskPollURL(submitPath, taskID string) string {
 }
 
 func restoreImageTaskRequestBody(request *http.Request, body []byte) {
-	request.Body = io.NopCloser(bytes.NewReader(body))
-	request.ContentLength = int64(len(body))
+	updated := pkghttputil.WithCachedRequestBody(request, body)
+	if updated != request {
+		*request = *updated
+	}
 }
 
 func extractImageTaskError(body []byte) json.RawMessage {

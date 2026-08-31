@@ -40,6 +40,10 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 	}
 	request, err := parseLiveCallRequest(c)
 	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
@@ -125,8 +129,14 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 	contentType := strings.ToLower(c.GetHeader("Content-Type"))
 	if strings.HasPrefix(contentType, "multipart/form-data") {
-		sdp := c.PostForm("sdp")
-		session := json.RawMessage(c.PostForm("session"))
+		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+			return nil, err
+		}
+		if c.Request.MultipartForm != nil {
+			defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
+		}
+		sdp := c.Request.PostForm.Get("sdp")
+		session := json.RawMessage(c.Request.PostForm.Get("session"))
 		request := &service.LiveCallRequest{SDP: sdp, Session: session}
 		if err := service.ValidateLiveCallRequest(request); err != nil {
 			return nil, err
@@ -136,9 +146,15 @@ func parseLiveCallRequest(c *gin.Context) (*service.LiveCallRequest, error) {
 	var request service.LiveCallRequest
 	decoder := json.NewDecoder(c.Request.Body)
 	if err := decoder.Decode(&request); err != nil {
+		if _, ok := extractMaxBytesError(err); ok {
+			return nil, err
+		}
 		return nil, errors.New("request body must be valid JSON")
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if _, ok := extractMaxBytesError(err); ok {
+			return nil, err
+		}
 		return nil, errors.New("request body must contain one JSON object")
 	}
 	if err := service.ValidateLiveCallRequest(&request); err != nil {

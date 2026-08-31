@@ -20,6 +20,33 @@ type compositeRouteRepoStub struct {
 	routes []service.CompositeModelRoute
 }
 
+type compositeBodyReadTracker struct {
+	reader *bytes.Reader
+	reads  int
+}
+
+func newCompositeBodyReadTracker(body string) *compositeBodyReadTracker {
+	return &compositeBodyReadTracker{reader: bytes.NewReader([]byte(body))}
+}
+
+func (r *compositeBodyReadTracker) Read(p []byte) (int, error) {
+	r.reads++
+	return r.reader.Read(p)
+}
+
+func (r *compositeBodyReadTracker) Close() error { return nil }
+
+func newCompositeMiddlewareContext(req *http.Request) *gin.Context {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = req
+	groupID := int64(1)
+	c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+	return c
+}
+
 func (s compositeRouteRepoStub) ListByGroup(ctx context.Context, groupID int64, includeDisabled bool) ([]service.CompositeModelRoute, error) {
 	routes := make([]service.CompositeModelRoute, 0, len(s.routes))
 	for _, route := range s.routes {
@@ -80,6 +107,60 @@ func TestCompositeTargetPlatformMiddlewareResolvesModelAndRestoresBody(t *testin
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestCompositeTargetPlatformMiddlewareSkipsBodyForNonBodyMethods(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodConnect} {
+		t.Run(method, func(t *testing.T) {
+			tracker := newCompositeBodyReadTracker(`{"model":"gpt-5"}`)
+			req := httptest.NewRequest(method, "/v1/responses", tracker)
+			req.Header.Set("Content-Type", "application/json")
+			c := newCompositeMiddlewareContext(req)
+
+			require.NotPanics(t, func() {
+				compositeTargetPlatformMiddleware(nil)(c)
+			})
+			require.Zero(t, tracker.reads, "composite middleware must not read %s request bodies", method)
+		})
+	}
+}
+
+func TestCompositeTargetPlatformMiddlewareHandlesNilRequestFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tracker := newCompositeBodyReadTracker(`{"model":"gpt-5"}`)
+	cases := []struct {
+		name string
+		req  *http.Request
+	}{
+		{name: "nil request", req: nil},
+		{
+			name: "nil url",
+			req: &http.Request{
+				Method: http.MethodPost,
+				Header: make(http.Header),
+				Body:   tracker,
+			},
+		},
+		{
+			name: "nil body",
+			req: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				req.Body = nil
+				return req
+			}(),
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newCompositeMiddlewareContext(tt.req)
+			require.NotPanics(t, func() {
+				compositeTargetPlatformMiddleware(nil)(c)
+			})
+		})
+	}
+	require.Zero(t, tracker.reads, "nil URL must not trigger a body read")
 }
 
 func TestCompositeTargetPlatformMiddlewareUsesExplicitRouteAndRewritesBody(t *testing.T) {
@@ -311,4 +392,46 @@ func TestCompositeGeminiTargetPlatformMiddlewareUsesPathRoute(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestCompositeGeminiTargetPlatformMiddlewarePreservesGetModelResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/models/gemini-2.5-pro", nil)
+	c := newCompositeMiddlewareContext(req)
+	c.Params = gin.Params{{Key: "model", Value: "gemini-2.5-pro"}}
+
+	require.NotPanics(t, func() {
+		compositeGeminiTargetPlatformMiddleware(nil)(c)
+	})
+	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, service.PlatformGemini, platform)
+}
+
+func TestCompositeGeminiTargetPlatformMiddlewareHandlesNilRequestFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name string
+		req  *http.Request
+	}{
+		{name: "nil request", req: nil},
+		{name: "nil url", req: &http.Request{Method: http.MethodPost, Body: http.NoBody, Header: make(http.Header)}},
+		{
+			name: "nil body",
+			req: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", nil)
+				req.Body = nil
+				return req
+			}(),
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newCompositeMiddlewareContext(tt.req)
+			require.NotPanics(t, func() {
+				compositeGeminiTargetPlatformMiddleware(nil)(c)
+			})
+		})
+	}
 }

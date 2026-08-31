@@ -17,15 +17,22 @@ const (
 	requestBodyReadInitCap    = 512
 	requestBodyReadMaxInitCap = 1 << 20
 	jsonUTF8BOMLen            = 3
-	// maxDecompressedBodySize limits the decompressed request body to 64 MB
-	// to prevent decompression bomb attacks.
-	maxDecompressedBodySize = 64 << 20
+	// MaxDecompressedBodySize 限制解压后的请求体大小，防止解压炸弹。
+	MaxDecompressedBodySize int64 = 64 << 20
+	// 保留包内别名，避免已有包内测试和调用点改变。
+	maxDecompressedBodySize = MaxDecompressedBodySize
 )
 
 // ReadRequestBodyWithPrealloc reads request body with preallocated buffer based
 // on content length, transparently decoding any Content-Encoding the upstream
 // client used to compress the body (zstd, gzip, deflate).
 func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
+	if cached, ok := CachedRequestBody(req); ok {
+		// 缓存体可能已经被前一个消费者读完，命中时恢复 reader，保证后续
+		// handler/转发逻辑仍可重复读取同一份请求体。
+		ResetRequestBody(req, cached)
+		return cached, nil
+	}
 	if req == nil || req.Body == nil {
 		return nil, nil
 	}
@@ -53,7 +60,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 		return raw, nil
 	}
 
-	decoded, err := decompressRequestBody(enc, raw)
+	decoded, err := decompressRequestBodyWithLimit(enc, raw, requestDecompressedBodyLimit(req))
 	if err != nil {
 		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
 	}
@@ -72,35 +79,95 @@ func ReadLenientJSONRequestBodyWithPrealloc(req *http.Request, maxNormalizedByte
 	if err != nil {
 		return nil, err
 	}
-	return NormalizeLenientJSONRequestBody(body, maxNormalizedBytes)
+	// 网关准入会把实际路由（例如纯文本端点）的限制写入 request
+	// context。规范化可能把一个控制字节扩展成六字节，不能因为调用方
+	// 传入了全局上限而绕过更小的请求级限制。
+	if requestLimit := DecompressedBodyLimit(req); requestLimit > 0 &&
+		(maxNormalizedBytes <= 0 || requestLimit < maxNormalizedBytes) {
+		maxNormalizedBytes = requestLimit
+	}
+	normalized, err := NormalizeLenientJSONRequestBody(body, maxNormalizedBytes)
+	if err != nil {
+		return nil, err
+	}
+	// 复合路由会把 body 放进请求缓存；规范化后同步替换缓存，避免
+	// handler 再次命中旧的、尚未转义的内容。
+	if _, cached := CachedRequestBody(req); cached && !bytes.Equal(body, normalized) {
+		WithCachedRequestBody(req, normalized)
+	}
+	return normalized, nil
 }
 
 func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
+	return decompressRequestBodyWithLimit(encoding, raw, MaxDecompressedBodySize)
+}
+
+func decompressRequestBodyWithLimit(encoding string, raw []byte, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 || maxBytes > MaxDecompressedBodySize {
+		maxBytes = MaxDecompressedBodySize
+	}
 	switch encoding {
 	case "zstd":
-		dec, err := zstd.NewReader(bytes.NewReader(raw))
+		// zstd 默认允许较大的窗口和多路解码器。请求体已由网关准入层
+		// 限制，这里继续把解码器限制到单并发和同等内存上限，避免恶意
+		// frame 在输出截断前先申请超出预算的窗口。
+		decoderMaxMemory := maxBytes
+		if decoderMaxMemory < zstd.MinWindowSize {
+			decoderMaxMemory = zstd.MinWindowSize
+		}
+		dec, err := zstd.NewReader(
+			bytes.NewReader(raw),
+			zstd.WithDecoderLowmem(true),
+			zstd.WithDecoderConcurrency(1),
+			zstd.WithDecoderMaxMemory(uint64(decoderMaxMemory)),
+		)
 		if err != nil {
 			return nil, err
 		}
 		defer dec.Close()
-		return io.ReadAll(io.LimitReader(dec, maxDecompressedBodySize))
+		return readDecompressedBodyWithLimit(dec, maxBytes)
 	case "gzip", "x-gzip":
 		gr, err := gzip.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 		}
 		defer func() { _ = gr.Close() }()
-		return io.ReadAll(io.LimitReader(gr, maxDecompressedBodySize))
+		return readDecompressedBodyWithLimit(gr, maxBytes)
 	case "deflate":
 		zr, err := zlib.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 		}
 		defer func() { _ = zr.Close() }()
-		return io.ReadAll(io.LimitReader(zr, maxDecompressedBodySize))
+		return readDecompressedBodyWithLimit(zr, maxBytes)
 	default:
 		return nil, errors.New("unsupported Content-Encoding")
 	}
+}
+
+func readDecompressedBody(reader io.Reader) ([]byte, error) {
+	return readDecompressedBodyWithLimit(reader, MaxDecompressedBodySize)
+}
+
+func readDecompressedBodyWithLimit(reader io.Reader, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 || maxBytes > MaxDecompressedBodySize {
+		maxBytes = MaxDecompressedBodySize
+	}
+	decoded, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(decoded)) > maxBytes {
+		return nil, &http.MaxBytesError{Limit: maxBytes}
+	}
+	return decoded, nil
+}
+
+func requestDecompressedBodyLimit(req *http.Request) int64 {
+	if limit := DecompressedBodyLimit(req); limit > 0 && limit < MaxDecompressedBodySize {
+		return limit
+	}
+	return MaxDecompressedBodySize
 }
 
 // NormalizeLenientJSONRequestBody escapes raw control bytes that broken

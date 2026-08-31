@@ -585,6 +585,10 @@ SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
 
 **网关防御纵深建议（重点）**
 
+- `gateway.max_inflight_body_bytes`：限制网关同时处理请求体的估算内存预算，默认 `512MB`、最低 `1MiB`；预算不足时请求会在读取前返回 `429`，单请求估算超过总预算时会占满预算并独占运行；异步任务接管 body 后会持有预算直到 worker 结束。
+- `gateway.body_admission_wait_seconds`：请求体准入等待秒数，默认 `2`；等待超时返回 `429` 并附带 `Retry-After`。
+- `gateway.max_inflight_body_reads`：进程内并发读取请求体的最大数量，默认 `64`；设置为 `0` 表示不限制读取槽位。
+- 未提供正数 `Content-Length` 的请求（包括 HTTP/1.1 chunked 和未声明长度的 HTTP/2 请求）使用独立有效上限：不超过路由上限、`8MiB` 及全局预算八分之一按最坏内存倍率反推值；未知长度流量合计最多占一半内存预算，超过有效上限返回 `413`。大于该上限的客户端必须发送准确的 `Content-Length`。
 - `gateway.upstream_response_read_max_bytes`：限制非流式上游响应读取大小（默认 `8MB`），用于防止异常响应导致内存放大。
 - `gateway.proxy_probe_response_read_max_bytes`：限制代理探测响应读取大小（默认 `1MB`）。
 - `gateway.gemini_debug_response_headers`：默认 `false`，仅在排障时短时开启，避免高频请求日志开销。

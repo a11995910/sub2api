@@ -3,9 +3,11 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -1546,6 +1549,188 @@ func TestAPIKeyAuthQuotaErrorKeepsLegacyFormatOutsideResponses(t *testing.T) {
 
 	require.Equal(t, http.StatusTooManyRequests, w.Code)
 	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+}
+
+func TestAPIKeyAuthQuotaExhaustedAsyncImageUsesDeferredAdmission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 12, Role: service.RoleUser, Status: service.StatusActive, Balance: 0}
+	group := &service.Group{ID: 9, Platform: service.PlatformOpenAI, Status: service.StatusActive}
+	apiKey := &service.APIKey{
+		ID: 106, UserID: user.ID, Key: "async-image-quota-exhausted", Status: service.StatusAPIKeyQuotaExhausted,
+		User: user, Group: group, GroupID: &group.ID,
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		userClone := *user
+		clone.User = &userClone
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+	for _, tc := range []struct {
+		name    string
+		path    string
+		chunked bool
+	}{
+		{name: "v1 large", path: "/v1/images/generations"},
+		{name: "root chunked", path: "/images/generations", chunked: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"async":true,"client_request_id":"request_deferred","model":"gpt-image-2","input":"` +
+				strings.Repeat("x", 70*1024) + `"}`
+			// Unknown-length JSON may use at most 1/8 of the process budget and is
+			// reserved at 7x for the original plus worst-case normalized copy.
+			budget := NewBodyMemoryBudget(8*1024*1024, 0, 1)
+			router := gin.New()
+			router.Use(DeferredRequestBodyAdmissionForGateway(budget, 1024*1024, 1024*1024))
+			router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+			router.Use(RequestBodyAdmissionForGateway(budget, 1024*1024, 1024*1024))
+			var handlerCalled bool
+			router.POST(tc.path, func(c *gin.Context) {
+				handlerCalled = true
+				cached, ok := pkghttputil.CachedRequestBody(c.Request)
+				require.True(t, ok)
+				require.Equal(t, body, string(cached))
+				restored, err := io.ReadAll(c.Request.Body)
+				require.NoError(t, err)
+				require.Equal(t, body, string(restored))
+				c.Status(http.StatusAccepted)
+			})
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(body))
+			req.Header.Set("x-api-key", apiKey.Key)
+			req.Header.Set("Content-Type", "application/json")
+			if tc.chunked {
+				req.ContentLength = -1
+				req.Header.Del("Content-Length")
+				req.TransferEncoding = []string{"chunked"}
+			}
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusAccepted, w.Code)
+			require.True(t, handlerCalled)
+		})
+	}
+}
+
+func TestAPIKeyAuthQuotaExhaustedSyncImageStillRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 13, Role: service.RoleUser, Status: service.StatusActive, Balance: 0}
+	group := &service.Group{ID: 10, Platform: service.PlatformOpenAI, Status: service.StatusActive}
+	apiKey := &service.APIKey{
+		ID: 107, UserID: user.ID, Key: "sync-image-quota-exhausted", Status: service.StatusAPIKeyQuotaExhausted,
+		User: user, Group: group, GroupID: &group.ID,
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	budget := NewBodyMemoryBudget(1024*1024, 0, 1)
+	router := gin.New()
+	router.Use(DeferredRequestBodyAdmissionForGateway(budget, 128*1024, 128*1024))
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.Use(RequestBodyAdmissionForGateway(budget, 128*1024, 128*1024))
+	var handlerCalled bool
+	router.POST("/v1/images/generations", func(c *gin.Context) {
+		handlerCalled = true
+		c.Status(http.StatusAccepted)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"async":false,"model":"gpt-image-2"}`))
+	req.Header.Set("x-api-key", apiKey.Key)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+	require.False(t, handlerCalled)
+	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+}
+
+func TestAPIKeyAuthInvalidKeyDoesNotReadDeferredBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		return nil, service.ErrAPIKeyNotFound
+	}}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	budget := NewBodyMemoryBudget(1024*1024, 0, 1)
+	router := gin.New()
+	router.Use(DeferredRequestBodyAdmissionForGateway(budget, 128*1024, 128*1024))
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.Use(RequestBodyAdmissionForGateway(budget, 128*1024, 128*1024))
+	router.POST("/v1/images/generations", func(c *gin.Context) {
+		c.Status(http.StatusAccepted)
+	})
+
+	payload := []byte(`{"async":true,"client_request_id":"request_invalid_key"}`)
+	original := &trackedImageProbeBody{Reader: bytes.NewReader(payload)}
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	req.Body = original
+	req.ContentLength = int64(len(payload))
+	req.Header.Set("x-api-key", "invalid-key")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Equal(t, len(payload), original.Len(), "无效 Key 不应触发 body 读取")
+	require.True(t, original.closed)
+}
+
+func TestAPIKeyAuthSimpleModeDefersBodyReadToHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	user := &service.User{ID: 14, Role: service.RoleUser, Status: service.StatusActive, Balance: 0}
+	group := &service.Group{ID: 11, Platform: service.PlatformOpenAI, Status: service.StatusActive}
+	apiKey := &service.APIKey{
+		ID: 108, UserID: user.ID, Key: "simple-mode-image", Status: service.StatusAPIKeyQuotaExhausted,
+		User: user, Group: group, GroupID: &group.ID,
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	budget := NewBodyMemoryBudget(1024*1024, 0, 1)
+	router := gin.New()
+	router.Use(DeferredRequestBodyAdmissionForGateway(budget, 128*1024, 128*1024))
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.Use(RequestBodyAdmissionForGateway(budget, 128*1024, 128*1024))
+	payload := []byte(`{"async":true,"client_request_id":"request_simple"}`)
+	original := &trackedImageProbeBody{Reader: bytes.NewReader(payload)}
+	var bytesRemainingAtHandler int
+	router.POST("/v1/images/generations", func(c *gin.Context) {
+		bytesRemainingAtHandler = original.Len()
+		c.Status(http.StatusAccepted)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	req.Body = original
+	req.ContentLength = int64(len(payload))
+	req.Header.Set("x-api-key", apiKey.Key)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+	require.Equal(t, len(payload), bytesRemainingAtHandler)
+	require.True(t, original.closed)
 }
 
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {

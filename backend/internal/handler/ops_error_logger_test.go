@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"bufio"
 	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -228,6 +231,57 @@ func TestOpsCaptureWriterPool_DropsLargeBuffers(t *testing.T) {
 	state := &opsCaptureWriterState{}
 	state.buf.Grow(opsCaptureWriterPoolMaxRetainedCapacity + 1)
 	require.False(t, shouldPoolOpsCaptureWriterState(state))
+}
+
+func TestOpsCaptureWriterUnwrapsActiveWriter(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	base := c.Writer
+	w := acquireOpsCaptureWriter(base)
+
+	require.Same(t, base, w.Unwrap())
+	releaseOpsCaptureWriter(w)
+	require.Nil(t, w.Unwrap())
+}
+
+func TestOpsWriterChainRejectsSlowPartialUploadWithoutDraining(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	budget := middleware2.NewBodyMemoryBudget(8, 0, 1)
+	holderRecorder := httptest.NewRecorder()
+	holderContext, _ := gin.CreateTestContext(holderRecorder)
+	holderContext.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", strings.NewReader("1234"))
+	holderContext.Request.Header.Set("Content-Type", "application/octet-stream")
+	holderLease, _, err := middleware2.AcquireRequestBodyAdmission(holderContext, budget, 16)
+	require.NoError(t, err)
+	require.NotNil(t, holderLease)
+	defer holderLease.Release()
+
+	router := gin.New()
+	router.Use(middleware2.ResponseCompression())
+	router.Use(OpsErrorLoggerMiddleware(nil))
+	router.POST("/images/generations", middleware2.RequestBodyAdmission(budget, 16), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	conn, err := net.Dial("tcp", server.Listener.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+	require.NoError(t, conn.SetDeadline(time.Now().Add(2*time.Second)))
+	_, err = io.WriteString(conn,
+		"POST /images/generations HTTP/1.1\r\n"+
+			"Host: example.test\r\n"+
+			"Accept-Encoding: gzip\r\n"+
+			"Content-Type: application/octet-stream\r\n"+
+			"Content-Length: 4\r\n\r\n1",
+	)
+	require.NoError(t, err)
+
+	response, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodPost})
+	require.NoError(t, err, "Ops/压缩 writer 包装后，拒绝响应仍不应等待慢上传补完")
+	defer response.Body.Close()
+	require.Equal(t, http.StatusTooManyRequests, response.StatusCode)
 }
 
 func TestEnqueueOpsErrorLog_SanitizesAndBoundsBodyBeforeQueue(t *testing.T) {

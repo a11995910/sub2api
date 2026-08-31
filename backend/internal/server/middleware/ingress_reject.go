@@ -28,6 +28,8 @@ const (
 	IngressRejectGroupUnassigned        IngressRejectReason = "group_unassigned"
 	IngressRejectInvalidAuthRateLimited IngressRejectReason = "invalid_auth_rate_limited"
 	IngressRejectAPIKeyAuthOverloaded   IngressRejectReason = "api_key_auth_overloaded"
+	IngressRejectBodyMemoryBudget       IngressRejectReason = "body_memory_budget"
+	IngressRejectBodyReadSlots          IngressRejectReason = "body_read_slots"
 )
 
 const ingressRejectReasonContextKey = "ingress_reject_reason"
@@ -106,7 +108,11 @@ func recordIngressReject(c *gin.Context, reason IngressRejectReason) {
 	if holder == nil || holder.recorder == nil || c == nil || c.Request == nil {
 		return
 	}
-	routeFamily, protocol := ingressRejectRoute(c.Request.URL.Path)
+	path := ""
+	if c.Request.URL != nil {
+		path = c.Request.URL.Path
+	}
+	routeFamily, protocol := ingressRejectRoute(path)
 	clientIP := normalizeIngressRejectIP(SecurityClientIP(c))
 	var userID, apiKeyID int64
 	if apiKey, ok := GetAPIKeyFromContext(c); ok && apiKey != nil {

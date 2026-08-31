@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
@@ -30,7 +31,22 @@ const (
 func (h *GatewayHandler) WebSearch(c *gin.Context) {
 	isXSearch := c.GetBool("grok_x_search_endpoint")
 	var req grokStandaloneSearchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	body, readErr := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if readErr != nil {
+		if maxErr, ok := extractMaxBytesError(readErr); ok {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": buildBodyTooLargeMessage(maxErr.Limit),
+			}})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"type":    "invalid_request_error",
+			"message": "Failed to read request body",
+		}})
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 			"type":    "invalid_request_error",
 			"message": err.Error(),

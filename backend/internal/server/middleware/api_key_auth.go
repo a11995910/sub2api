@@ -1,11 +1,9 @@
 package middleware
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -168,12 +166,6 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
-		// Async image task polling only reads data that already belongs to the
-		// authenticated key and must remain available after the completed
-		// generation consumes the key's remaining balance.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest ||
-			isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path) ||
-			isAsyncImageTaskSubmit(c)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -192,6 +184,18 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			c.Next()
 			return
 		}
+
+		// 异步图片提交需要在计费前读取 async/client_request_id。读取只能通过
+		// 网关延迟准入 controller 完成，避免绕过上传读取槽和内存预算。
+		asyncImageTaskSubmit := isAsyncImageTaskSubmit(c)
+		if c.IsAborted() {
+			return
+		}
+		// 异步图片任务查询和幂等提交只访问当前 Key 自己的数据；即使首次
+		// 生成消耗了剩余额度，也必须允许客户端读取或重放同一任务。
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest ||
+			isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path) ||
+			asyncImageTaskSubmit
 
 		// ── 5. 按端点需要加载订阅 ───────────────────────────────────
 
@@ -353,15 +357,17 @@ func isAsyncImageTaskSubmit(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.Method != http.MethodPost {
 		return false
 	}
+	if c.Request.URL == nil {
+		return false
+	}
 	path := c.Request.URL.Path
 	if path != "/v1/images/generations" && path != "/images/generations" {
 		return false
 	}
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
+	body, ok := readAndCacheDeferredRequestBody(c)
+	if !ok {
 		return false
 	}
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
 	parsed, err := service.ParseImageTaskRequest(body)
 	return err == nil && parsed.Async
 }

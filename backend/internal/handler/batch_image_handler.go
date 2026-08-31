@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -30,7 +31,20 @@ func NewBatchImageHandler(service *service.BatchImagePublicService, download *se
 
 func (h *BatchImageHandler) Submit(c *gin.Context) {
 	var req service.BatchImageSubmitRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			batchImageError(c, infraerrors.New(
+				http.StatusRequestEntityTooLarge,
+				"REQUEST_BODY_TOO_LARGE",
+				buildBodyTooLargeMessage(maxErr.Limit),
+			))
+			return
+		}
+		batchImageError(c, service.ErrBatchImageInvalidItems)
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
 		batchImageError(c, service.ErrBatchImageInvalidItems)
 		return
 	}

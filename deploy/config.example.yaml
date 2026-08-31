@@ -245,6 +245,13 @@ gateway:
   # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
   # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
   text_max_body_size: 33554432
+  # 活跃请求体估算内存预算（默认 512 MiB，最低 1 MiB）；异步任务接管后持有到 worker 结束。
+  # 未声明 Content-Length 的请求另受 8 MiB/预算反推有效上限和 50% 聚合子预算保护。
+  max_inflight_body_bytes: 536870912
+  # 请求体准入等待秒数（默认 2）；超时返回 429，0 表示立即拒绝。
+  body_admission_wait_seconds: 2
+  # 进程内并发读取请求体的最大数量（默认 64）；0 表示不限制。
+  max_inflight_body_reads: 64
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608

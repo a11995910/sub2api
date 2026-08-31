@@ -137,6 +137,29 @@ func TestAsyncImageHandlerDispatchGenerationsKeepsSyncMode(t *testing.T) {
 	require.JSONEq(t, `{"legacy":true}`, w.Body.String())
 }
 
+func TestAsyncImageHandlerDispatchGenerationsReturns413ForActualOversize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, path := range []string{"/v1/images/generations", "/images/generations"} {
+		t.Run(path, func(t *testing.T) {
+			h := &AsyncImageHandler{}
+			router := gin.New()
+			router.POST(path, middleware2.RequestBodyLimit(4), h.DispatchGenerations(func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			}))
+
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-image-2"}`))
+			req.ContentLength = -1
+			req.Header.Del("Content-Length")
+			req.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+
+			require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+			require.Contains(t, recorder.Body.String(), "Request body too large")
+		})
+	}
+}
+
 func TestAsyncImageHandlerDispatchGenerationsIsIdempotent(t *testing.T) {
 	h, store, router := newAsyncGenerationTestHandler()
 	router.POST("/v1/images/generations", h.DispatchGenerations(func(c *gin.Context) {

@@ -731,6 +731,18 @@ func (w *opsCaptureWriter) Header() http.Header {
 	defer state.mu.RUnlock()
 	return rw.Header()
 }
+
+// Unwrap 允许 http.ResponseController 穿透日志捕获层访问底层连接能力，
+// 例如请求体拒绝时设置读取截止时间或启用全双工响应。
+func (w *opsCaptureWriter) Unwrap() http.ResponseWriter {
+	state, rw := w.lockActive()
+	if state == nil {
+		return nil
+	}
+	defer state.mu.RUnlock()
+	return rw
+}
+
 func (w *opsCaptureWriter) WriteHeader(code int) {
 	state, rw := w.beginDelegatedCall()
 	if state == nil {

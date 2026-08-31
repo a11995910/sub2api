@@ -9,6 +9,13 @@ import (
 // RequestBodyLimit 使用 MaxBytesReader 限制请求体大小。
 func RequestBodyLimit(maxBytes int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c == nil {
+			return
+		}
+		if c.Request == nil || requestBodyIsEmpty(c.Request.Body) || c.Writer == nil {
+			c.Next()
+			return
+		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		c.Next()
 	}

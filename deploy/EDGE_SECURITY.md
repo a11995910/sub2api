@@ -15,6 +15,26 @@ terminate healthy long generations and streams.
   image, video, and batch-image endpoints.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
+- `gateway.max_inflight_body_bytes: 536870912` 限制准入请求体预计占用的内存
+  （默认 512 MiB，最低 1 MiB），预留值包含解析和改写余量，请求处理结束后释放；若单个
+  请求的估算值超过总预算，该请求会占满预算并独占运行，不会被永久判为临时拥塞。
+- `gateway.body_admission_wait_seconds: 2` 限制准入等待时间；预算耗尽时返回
+  HTTP 429，并附带 `Retry-After`。
+- `gateway.max_inflight_body_reads: 64` 限制进程内同时读取请求体的数量。准入
+  覆盖所有可能携带请求体的网关路由，包括 JSON、multipart、媒体和原生 Gemini
+  路由；GET、HEAD、OPTIONS、CONNECT 会跳过检查，POST Live/媒体请求在读取请求体
+  时仍受保护。这是请求体读取预算，不是覆盖整个应用请求生命周期的并发信号量。
+- 未提供正数 `Content-Length` 的请求（HTTP/1.1 chunked 或未声明长度的 HTTP/2）
+  会使用独立的 effective limit。该限制取路由上限、8 MiB 和全局预算八分之一按
+  Content-Type/Content-Encoding 最坏倍率反推值中的最小值；同类请求的聚合租约
+  最多占全局预算的一半，避免少量 tiny chunked 长响应饿死正常请求。超过 effective
+  limit 返回 HTTP 413；需要发送更大 body 的客户端必须提供准确 `Content-Length`。
+- API Key 鉴权不会在请求体准入前读取 body。异步图片提交在合法 Key 完成基础身份、
+  用户、IP 和分组检查后，通过同一个准入 controller 完整读取并缓存解压后的原始
+  body，因此大于 64 KiB、分块或压缩请求仍能正确识别 `async` 和
+  `client_request_id`；无效或停用 Key 不占用请求体预算。
+- 异步图片 worker 接管请求体副本时会同时接管准入租约，直到任务完成、超时或异常
+  退出才释放预算；这保留了额度耗尽后的 `client_request_id` 幂等重放语义。
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6
