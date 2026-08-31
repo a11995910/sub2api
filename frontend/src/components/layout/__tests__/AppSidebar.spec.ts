@@ -75,3 +75,14 @@ describe('AppSidebar 自定义菜单顺序', () => {
     expect(adminSettingsIndex).toBeGreaterThan(adminCustomMenuIndex)
   })
 })
+
+describe('AppSidebar 抽奖功能开关', () => {
+  it('用户端和管理端抽奖入口都绑定抽奖功能标记', () => {
+    const lotteryItems = componentSource
+      .split('\n')
+      .filter((line) => line.includes("path: '/lottery'") || line.includes("path: '/admin/lottery'"))
+
+    expect(lotteryItems).toHaveLength(2)
+    expect(lotteryItems.every((line) => line.includes('featureFlag: flagLottery'))).toBe(true)
+  })
+})
