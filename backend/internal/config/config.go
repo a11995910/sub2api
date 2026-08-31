@@ -974,11 +974,6 @@ type GatewayConfig struct {
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
 	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
-	// MaxInflightBodyBytes 限制处理中的请求体估算内存。
-	// 入口会按请求体约 2 倍预留，用于覆盖解析和改写缓冲，并持有到请求结束。
-	MaxInflightBodyBytes int64 `mapstructure:"max_inflight_body_bytes"`
-	// BodyAdmissionWaitSeconds 控制请求等待请求体内存预算的最长时间。
-	BodyAdmissionWaitSeconds int `mapstructure:"body_admission_wait_seconds"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 上游模型列表响应体读取上限（字节）
@@ -2517,8 +2512,6 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
-	viper.SetDefault("gateway.max_inflight_body_bytes", int64(512*1024*1024))
-	viper.SetDefault("gateway.body_admission_wait_seconds", 2)
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("video_storage.storage_path", "data/generated-videos")
 	viper.SetDefault("video_storage.max_bytes", int64(512*1024*1024))
@@ -3328,12 +3321,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.TextMaxBodySize <= 0 || c.Gateway.TextMaxBodySize > c.Gateway.MaxBodySize {
 		return fmt.Errorf("gateway.text_max_body_size must be positive and no greater than gateway.max_body_size")
-	}
-	if c.Gateway.MaxInflightBodyBytes <= 0 {
-		return fmt.Errorf("gateway.max_inflight_body_bytes must be positive")
-	}
-	if c.Gateway.BodyAdmissionWaitSeconds < 0 {
-		return fmt.Errorf("gateway.body_admission_wait_seconds must be non-negative")
 	}
 	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")
