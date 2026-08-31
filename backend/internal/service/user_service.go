@@ -115,6 +115,8 @@ type UserUpdateFields struct {
 	AllowedGroups bool
 	// BlockedGroups 为 true 时才同步公开分组黑名单关联表。
 	BlockedGroups bool
+	// RestrictPublicGroups 覆盖 restrict_public_groups 列。
+	RestrictPublicGroups bool
 }
 
 // BalanceChange 记录一次余额变更前后的值。

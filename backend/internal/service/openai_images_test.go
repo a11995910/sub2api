@@ -2248,6 +2248,10 @@ func (r *openAIImages4KEnhancementAccountRepo) ResetQuotaUsed(ctx context.Contex
 	return nil
 }
 
+func (r *openAIImages4KEnhancementAccountRepo) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error {
+	return nil
+}
+
 func (r *openAIImages4KEnhancementAccountRepo) RevertProxyFallback(ctx context.Context, accountID int64) error {
 	panic("unexpected RevertProxyFallback call")
 }

@@ -122,10 +122,13 @@ export interface AdminUser extends User {
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
-  // 专属分组授权元数据 (group_id -> access meta)
-  allowed_group_access?: Record<number, UserAllowedGroupAccess>
-  // 用户不可使用的公开标准分组 ID
-  blocked_groups?: number[]
+	// 专属分组授权元数据 (group_id -> access meta)
+	allowed_group_access?: Record<number, UserAllowedGroupAccess>
+	// 用户不可使用的公开标准分组 ID
+	blocked_groups?: number[]
+	// 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
+	// 管理侧权限开关，普通用户接口不返回。
+	restrict_public_groups?: boolean
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }
@@ -1170,6 +1173,18 @@ export interface UpstreamBillingProbeResult {
   error?: string
 }
 
+export interface UpstreamBillingRateSnapshotItem {
+  account_id: number
+  snapshot?: UpstreamBillingProbeSnapshot | null
+}
+
+export interface UpstreamBillingRatesResponse {
+  items: UpstreamBillingRateSnapshotItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type OllamaCloudUsageStatus = 'ok' | 'unauthorized' | 'failed'
 
 export interface OllamaCloudUsageWindow {
@@ -1782,6 +1797,7 @@ export interface UsageLog {
   request_type?: UsageRequestType
   stream: boolean
   openai_ws_mode?: boolean
+  native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
 
@@ -1825,6 +1841,7 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
@@ -2111,6 +2128,7 @@ export interface UpdateUserRequest {
     source?: string
     notes?: string
   }>
+  restrict_public_groups?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
@@ -2232,6 +2250,7 @@ export interface UsageQueryParams {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  native_compaction_v2?: boolean | null
   billing_type?: number | null
   billing_mode?: string | null
   start_date?: string
