@@ -192,7 +192,7 @@ restore_previous_release() {
     rollback_container_id="$(compose_prod ps -q sub2api)"
     test -n "$rollback_container_id" || recovery_failed=1
     if [[ -n "$rollback_container_id" ]]; then
-      "$release_gates" wait-container-healthy "$rollback_container_id" 90 2 || recovery_failed=1
+      "$release_gates" wait-container-healthy "$rollback_container_id" 300 2 || recovery_failed=1
       "$release_gates" wait-http http://127.0.0.1:8080/health 10 1 || recovery_failed=1
     fi
   fi
@@ -251,7 +251,7 @@ container_id="$(compose_prod ps -q sub2api)"
 test -n "$container_id"
 test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
 compose_prod ps
-if ! "$release_gates" wait-container-healthy "$container_id" 90 2; then
+if ! "$release_gates" wait-container-healthy "$container_id" 300 2; then
   compose_prod logs --tail=200 sub2api >&2
   false
 fi

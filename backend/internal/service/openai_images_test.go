@@ -2342,7 +2342,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 
 func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	fallback := OpenAIUsage{InputTokens: 3, OutputTokens: 4, ImageOutputTokens: 2}
+	fallback := OpenAIUsage{InputTokens: 3, ImageInputTokens: 1, OutputTokens: 4, ImageOutputTokens: 2}
 	tests := []struct {
 		name      string
 		toolUsage string
@@ -2350,11 +2350,12 @@ func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testin
 	}{
 		{
 			name:      "valid tool usage takes atomic precedence",
-			toolUsage: `{"input_tokens":4.6e1,"output_tokens":2459e0,"output_tokens_details":{"image_tokens":24590e-1}}`,
-			want:      OpenAIUsage{InputTokens: 46, OutputTokens: 2459, ImageOutputTokens: 2459},
+			toolUsage: `{"input_tokens":4.6e1,"input_tokens_details":{"image_tokens":3.6e1},"output_tokens":2459e0,"output_tokens_details":{"image_tokens":24590e-1}}`,
+			want:      OpenAIUsage{InputTokens: 46, ImageInputTokens: 36, OutputTokens: 2459, ImageOutputTokens: 2459},
 		},
 		{name: "absent", want: fallback},
 		{name: "malformed field", toolUsage: `{"input_tokens":"46","output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
+		{name: "malformed image input", toolUsage: `{"input_tokens":46,"input_tokens_details":{"image_tokens":"36"},"output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
 		{name: "fractional field", toolUsage: `{"input_tokens":46,"output_tokens":2459.5,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
 		{name: "negative field", toolUsage: `{"input_tokens":46,"output_tokens":2459,"output_tokens_details":{"image_tokens":-1}}`, want: fallback},
 		{name: "overflow field", toolUsage: `{"input_tokens":46,"output_tokens":9223372036854775808,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
@@ -2368,12 +2369,45 @@ func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testin
 			if tt.toolUsage != "" {
 				toolUsageField = `,"tool_usage":{"image_gen":` + tt.toolUsage + `}`
 			}
-			payload := []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":4,"output_tokens_details":{"image_tokens":2}}` + toolUsageField + `}}`)
+			payload := []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"input_tokens_details":{"image_tokens":1},"output_tokens":4,"output_tokens_details":{"image_tokens":2}}` + toolUsageField + `}}`)
 			var got OpenAIUsage
 			svc.parseOpenAIImagesSSEUsageBytes(payload, &got)
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestParseOpenAIImagesSSEUsageBytes_AccountStatsImageInputPriceAppliedOnce(t *testing.T) {
+	payload := []byte(`{
+		"type":"response.completed",
+		"response":{
+			"usage":{"input_tokens":13,"output_tokens":21},
+			"tool_usage":{"image_gen":{
+				"input_tokens":100,
+				"input_tokens_details":{"image_tokens":20,"text_tokens":80},
+				"output_tokens":0,
+				"output_tokens_details":{"image_tokens":0}
+			}}
+		}
+	}`)
+	var usage OpenAIUsage
+	new(OpenAIGatewayService).parseOpenAIImagesSSEUsageBytes(payload, &usage)
+	require.Equal(t, OpenAIUsage{InputTokens: 100, ImageInputTokens: 20}, usage)
+
+	inputPrice := 0.001
+	imageInputPrice := 0.004
+	cost := calculateStatsCost(&ChannelModelPricing{
+		BillingMode:     BillingModeToken,
+		InputPrice:      &inputPrice,
+		ImageInputPrice: &imageInputPrice,
+	}, UsageTokens{
+		InputTokens:      usage.InputTokens,
+		ImageInputTokens: usage.ImageInputTokens,
+	}, 1)
+
+	require.NotNil(t, cost)
+	// 80 个文本输入 token 与 20 个图片输入 token 分价，图片子集不再按文本价重复计费。
+	require.InDelta(t, 0.16, *cost, 1e-12)
 }
 
 func TestParseOpenAIImagesSSEUsageBytes_MalformedCompletedDoesNotOverrideUsage(t *testing.T) {

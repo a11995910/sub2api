@@ -373,7 +373,7 @@ func TestPricingRequestToService_Defaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := pricingRequestToService([]channelModelPricingRequest{tt.req}, true)
+			result := pricingRequestToService([]channelModelPricingRequest{tt.req}, channelPricingRequestOptions)
 			require.Len(t, result, 1)
 			switch tt.wantField {
 			case "BillingMode":
@@ -400,7 +400,7 @@ func TestPricingRequestToService_WithAllFields(t *testing.T) {
 		},
 	}
 
-	result := pricingRequestToService(reqs, true)
+	result := pricingRequestToService(reqs, channelPricingRequestOptions)
 	require.Len(t, result, 1)
 	r := result[0]
 	require.Equal(t, "openai", r.Platform)
@@ -441,7 +441,7 @@ func TestPricingRequestToService_WithIntervals(t *testing.T) {
 		},
 	}
 
-	result := pricingRequestToService(reqs, true)
+	result := pricingRequestToService(reqs, channelPricingRequestOptions)
 	require.Len(t, result, 1)
 	require.Len(t, result[0].Intervals, 2)
 
@@ -464,7 +464,7 @@ func TestPricingRequestToService_WithIntervals(t *testing.T) {
 }
 
 func TestPricingRequestToService_EmptySlice(t *testing.T) {
-	result := pricingRequestToService([]channelModelPricingRequest{}, true)
+	result := pricingRequestToService([]channelModelPricingRequest{}, channelPricingRequestOptions)
 	require.NotNil(t, result)
 	require.Empty(t, result)
 }
@@ -478,7 +478,7 @@ func TestPricingRequestToService_NilPriceFields(t *testing.T) {
 		},
 	}
 
-	result := pricingRequestToService(reqs, true)
+	result := pricingRequestToService(reqs, channelPricingRequestOptions)
 	require.Len(t, result, 1)
 	r := result[0]
 	require.Nil(t, r.InputPrice)
@@ -502,20 +502,19 @@ func TestPricingRequestToService_TimePricing(t *testing.T) {
 		},
 	}
 
-	got := pricingRequestToService([]channelModelPricingRequest{req}, true)
+	got := pricingRequestToService([]channelModelPricingRequest{req}, channelPricingRequestOptions)
 	require.Equal(t, "Asia/Shanghai", got[0].TimePricing.Timezone)
 	require.True(t, got[0].TimePricing.WeekdaysOnly)
 	require.Equal(t, 2.0, got[0].TimePricing.Periods[0].Multiplier)
 }
 
 func TestPricingRequestToService_TimePricingNil(t *testing.T) {
-	got := pricingRequestToService([]channelModelPricingRequest{{Models: []string{"gpt-5"}}}, true)
+	got := pricingRequestToService([]channelModelPricingRequest{{Models: []string{"gpt-5"}}}, channelPricingRequestOptions)
 	require.Nil(t, got[0].TimePricing)
 }
 
-// 账号成本统计规则不支持倍率：allowChannelMultipliers=false 时必须丢弃，
-// 避免渠道倍率意外污染账号成本口径。
-func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
+// 账号成本统计规则保留上下文区间倍率，但不接受 Fast/Flex 服务层级倍率。
+func TestPricingRequestToService_MultiplierCapabilities(t *testing.T) {
 	req := channelModelPricingRequest{
 		Models:         []string{"gpt-5"},
 		BillingMode:    "token",
@@ -530,7 +529,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 		}},
 	}
 
-	allowed := pricingRequestToService([]channelModelPricingRequest{req}, true)
+	allowed := pricingRequestToService([]channelModelPricingRequest{req}, channelPricingRequestOptions)
 	require.Equal(t, float64Ptr(2.5), allowed[0].FastMultiplier)
 	require.Equal(t, float64Ptr(0.5), allowed[0].FlexMultiplier)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].InputMultiplier)
@@ -538,15 +537,18 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].CacheWriteMultiplier)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].CacheReadMultiplier)
 
-	dropped := pricingRequestToService([]channelModelPricingRequest{req}, false)
-	require.Nil(t, dropped[0].FastMultiplier)
-	require.Nil(t, dropped[0].FlexMultiplier)
-	require.Nil(t, dropped[0].Intervals[0].InputMultiplier)
-	require.Nil(t, dropped[0].Intervals[0].OutputMultiplier)
-	require.Nil(t, dropped[0].Intervals[0].CacheWriteMultiplier)
-	require.Nil(t, dropped[0].Intervals[0].CacheReadMultiplier)
-	// 非倍率字段不受开关影响
-	require.Equal(t, 272000, dropped[0].Intervals[0].MinTokens)
+	accountStatsRule := accountStatsPricingRuleRequestToService(accountStatsPricingRuleRequest{
+		Pricing: []channelModelPricingRequest{req},
+	})
+	require.Len(t, accountStatsRule.Pricing, 1)
+	accountStats := accountStatsRule.Pricing[0]
+	require.Nil(t, accountStats.FastMultiplier)
+	require.Nil(t, accountStats.FlexMultiplier)
+	require.Equal(t, float64Ptr(2), accountStats.Intervals[0].InputMultiplier)
+	require.Equal(t, float64Ptr(1.5), accountStats.Intervals[0].OutputMultiplier)
+	require.Equal(t, float64Ptr(2), accountStats.Intervals[0].CacheWriteMultiplier)
+	require.Equal(t, float64Ptr(2), accountStats.Intervals[0].CacheReadMultiplier)
+	require.Equal(t, 272000, accountStats.Intervals[0].MinTokens)
 }
 
 func TestPricingToResponse_TimePricing(t *testing.T) {
@@ -577,7 +579,7 @@ func TestPricingRequestToService_PreservesPriceCurrency(t *testing.T) {
 	got := pricingRequestToService([]channelModelPricingRequest{{
 		Models:        []string{"glm-5"},
 		PriceCurrency: "CNY",
-	}}, true)
+	}}, channelPricingRequestOptions)
 	require.Len(t, got, 1)
 	require.Equal(t, service.PriceCurrencyCNY, got[0].PriceCurrency)
 }

@@ -206,13 +206,10 @@ func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context,
 	return openAIConfiguredCodexModelIDsForGroup(accounts, group), nil
 }
 
-// loadCodexGroupCatalogAccounts separates picker membership from capability
-// intersection. visible accounts are currently schedulable and decide which
-// public aliases appear. catalog accounts are all non-deleted active group
-// members; their snapshots keep advertised capabilities from widening when a
-// mapped account is only temporarily unschedulable. If ListByGroup fails, the
-// catalog falls back to the schedulable set so a listing error does not fail
-// the client request.
+// loadCodexGroupCatalogAccounts 将当前可选账号与能力交集账号分开：visible 账号决定
+// 展示哪些公共别名，catalog 账号则包含分组内持久启用的成员。能力查询忽略限流、过载
+// 和临时不可调度状态，避免瞬态状态扩大对外声明的能力；持久禁用账号因路由不可选而排除。
+// 查询失败时回退当前可调度集合，避免列表错误直接导致客户端请求失败。
 func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, groupID int64) (visible []Account, catalog []Account, err error) {
 	if repo == nil {
 		return nil, nil, nil
@@ -222,7 +219,21 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 		return nil, nil, err
 	}
 	catalog = visible
-	groupAccounts, listErr := repo.ListByGroup(ctx, groupID)
+	groupAccounts, listErr := repo.ListModelAvailabilityCandidates(
+		ctx,
+		&groupID,
+		[]string{
+			PlatformAnthropic,
+			PlatformOpenAI,
+			PlatformGemini,
+			PlatformAntigravity,
+			PlatformGrok,
+			PlatformKimi,
+			PlatformZhipu,
+			PlatformDeepseek,
+		},
+		false,
+	)
 	if listErr != nil {
 		return visible, catalog, nil
 	}
@@ -309,6 +320,12 @@ type configuredCodexTruncationPolicy struct {
 	Limit int64  `json:"limit"`
 }
 
+type configuredCodexServiceTier struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 type configuredCodexModelMessages struct {
 	InstructionsTemplate  string `json:"instructions_template"`
 	InstructionsVariables any    `json:"instructions_variables"`
@@ -336,7 +353,7 @@ type configuredCodexModelDescriptor struct {
 	SupportedInAPI                    bool                            `json:"supported_in_api"`
 	Priority                          int                             `json:"priority"`
 	AdditionalSpeedTiers              []string                        `json:"additional_speed_tiers"`
-	ServiceTiers                      []any                           `json:"service_tiers"`
+	ServiceTiers                      []configuredCodexServiceTier    `json:"service_tiers"`
 	DefaultServiceTier                any                             `json:"default_service_tier"`
 	AvailabilityNUX                   any                             `json:"availability_nux"`
 	Upgrade                           any                             `json:"upgrade"`
@@ -392,7 +409,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		SupportedInAPI:                    true,
 		Priority:                          configuredCodexModelPriority,
 		AdditionalSpeedTiers:              []string{},
-		ServiceTiers:                      []any{},
+		ServiceTiers:                      []configuredCodexServiceTier{},
 		ModelMessages:                     configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(modelID)},
 		SupportsReasoningSummaryParameter: true,
 		DefaultReasoningSummary:           "auto",
@@ -443,6 +460,15 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 			descriptor.SupportedReasoningLevels = levels
 		}
 	}
+	if configuredCodexSupportsPriorityServiceTier(modelID) {
+		descriptor.ServiceTiers = []configuredCodexServiceTier{
+			{
+				ID:          "priority",
+				Name:        "Fast",
+				Description: "Priority processing for lower latency.",
+			},
+		}
+	}
 
 	if isOpenAICodexGPTModel(modelID) {
 		descriptor.DisplayName = openaiCodexDisplayName(modelID)
@@ -469,6 +495,11 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	return descriptor
+}
+
+func configuredCodexSupportsPriorityServiceTier(modelID string) bool {
+	_, ok := resolveOpenAIFastModelPolicy(modelID)
+	return ok
 }
 
 func configuredCodexGrokReasoningLevels(modelID string) []configuredCodexReasoningLevel {
@@ -1041,6 +1072,11 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 	}
 	switch account.Platform {
 	case PlatformOpenAI:
+		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
+			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
+				return stringSliceContains(modalities, "image")
+			}
+		}
 		if !isOpenAICodexImageInputModel(upstreamModel) {
 			return false
 		}
@@ -1050,8 +1086,9 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		if !account.IsOpenAIApiKey() {
 			return false
 		}
-		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-		return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
+		// 兼容上游的模型列表经常省略模态信息；除非已同步快照明确收窄能力，
+		// 否则保留已知 GPT 图片输入兜底。
+		return true
 	case PlatformGrok:
 		if !isOfficialGrokCodexBaseURL(account.GetGrokBaseURL()) {
 			return false
@@ -1715,7 +1752,7 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 	upstreamBody := body
 	convertedFromOpenAIModelList := false
 	if request.useAPIKeyUpstream {
-		convertedBody := convertOpenAIModelListToCodexManifest(body)
+		convertedBody := convertOpenAIModelListToCodexManifestForAccount(body, request.credentialAccount)
 		convertedFromOpenAIModelList = !bytes.Equal(convertedBody, body)
 		body = convertedBody
 	}
@@ -1734,7 +1771,8 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		body, err = completeAPIKeyCodexModelsManifestMetadata(
 			body,
 			false,
-			request.credentialAccount != nil && isOfficialOpenAIModelsBaseURL(request.credentialAccount.GetOpenAIBaseURL()),
+			request.credentialAccount,
+			convertedFromOpenAIModelList,
 		)
 		if err != nil {
 			return nil, &codexModelsManifestUpstreamError{
@@ -1855,6 +1893,10 @@ func adjustAPIKeyCodexModelsManifest(body []byte) ([]byte, error) {
 // standard list shape, or yield no usable model IDs are returned unchanged so
 // envelope validation reports the original payload.
 func convertOpenAIModelListToCodexManifest(body []byte) []byte {
+	return convertOpenAIModelListToCodexManifestForAccount(body, nil)
+}
+
+func convertOpenAIModelListToCodexManifestForAccount(body []byte, account *Account) []byte {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil || envelope == nil {
 		return body
@@ -1883,7 +1925,13 @@ func convertOpenAIModelListToCodexManifest(body []byte) []byte {
 	if len(modelIDs) == 0 {
 		return body
 	}
-	converted, err := BuildCodexModelsManifest(modelIDs)
+	imageInputModels := make(map[string]bool, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if accountCodexModelSupportsImageInput(account, modelID) {
+			imageInputModels[modelID] = true
+		}
+	}
+	converted, err := buildCodexModelsManifest(modelIDs, imageInputModels, nil, nil)
 	if err != nil {
 		return body
 	}
@@ -1904,7 +1952,7 @@ func (s *OpenAIGatewayService) CompleteAPIKeyCodexModelsManifestForClient(manife
 	if len(manifest.upstreamSourceBody) > 0 {
 		body = append([]byte(nil), manifest.upstreamSourceBody...)
 		if manifest.convertedFromOpenAIModelList {
-			body = convertOpenAIModelListToCodexManifest(body)
+			body = convertOpenAIModelListToCodexManifestForAccount(body, account)
 		}
 	}
 	var err error
@@ -1915,7 +1963,8 @@ func (s *OpenAIGatewayService) CompleteAPIKeyCodexModelsManifestForClient(manife
 	body, err = completeAPIKeyCodexModelsManifestMetadata(
 		body,
 		true,
-		isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL()),
+		account,
+		manifest.convertedFromOpenAIModelList,
 	)
 	if err != nil {
 		return err
@@ -2034,7 +2083,7 @@ func applySyncedAPIKeyCodexModelMetadata(body []byte, account *Account, overwrit
 	return updated, nil
 }
 
-func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll, officialOpenAI bool) ([]byte, error) {
+func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, account *Account, synthesizeServiceTiers bool) ([]byte, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("decode JSON object: %w", err)
@@ -2044,6 +2093,7 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll, officia
 		return nil, fmt.Errorf("decode top-level models array: %w", err)
 	}
 
+	officialOpenAI := account != nil && isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL())
 	changed := false
 	if officialOpenAI {
 		filtered := make([]json.RawMessage, 0, len(models))
@@ -2084,6 +2134,9 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll, officia
 		}
 
 		descriptor := newConfiguredCodexModelDescriptor(slug)
+		if accountCodexModelSupportsImageInput(account, slug) {
+			descriptor.InputModalities = []string{"text", "image"}
+		}
 		if forceOfficialImage {
 			descriptor.InputModalities = []string{"text", "image"}
 			descriptor.SupportsImageDetailOriginal = true
@@ -2095,6 +2148,11 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll, officia
 		var defaults map[string]json.RawMessage
 		if err := json.Unmarshal(defaultBody, &defaults); err != nil {
 			return nil, fmt.Errorf("decode default model %q: %w", slug, err)
+		}
+		// 标准 /models 列表不携带 Codex 能力元数据，可使用本地官方 SKU 表补全。
+		// Provider 原生 Codex manifest 则以其能力声明为准，缺失时不得猜测 Fast。
+		if !synthesizeServiceTiers {
+			delete(defaults, "service_tiers")
 		}
 
 		modelChanged := false

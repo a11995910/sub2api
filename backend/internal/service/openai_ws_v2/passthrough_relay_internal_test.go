@@ -306,9 +306,10 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	require.Equal(t, 0, state.usage.OutputTokens)
 	require.Equal(t, 0, state.usage.CacheReadInputTokens)
 
-	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1,"input_tokens_details":{"cached_tokens":1,"cache_write_tokens":4},"output_tokens_details":{"image_tokens":3}}}}`), "response.completed", nil)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1,"input_tokens_details":{"cached_tokens":1,"cache_write_tokens":4,"image_tokens":1},"output_tokens_details":{"image_tokens":3}}}}`), "response.completed", nil)
 	finalizeRelayTurnUsage(state)
 	require.Equal(t, 2, state.usage.InputTokens)
+	require.Equal(t, 1, state.usage.ImageInputTokens)
 	require.Equal(t, 1, state.usage.OutputTokens)
 	require.Equal(t, 1, state.usage.CacheReadInputTokens)
 	require.Equal(t, 4, state.usage.CacheCreationInputTokens)
@@ -317,12 +318,73 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	result := &RelayResult{}
 	enrichResult(result, state, 5*time.Millisecond)
 	require.Equal(t, state.usage.InputTokens, result.Usage.InputTokens)
+	require.Equal(t, state.usage.ImageInputTokens, result.Usage.ImageInputTokens)
 	require.Equal(t, state.usage.CacheCreationInputTokens, result.Usage.CacheCreationInputTokens)
 	require.Equal(t, state.usage.ImageOutputTokens, result.Usage.ImageOutputTokens)
 	require.Equal(t, 5*time.Millisecond, result.Duration)
 	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","response":{"usage":{"input_tokens":9}}}`), "response.in_progress", nil)
 	require.Equal(t, 2, state.usage.InputTokens)
 	enrichResult(nil, state, 0)
+}
+
+func TestParseUsageAndAccumulateHostedImageToolUsageIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		baseImageUsage string
+		toolUsage      string
+		want           Usage
+		wantFailures   int
+	}{
+		{
+			name:      "merges image subsets",
+			toolUsage: `{"input_tokens_details":{"image_tokens":20},"output_tokens_details":{"image_tokens":30}}`,
+			want:      Usage{InputTokens: 100, ImageInputTokens: 20, OutputTokens: 50, ImageOutputTokens: 30},
+		},
+		{
+			name:           "base usage image subsets win",
+			baseImageUsage: `,"input_tokens_details":{"image_tokens":7},"output_tokens_details":{"image_tokens":5}`,
+			toolUsage:      `{"input_tokens_details":{"image_tokens":20},"output_tokens_details":{"image_tokens":30}}`,
+			want:           Usage{InputTokens: 100, ImageInputTokens: 7, OutputTokens: 50, ImageOutputTokens: 5},
+		},
+		{
+			name:         "malformed input rejects whole tool usage",
+			toolUsage:    `{"input_tokens_details":{"image_tokens":"20"},"output_tokens_details":{"image_tokens":30}}`,
+			want:         Usage{InputTokens: 100, OutputTokens: 50},
+			wantFailures: 1,
+		},
+		{
+			name:         "negative output rejects whole tool usage",
+			toolUsage:    `{"input_tokens_details":{"image_tokens":20},"output_tokens_details":{"image_tokens":-1}}`,
+			want:         Usage{InputTokens: 100, OutputTokens: 50},
+			wantFailures: 1,
+		},
+		{
+			name:         "fractional input rejects whole tool usage",
+			toolUsage:    `{"input_tokens_details":{"image_tokens":20.5},"output_tokens_details":{"image_tokens":30}}`,
+			want:         Usage{InputTokens: 100, OutputTokens: 50},
+			wantFailures: 1,
+		},
+		{
+			name:      "integral exponent notation is accepted",
+			toolUsage: `{"input_tokens_details":{"image_tokens":2e1},"output_tokens_details":{"image_tokens":3.0e1}}`,
+			want:      Usage{InputTokens: 100, ImageInputTokens: 20, OutputTokens: 50, ImageOutputTokens: 30},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			message := []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":100,"output_tokens":50` + tt.baseImageUsage + `},"tool_usage":{"image_gen":` + tt.toolUsage + `}}}`)
+			state := &relayState{}
+			failures := 0
+			got := parseUsageAndAccumulate(state, message, "response.completed", func(string, string) { failures++ })
+
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.wantFailures, failures)
+			require.Equal(t, tt.want, finalizeRelayTurnUsage(state))
+		})
+	}
 }
 
 func TestParseUsageAndAccumulateIncludesIndependentReasoningTokens(t *testing.T) {

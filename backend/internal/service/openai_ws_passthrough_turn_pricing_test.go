@@ -139,6 +139,67 @@ func TestPassthroughIngressReportsTurnStartedBeforeAfterTurnWithoutBeforeTurn(t 
 	require.Equal(t, gotEvents[0].turn, gotEvents[1].turn, "TurnStarted 后应提交同一 turn 的 AfterTurn")
 }
 
+func TestPassthroughIngressPropagatesHostedImageInputUsageWithoutDoubleBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_image_pricing","model":"gpt-5.1","usage":{"input_tokens":100,"output_tokens":0},"tool_usage":{"image_gen":{"input_tokens_details":{"image_tokens":20,"text_tokens":80},"output_tokens_details":{"image_tokens":0}}}}}`)
+
+	turnResults := make(chan *OpenAIForwardResult, 1)
+	hooks := &OpenAIWSIngressHooks{
+		InitialTurnStartedAt: time.Now(),
+		AfterTurn: func(_ int, result *OpenAIForwardResult, _ error) {
+			turnResults <- result
+		},
+	}
+	server, serverErr := startPassthroughHookRecordingServer(
+		t,
+		controlCtx,
+		newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream),
+		passthroughLifecycleAccount(),
+		hooks,
+	)
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	event, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+
+	var result *OpenAIForwardResult
+	select {
+	case result = <-turnResults:
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough ingress did not report image usage")
+	}
+	require.NotNil(t, result)
+	require.Equal(t, 100, result.Usage.InputTokens)
+	require.Equal(t, 20, result.Usage.ImageInputTokens)
+
+	breakdown := new(BillingService).computeTokenBreakdown(&ModelPricing{
+		InputPricePerToken:      0.001,
+		ImageInputPricePerToken: 0.004,
+		ImageInputPriceExplicit: true,
+	}, UsageTokens{
+		InputTokens:      result.Usage.InputTokens,
+		ImageInputTokens: result.Usage.ImageInputTokens,
+	}, 1, "", false)
+	require.InDelta(t, 0.08, breakdown.InputCost, 1e-12)
+	require.InDelta(t, 0.08, breakdown.ImageInputCost, 1e-12)
+	require.InDelta(t, 0.16, breakdown.TotalCost, 1e-12)
+
+	_ = clientConn.CloseNow()
+	cancelControl(context.Canceled)
+	select {
+	case <-serverErr:
+	case <-time.After(3 * time.Second):
+		t.Fatal("passthrough ingress did not exit")
+	}
+}
+
 func TestPassthroughIngressFreezesSubsequentTurnBeforeRequestPolicy(t *testing.T) {
 	testPassthroughIngressFreezesSubsequentTurnBeforeRequestPolicy(t, coderws.MessageText)
 }

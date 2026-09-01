@@ -72,6 +72,7 @@
 - `channel_monitors.provider` 与 `channel_monitor_request_templates.provider` 的检查约束允许 `grok`。
 - `subscription_plans.currency VARCHAR(3) NOT NULL DEFAULT ''` 保存订阅套餐的展示币种；空值保持既有套餐的展示兼容。
 - `channel_model_pricing.image_input_price NUMERIC(20,12)` 支持图片输入 token 使用独立单价；未设置时服务按文本输入单价回退。
+- `channel_account_stats_model_pricing.image_input_price NUMERIC(20,12)` 为账号统计自定义规则保存同口径的图片输入单价，`price_currency VARCHAR(3)` 持久化 `USD`/`CNY` 原价口径；`channel_account_stats_pricing_intervals` 的四个 `NUMERIC(12,6)` 倍率列保存输入、输出、缓存写入和缓存读取的上下文区间倍率，非空值必须大于 `0`。
 - `usage_logs.image_input_tokens INTEGER NOT NULL DEFAULT 0` 与 `usage_logs.image_input_cost DECIMAL(20,10) NOT NULL DEFAULT 0` 分别保存图片输入 token 与费用，`total_cost` 的既有口径不变。
 - `audit_logs` 是管理面操作审计表，包含按创建时间、操作者和操作类型查询的索引；该表只追加记录，清理行为受审计日志保留设置和二次验证保护。
 - `groups.duplicate_operation_id VARCHAR(64)` 配合仅针对未删除分组的唯一索引，用于在网络响应不确定时恢复同一次分组复制操作。
@@ -515,7 +516,7 @@ compose_staging exec -T postgres sh -c \
 compose_staging exec -T redis redis-cli FLUSHDB
 compose_staging up -d sub2api
 container_id="$(compose_staging ps -q sub2api)"
-/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 90 2
+/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 300 2
 /opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:18080/health 10 1
 compose_staging ps
 ```
@@ -686,7 +687,7 @@ restore_current_release_state() {
 	recovery_container_id="$(compose_prod ps -q sub2api)"
 	test -n "$recovery_container_id" || recovery_failed=1
 	if [ -n "$recovery_container_id" ]; then
-		/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$recovery_container_id" 90 2 || recovery_failed=1
+		/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$recovery_container_id" 300 2 || recovery_failed=1
 		/opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:8080/health 10 1 || recovery_failed=1
 	fi
 	if [ "$recovery_failed" -ne 0 ]; then
@@ -733,7 +734,7 @@ container_id="$(compose_prod ps -q sub2api)"
 test -n "$container_id"
 test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$rollback_image"
 compose_prod ps
-/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 90 2
+/opt/sub2api/repo/deploy/release-gates wait-container-healthy "$container_id" 300 2
 /opt/sub2api/repo/deploy/release-gates wait-http http://127.0.0.1:8080/health 10 1
 compose_prod logs --tail=200 sub2api
 trap - ERR

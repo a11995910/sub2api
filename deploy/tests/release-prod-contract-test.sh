@@ -23,7 +23,8 @@ assert_not_contains() {
 
 assert_contains deploy/release-prod 'backup_result=/opt/sub2api/state/prod-backup-result.json'
 assert_contains deploy/release-prod 'validate-backup-receipt'
-assert_contains deploy/release-prod 'wait-container-healthy'
+assert_contains deploy/release-prod '"$release_gates" wait-container-healthy "$rollback_container_id" 300 2'
+assert_contains deploy/release-prod '"$release_gates" wait-container-healthy "$container_id" 300 2'
 assert_contains deploy/release-prod '        --build-arg GOMAXPROCS=2 \'
 assert_contains deploy/Dockerfile 'ARG GOMAXPROCS'
 assert_contains deploy/release-prod '"$scripts_dir/update-sub2api-image" "$env_file" "$previous_original_image" prod-abort'
@@ -40,7 +41,10 @@ assert_contains deploy/release-staging 'result_status=failed'
 assert_contains deploy/release-staging '"workflow": "manual"'
 assert_contains deploy/release-staging 'staging_result="$state_dir/staging-result.json"'
 assert_contains deploy/release-staging '  --build-arg GOMAXPROCS=2 \'
-assert_contains deploy/release-staging '"$release_gates" wait-container-healthy "$container_id" 90 2'
+assert_contains deploy/release-staging '"$release_gates" wait-container-healthy "$container_id" 300 2'
+assert_contains deploy/docker-compose.yml 'start_period: 180s'
+assert_contains deploy/docker-compose.local.yml 'start_period: 180s'
+assert_contains deploy/docker-compose.standalone.yml 'start_period: 180s'
 assert_contains deploy/release-staging '"$release_gates" wait-http http://127.0.0.1:18080/health 10 1'
 
 if find .github/workflows -type f -print -quit 2>/dev/null | grep -q .; then

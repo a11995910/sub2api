@@ -2005,6 +2005,49 @@ func TestUpdate_RejectsChangedHistoricalVideoAccountStatsPrice(t *testing.T) {
 	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
 }
 
+func TestUpdate_RejectsChangedHistoricalVideoAccountStatsExtendedPrices(t *testing.T) {
+	base := ChannelModelPricing{
+		Platform:        PlatformGrok,
+		Models:          []string{"grok-imagine-video"},
+		BillingMode:     BillingModeVideo,
+		PriceCurrency:   PriceCurrencyUSD,
+		ImageInputPrice: testPtrFloat64(0.001),
+		Intervals: []PricingInterval{{
+			TierLabel:            VideoBillingResolution720P,
+			PerRequestPrice:      testPtrFloat64(0.07),
+			InputMultiplier:      testPtrFloat64(1.1),
+			OutputMultiplier:     testPtrFloat64(1.2),
+			CacheWriteMultiplier: testPtrFloat64(1.3),
+			CacheReadMultiplier:  testPtrFloat64(1.4),
+		}},
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*ChannelModelPricing)
+	}{
+		{name: "price currency", mutate: func(p *ChannelModelPricing) { p.PriceCurrency = PriceCurrencyCNY }},
+		{name: "image input price", mutate: func(p *ChannelModelPricing) { p.ImageInputPrice = testPtrFloat64(0.002) }},
+		{name: "input multiplier", mutate: func(p *ChannelModelPricing) { p.Intervals[0].InputMultiplier = testPtrFloat64(2.1) }},
+		{name: "output multiplier", mutate: func(p *ChannelModelPricing) { p.Intervals[0].OutputMultiplier = testPtrFloat64(2.2) }},
+		{name: "cache write multiplier", mutate: func(p *ChannelModelPricing) { p.Intervals[0].CacheWriteMultiplier = testPtrFloat64(2.3) }},
+		{name: "cache read multiplier", mutate: func(p *ChannelModelPricing) { p.Intervals[0].CacheReadMultiplier = testPtrFloat64(2.4) }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := []AccountStatsPricingRule{{Pricing: []ChannelModelPricing{base}}}
+			updated := (&Channel{AccountStatsPricingRules: existing}).Clone().AccountStatsPricingRules
+			tt.mutate(&updated[0].Pricing[0])
+
+			err := validateAccountStatsPricingRulesUpdate(existing, updated)
+
+			require.Error(t, err)
+			require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+		})
+	}
+}
+
 func TestUpdate_RejectsChangedHistoricalVideoAccountStatsIntervalOrder(t *testing.T) {
 	existing := []AccountStatsPricingRule{{
 		GroupIDs: []int64{10},

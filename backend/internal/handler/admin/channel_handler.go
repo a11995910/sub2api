@@ -313,7 +313,22 @@ func intervalToResponse(iv service.PricingInterval) pricingIntervalResponse {
 	}
 }
 
-func pricingRequestToService(reqs []channelModelPricingRequest, allowChannelMultipliers bool) []service.ChannelModelPricing {
+type pricingRequestConversionOptions struct {
+	allowServiceTierMultipliers bool
+	allowIntervalMultipliers    bool
+}
+
+var (
+	channelPricingRequestOptions = pricingRequestConversionOptions{
+		allowServiceTierMultipliers: true,
+		allowIntervalMultipliers:    true,
+	}
+	accountStatsPricingRequestOptions = pricingRequestConversionOptions{
+		allowIntervalMultipliers: true,
+	}
+)
+
+func pricingRequestToService(reqs []channelModelPricingRequest, options pricingRequestConversionOptions) []service.ChannelModelPricing {
 	result := make([]service.ChannelModelPricing, 0, len(reqs))
 	for _, r := range reqs {
 		billingMode := service.BillingMode(r.BillingMode)
@@ -324,7 +339,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest, allowChannelMult
 		intervals := make([]service.PricingInterval, 0, len(r.Intervals))
 		for _, iv := range r.Intervals {
 			var inputMultiplier, outputMultiplier, cacheWriteMultiplier, cacheReadMultiplier *float64
-			if allowChannelMultipliers {
+			if options.allowIntervalMultipliers {
 				inputMultiplier = iv.InputMultiplier
 				outputMultiplier = iv.OutputMultiplier
 				cacheWriteMultiplier = iv.CacheWriteMultiplier
@@ -347,7 +362,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest, allowChannelMult
 			})
 		}
 		var fastMultiplier, flexMultiplier *float64
-		if allowChannelMultipliers {
+		if options.allowServiceTierMultipliers {
 			fastMultiplier = r.FastMultiplier
 			flexMultiplier = r.FlexMultiplier
 		}
@@ -396,7 +411,7 @@ func accountStatsPricingRuleRequestToService(r accountStatsPricingRuleRequest) s
 		Name:       r.Name,
 		GroupIDs:   r.GroupIDs,
 		AccountIDs: r.AccountIDs,
-		Pricing:    pricingRequestToService(r.Pricing, false),
+		Pricing:    pricingRequestToService(r.Pricing, accountStatsPricingRequestOptions),
 	}
 }
 
@@ -457,7 +472,7 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		return
 	}
 
-	pricing := pricingRequestToService(req.ModelPricing, true)
+	pricing := pricingRequestToService(req.ModelPricing, channelPricingRequestOptions)
 	// Main model_pricing requires a platform; default to anthropic for backward compatibility.
 	for i := range pricing {
 		if pricing[i].Platform == "" {
@@ -531,7 +546,7 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 	}
 	if req.ModelPricing != nil {
-		pricing := pricingRequestToService(*req.ModelPricing, true)
+		pricing := pricingRequestToService(*req.ModelPricing, channelPricingRequestOptions)
 		for i := range pricing {
 			if pricing[i].Platform == "" {
 				pricing[i].Platform = service.PlatformAnthropic

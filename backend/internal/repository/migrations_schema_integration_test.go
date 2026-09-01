@@ -60,6 +60,11 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// channel_model_pricing: 原价币种，历史记录默认 USD。
 	requireColumn(t, tx, "channel_model_pricing", "price_currency", "character varying", 3, false)
+	requireColumn(t, tx, "channel_account_stats_model_pricing", "price_currency", "character varying", 3, false)
+	requireColumn(t, tx, "channel_account_stats_model_pricing", "image_input_price", "numeric", 0, true)
+	for _, column := range []string{"input_multiplier", "output_multiplier", "cache_write_multiplier", "cache_read_multiplier"} {
+		requireColumn(t, tx, "channel_account_stats_pricing_intervals", column, "numeric", 0, true)
+	}
 
 	// api_keys: key length should be 128
 	requireColumn(t, tx, "api_keys", "key", "character varying", 128, false)

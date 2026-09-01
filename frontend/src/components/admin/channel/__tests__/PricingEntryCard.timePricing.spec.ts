@@ -78,9 +78,55 @@ describe('PricingEntryCard service tier multipliers', () => {
     expect(hidden.text()).not.toContain('admin.channels.form.fastMultiplier')
 
     const shown = shallowMount(PricingEntryCard, {
-      props: { entry: createEntry(), enableTierMultipliers: true },
+      props: { entry: createEntry(), enableServiceTierMultipliers: true },
     })
     expect(shown.text()).toContain('admin.channels.form.fastMultiplier')
     expect(shown.text()).toContain('admin.channels.form.flexMultiplier')
+  })
+})
+
+describe('PricingEntryCard interval multipliers', () => {
+  function createTokenEntryWithInterval(): PricingFormEntry {
+    const entry = createEntry()
+    entry.intervals = [{
+      min_tokens: 200_000,
+      max_tokens: null,
+      tier_label: 'long-context',
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      input_multiplier: 2,
+      output_multiplier: 1.5,
+      cache_write_multiplier: 1.25,
+      cache_read_multiplier: 0.8,
+      per_request_price: null,
+      sort_order: 0,
+    }]
+    return entry
+  }
+
+  it('can enable interval controls without exposing Fast and Flex controls', () => {
+    const wrapper = shallowMount(PricingEntryCard, {
+      props: {
+        entry: createTokenEntryWithInterval(),
+        enableIntervalMultipliers: true,
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('admin.channels.form.fastMultiplier')
+    expect(wrapper.findComponent({ name: 'IntervalRow' }).props('enableMultipliers')).toBe(true)
+  })
+
+  it('keeps interval controls disabled when only service tier controls are enabled', () => {
+    const wrapper = shallowMount(PricingEntryCard, {
+      props: {
+        entry: createTokenEntryWithInterval(),
+        enableServiceTierMultipliers: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('admin.channels.form.fastMultiplier')
+    expect(wrapper.findComponent({ name: 'IntervalRow' }).props('enableMultipliers')).toBe(false)
   })
 })

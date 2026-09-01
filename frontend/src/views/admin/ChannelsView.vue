@@ -449,7 +449,8 @@
                   :platform="section.platform"
                   enable-price-currency
                   enable-time-pricing
-                  enable-tier-multipliers
+                  enable-service-tier-multipliers
+                  enable-interval-multipliers
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -581,6 +582,7 @@
                       :entry="entry"
                       :platform="section.platform"
                       :allowed-billing-modes="accountStatsBillingModes"
+                      enable-interval-multipliers
                       @update="rule.pricing.splice(pIdx, 1, $event)"
                       @remove="removeRulePricingEntry(sIdx, ruleIndex, pIdx)"
                     />

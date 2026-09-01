@@ -117,11 +117,11 @@
 
 ### 渠道服务层级与上下文区间倍率
 
-管理端渠道定价的 `token` 模式支持可选的 Fast/Flex 服务层级倍率。`fast_multiplier` 同时适用于 `fast` 和 `priority` 请求，`flex_multiplier` 适用于 `flex` 请求；未配置时继续使用模型目录中的服务层级价格或系统默认倍率。倍率必须大于 `0`，并统一作用于输入、输出、缓存写入和缓存读取成本，避免只调整部分 token 项目。
+管理端主渠道定价的 `token` 模式支持可选的 Fast/Flex 服务层级倍率。`fast_multiplier` 同时适用于 `fast` 和 `priority` 请求，`flex_multiplier` 适用于 `flex` 请求；未配置时继续使用模型目录中的服务层级价格或系统默认倍率。倍率必须大于 `0`，并统一作用于输入、输出、缓存写入和缓存读取成本，避免只调整部分 token 项目。账号统计自定义规则不使用 Fast/Flex 服务层级倍率。
 
-上下文区间可以使用 `input_multiplier`、`output_multiplier`、`cache_write_multiplier` 和 `cache_read_multiplier`，按命中的渠道基础价格分别计算。区间内同一计费项目同时存在显式价格和倍率时，显式价格优先；没有命中区间或对应项目均未配置时回退渠道基础价格。区间倍率是否参与计费仍受分组或账号的长上下文计费开关控制，最终再叠加服务层级倍率、分时倍率及有效分组倍率。
+主渠道定价和账号统计自定义规则的上下文区间都可以使用 `input_multiplier`、`output_multiplier`、`cache_write_multiplier` 和 `cache_read_multiplier`，按命中的基础价格分别计算。区间内同一计费项目同时存在显式价格和倍率时，显式价格优先；没有命中区间或对应项目均未配置时回退基础价格。主渠道的区间倍率是否参与计费仍受分组或账号的长上下文计费开关控制，最终再叠加服务层级倍率、分时倍率及有效分组倍率。
 
-这些字段只允许写入主渠道定价，不进入分组模型定价或账号统计定价。管理接口 `POST /api/v1/admin/channels`、`PUT /api/v1/admin/channels/:id` 及渠道详情响应使用同名字段；数据库分别保存于 `channel_model_pricing.fast_multiplier`、`channel_model_pricing.flex_multiplier` 和 `channel_pricing_intervals.*_multiplier`。旧记录字段为空，保持原计费行为，不需要回填。
+账号统计自定义规则按 `input_tokens + cache_creation_tokens + cache_read_tokens` 选择上下文区间，不把输出 token 纳入选档；命中规则后仍保持既有的规则顺序优先级，不叠加 Fast/Flex 或分时倍率。管理接口 `POST /api/v1/admin/channels`、`PUT /api/v1/admin/channels/:id` 及渠道详情响应使用同名区间倍率字段。主渠道倍率保存于 `channel_model_pricing.fast_multiplier`、`channel_model_pricing.flex_multiplier` 和 `channel_pricing_intervals.*_multiplier`；账号统计区间倍率保存于 `channel_account_stats_pricing_intervals.*_multiplier`。分组模型定价不接受这些倍率字段；旧记录字段为空，保持原计费行为，不需要回填。
 
 ### 视频渠道定价与兼容边界
 

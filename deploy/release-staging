@@ -160,7 +160,7 @@ container_id="$(compose_staging ps -q sub2api)"
 test -n "$container_id"
 test "$(docker inspect --format '{{.Config.Image}}' "$container_id")" = "$target_image"
 compose_staging ps
-"$release_gates" wait-container-healthy "$container_id" 90 2
+"$release_gates" wait-container-healthy "$container_id" 300 2
 "$release_gates" wait-http http://127.0.0.1:18080/health 10 1
 expected_version="$(tr -d '[:space:]' < "$repo_dir/backend/cmd/server/VERSION")"
 test "$(curl -fsS http://127.0.0.1:18080/api/v1/settings/public | jq -r '.data.version')" = "$expected_version"

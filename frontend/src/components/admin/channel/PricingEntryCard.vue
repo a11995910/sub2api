@@ -155,7 +155,7 @@
             </div>
           </div>
 
-          <div v-if="enableTierMultipliers" class="mt-3 grid max-w-md grid-cols-2 gap-2">
+          <div v-if="enableServiceTierMultipliers" class="mt-3 grid max-w-md grid-cols-2 gap-2">
             <div>
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.fastMultiplier') }}</label>
               <input :value="entry.fast_multiplier" @input="emitField('fast_multiplier', ($event.target as HTMLInputElement).value)"
@@ -186,7 +186,7 @@
                 :interval="iv"
                 :mode="entry.billing_mode"
                 :currency-symbol="priceCurrencySymbol"
-                :enable-multipliers="enableTierMultipliers"
+                :enable-multipliers="enableIntervalMultipliers"
                 @update="updateInterval(idx, $event)"
                 @remove="removeInterval(idx)"
               />
@@ -302,13 +302,15 @@ const props = withDefaults(defineProps<{
   allowedBillingModes?: BillingMode[]
   hideTokenIntervals?: boolean
   enableTimePricing?: boolean
-  enableTierMultipliers?: boolean
+  enableServiceTierMultipliers?: boolean
+  enableIntervalMultipliers?: boolean
   enablePriceCurrency?: boolean
 }>(), {
   allowedBillingModes: () => ['token', 'per_request', 'image', 'video'],
   hideTokenIntervals: false,
   enableTimePricing: false,
-  enableTierMultipliers: false,
+  enableServiceTierMultipliers: false,
+  enableIntervalMultipliers: false,
   enablePriceCurrency: false,
 })
 

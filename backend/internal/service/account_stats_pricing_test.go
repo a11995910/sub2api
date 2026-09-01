@@ -242,8 +242,104 @@ func TestCalculateStatsCost_TokenBilling_WithImageOutput(t *testing.T) {
 	}
 	result := calculateStatsCost(pricing, tokens, 1)
 	require.NotNil(t, result)
-	// 100*0.001 + 50*0.002 + 10*0.01 = 0.1 + 0.1 + 0.1 = 0.3
-	require.InDelta(t, 0.3, *result, 1e-12)
+	// ImageOutputTokens 是 OutputTokens 的子集，不能同时按文本输出价重复计费。
+	// 100*0.001 + (50-10)*0.002 + 10*0.01 = 0.28
+	require.InDelta(t, 0.28, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_WithImageInputAndOutputSubsets(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode:      BillingModeToken,
+		InputPrice:       testPtrFloat64(0.001),
+		ImageInputPrice:  testPtrFloat64(0.004),
+		OutputPrice:      testPtrFloat64(0.002),
+		ImageOutputPrice: testPtrFloat64(0.01),
+		CacheWritePrice:  testPtrFloat64(0.003),
+		CacheReadPrice:   testPtrFloat64(0.0005),
+	}
+	tokens := UsageTokens{
+		InputTokens:         100,
+		ImageInputTokens:    20,
+		OutputTokens:        50,
+		ImageOutputTokens:   10,
+		CacheCreationTokens: 30,
+		CacheReadTokens:     40,
+	}
+
+	result := calculateStatsCost(pricing, tokens, 1)
+
+	require.NotNil(t, result)
+	// 80*.001 + 20*.004 + 40*.002 + 10*.01 + 30*.003 + 40*.0005 = .45
+	require.InDelta(t, 0.45, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_ExplicitZeroImageInputPrice(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode:     BillingModeToken,
+		InputPrice:      testPtrFloat64(0.001),
+		ImageInputPrice: testPtrFloat64(0),
+	}
+	tokens := UsageTokens{InputTokens: 100, ImageInputTokens: 20}
+
+	result := calculateStatsCost(pricing, tokens, 1)
+
+	require.NotNil(t, result)
+	// 显式零价只免除 20 个图片输入 token，剩余 80 个文本 token 正常计费。
+	require.InDelta(t, 0.08, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_ImageOutputFallsBackToOutputPrice(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(0.001),
+		OutputPrice: testPtrFloat64(0.002),
+		Intervals:   []PricingInterval{{MaxTokens: nil, OutputPrice: testPtrFloat64(0.003)}},
+	}
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50, ImageOutputTokens: 10}
+
+	result := calculateStatsCost(pricing, tokens, 1)
+
+	require.NotNil(t, result)
+	// 未配置独立图片价时，图片输出沿用当前阶梯的文本输出价且只计一次。
+	require.InDelta(t, 0.25, *result, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_IntervalUsesInputContextAndInheritsBasePrices(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(0.001),
+		OutputPrice: testPtrFloat64(0.002),
+		Intervals: []PricingInterval{{
+			MinTokens:  100,
+			InputPrice: testPtrFloat64(0.01),
+		}},
+	}
+
+	below := calculateStatsCost(pricing, UsageTokens{InputTokens: 100, OutputTokens: 10_000}, 1)
+	above := calculateStatsCost(pricing, UsageTokens{InputTokens: 101, OutputTokens: 10}, 1)
+
+	require.NotNil(t, below)
+	require.NotNil(t, above)
+	// output 很大也不能推动输入上下文跨档；命中后未覆写的 output 价继承基础价。
+	require.InDelta(t, 20.1, *below, 1e-12)
+	require.InDelta(t, 1.03, *above, 1e-12)
+}
+
+func TestCalculateStatsCost_TokenBilling_IntervalMultiplierUsesBasePrice(t *testing.T) {
+	pricing := &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(0.001),
+		OutputPrice: testPtrFloat64(0.002),
+		Intervals: []PricingInterval{{
+			MinTokens:       100,
+			InputMultiplier: testPtrFloat64(3),
+		}},
+	}
+
+	result := calculateStatsCost(pricing, UsageTokens{InputTokens: 101, OutputTokens: 10}, 1)
+
+	require.NotNil(t, result)
+	require.InDelta(t, 0.323, *result, 1e-12)
 }
 
 func TestCalculateStatsCost_TokenBilling_PartialPricesNil(t *testing.T) {
@@ -549,6 +645,26 @@ func TestTryModelFilePricing_CombinesPriorityAndLongContextPricing(t *testing.T)
 	require.InDelta(t, 0.534, *result, 1e-12)
 }
 
+func TestTryModelFilePricing_DeepSeekPeakPricingUsesRequestTime(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"deepseek-v4-pro": {
+			InputPricePerToken:     deepseekProOffPeakInputPrice,
+			OutputPricePerToken:    deepseekProOffPeakOutputPrice,
+			CacheReadPricePerToken: deepseekProOffPeakCacheRead,
+		},
+	})
+	tokens := UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}
+	offPeak := time.Date(2026, time.August, 24, 5, 0, 0, 0, time.UTC)
+	peak := time.Date(2026, time.August, 24, 6, 0, 0, 0, time.UTC)
+
+	offPeakCost := tryModelFilePricingAt(context.Background(), bs, "deepseek-v4-pro", tokens, "", offPeak)
+	peakCost := tryModelFilePricingAt(context.Background(), bs, "deepseek-v4-pro", tokens, "", peak)
+
+	require.NotNil(t, offPeakCost)
+	require.NotNil(t, peakCost)
+	require.InDelta(t, *offPeakCost*2, *peakCost, 1e-12)
+}
+
 func TestTryModelFilePricing_PricingNotFound(t *testing.T) {
 	// "nonexistent-model" does not match any fallback pattern
 	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{})
@@ -594,8 +710,9 @@ func TestTryModelFilePricing_WithImageOutput(t *testing.T) {
 	}
 	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens, "")
 	require.NotNil(t, result)
-	// 100*0.001 + 50*0.002 + 10*0.01 = 0.1 + 0.1 + 0.1 = 0.3
-	require.InDelta(t, 0.3, *result, 1e-12)
+	// ImageOutputTokens 是 OutputTokens 的子集，先扣除再按图片单价计。
+	// 100*0.001 + (50-10)*0.002 + 10*0.01 = 0.1 + 0.08 + 0.1 = 0.28
+	require.InDelta(t, 0.28, *result, 1e-12)
 }
 
 func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {
@@ -908,6 +1025,32 @@ func TestApplyAccountStatsCost_UsesUsageLogServiceTier(t *testing.T) {
 
 	require.NotNil(t, usageLog.AccountStatsCost)
 	require.InDelta(t, 0.4, *usageLog.AccountStatsCost, 1e-12)
+}
+
+func TestApplyAccountStatsCost_UsesRequestPricingTimeForDeepSeek(t *testing.T) {
+	channel := &Channel{ID: 1, Status: StatusActive}
+	cs := newTestChannelServiceForStats(t, channel, 10, PlatformDeepseek)
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"deepseek-v4-pro": {
+			InputPricePerToken:     deepseekProOffPeakInputPrice,
+			OutputPricePerToken:    deepseekProOffPeakOutputPrice,
+			CacheReadPricePerToken: deepseekProOffPeakCacheRead,
+		},
+	})
+	tokens := UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}
+	offPeak := time.Date(2026, time.August, 24, 5, 0, 0, 0, time.UTC)
+	peak := time.Date(2026, time.August, 24, 6, 0, 0, 0, time.UTC)
+	offPeakLog := &UsageLog{}
+	peakLog := &UsageLog{}
+
+	applyAccountStatsCostAt(context.Background(), offPeakLog, cs, bs, 1, 10,
+		"deepseek-v4-pro", "deepseek-v4-pro", tokens, 999, offPeak)
+	applyAccountStatsCostAt(context.Background(), peakLog, cs, bs, 1, 10,
+		"deepseek-v4-pro", "deepseek-v4-pro", tokens, 999, peak)
+
+	require.NotNil(t, offPeakLog.AccountStatsCost)
+	require.NotNil(t, peakLog.AccountStatsCost)
+	require.InDelta(t, *offPeakLog.AccountStatsCost*2, *peakLog.AccountStatsCost, 1e-12)
 }
 
 // ---------------------------------------------------------------------------

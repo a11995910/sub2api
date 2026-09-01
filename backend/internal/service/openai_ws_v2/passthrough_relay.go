@@ -26,6 +26,7 @@ type FrameConn interface {
 
 type Usage struct {
 	InputTokens              int
+	ImageInputTokens         int
 	OutputTokens             int
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int
@@ -1071,9 +1072,13 @@ func parseUsageAndAccumulate(
 	if !cachedResult.Exists() {
 		cachedResult = usageResult.Get("prompt_tokens_details.cached_tokens")
 	}
-	imageTokens := usageResult.Get("output_tokens_details.image_tokens").Int()
-	if imageTokens == 0 {
-		imageTokens = usageResult.Get("completion_tokens_details.image_tokens").Int()
+	imageInputTokens := usageResult.Get("input_tokens_details.image_tokens").Int()
+	if imageInputTokens == 0 {
+		imageInputTokens = usageResult.Get("prompt_tokens_details.image_tokens").Int()
+	}
+	imageOutputTokens := usageResult.Get("output_tokens_details.image_tokens").Int()
+	if imageOutputTokens == 0 {
+		imageOutputTokens = usageResult.Get("completion_tokens_details.image_tokens").Int()
 	}
 
 	requireTotals := isTerminalEvent(strings.TrimSpace(eventType))
@@ -1099,10 +1104,26 @@ func parseUsageAndAccumulate(
 	}
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,
+		ImageInputTokens:         max(int(imageInputTokens), 0),
 		OutputTokens:             outputTokens,
 		CacheCreationInputTokens: openAICacheCreationTokensFromUsage(usageResult),
 		CacheReadInputTokens:     cachedTokens,
-		ImageOutputTokens:        int(imageTokens),
+		ImageOutputTokens:        max(int(imageOutputTokens), 0),
+	}
+	if toolUsage, exists, valid := parseHostedImageToolUsage(message); exists {
+		if !valid {
+			recordUsageParseFailure()
+			if onParseFailure != nil {
+				onParseFailure(eventType, toolUsage.raw)
+			}
+		} else {
+			if parsedUsage.ImageInputTokens == 0 {
+				parsedUsage.ImageInputTokens = toolUsage.imageInputTokens
+			}
+			if parsedUsage.ImageOutputTokens == 0 {
+				parsedUsage.ImageOutputTokens = toolUsage.imageOutputTokens
+			}
+		}
 	}
 
 	if isTerminalEvent(strings.TrimSpace(eventType)) {
@@ -1117,7 +1138,7 @@ func parseUsageAndAccumulate(
 }
 
 func relayUsageHasTokens(usage Usage) bool {
-	return usage.InputTokens > 0 || usage.OutputTokens > 0 ||
+	return usage.InputTokens > 0 || usage.ImageInputTokens > 0 || usage.OutputTokens > 0 ||
 		usage.CacheCreationInputTokens > 0 || usage.CacheReadInputTokens > 0 ||
 		usage.ImageOutputTokens > 0
 }
@@ -1128,6 +1149,9 @@ func mergeRelayUsageNonZero(dst *Usage, src Usage) {
 	}
 	if src.InputTokens > 0 {
 		dst.InputTokens = src.InputTokens
+	}
+	if src.ImageInputTokens > 0 {
+		dst.ImageInputTokens = src.ImageInputTokens
 	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
@@ -1149,12 +1173,184 @@ func finalizeRelayTurnUsage(state *relayState) Usage {
 	}
 	turnUsage := state.turnUsage
 	state.usage.InputTokens += turnUsage.InputTokens
+	state.usage.ImageInputTokens += turnUsage.ImageInputTokens
 	state.usage.OutputTokens += turnUsage.OutputTokens
 	state.usage.CacheCreationInputTokens += turnUsage.CacheCreationInputTokens
 	state.usage.CacheReadInputTokens += turnUsage.CacheReadInputTokens
 	state.usage.ImageOutputTokens += turnUsage.ImageOutputTokens
 	state.turnUsage = Usage{}
 	return turnUsage
+}
+
+type hostedImageToolUsage struct {
+	raw               string
+	imageInputTokens  int
+	imageOutputTokens int
+}
+
+// parseHostedImageToolUsage 只解析用于补充 response.usage 的图片 token 子集。
+// 任一已出现字段格式错误时，调用方忽略整块 tool_usage，避免计费混入半有效用量。
+func parseHostedImageToolUsage(message []byte) (hostedImageToolUsage, bool, bool) {
+	value := gjson.GetBytes(message, "response.tool_usage.image_gen")
+	if !value.Exists() {
+		value = gjson.GetBytes(message, "tool_usage.image_gen")
+	}
+	if !value.Exists() {
+		return hostedImageToolUsage{}, false, true
+	}
+	parsed := hostedImageToolUsage{raw: strings.TrimSpace(value.Raw)}
+	if !value.IsObject() {
+		return parsed, true, false
+	}
+
+	imageInputTokens, inputOK := parseNonNegativeUsageIntField(value.Get("input_tokens_details.image_tokens"), false)
+	imageOutputTokens, outputOK := parseNonNegativeUsageIntField(value.Get("output_tokens_details.image_tokens"), false)
+	if !inputOK || !outputOK {
+		return parsed, true, false
+	}
+	parsed.imageInputTokens = imageInputTokens
+	parsed.imageOutputTokens = imageOutputTokens
+	return parsed, true, true
+}
+
+func parseNonNegativeUsageIntField(value gjson.Result, required bool) (int, bool) {
+	if !value.Exists() {
+		return 0, !required
+	}
+	if value.Type != gjson.Number {
+		return 0, false
+	}
+	return parseBoundedNonNegativeJSONInt(value.Raw)
+}
+
+// parseBoundedNonNegativeJSONInt 接受值为整数的指数记法，但不把上游可控指数
+// 交给任意精度解析器；超出本机 int 范围的 token 数视为无效。
+func parseBoundedNonNegativeJSONInt(raw string) (int, bool) {
+	if len(raw) == 0 || len(raw) > 64 || raw[0] == '-' {
+		return 0, false
+	}
+
+	mantissaEnd := len(raw)
+	for i, c := range raw {
+		if c == 'e' || c == 'E' {
+			mantissaEnd = i
+			break
+		}
+	}
+
+	digits := raw[:mantissaEnd]
+	fractionDigits := 0
+	digitCount := 0
+	dotSeen := false
+	mantissaIsZero := true
+	for _, c := range digits {
+		switch {
+		case c == '.' && !dotSeen:
+			dotSeen = true
+		case c >= '0' && c <= '9':
+			digitCount++
+			mantissaIsZero = mantissaIsZero && c == '0'
+			if dotSeen {
+				fractionDigits++
+			}
+		default:
+			return 0, false
+		}
+	}
+	if digitCount == 0 {
+		return 0, false
+	}
+
+	exponent := 0
+	if mantissaEnd < len(raw) {
+		exponentRaw := raw[mantissaEnd+1:]
+		negative := false
+		if len(exponentRaw) > 0 && (exponentRaw[0] == '+' || exponentRaw[0] == '-') {
+			negative = exponentRaw[0] == '-'
+			exponentRaw = exponentRaw[1:]
+		}
+		if len(exponentRaw) == 0 {
+			return 0, false
+		}
+		for len(exponentRaw) > 1 && exponentRaw[0] == '0' {
+			exponentRaw = exponentRaw[1:]
+		}
+		for _, digit := range exponentRaw {
+			if digit < '0' || digit > '9' {
+				return 0, false
+			}
+		}
+		if mantissaIsZero {
+			return 0, true
+		}
+		if len(exponentRaw) > 3 {
+			return 0, false
+		}
+		for _, digit := range exponentRaw {
+			exponent = exponent*10 + int(digit-'0')
+		}
+		if exponent > 100 {
+			return 0, false
+		}
+		if negative {
+			exponent = -exponent
+		}
+	}
+
+	trailingZeros := exponent - fractionDigits
+	scaleReduction := 0
+	if trailingZeros < 0 {
+		scaleReduction = -trailingZeros
+		remaining := scaleReduction
+		allZeros := true
+		for i := len(digits) - 1; i >= 0; i-- {
+			if digits[i] == '.' {
+				continue
+			}
+			if digits[i] != '0' {
+				allZeros = false
+				if remaining > 0 {
+					return 0, false
+				}
+			}
+			if remaining > 0 {
+				remaining--
+			}
+		}
+		if remaining > 0 {
+			if allZeros {
+				return 0, true
+			}
+			return 0, false
+		}
+	}
+
+	maxInt := int(^uint(0) >> 1)
+	parsed := 0
+	digitsToAccumulate := digitCount - scaleReduction
+	for _, c := range digits {
+		if c == '.' {
+			continue
+		}
+		if digitsToAccumulate <= 0 {
+			break
+		}
+		if parsed > (maxInt-int(c-'0'))/10 {
+			return 0, false
+		}
+		parsed = parsed*10 + int(c-'0')
+		digitsToAccumulate--
+	}
+	if trailingZeros < 0 {
+		return parsed, true
+	}
+	for ; trailingZeros > 0; trailingZeros-- {
+		if parsed > maxInt/10 {
+			return 0, false
+		}
+		parsed *= 10
+	}
+	return parsed, true
 }
 
 func parseUsageIntField(value gjson.Result, required bool) (int, bool) {

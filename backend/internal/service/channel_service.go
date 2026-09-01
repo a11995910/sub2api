@@ -812,25 +812,33 @@ func accountStatsVideoPricingSignatures(rules []AccountStatsPricingRule) ([]stri
 			intervals := make([]string, 0, len(pricing.Intervals))
 			for _, interval := range pricing.Intervals {
 				encoded, err := json.Marshal(struct {
-					MinTokens       int
-					MaxTokens       *int
-					TierLabel       string
-					InputPrice      *float64
-					OutputPrice     *float64
-					CacheWritePrice *float64
-					CacheReadPrice  *float64
-					PerRequestPrice *float64
-					SortOrder       int
+					MinTokens            int
+					MaxTokens            *int
+					TierLabel            string
+					InputPrice           *float64
+					OutputPrice          *float64
+					CacheWritePrice      *float64
+					CacheReadPrice       *float64
+					InputMultiplier      *float64
+					OutputMultiplier     *float64
+					CacheWriteMultiplier *float64
+					CacheReadMultiplier  *float64
+					PerRequestPrice      *float64
+					SortOrder            int
 				}{
-					MinTokens:       interval.MinTokens,
-					MaxTokens:       interval.MaxTokens,
-					TierLabel:       interval.TierLabel,
-					InputPrice:      interval.InputPrice,
-					OutputPrice:     interval.OutputPrice,
-					CacheWritePrice: interval.CacheWritePrice,
-					CacheReadPrice:  interval.CacheReadPrice,
-					PerRequestPrice: interval.PerRequestPrice,
-					SortOrder:       interval.SortOrder,
+					MinTokens:            interval.MinTokens,
+					MaxTokens:            interval.MaxTokens,
+					TierLabel:            interval.TierLabel,
+					InputPrice:           interval.InputPrice,
+					OutputPrice:          interval.OutputPrice,
+					CacheWritePrice:      interval.CacheWritePrice,
+					CacheReadPrice:       interval.CacheReadPrice,
+					InputMultiplier:      interval.InputMultiplier,
+					OutputMultiplier:     interval.OutputMultiplier,
+					CacheWriteMultiplier: interval.CacheWriteMultiplier,
+					CacheReadMultiplier:  interval.CacheReadMultiplier,
+					PerRequestPrice:      interval.PerRequestPrice,
+					SortOrder:            interval.SortOrder,
 				})
 				if err != nil {
 					return nil, fmt.Errorf("marshal video pricing interval: %w", err)
@@ -845,10 +853,12 @@ func accountStatsVideoPricingSignatures(rules []AccountStatsPricingRule) ([]stri
 				AccountIDs       []int64
 				Platform         string
 				Models           []string
+				PriceCurrency    PriceCurrency
 				InputPrice       *float64
 				OutputPrice      *float64
 				CacheWritePrice  *float64
 				CacheReadPrice   *float64
+				ImageInputPrice  *float64
 				ImageOutputPrice *float64
 				PerRequestPrice  *float64
 				Intervals        []string
@@ -858,10 +868,12 @@ func accountStatsVideoPricingSignatures(rules []AccountStatsPricingRule) ([]stri
 				AccountIDs:       accountIDs,
 				Platform:         pricing.Platform,
 				Models:           models,
+				PriceCurrency:    pricing.PriceCurrency.OrDefault(),
 				InputPrice:       pricing.InputPrice,
 				OutputPrice:      pricing.OutputPrice,
 				CacheWritePrice:  pricing.CacheWritePrice,
 				CacheReadPrice:   pricing.CacheReadPrice,
+				ImageInputPrice:  pricing.ImageInputPrice,
 				ImageOutputPrice: pricing.ImageOutputPrice,
 				PerRequestPrice:  pricing.PerRequestPrice,
 				Intervals:        intervals,
