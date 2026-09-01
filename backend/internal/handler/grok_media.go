@@ -148,6 +148,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				return
 			}
 		}
+		// 请求体及媒体字段已完成最终解析、校验和安全审计；长耗时排队与
+		// 上游生成阶段只继续保留收缩后的实际 body 租约。
+		pkghttputil.NotifyRequestBodyStable(c.Request, int64(len(body)))
 		imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 		if !acquired {
 			return
@@ -156,7 +159,6 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			defer imageReleaseFunc()
 		}
 	}
-
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}

@@ -166,11 +166,11 @@ func (h *AsyncImageHandler) DispatchGenerations(syncHandler gin.HandlerFunc) gin
 			syncHandler(c)
 			return
 		}
-		h.submitGeneration(c, parsed)
+		h.submitGeneration(c, parsed, int64(len(body)))
 	}
 }
 
-func (h *AsyncImageHandler) submitGeneration(c *gin.Context, parsed service.ParsedImageTaskRequest) {
+func (h *AsyncImageHandler) submitGeneration(c *gin.Context, parsed service.ParsedImageTaskRequest, originalBodyBytes int64) {
 	if !h.enabled() {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
 		return
@@ -203,6 +203,14 @@ func (h *AsyncImageHandler) submitGeneration(c *gin.Context, parsed service.Pars
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, parsed.UpstreamBody) {
 		return
 	}
+	// 该任务直接持久化最终上游 body，不会把当前准入租约交给后续二次解析。
+	// deferred 缓存仍持有原始入口体；重写删除 async 字段或压缩空白后可能
+	// 显著变小，因此稳定记账必须取两者较大值。
+	stableBodyBytes := int64(len(parsed.UpstreamBody))
+	if originalBodyBytes > stableBodyBytes {
+		stableBodyBytes = originalBodyBytes
+	}
+	pkghttputil.NotifyRequestBodyStable(c.Request, stableBodyBytes)
 	task, _, err := h.tasks.CreateGeneration(
 		c.Request.Context(),
 		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},

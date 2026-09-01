@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -72,9 +73,20 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async", strings.NewReader(`{"model":"gpt-image-1","prompt":"cat"}`)).WithContext(requestCtx)
 	req.Header.Set("Content-Type", "application/json")
+	stabilized := make(chan int64, 1)
+	req = pkghttputil.WithRequestBodyMaterializationObserver(req, func(stage pkghttputil.RequestBodyMaterializationStage, size int64) {
+		if stage == pkghttputil.RequestBodyMaterializedStable {
+			stabilized <- size
+		}
+	})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusAccepted, w.Code)
+	select {
+	case <-stabilized:
+		t.Fatal("异步图片 worker 完成稳定阶段解析前不得提前收缩请求体租约")
+	default:
+	}
 	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 	require.Equal(t, "3", w.Header().Get("Retry-After"))
 

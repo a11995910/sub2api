@@ -16,8 +16,11 @@ terminate healthy long generations and streams.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
 - `gateway.max_inflight_body_bytes: 536870912` 限制准入请求体预计占用的内存
-  （默认 512 MiB，最低 1 MiB），预留值包含解析和改写余量，请求处理结束后释放；若单个
-  请求的估算值超过总预算，该请求会占满预算并独占运行，不会被永久判为临时拥塞。
+  （默认 512 MiB，最低 1 MiB）。读取和解压阶段按最坏情况预留；得到实际解压 body
+  后按真实大小收缩；宽松 JSON 规范化完成后按最终 body 的四倍保留入口体、会话/映射
+  和转发副本余量，剩余租约在请求或异步 worker 结束时释放。若单个请求的读取阶段
+  估算值超过总预算，它会暂时占满预算，
+  但不会让读取阶段的七倍最坏预留无条件持续到数百秒的流式响应结束。
 - `gateway.body_admission_wait_seconds: 2` 限制准入等待时间；预算耗尽时返回
   HTTP 429，并附带 `Retry-After`。
 - `gateway.max_inflight_body_reads: 64` 限制进程内同时读取请求体的数量。准入
@@ -29,12 +32,16 @@ terminate healthy long generations and streams.
   Content-Type/Content-Encoding 最坏倍率反推值中的最小值；同类请求的聚合租约
   最多占全局预算的一半，避免少量 tiny chunked 长响应饿死正常请求。超过 effective
   limit 返回 HTTP 413；需要发送更大 body 的客户端必须提供准确 `Content-Length`。
+  读取槽在 EOF、读错或 Close 时立即归还；主租约与 unknown 子租约在成功物化后按
+  实际 body 同步收缩，并持有到请求或异步 worker 结束，持续保留 50% 类别隔离。
 - API Key 鉴权不会在请求体准入前读取 body。异步图片提交在合法 Key 完成基础身份、
   用户、IP 和分组检查后，通过同一个准入 controller 完整读取并缓存解压后的原始
   body，因此大于 64 KiB、分块或压缩请求仍能正确识别 `async` 和
   `client_request_id`；无效或停用 Key 不占用请求体预算。
-- 异步图片 worker 接管请求体副本时会同时接管准入租约，直到任务完成、超时或异常
-  退出才释放预算；这保留了额度耗尽后的 `client_request_id` 幂等重放语义。
+- 直连异步图片 worker 接管请求体副本时会同时接管读取阶段最坏预留，在最终媒体解析
+  后收缩，并持有到任务完成、超时或异常退出；这保留了额度耗尽后的
+  `client_request_id` 幂等重放语义。持久化异步任务不转交入口租约，稳定记账取原始体
+  与重写后上游体的较大值。
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6

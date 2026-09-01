@@ -72,6 +72,216 @@ func TestAcquireRequestBodyAdmissionReleasesReadAtEOFButRetainsMemoryUntilReleas
 	thirdLease.Release()
 }
 
+func TestNormalizedLargeJSONReleasesCapacityBeforeResponseCompletes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	budget := NewBodyMemoryBudget(60, 0, 2)
+	materialized := make(chan struct{})
+	finishResponse := make(chan struct{})
+	firstDone := make(chan struct{})
+	firstReadErr := make(chan error, 1)
+
+	router := gin.New()
+	admission := RequestBodyAdmissionForGateway(budget, 100, 100)
+	router.POST("/v1/responses", admission, func(c *gin.Context) {
+		_, err := pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(c.Request, 100)
+		firstReadErr <- err
+		close(materialized)
+		<-finishResponse
+		c.Status(http.StatusNoContent)
+	})
+	router.POST("/v1/images/edits", admission, func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	firstRecorder := httptest.NewRecorder()
+	firstRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader("0123456789"))
+	firstRequest.Header.Set("Content-Type", "application/json")
+	go func() {
+		router.ServeHTTP(firstRecorder, firstRequest)
+		close(firstDone)
+	}()
+
+	select {
+	case <-materialized:
+	case <-time.After(time.Second):
+		t.Fatal("大请求未完成物化")
+	}
+	require.NoError(t, <-firstReadErr)
+
+	// 10 字节 JSON 在读取前按最坏值独占 60 字节预算；规范化完成后只保留
+	// 40 字节。即使首个响应仍在流式处理中，另一个 20 字节二进制请求也应准入。
+	secondRecorder := httptest.NewRecorder()
+	secondRequest := httptest.NewRequest(http.MethodPost, "/v1/images/edits", strings.NewReader("0123456789"))
+	secondRequest.Header.Set("Content-Type", "application/octet-stream")
+	router.ServeHTTP(secondRecorder, secondRequest)
+	require.Equal(t, http.StatusNoContent, secondRecorder.Code)
+
+	close(finishResponse)
+	select {
+	case <-firstDone:
+	case <-time.After(time.Second):
+		t.Fatal("大请求响应未结束")
+	}
+	require.Equal(t, http.StatusNoContent, firstRecorder.Code)
+}
+
+func TestCompressedJSONReservationShrinksAfterNormalization(t *testing.T) {
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	_, err := gz.Write([]byte("0123456789"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	budget := NewBodyMemoryBudget(800, 0, 1)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(compressed.Bytes()))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	c := newAdmissionTestContext(req)
+	lease, reason, err := AcquireRequestBodyAdmission(c, budget, 100)
+	require.NoError(t, err)
+	require.Empty(t, reason)
+	require.NotNil(t, lease)
+	require.Greater(t, lease.retainedMemory(), int64(40))
+
+	body, err := pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(c.Request, 100)
+	require.NoError(t, err)
+	require.Len(t, body, 10)
+	require.Equal(t, int64(40), lease.retainedMemory())
+	require.True(t, budget.memory.TryAcquire(760))
+	require.False(t, budget.memory.TryAcquire(1))
+	budget.memory.Release(760)
+
+	lease.Release()
+	require.True(t, budget.memory.TryAcquire(budget.capacity))
+	budget.memory.Release(budget.capacity)
+}
+
+func TestUnknownCompressedJSONRetainsWorstCaseUntilDecodeThenShrinksBothBudgets(t *testing.T) {
+	const routeLimit = int64(1024)
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	_, err := gz.Write([]byte("0123456789"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	newUnknownRequest := func(body []byte) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.ContentLength = -1
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		return req
+	}
+
+	t.Run("raw EOF 后解压失败仍保留最坏预留", func(t *testing.T) {
+		budget := NewBodyMemoryBudget(8<<20, 0, 1)
+		c := newAdmissionTestContext(newUnknownRequest([]byte("not-gzip")))
+		lease, reason, err := AcquireRequestBodyAdmission(c, budget, routeLimit)
+		require.NoError(t, err)
+		require.Empty(t, reason)
+		require.NotNil(t, lease)
+		initialMemory := lease.retainedMemory()
+		initialUnknown := lease.retainedUnknownMemory()
+		require.Positive(t, initialMemory)
+		require.Equal(t, initialMemory, initialUnknown)
+
+		_, err = pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+		require.Error(t, err)
+		require.Equal(t, initialMemory, lease.retainedMemory())
+		require.Equal(t, initialUnknown, lease.retainedUnknownMemory())
+		lease.Release()
+	})
+
+	t.Run("规范化完成后两套预算同步收缩", func(t *testing.T) {
+		budget := NewBodyMemoryBudget(8<<20, 0, 1)
+		c := newAdmissionTestContext(newUnknownRequest(compressed.Bytes()))
+		lease, reason, err := AcquireRequestBodyAdmission(c, budget, routeLimit)
+		require.NoError(t, err)
+		require.Empty(t, reason)
+		require.NotNil(t, lease)
+		require.Greater(t, lease.retainedUnknownMemory(), int64(40))
+
+		body, err := pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(c.Request, routeLimit)
+		require.NoError(t, err)
+		require.Len(t, body, 10)
+		require.Equal(t, int64(40), lease.retainedMemory())
+		require.Equal(t, int64(40), lease.retainedUnknownMemory())
+
+		lease.Release()
+		require.True(t, budget.memory.TryAcquire(budget.capacity))
+		budget.memory.Release(budget.capacity)
+		require.True(t, budget.unknownMemory.TryAcquire(budget.unknownCapacity))
+		budget.unknownMemory.Release(budget.unknownCapacity)
+	})
+}
+
+func TestStrictJSONReservationShrinksOnlyAfterBodyBecomesStable(t *testing.T) {
+	budget := NewBodyMemoryBudget(50, 0, 1)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async", strings.NewReader("0123456789"))
+	req.Header.Set("Content-Type", "application/json")
+	c := newAdmissionTestContext(req)
+	lease, reason, err := AcquireRequestBodyAdmission(c, budget, 100)
+	require.NoError(t, err)
+	require.Empty(t, reason)
+	require.NotNil(t, lease)
+
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	require.NoError(t, err)
+	require.Len(t, body, 10)
+	// 严格 JSON 尚未完成解析时，仍保留七倍最坏预算（并受总容量封顶）。
+	require.Equal(t, int64(50), lease.retainedMemory())
+
+	pkghttputil.NotifyRequestBodyStable(c.Request, int64(len(body)))
+	require.Equal(t, int64(40), lease.retainedMemory())
+	require.True(t, budget.memory.TryAcquire(10))
+	require.False(t, budget.memory.TryAcquire(1))
+	budget.memory.Release(10)
+
+	lease.Release()
+	require.True(t, budget.memory.TryAcquire(budget.capacity))
+	budget.memory.Release(budget.capacity)
+}
+
+func TestLeaseShrinkAndReleaseAreRaceSafe(t *testing.T) {
+	for range 100 {
+		budget := NewBodyMemoryBudget(800, 0, 1)
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		req.Body = io.NopCloser(strings.NewReader("0123456789"))
+		req.ContentLength = -1
+		req.Header.Set("Content-Type", "application/json")
+		lease, reason, err := AcquireRequestBodyAdmission(newAdmissionTestContext(req), budget, 100)
+		require.NoError(t, err)
+		require.Empty(t, reason)
+		require.NotNil(t, lease)
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			<-start
+			lease.observeBodyMaterialized(pkghttputil.RequestBodyMaterializedDecoded, 5)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			lease.observeBodyMaterialized(pkghttputil.RequestBodyMaterializedStable, 2)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			lease.Release()
+		}()
+		close(start)
+		wg.Wait()
+
+		require.True(t, budget.memory.TryAcquire(budget.capacity))
+		budget.memory.Release(budget.capacity)
+		require.True(t, budget.unknownMemory.TryAcquire(budget.unknownCapacity))
+		budget.unknownMemory.Release(budget.unknownCapacity)
+	}
+}
+
 func TestAcquireRequestBodyAdmissionRejectsAndThenReusesReadSlot(t *testing.T) {
 	budget := NewBodyMemoryBudget(32, 0, 1)
 	first := newAdmissionTestContext(newAdmissionTestRequest("1234"))
@@ -128,6 +338,57 @@ type admissionErrorBody struct{}
 
 func (admissionErrorBody) Read([]byte) (int, error) { return 0, errors.New("body read failed") }
 func (admissionErrorBody) Close() error             { return nil }
+
+func TestUnknownBodyReadErrorOrCloseRetainsSubBudgetUntilLeaseRelease(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		body io.ReadCloser
+		act  func(*http.Request) error
+	}{
+		{
+			name: "read error",
+			body: admissionErrorBody{},
+			act: func(req *http.Request) error {
+				_, err := io.ReadAll(req.Body)
+				return err
+			},
+		},
+		{
+			name: "close",
+			body: io.NopCloser(strings.NewReader("x")),
+			act: func(req *http.Request) error {
+				return req.Body.Close()
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			budget := NewBodyMemoryBudget(800, 0, 1)
+			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			req.Body = testCase.body
+			req.ContentLength = -1
+			req.Header.Set("Content-Type", "application/json")
+			lease, reason, err := AcquireRequestBodyAdmission(newAdmissionTestContext(req), budget, 100)
+			require.NoError(t, err)
+			require.Empty(t, reason)
+			require.NotNil(t, lease)
+
+			actionErr := testCase.act(req)
+			if testCase.name == "read error" {
+				require.Error(t, actionErr)
+			} else {
+				require.NoError(t, actionErr)
+			}
+			retained := lease.retainedUnknownMemory()
+			require.Positive(t, retained)
+			require.True(t, budget.unknownMemory.TryAcquire(budget.unknownCapacity-retained))
+			require.False(t, budget.unknownMemory.TryAcquire(1), "读取失败或提前关闭后仍应持有 unknown 子租约")
+			budget.unknownMemory.Release(budget.unknownCapacity - retained)
+			lease.Release()
+			require.True(t, budget.unknownMemory.TryAcquire(budget.unknownCapacity))
+			budget.unknownMemory.Release(budget.unknownCapacity)
+		})
+	}
+}
 
 func TestAdmissionReadErrorReleasesReadSlot(t *testing.T) {
 	budget := NewBodyMemoryBudget(32, 0, 1)
@@ -849,7 +1110,7 @@ func TestTakeRequestBodyAdmissionLeaseIsSingleUse(t *testing.T) {
 	lease.Release()
 }
 
-func TestUnknownBodyHandoffReleasesBothBudgetsExactlyOnce(t *testing.T) {
+func TestUnknownBodyHandoffReleasesReadBudgetAndRetainsActualMemory(t *testing.T) {
 	budget := NewBodyMemoryBudget(800, 0, 1)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	req.Body = io.NopCloser(strings.NewReader("x"))
@@ -868,12 +1129,14 @@ func TestUnknownBodyHandoffReleasesBothBudgetsExactlyOnce(t *testing.T) {
 
 	handedOff := TakeRequestBodyAdmissionLease(c)
 	require.Same(t, lease, handedOff)
-	require.True(t, budget.memory.TryAcquire(budget.capacity-handedOff.reservation))
+	require.Equal(t, int64(7), handedOff.retainedMemory())
+	require.Equal(t, int64(7), handedOff.retainedUnknownMemory())
+	require.True(t, budget.memory.TryAcquire(budget.capacity-handedOff.retainedMemory()))
 	require.False(t, budget.memory.TryAcquire(1), "handoff 期间仍应持有主内存预算")
-	budget.memory.Release(budget.capacity - handedOff.reservation)
-	require.True(t, budget.unknownMemory.TryAcquire(budget.unknownCapacity-handedOff.unknownReservation))
-	require.False(t, budget.unknownMemory.TryAcquire(1), "handoff 期间仍应持有 unknown 子预算")
-	budget.unknownMemory.Release(budget.unknownCapacity - handedOff.unknownReservation)
+	budget.memory.Release(budget.capacity - handedOff.retainedMemory())
+	require.True(t, budget.unknownMemory.TryAcquire(budget.unknownCapacity-handedOff.retainedUnknownMemory()))
+	require.False(t, budget.unknownMemory.TryAcquire(1), "handoff 期间仍应持有收缩后的 unknown 子预算")
+	budget.unknownMemory.Release(budget.unknownCapacity - handedOff.retainedUnknownMemory())
 
 	handedOff.Release()
 	handedOff.Release()
@@ -1164,7 +1427,7 @@ func TestUnknownBodyAdmissionDoesNotExhaustKnownLengthBudget(t *testing.T) {
 	require.Empty(t, reason)
 	require.NotNil(t, unknownLease)
 	defer unknownLease.Release()
-	require.LessOrEqual(t, unknownLease.reservation, int64(100))
+	require.LessOrEqual(t, unknownLease.retainedMemory(), int64(100))
 
 	knownRequest := newAdmissionTestRequest("1234567890")
 	known := newAdmissionTestContext(knownRequest)

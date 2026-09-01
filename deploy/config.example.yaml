@@ -245,8 +245,10 @@ gateway:
   # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
   # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
   text_max_body_size: 33554432
-  # 活跃请求体估算内存预算（默认 512 MiB，最低 1 MiB）；异步任务接管后持有到 worker 结束。
+  # 活跃请求体估算内存预算（默认 512 MiB，最低 1 MiB）；读取/解压后按实际 body 收缩。
+  # 宽松 JSON 完成规范化后按最终 body 的 4 倍保留后续会话、映射和转发副本余量。
   # 未声明 Content-Length 的请求另受 8 MiB/预算反推有效上限和 50% 聚合子预算保护。
+  # 主租约与 unknown 子租约按实际 body 同步收缩，并持有到请求或异步 worker 结束。
   max_inflight_body_bytes: 536870912
   # 请求体准入等待秒数（默认 2）；超时返回 429，0 表示立即拒绝。
   body_admission_wait_seconds: 2

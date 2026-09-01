@@ -118,6 +118,45 @@ func TestReadLenientJSONRequestBodyWithPreallocHonorsRequestLimitDuringNormaliza
 	}
 }
 
+func TestReadLenientJSONRequestBodyReportsDecodedAndNormalizedSizes(t *testing.T) {
+	raw := []byte{'{', '"', 'x', '"', ':', '"', '\x01', '"', '}'}
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	if _, err := gz.Write(raw); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	type materialization struct {
+		stage RequestBodyMaterializationStage
+		size  int64
+	}
+	var observed []materialization
+	req := newRequestWithBody(t, compressed.Bytes(), "gzip")
+	req = WithRequestBodyMaterializationObserver(req, func(stage RequestBodyMaterializationStage, size int64) {
+		observed = append(observed, materialization{stage: stage, size: size})
+	})
+
+	normalized, err := ReadLenientJSONRequestBodyWithPrealloc(req, 1024)
+	if err != nil {
+		t.Fatalf("read lenient body: %v", err)
+	}
+	want := []materialization{
+		{stage: RequestBodyMaterializedDecoded, size: int64(len(raw))},
+		{stage: RequestBodyMaterializedStable, size: int64(len(normalized))},
+	}
+	if len(observed) != len(want) {
+		t.Fatalf("materialization events = %#v, want %#v", observed, want)
+	}
+	for i := range want {
+		if observed[i] != want[i] {
+			t.Fatalf("materialization event %d = %#v, want %#v", i, observed[i], want[i])
+		}
+	}
+}
+
 func TestReadRequestBodyWithPrealloc_DecodesDeflate(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zlib.NewWriter(&buf)

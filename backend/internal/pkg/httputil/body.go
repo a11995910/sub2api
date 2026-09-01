@@ -31,6 +31,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 		// 缓存体可能已经被前一个消费者读完，命中时恢复 reader，保证后续
 		// handler/转发逻辑仍可重复读取同一份请求体。
 		ResetRequestBody(req, cached)
+		notifyRequestBodyMaterialized(req, RequestBodyMaterializedDecoded, int64(len(cached)))
 		return cached, nil
 	}
 	if req == nil || req.Body == nil {
@@ -57,6 +58,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {
+		notifyRequestBodyMaterialized(req, RequestBodyMaterializedDecoded, int64(len(raw)))
 		return raw, nil
 	}
 
@@ -68,6 +70,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 	req.Header.Del("Content-Encoding")
 	req.Header.Del("Content-Length")
 	req.ContentLength = int64(len(decoded))
+	notifyRequestBodyMaterialized(req, RequestBodyMaterializedDecoded, int64(len(decoded)))
 
 	return decoded, nil
 }
@@ -95,6 +98,7 @@ func ReadLenientJSONRequestBodyWithPrealloc(req *http.Request, maxNormalizedByte
 	if _, cached := CachedRequestBody(req); cached && !bytes.Equal(body, normalized) {
 		WithCachedRequestBody(req, normalized)
 	}
+	NotifyRequestBodyStable(req, int64(len(normalized)))
 	return normalized, nil
 }
 

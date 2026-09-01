@@ -118,6 +118,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	// JSON/multipart 已完成最终解析和安全审计；后续长时间排队、转发或流式
+	// 响应只需保留原始 body 与最终解析结果，不再持有七倍解析余量。
+	pkghttputil.NotifyRequestBodyStable(c.Request, int64(len(body)))
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 	if !acquired {
 		return

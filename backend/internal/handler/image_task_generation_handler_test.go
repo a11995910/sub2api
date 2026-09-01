@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -192,6 +193,32 @@ func TestAsyncImageHandlerDispatchGenerationsIsIdempotent(t *testing.T) {
 	router.ServeHTTP(conflictWriter, conflictReq)
 	require.Equal(t, http.StatusConflict, conflictWriter.Code)
 	require.Contains(t, conflictWriter.Body.String(), "IDEMPOTENCY_CONFLICT")
+}
+
+func TestAsyncImageHandlerDispatchGenerationsStableAccountingKeepsLargerOriginalBody(t *testing.T) {
+	h, _, router := newAsyncGenerationTestHandler()
+	router.POST("/v1/images/generations", h.DispatchGenerations(func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	}))
+
+	body := "{" + strings.Repeat(" ", 4096) + `"async":true,"client_request_id":"request_spaces","model":"gpt-image-2","prompt":"dog"}`
+	parsed, err := service.ParseImageTaskRequest([]byte(body))
+	require.NoError(t, err)
+	require.Less(t, len(parsed.UpstreamBody), len(body))
+
+	var stableBytes int64
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = pkghttputil.WithRequestBodyMaterializationObserver(req, func(stage pkghttputil.RequestBodyMaterializationStage, size int64) {
+		if stage == pkghttputil.RequestBodyMaterializedStable {
+			stableBytes = size
+		}
+	})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusAccepted, recorder.Code)
+	require.Equal(t, int64(len(body)), stableBytes)
 }
 
 func TestAsyncImageHandlerDispatchGenerationsAcceptsWithoutObjectStorage(t *testing.T) {

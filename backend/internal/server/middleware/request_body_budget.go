@@ -20,13 +20,14 @@ import (
 )
 
 const (
-	bodyMemoryReservationMultiplier     int64 = 2
-	jsonBodyMemoryReservationMultiplier int64 = 7
-	unknownBodyMaxBytes                 int64 = 8 << 20
-	unknownBodyPerRequestBudgetDivisor  int64 = 8
-	unknownBodyAggregateBudgetDivisor   int64 = 2
-	requestBodyAdmissionLeaseKey              = "middleware.request_body_admission_lease"
-	requestBodyAdmissionControllerKey         = "middleware.request_body_admission_controller"
+	bodyMemoryReservationMultiplier       int64 = 2
+	jsonBodyMemoryReservationMultiplier   int64 = 7
+	stableBodyMemoryReservationMultiplier int64 = 4
+	unknownBodyMaxBytes                   int64 = 8 << 20
+	unknownBodyPerRequestBudgetDivisor    int64 = 8
+	unknownBodyAggregateBudgetDivisor     int64 = 2
+	requestBodyAdmissionLeaseKey                = "middleware.request_body_admission_lease"
+	requestBodyAdmissionControllerKey           = "middleware.request_body_admission_controller"
 )
 
 var errBodyAdmissionUnavailable = errors.New("request body admission unavailable")
@@ -57,8 +58,8 @@ type requestBodyAdmissionController struct {
 }
 
 // BodyMemoryBudget 管理进程内请求体内存和上传读取并发。
-// 读取槽位在 body 到 EOF、出错或 Close 后立即释放；内存租约默认持有到
-// 当前请求链结束，确保重试、计费和流式转发仍引用 body 时不会超额记账。
+// 读取槽位在 body 到 EOF、出错或 Close 后立即释放；主内存和 unknown
+// 子租约在 body 物化后按实际大小同步收缩，并持有到当前请求链结束。
 type BodyMemoryBudget struct {
 	memory        *semaphore.Weighted
 	unknownMemory *semaphore.Weighted
@@ -171,16 +172,18 @@ type RequestBodyAdmissionLease struct {
 	memoryAcquired        bool
 	unknownReservation    int64
 	unknownMemoryAcquired bool
+	jsonBody              bool
+	compressedBody        bool
 	body                  *admissionReadCloser
 
 	readAcquired  bool
 	readOnce      sync.Once
 	readDone      atomic.Bool
-	memoryOnce    sync.Once
-	unknownOnce   sync.Once
 	stopOnce      sync.Once
 	stopCancel    func() bool
 	interruptRead func()
+	memoryMu      sync.Mutex
+	unknownMu     sync.Mutex
 	bodyMu        sync.Mutex
 	ownershipMu   sync.Mutex
 	detached      bool
@@ -204,30 +207,139 @@ func (l *RequestBodyAdmissionLease) releaseRead() {
 }
 
 func (l *RequestBodyAdmissionLease) releaseMemory() {
+	if l == nil || l.budget == nil || l.budget.memory == nil {
+		return
+	}
+	l.memoryMu.Lock()
+	if !l.memoryAcquired || l.reservation <= 0 {
+		l.memoryAcquired = false
+		l.reservation = 0
+		l.memoryMu.Unlock()
+		return
+	}
+	released := l.reservation
+	l.reservation = 0
+	l.memoryAcquired = false
+	l.memoryMu.Unlock()
+
+	l.budget.memory.Release(released)
+	l.budget.memoryAvailable.notify()
+}
+
+func (l *RequestBodyAdmissionLease) shrinkMemory(target int64) {
+	if l == nil || l.budget == nil || l.budget.memory == nil {
+		return
+	}
+	if target < 0 {
+		target = 0
+	}
+	if target > l.budget.capacity {
+		target = l.budget.capacity
+	}
+
+	l.memoryMu.Lock()
+	if !l.memoryAcquired || target >= l.reservation {
+		l.memoryMu.Unlock()
+		return
+	}
+	released := l.reservation - target
+	l.reservation = target
+	l.memoryMu.Unlock()
+
+	l.budget.memory.Release(released)
+	l.budget.memoryAvailable.notify()
+}
+
+func (l *RequestBodyAdmissionLease) retainedMemory() int64 {
+	if l == nil {
+		return 0
+	}
+	l.memoryMu.Lock()
+	defer l.memoryMu.Unlock()
+	return l.reservation
+}
+
+func (l *RequestBodyAdmissionLease) observeBodyMaterialized(
+	stage pkghttputil.RequestBodyMaterializationStage,
+	bodyBytes int64,
+) {
+	if l == nil || bodyBytes < 0 {
+		return
+	}
+	multiplier := bodyMemoryReservationMultiplier
+	if stage == pkghttputil.RequestBodyMaterializedStable {
+		// 最终入口 body 后续仍可能同时存在会话哈希、渠道映射和上游转发
+		// 副本。保留四倍覆盖常见转发链，又避免七倍解析余量占满整个长流。
+		multiplier = stableBodyMemoryReservationMultiplier
+	} else if stage == pkghttputil.RequestBodyMaterializedDecoded && l.jsonBody {
+		multiplier = jsonBodyMemoryReservationMultiplier
+	}
+	target := saturatingMul(bodyBytes, multiplier)
+	l.shrinkMemory(target)
+	l.shrinkUnknownMemory(target)
+}
+
+func (l *RequestBodyAdmissionLease) finishRead(bodyBytes int64, complete bool) {
 	if l == nil {
 		return
 	}
-	if !l.memoryAcquired {
-		return
+	l.releaseRead()
+	if complete && !l.compressedBody {
+		l.observeBodyMaterialized(pkghttputil.RequestBodyMaterializedDecoded, bodyBytes)
 	}
-	l.memoryOnce.Do(func() {
-		if l.budget != nil && l.budget.memory != nil && l.reservation > 0 {
-			l.budget.memory.Release(l.reservation)
-			l.budget.memoryAvailable.notify()
-		}
-	})
 }
 
 func (l *RequestBodyAdmissionLease) releaseUnknownMemory() {
-	if l == nil || !l.unknownMemoryAcquired {
+	if l == nil || l.budget == nil || l.budget.unknownMemory == nil {
 		return
 	}
-	l.unknownOnce.Do(func() {
-		if l.budget != nil && l.budget.unknownMemory != nil && l.unknownReservation > 0 {
-			l.budget.unknownMemory.Release(l.unknownReservation)
-			l.budget.unknownMemoryAvailable.notify()
-		}
-	})
+	l.unknownMu.Lock()
+	if !l.unknownMemoryAcquired || l.unknownReservation <= 0 {
+		l.unknownMemoryAcquired = false
+		l.unknownReservation = 0
+		l.unknownMu.Unlock()
+		return
+	}
+	released := l.unknownReservation
+	l.unknownReservation = 0
+	l.unknownMemoryAcquired = false
+	l.unknownMu.Unlock()
+
+	l.budget.unknownMemory.Release(released)
+	l.budget.unknownMemoryAvailable.notify()
+}
+
+func (l *RequestBodyAdmissionLease) shrinkUnknownMemory(target int64) {
+	if l == nil || l.budget == nil || l.budget.unknownMemory == nil {
+		return
+	}
+	if target < 0 {
+		target = 0
+	}
+	if target > l.budget.unknownCapacity {
+		target = l.budget.unknownCapacity
+	}
+
+	l.unknownMu.Lock()
+	if !l.unknownMemoryAcquired || target >= l.unknownReservation {
+		l.unknownMu.Unlock()
+		return
+	}
+	released := l.unknownReservation - target
+	l.unknownReservation = target
+	l.unknownMu.Unlock()
+
+	l.budget.unknownMemory.Release(released)
+	l.budget.unknownMemoryAvailable.notify()
+}
+
+func (l *RequestBodyAdmissionLease) retainedUnknownMemory() int64 {
+	if l == nil {
+		return 0
+	}
+	l.unknownMu.Lock()
+	defer l.unknownMu.Unlock()
+	return l.unknownReservation
 }
 
 func (l *RequestBodyAdmissionLease) releaseResources() {
@@ -259,7 +371,7 @@ func (l *RequestBodyAdmissionLease) releaseResources() {
 }
 
 // releaseConsumedBodyReference 在请求体已经读完（或读错）后解除入口 body
-// 包装器的引用。异步 handoff 只需要继续持有 memory token；若继续保留
+// 包装器的引用。异步 handoff 只需要继续持有收缩后的内存租约；若继续保留
 // MaxBytesReader，它会反向持有已结束请求的 ResponseWriter 和连接对象。
 // 未完成读取时不做处理，仍由最终 Release 关闭底层 body。
 func (l *RequestBodyAdmissionLease) releaseConsumedBodyReference() {
@@ -343,32 +455,36 @@ func TakeRequestBodyAdmissionLease(c *gin.Context) *RequestBodyAdmissionLease {
 	return lease
 }
 
-// admissionReadCloser 在 body 读完、读错或关闭时释放读取槽位。
+// admissionReadCloser 在 body 读完、读错或关闭时释放读取阶段资源。
 type admissionReadCloser struct {
 	io.ReadCloser
-	release   func()
+	finish    func(int64, bool)
+	readBytes atomic.Int64
 	readOnce  sync.Once
 	closeOnce sync.Once
 	closeErr  error
 }
 
-func (r *admissionReadCloser) done() {
-	if r == nil || r.release == nil {
+func (r *admissionReadCloser) done(complete bool) {
+	if r == nil || r.finish == nil {
 		return
 	}
-	r.readOnce.Do(r.release)
+	r.readOnce.Do(func() { r.finish(r.readBytes.Load(), complete) })
 }
 
 func (r *admissionReadCloser) Read(p []byte) (int, error) {
 	if r == nil || r.ReadCloser == nil {
 		if r != nil {
-			r.done()
+			r.done(false)
 		}
 		return 0, io.ErrClosedPipe
 	}
 	n, err := r.ReadCloser.Read(p)
+	if n > 0 {
+		r.readBytes.Add(int64(n))
+	}
 	if err != nil {
-		r.done()
+		r.done(errors.Is(err, io.EOF))
 	}
 	return n, err
 }
@@ -381,7 +497,7 @@ func (r *admissionReadCloser) Close() error {
 		if r.ReadCloser != nil {
 			r.closeErr = r.ReadCloser.Close()
 		}
-		r.done()
+		r.done(false)
 	})
 	return r.closeErr
 }
@@ -423,8 +539,7 @@ func requestBodyAdmissionLimit(budget *BodyMemoryBudget, req *http.Request, rout
 	if isJSONContentType(requestBodyAdmissionContentType(req)) {
 		multiplier = jsonBodyMemoryReservationMultiplier
 	}
-	encoding := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
-	if encoding == "gzip" || encoding == "x-gzip" || encoding == "zstd" || encoding == "deflate" {
+	if isRequestBodyCompressed(req.Header.Get("Content-Encoding")) {
 		// 压缩输入在解码时会同时保留原文和解压后的解析/改写副本。
 		multiplier++
 	}
@@ -476,12 +591,18 @@ func acquireRequestBodyAdmissionWithLimit(c *gin.Context, budget *BodyMemoryBudg
 	unknownLength := c.Request.ContentLength <= 0
 	_, cached := pkghttputil.CachedRequestBody(c.Request)
 	contentType := requestBodyAdmissionContentType(c.Request)
-	reservation := budget.reservationBytes(c.Request.ContentLength, routeLimit, c.GetHeader("Content-Encoding"), contentType)
+	contentEncoding := c.GetHeader("Content-Encoding")
+	reservation := budget.reservationBytes(c.Request.ContentLength, routeLimit, contentEncoding, contentType)
 	if reservation <= 0 && (budget.reads == nil || cached) {
 		return nil, "", nil
 	}
 
-	lease := &RequestBodyAdmissionLease{budget: budget, reservation: reservation}
+	lease := &RequestBodyAdmissionLease{
+		budget:         budget,
+		reservation:    reservation,
+		jsonBody:       isJSONContentType(contentType),
+		compressedBody: isRequestBodyCompressed(contentEncoding),
+	}
 	if reservation > budget.capacity && budget.memory != nil {
 		return nil, BodyAdmissionRejectMemory, errBodyAdmissionUnavailable
 	}
@@ -509,8 +630,10 @@ func acquireRequestBodyAdmissionWithLimit(c *gin.Context, budget *BodyMemoryBudg
 			}
 			return nil, BodyAdmissionRejectMemory, errBodyAdmissionUnavailable
 		}
+		lease.unknownMu.Lock()
 		lease.unknownReservation = unknownReservation
 		lease.unknownMemoryAcquired = true
+		lease.unknownMu.Unlock()
 	}
 	if reservation > 0 && budget.memory != nil {
 		if err := acquireBodyMemory(waitCtx, budget, reservation, budget.wait <= 0); err != nil {
@@ -520,7 +643,9 @@ func acquireRequestBodyAdmissionWithLimit(c *gin.Context, budget *BodyMemoryBudg
 			}
 			return nil, BodyAdmissionRejectMemory, errBodyAdmissionUnavailable
 		}
+		lease.memoryMu.Lock()
 		lease.memoryAcquired = true
+		lease.memoryMu.Unlock()
 	}
 	if budget.reads != nil && !cached {
 		if err := acquireSemaphore(waitCtx, budget.reads, 1, budget.wait <= 0); err != nil {
@@ -535,13 +660,20 @@ func acquireRequestBodyAdmissionWithLimit(c *gin.Context, budget *BodyMemoryBudg
 		lease.readAcquired = true
 	}
 
+	updatedRequest := pkghttputil.WithRequestBodyMaterializationObserver(c.Request, lease.observeBodyMaterialized)
+	if updatedRequest != c.Request {
+		*c.Request = *updatedRequest
+	}
 	if cached {
+		if body, ok := pkghttputil.CachedRequestBody(c.Request); ok {
+			lease.observeBodyMaterialized(pkghttputil.RequestBodyMaterializedDecoded, int64(len(body)))
+		}
 		return lease, "", nil
 	}
 	underlyingBody := c.Request.Body
 	admissionBody := &admissionReadCloser{
 		ReadCloser: underlyingBody,
-		release:    lease.releaseRead,
+		finish:     lease.finishRead,
 	}
 	lease.body = admissionBody
 	lease.interruptRead = requestBodyReadInterrupter(c)
@@ -1016,11 +1148,8 @@ func (b *BodyMemoryBudget) reservationBytes(contentLength, routeLimit int64, con
 		bodyBytes = 0
 	}
 
-	encoding := strings.ToLower(strings.TrimSpace(contentEncoding))
-	compressed := encoding != "" && encoding != "identity" &&
-		(encoding == "gzip" || encoding == "x-gzip" || encoding == "zstd" || encoding == "deflate")
 	var estimate int64
-	if compressed {
+	if isRequestBodyCompressed(contentEncoding) {
 		decodedLimit := routeLimit
 		if decodedLimit > pkghttputil.MaxDecompressedBodySize {
 			decodedLimit = pkghttputil.MaxDecompressedBodySize
@@ -1049,6 +1178,15 @@ func (b *BodyMemoryBudget) reservationBytes(contentLength, routeLimit int64, con
 		return b.capacity
 	}
 	return estimate
+}
+
+func isRequestBodyCompressed(contentEncoding string) bool {
+	switch strings.ToLower(strings.TrimSpace(contentEncoding)) {
+	case "gzip", "x-gzip", "zstd", "deflate":
+		return true
+	default:
+		return false
+	}
 }
 
 func isJSONContentType(contentTypes ...string) bool {

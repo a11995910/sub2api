@@ -21,6 +21,51 @@ type requestBodyCache struct {
 // 网关准入中间件按路由写入，body 读取器据此覆盖全局解压上限。
 type requestBodyDecompressedLimitKey struct{}
 
+// RequestBodyMaterializationStage 表示请求体已经完成的物化阶段。
+// 准入层据此把读取前的最坏预留收缩到实际仍需长期持有的大小。
+type RequestBodyMaterializationStage uint8
+
+const (
+	RequestBodyMaterializedDecoded RequestBodyMaterializationStage = iota + 1
+	RequestBodyMaterializedStable
+)
+
+type requestBodyMaterializationObserver func(RequestBodyMaterializationStage, int64)
+type requestBodyMaterializationObserverKey struct{}
+
+// WithRequestBodyMaterializationObserver 为请求安装物化阶段观察器。
+// observer 只用于进程内资源记账，不得修改请求体。
+func WithRequestBodyMaterializationObserver(
+	req *http.Request,
+	observer func(RequestBodyMaterializationStage, int64),
+) *http.Request {
+	if req == nil || observer == nil {
+		return req
+	}
+	return req.WithContext(context.WithValue(
+		req.Context(),
+		requestBodyMaterializationObserverKey{},
+		requestBodyMaterializationObserver(observer),
+	))
+}
+
+func notifyRequestBodyMaterialized(req *http.Request, stage RequestBodyMaterializationStage, bodyBytes int64) {
+	if req == nil || bodyBytes < 0 {
+		return
+	}
+	observer, _ := req.Context().Value(requestBodyMaterializationObserverKey{}).(requestBodyMaterializationObserver)
+	if observer != nil {
+		observer(stage, bodyBytes)
+	}
+}
+
+// NotifyRequestBodyStable 表示入口请求体已完成解压、规范化或最终媒体解析，
+// 可以从读取阶段最坏预留切换到稳定阶段副本余量。后续转发仍可能创建副本，
+// 因此该通知不表示请求体只剩一份，也不能在解析失败时调用。
+func NotifyRequestBodyStable(req *http.Request, bodyBytes int64) {
+	notifyRequestBodyMaterialized(req, RequestBodyMaterializedStable, bodyBytes)
+}
+
 // WithDecompressedBodyLimit 将请求级解压上限写入 request.Context。
 // limit <= 0 表示不覆盖全局上限；函数返回的 request 可能是副本，调用方
 // 必须接收返回值。
