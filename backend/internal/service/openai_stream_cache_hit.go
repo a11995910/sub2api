@@ -473,6 +473,11 @@ func (s *OpenAIGatewayService) adjustAndRewriteOpenAIStreamUsagePayload(
 	if _, err := rewriteOpenAIStreamUsagePayload(body, usage); err != nil {
 		return body, usage, nil, err
 	}
+	// Redis 状态一旦推进就不能回滚；同一原始 payload 先验证非标准归因字段
+	// 也能安全删除，避免划拨成功后再因 JSON 改写失败向下游回退原始 usage。
+	if _, err := stripOpenAIStreamUsageAttribution(body); err != nil {
+		return body, usage, nil, err
+	}
 
 	adjustedUsage := usage
 	adjustment, _ := s.AdjustOpenAIStreamUsage(ctx, c, &adjustedUsage)
@@ -484,6 +489,12 @@ func (s *OpenAIGatewayService) adjustAndRewriteOpenAIStreamUsagePayload(
 		// 前面的同 payload 预检已验证全部目标路径可写；保留错误用于暴露
 		// 不可预期的 sjson 行为，绝不能静默回退为下游/本站不一致。
 		return body, usage, nil, err
+	}
+	if adjustment.ShiftedTokens > 0 {
+		rewritten, err = stripOpenAIStreamUsageAttribution(rewritten)
+		if err != nil {
+			return body, usage, nil, err
+		}
 	}
 	return rewritten, adjustedUsage, adjustment, nil
 }

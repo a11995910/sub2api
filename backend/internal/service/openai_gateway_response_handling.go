@@ -1527,6 +1527,29 @@ func rewriteOpenAIStreamUsagePayload(body []byte, adjustedUsage OpenAIUsage) ([]
 	return rewritten, nil
 }
 
+// stripOpenAIStreamUsageAttribution 删除兼容上游附加在 usage 下的非标准
+// attribution 明细。该明细可能继续携带划拨前的缓存 token，且下游计费只消费
+// 标准 usage 字段；实际发生划拨时必须移除，避免同一终态暴露两套互相冲突的口径。
+func stripOpenAIStreamUsageAttribution(body []byte) ([]byte, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil, errors.New("invalid OpenAI stream usage payload")
+	}
+
+	rewritten := body
+	for _, usagePath := range []string{"usage", "response.usage", "data.usage", "data.response.usage"} {
+		attributionPath := usagePath + ".attribution"
+		if !gjson.GetBytes(rewritten, attributionPath).Exists() {
+			continue
+		}
+		var err error
+		rewritten, err = sjson.DeleteBytes(rewritten, attributionPath)
+		if err != nil {
+			return nil, fmt.Errorf("strip OpenAI usage attribution %s: %w", attributionPath, err)
+		}
+	}
+	return rewritten, nil
+}
+
 func extractOpenAIStreamUsageObject(body []byte) []byte {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return nil

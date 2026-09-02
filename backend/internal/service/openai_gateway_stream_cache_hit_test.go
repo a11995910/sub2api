@@ -434,15 +434,15 @@ func TestResponsesStreamingHandlersFreezeCanonicalAdjustedUsage(t *testing.T) {
 				`data: {"type":"response.output_text.delta","delta":"ok"}`,
 				``,
 				`event: response.completed`,
-				`data: {"type":"response.completed","response":{"id":"resp_conflicting_terminal","status":"completed","usage":{"input_tokens":100,"output_tokens":7,"total_tokens":107,"input_tokens_details":{"cached_tokens":94}}}}`,
+				`data: {"type":"response.completed","response":{"id":"resp_conflicting_terminal","status":"completed","usage":{"attribution":{"request_fields":{"instructions":{"input_tokens":100,"cached_tokens":94}}},"input_tokens":100,"output_tokens":7,"total_tokens":107,"input_tokens_details":{"cached_tokens":94}}}}`,
 				``,
 				`event: response.done`,
-				`data: {"type":"response.done","response":{"id":"resp_conflicting_terminal","status":"completed","usage":{"input_tokens":200,"output_tokens":9,"total_tokens":209,"input_tokens_details":{"cached_tokens":188}}}}`,
+				`data: {"type":"response.done","response":{"id":"resp_conflicting_terminal","status":"completed","usage":{"attribution":{"request_fields":{"instructions":{"input_tokens":200,"cached_tokens":188}}},"input_tokens":200,"output_tokens":9,"total_tokens":209,"input_tokens_details":{"cached_tokens":188}}}}`,
 				``,
 			}, "\n"),
 			wantCacheCount:    2,
 			wantTerminalCount: 2,
-			forbidden:         []string{`"input_tokens":200`, `"output_tokens":9`, `"total_tokens":209`, `"cached_tokens":188`},
+			forbidden:         []string{`"input_tokens":200`, `"output_tokens":9`, `"total_tokens":209`, `"cached_tokens":188`, `"attribution"`},
 		},
 		{
 			name: "unsuccessful terminal after completed",
@@ -1355,6 +1355,69 @@ func TestAdjustAndRewriteOpenAIStreamUsagePayload_PreflightBeforeTracker(t *test
 	require.Zero(t, cache.callCount())
 	require.Equal(t, 94, adjustedUsage.CacheReadInputTokens)
 	require.Equal(t, body, rewritten)
+}
+
+func TestAdjustAndRewriteOpenAIStreamUsagePayload_StripsNonstandardAttributionAfterShift(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(971)
+	cache := &responsesCacheHitGatewayCache{}
+	svc := &OpenAIGatewayService{cache: cache}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("api_key", &APIKey{
+		UserID:  2071,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	})
+	body := []byte(`{"type":"response.completed","response":{"usage":{"attribution":{"items":{"msg_1":{"input_tokens":6,"cached_tokens":0}},"request_fields":{"instructions":{"input_tokens":94,"cached_tokens":94}}},"input_tokens":100,"output_tokens":1,"total_tokens":101,"input_tokens_details":{"cached_tokens":94}},"service_tier":"default"}}`)
+
+	rewritten, adjustedUsage, adjustment, err := svc.adjustAndRewriteOpenAIStreamUsagePayload(
+		c.Request.Context(), c, body, OpenAIUsage{InputTokens: 100, OutputTokens: 1, CacheReadInputTokens: 94},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, adjustment)
+	require.Equal(t, 4, adjustment.ShiftedTokens)
+	require.Equal(t, 90, adjustedUsage.CacheReadInputTokens)
+	require.Equal(t, int64(90), gjson.GetBytes(rewritten, "response.usage.input_tokens_details.cached_tokens").Int())
+	require.False(t, gjson.GetBytes(rewritten, "response.usage.attribution").Exists())
+	require.Equal(t, "default", gjson.GetBytes(rewritten, "response.service_tier").String())
+}
+
+func TestAdjustAndRewriteOpenAIStreamUsagePayload_PreservesAttributionWithoutShift(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(972)
+	cache := &responsesCacheHitGatewayCache{}
+	svc := &OpenAIGatewayService{cache: cache}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("api_key", &APIKey{
+		UserID:  2072,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	})
+	body := []byte(`{"type":"response.completed","response":{"usage":{"attribution":{"request_fields":{"instructions":{"input_tokens":80,"cached_tokens":80}}},"input_tokens":100,"output_tokens":1,"total_tokens":101,"input_tokens_details":{"cached_tokens":80}}}}`)
+
+	rewritten, adjustedUsage, adjustment, err := svc.adjustAndRewriteOpenAIStreamUsagePayload(
+		c.Request.Context(), c, body, OpenAIUsage{InputTokens: 100, OutputTokens: 1, CacheReadInputTokens: 80},
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, adjustment)
+	require.Zero(t, adjustment.ShiftedTokens)
+	require.Equal(t, 80, adjustedUsage.CacheReadInputTokens)
+	require.Equal(t, int64(80), gjson.GetBytes(rewritten, "response.usage.input_tokens_details.cached_tokens").Int())
+	require.Equal(t, int64(80), gjson.GetBytes(rewritten, "response.usage.attribution.request_fields.instructions.cached_tokens").Int())
 }
 
 func TestAdjustOpenAIStreamUsage_SkipsCanceledContexts(t *testing.T) {
