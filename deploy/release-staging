@@ -6,19 +6,36 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   exit 1
 fi
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-  printf '用法：%s <target-commit> [staging-run-id]\n' "$0" >&2
+if [[ $# -lt 1 || $# -gt 3 ]]; then
+  printf '用法：%s <target-commit> [staging-run-id] [--bootstrap-without-prod]\n' "$0" >&2
   exit 2
 fi
 
 target_commit="$1"
-staging_run_id="${2:-$(date -u +%Y%m%d%H%M%S)}"
+staging_run_id="$(date -u +%Y%m%d%H%M%S)"
+bootstrap_without_prod=0
+case "${2:-}" in
+  '')
+    ;;
+  --bootstrap-without-prod)
+    bootstrap_without_prod=1
+    ;;
+  *)
+    staging_run_id="$2"
+    ;;
+esac
+if [[ $# -eq 3 ]]; then
+  [[ "$2" != --bootstrap-without-prod ]]
+  [[ "$3" == --bootstrap-without-prod ]]
+  bootstrap_without_prod=1
+fi
 repo_dir=/opt/sub2api/repo
 env_file=/opt/sub2api/env/staging/.env
 base_compose="$repo_dir/deploy/docker-compose.yml"
 staging_override=/opt/sub2api/compose/staging/docker-compose.yml
 prod_env_file=/opt/sub2api/env/prod/.env
 prod_override=/opt/sub2api/compose/prod/docker-compose.yml
+prod_data_dir=/opt/sub2api/data/prod
 state_dir=/opt/sub2api/state
 staging_result="$state_dir/staging-result.json"
 release_gates="$repo_dir/deploy/release-gates"
@@ -30,8 +47,6 @@ test -d "$repo_dir"
 test -f "$env_file"
 test -f "$base_compose"
 test -f "$staging_override"
-test -f "$prod_env_file"
-test -f "$prod_override"
 test -x "$release_gates"
 test -x "$update_image"
 command -v flock >/dev/null
@@ -67,16 +82,17 @@ record_result() {
     recorded_status=verified
   fi
   python3 - "$result_tmp" "$recorded_status" "$staging_run_id" "$commit" \
-    "$short_commit" "$commit_date" "$target_image" <<'PY'
+    "$short_commit" "$commit_date" "$target_image" "$bootstrap_without_prod" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
-path, status, run_id, commit, short_commit, commit_date, image = sys.argv[1:]
+path, status, run_id, commit, short_commit, commit_date, image, bootstrap_raw = sys.argv[1:]
 payload = {
     "environment": "staging",
     "status": status,
     "workflow": "manual",
+    "bootstrap_without_prod": bootstrap_raw == "1",
     "run_id": run_id,
     "commit": commit,
     "short_commit": short_commit,
@@ -116,13 +132,33 @@ if float(sys.argv[1]) >= 3.0:
     raise SystemExit("load average is too high for a staging build")
 PY
 
-prod_id="$(compose_prod ps -q sub2api)"
-test -n "$prod_id"
-test "$(docker inspect --format '{{.State.Status}}' "$prod_id")" = running
-test "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$prod_id")" = healthy
+prod_status=healthy
+if [[ "$bootstrap_without_prod" -eq 1 ]]; then
+  [[ ! -e "$prod_env_file" && ! -L "$prod_env_file" ]]
+  [[ ! -e "$prod_override" && ! -L "$prod_override" ]]
+  test -z "$(docker ps -aq --filter label=com.docker.compose.project=sub2api-prod)"
+  test -z "$(docker network ls -q --filter label=com.docker.compose.project=sub2api-prod)"
+  test -z "$(docker volume ls -q --filter label=com.docker.compose.project=sub2api-prod)"
+  for prod_container in sub2api-prod sub2api-prod-postgres sub2api-prod-redis; do
+    ! docker container inspect "$prod_container" >/dev/null 2>&1
+  done
+  test ! -L "$prod_data_dir"
+  if [[ -d "$prod_data_dir" ]]; then
+    test -z "$(find "$prod_data_dir" -type f -print -quit)"
+  fi
+  prod_status=bootstrap-absent
+  printf '%s\n' 'staging bootstrap 门禁：已确认目标主机不存在 prod 配置、容器或数据文件。'
+else
+  test -f "$prod_env_file"
+  test -f "$prod_override"
+  prod_id="$(compose_prod ps -q sub2api)"
+  test -n "$prod_id"
+  test "$(docker inspect --format '{{.State.Status}}' "$prod_id")" = running
+  test "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$prod_id")" = healthy
+fi
 
-printf 'staging 资源检查：磁盘=%sGiB 内存=%sMiB 负载=%s prod=healthy\n' \
-  "$((available_disk_kb / 1024 / 1024))" "$((available_mem_kb / 1024))" "$load_one"
+printf 'staging 资源检查：磁盘=%sGiB 内存=%sMiB 负载=%s prod=%s\n' \
+  "$((available_disk_kb / 1024 / 1024))" "$((available_mem_kb / 1024))" "$load_one" "$prod_status"
 
 cd "$repo_dir"
 test -z "$(git status --porcelain)"

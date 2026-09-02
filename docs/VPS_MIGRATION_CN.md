@@ -39,6 +39,16 @@ staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 6. 记录 prod 当前镜像，备份 prod PostgreSQL、Redis 关键状态和 prod `.env`，再把已验证镜像标记为 `sub2api:prod-<commit>`，原子更新 prod 的 `SUB2API_IMAGE`，只重建 Sub2API 应用容器；PostgreSQL 和 Redis 不得因应用发布被重建或清空。
 7. 完成容器、健康接口、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/model-market`、数据库连接和日志回归。
 
+### 新主机首次 staging bootstrap
+
+迁移到新正式 VPS 时，staging 必须先于 prod 验证。仅在用户已明确授权、且目标主机完全没有 prod 配置、compose 容器和数据文件时，可以执行：
+
+```bash
+/opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod
+```
+
+该参数只取代“同机 prod 已健康”这一项前置条件；磁盘、内存、负载、干净 `main`、精确 commit、镜像版本、Docker health、HTTP 和验证回执门禁保持不变。普通 staging 发布不传该参数，仍必须先确认 prod 健康。
+
 ## 构建与版本追溯
 
 镜像构建必须传入：
