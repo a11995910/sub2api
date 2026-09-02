@@ -646,12 +646,16 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	requestBodyLen int,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	requestCtx := context.Background()
+	if c != nil && c.Request != nil {
+		requestCtx = c.Request.Context()
+	}
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToChatState()
 	state.Model = originalModel
-	// 网关作为计费链路的一环，不能把下游 usage 输出绑定到客户端是否显式请求。
-	// raw Chat Completions 直转路径已经强制透出 usage，这里保持同样行为，避免级联代理计费为 0。
+	// 该 Responses -> Chat 桥接路径一直强制透出 usage，避免级联代理因客户端
+	// 未显式设置 include_usage 而按 0 计费。是否执行命中划拨仍由终态门禁独立决定。
 	state.IncludeUsage = true
 
 	var usage OpenAIUsage
@@ -664,6 +668,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
 	terminalEventType := ""
+	var cacheHitAdjustment *CacheHitTargetAdjustment
+	cacheHitAdjustmentSuppressed := false
 	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
@@ -702,6 +708,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			CacheHitTargetAdjustment:      cacheHitAdjustment,
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -730,16 +737,54 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
-		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
+			// Responses 兼容上游可能在早期事件给出完整 usage，终态却只给
+			// 部分字段。终态解析到独立对象后按非零字段合并，避免缺失的
+			// output/cache 明细清空此前已确认的累计值。
+			var terminalParsedUsage OpenAIUsage
+			s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &terminalParsedUsage)
+			mergeOpenAIUsageNonZero(&usage, terminalParsedUsage)
+		} else {
+			s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
+		}
+		if isTerminalEvent {
 			terminalEventType = strings.TrimSpace(event.Type)
 			if event.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+				mergeOpenAIUsageNonZero(&usage, copyOpenAIUsageFromResponsesUsage(event.Usage))
 			}
 			if event.Response != nil && event.Response.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+				mergeOpenAIUsageNonZero(&usage, copyOpenAIUsageFromResponsesUsage(event.Response.Usage))
+			}
+			if !clientDisconnected && !clientOutputStarted && isSuccessfulOpenAIResponsesTerminalPayload(event.Type, []byte(payload)) {
+				cacheHitAdjustmentSuppressed = true
+			}
+			if !clientDisconnected && clientOutputStarted && !cacheHitAdjustmentSuppressed && isSuccessfulOpenAIResponsesTerminalPayload(event.Type, []byte(payload)) {
+				// 选择一份 usage 推进请求级 tracker，再把同一快照同步到其他
+				// 重复的顶层 usage 对象。
+				var terminalUsage *apicompat.ResponsesUsage
+				if event.Response != nil && event.Response.Usage != nil {
+					terminalUsage = event.Response.Usage
+				} else if event.Usage != nil {
+					terminalUsage = event.Usage
+				}
+				if terminalUsage != nil {
+					// Responses→Chat 转换器只消费终态 usage。先把流中累计的完整
+					// 口径同步到所有终态副本，避免上游空/部分 usage 把下游变成 0/0。
+					if event.Response != nil {
+						syncOpenAIUsageToResponsesUsage(event.Response.Usage, usage)
+					}
+					syncOpenAIUsageToResponsesUsage(event.Usage, usage)
+					if adjustment, adjustErr := s.AdjustOpenAIStreamUsage(requestCtx, c, &usage); adjustment != nil {
+						cacheHitAdjustment = adjustment
+						_ = adjustErr
+						if event.Response != nil {
+							applyOpenAIResponsesUsageCacheHitSnapshot(event.Response.Usage, *adjustment)
+						}
+						applyOpenAIResponsesUsageCacheHitSnapshot(event.Usage, *adjustment)
+					}
+				}
 			}
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {

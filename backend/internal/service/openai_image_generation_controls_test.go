@@ -662,6 +662,119 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_StreamingPassthrough(t 
 	require.Equal(t, 2, strings.Count(recorder.Body.String(), `"status":"completed"`))
 }
 
+func TestOpenAIGatewayServiceForward_StreamCacheHitSkipsFinalAttemptImageIntent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name      string
+		body      []byte
+		configure func(*OpenAIGatewayService, *Account)
+	}{
+		{
+			name: "account model mapping to image",
+			body: []byte(`{"model":"draw-alias","input":"draw","stream":true}`),
+			configure: func(_ *OpenAIGatewayService, account *Account) {
+				account.Credentials["model_mapping"] = map[string]any{"draw-alias": "gpt-image-2"}
+			},
+		},
+		{
+			name: "codex bridge injects image tool",
+			body: []byte(`{"model":"gpt-5.4","input":"draw if needed","stream":true}`),
+			configure: func(svc *OpenAIGatewayService, _ *Account) {
+				svc.cfg.Gateway.ForceCodexCLI = true
+				svc.cfg.Gateway.CodexImageGenerationBridgeEnabled = true
+			},
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(
+					"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_cache_gate\",\"type\":\"image_generation_call\",\"status\":\"completed\",\"result\":\"final-image\",\"size\":\"1024x1024\"}}\n\n" +
+						"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image_cache_gate\",\"status\":\"completed\",\"output\":[{\"id\":\"ig_cache_gate\",\"type\":\"image_generation_call\",\"status\":\"completed\",\"result\":\"final-image\",\"size\":\"1024x1024\"}],\"usage\":{\"input_tokens\":100,\"output_tokens\":7,\"total_tokens\":107,\"input_tokens_details\":{\"cached_tokens\":94},\"output_tokens_details\":{\"image_tokens\":4}}}}\n\n",
+				)),
+			}}
+			cache := &responsesCacheHitGatewayCache{}
+			svc := newOpenAIImageGenerationControlTestService(upstream)
+			svc.cache = cache
+			c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
+			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+			apiKey := getAPIKeyFromContext(c)
+			apiKey.UserID = 9400 + int64(index)
+			apiKey.Group.CacheHitQuarterToInput = true
+			apiKey.Group.CacheHitTargetPercent = 90
+			apiKey.Group.CacheHitTargetTolerancePercent = 0.5
+			account := newOpenAIImageGenerationControlTestAccount()
+			tt.configure(svc, account)
+
+			result, err := svc.Forward(context.Background(), c, account, tt.body)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Zero(t, cache.callCount())
+			require.Nil(t, result.CacheHitTargetAdjustment)
+			require.Equal(t, 94, result.Usage.CacheReadInputTokens)
+			require.Equal(t, 1, result.ImageCount)
+			require.True(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists())
+			imageIntent, known := getOpenAIStreamCacheHitAttemptImageIntent(c)
+			require.True(t, known)
+			require.True(t, imageIntent)
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceForward_FailedImageAttemptDoesNotPolluteTextRetry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusInternalServerError,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"image upstream unavailable"}}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n" +
+					"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_text_retry\",\"status\":\"completed\",\"usage\":{\"input_tokens\":100,\"output_tokens\":7,\"total_tokens\":107,\"input_tokens_details\":{\"cached_tokens\":94}}}}\n\n",
+			)),
+		},
+	}}
+	cache := &responsesCacheHitGatewayCache{}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	svc.cache = cache
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+	apiKey := getAPIKeyFromContext(c)
+	apiKey.UserID = 9500
+	apiKey.Group.CacheHitQuarterToInput = true
+	apiKey.Group.CacheHitTargetPercent = 90
+	apiKey.Group.CacheHitTargetTolerancePercent = 0.5
+
+	imageAccount := newOpenAIImageGenerationControlTestAccount()
+	imageAccount.Credentials["model_mapping"] = map[string]any{"shared-alias": "gpt-image-2"}
+	_, firstErr := svc.Forward(context.Background(), c, imageAccount, []byte(`{"model":"shared-alias","input":"draw","stream":true}`))
+	require.Error(t, firstErr)
+	require.Zero(t, cache.callCount())
+
+	textAccount := newOpenAIImageGenerationControlTestAccount()
+	textAccount.ID++
+	result, err := svc.Forward(context.Background(), c, textAccount, []byte(`{"model":"shared-alias","input":"write text","stream":true}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, cache.callCount())
+	require.NotNil(t, result.CacheHitTargetAdjustment)
+	require.Equal(t, 90, result.Usage.CacheReadInputTokens)
+	imageIntent, known := getOpenAIStreamCacheHitAttemptImageIntent(c)
+	require.True(t, known)
+	require.False(t, imageIntent)
+}
+
 func TestNormalizeCompletedImageGenerationStatus(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -397,6 +397,52 @@ func TestUsageLogDTOHidesUserAccountIDButKeepsAdminAccountID(t *testing.T) {
 	require.Equal(t, "internal", adminDTO.Account.Name)
 }
 
+func TestUsageLogDTOHidesCacheHitAuditFromUserButKeepsItForAdmin(t *testing.T) {
+	log := &service.UsageLog{
+		InputTokens:                       10,
+		CacheReadTokens:                   90,
+		CacheHitOriginalInputTokens:       6,
+		CacheHitOriginalCacheReadTokens:   94,
+		CacheHitShiftedTokens:             4,
+		CacheHitTargetPercent:             f64Ptr(90),
+		CacheHitTargetTolerancePercent:    f64Ptr(0.5),
+		CacheHitCumulativePromptTokens:    100,
+		CacheHitCumulativeCacheReadTokens: 90,
+		CacheHitCumulativePercent:         f64Ptr(90),
+		CacheHitStateVersion:              123,
+	}
+
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	require.Contains(t, string(userJSON), `"input_tokens":10`)
+	require.Contains(t, string(userJSON), `"cache_read_tokens":90`)
+	for _, field := range []string{
+		"cache_hit_original_input_tokens",
+		"cache_hit_original_cache_read_tokens",
+		"cache_hit_shifted_tokens",
+		"cache_hit_target_percent",
+		"cache_hit_target_tolerance_percent",
+		"cache_hit_cumulative_prompt_tokens",
+		"cache_hit_cumulative_cache_read_tokens",
+		"cache_hit_cumulative_percent",
+		"cache_hit_state_version",
+	} {
+		require.NotContains(t, string(userJSON), field)
+	}
+
+	adminJSON, err := json.Marshal(UsageLogFromServiceAdmin(log))
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"cache_hit_original_input_tokens":6`)
+	require.Contains(t, string(adminJSON), `"cache_hit_original_cache_read_tokens":94`)
+	require.Contains(t, string(adminJSON), `"cache_hit_shifted_tokens":4`)
+	require.Contains(t, string(adminJSON), `"cache_hit_target_percent":90`)
+	require.Contains(t, string(adminJSON), `"cache_hit_target_tolerance_percent":0.5`)
+	require.Contains(t, string(adminJSON), `"cache_hit_cumulative_prompt_tokens":100`)
+	require.Contains(t, string(adminJSON), `"cache_hit_cumulative_cache_read_tokens":90`)
+	require.Contains(t, string(adminJSON), `"cache_hit_cumulative_percent":90`)
+	require.Contains(t, string(adminJSON), `"cache_hit_state_version":123`)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

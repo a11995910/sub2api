@@ -87,6 +87,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(req.Model)
 	}
+	setOpenAIStreamCacheHitAttemptImageIntent(c,
+		isImageGenerationModel(originalModel) || isImageGenerationModel(mappedModel),
+	)
 
 	geminiReq, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody)
 	if err != nil {
@@ -289,18 +292,19 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	}
 
 	return &ForwardResult{
-		RequestID:        requestID,
-		Usage:            *usage,
-		Model:            originalModel,
-		UpstreamModel:    mappedModel,
-		Stream:           clientStream,
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     firstTokenMs,
-		ReasoningEffort:  reasoningEffort,
-		ImageCount:       imageCount,
-		ImageSize:        imageSize,
-		ImageInputSize:   imageInputSize,
-		ClientDisconnect: false,
+		RequestID:                requestID,
+		Usage:                    *usage,
+		Model:                    originalModel,
+		UpstreamModel:            mappedModel,
+		Stream:                   clientStream,
+		Duration:                 time.Since(startTime),
+		FirstTokenMs:             firstTokenMs,
+		ReasoningEffort:          reasoningEffort,
+		ImageCount:               imageCount,
+		ImageSize:                imageSize,
+		ImageInputSize:           imageInputSize,
+		ClientDisconnect:         false,
+		CacheHitTargetAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
 	}, nil
 }
 
@@ -532,11 +536,14 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	anthState.Model = originalModel
 	ccState := apicompat.NewResponsesEventToChatState()
 	ccState.Model = originalModel
-	ccState.IncludeUsage = includeUsage
+	cacheHitTargetEnabled := openAIStreamCacheHitTargetEnabled(c)
+	ccState.IncludeUsage = includeUsage || cacheHitTargetEnabled
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	meaningfulData := false
+	successfulWrites := 0
 
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
 		sse, err := apicompat.ChatChunkToSSE(chunk)
@@ -546,6 +553,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		if _, err := io.WriteString(c.Writer, sse); err != nil {
 			return true
 		}
+		successfulWrites++
 		return false
 	}
 
@@ -669,6 +677,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 										return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
 									}
 								}
+								writesBefore := successfulWrites
 								if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 									Type: "content_block_delta",
 									Delta: &apicompat.AnthropicDelta{
@@ -677,6 +686,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 									},
 								}) {
 									return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+								}
+								if successfulWrites > writesBefore {
+									meaningfulData = true
 								}
 								continue
 							}
@@ -700,6 +712,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 									openToolIndex = idx
 									openToolName = name
 									sawToolUse = true
+									writesBefore := successfulWrites
 									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 										Type:  "content_block_start",
 										Index: &idx,
@@ -711,6 +724,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 										},
 									}) {
 										return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+									}
+									if successfulWrites > writesBefore {
+										meaningfulData = true
 									}
 								}
 
@@ -729,6 +745,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 								delta, newSeen := computeGeminiTextDelta(seenToolJSON, argsJSONText)
 								seenToolJSON = newSeen
 								if delta != "" {
+									writesBefore := successfulWrites
 									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 										Type: "content_block_delta",
 										Delta: &apicompat.AnthropicDelta{
@@ -737,6 +754,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 										},
 									}) {
 										return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+									}
+									if successfulWrites > writesBefore {
+										meaningfulData = true
 									}
 								}
 							}
@@ -765,8 +785,12 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	if sawToolUse {
 		stopReason = "tool_use"
 	}
-	anthState.InputTokens = usage.InputTokens
-	anthState.CacheReadInputTokens = usage.CacheReadInputTokens
+	if meaningfulData && cacheHitTargetEnabled && strings.EqualFold(strings.TrimSpace(finishReason), "STOP") {
+		if adjustment, _ := adjustClaudeUsageForOpenAIStream(c, &usage, s.cache); adjustment != nil {
+			applyAnthropicResponsesStateCacheHitSnapshot(anthState, *adjustment)
+		}
+	}
+	syncAnthropicResponsesStateUsage(anthState, &usage)
 	if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 		Type: "message_delta",
 		Delta: &apicompat.AnthropicDelta{
@@ -774,9 +798,10 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 			StopReason: stopReason,
 		},
 		Usage: &apicompat.AnthropicUsage{
-			InputTokens:          usage.InputTokens,
-			OutputTokens:         usage.OutputTokens,
-			CacheReadInputTokens: usage.CacheReadInputTokens,
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
 		},
 	}) {
 		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil

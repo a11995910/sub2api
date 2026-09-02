@@ -300,6 +300,10 @@ type OpenAIForwardResult struct {
 	SearchCount int
 	// AudioUsage carries Voice billing units when present.
 	AudioUsage *AudioUsage
+	// CacheHitTargetAdjustment 是 OpenAI HTTP 流式终止 usage 帧仍可改写时计算的
+	// 唯一划拨快照。计费必须复用它，不得再次推进累计 tracker；nil 表示本请求
+	// 没有完成符合条件的流式划拨。
+	CacheHitTargetAdjustment *CacheHitTargetAdjustment
 
 	wsReplayInput                []json.RawMessage
 	wsReplayInputExists          bool

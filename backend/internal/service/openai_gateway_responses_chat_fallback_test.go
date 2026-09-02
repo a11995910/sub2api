@@ -228,13 +228,24 @@ func TestForwardResponses_DeepSeekReasoningOnlyStreamProducesVisibleText(t *test
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	groupID := int64(931)
+	c.Set("api_key", &APIKey{
+		UserID:  932,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	})
 
 	upstreamBody := strings.Join([]string{
 		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":""},"finish_reason":null}]}`,
 		"",
 		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"reasoning_content":"visible fallback"},"finish_reason":null}]}`,
 		"",
-		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":""},"finish_reason":"length"}],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7}}`,
+		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":""},"finish_reason":"length"}],"usage":{"prompt_tokens":100,"completion_tokens":3,"total_tokens":103,"prompt_tokens_details":{"cached_tokens":94}}}`,
 		"",
 		"data: [DONE]",
 		"",
@@ -244,9 +255,11 @@ func TestForwardResponses_DeepSeekReasoningOnlyStreamProducesVisibleText(t *test
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_deepseek_reasoning_responses_stream"}},
 		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
 	}}
+	cache := &responsesCacheHitGatewayCache{}
 	svc := &OpenAIGatewayService{
 		cfg:          rawChatCompletionsTestConfig(),
 		httpUpstream: upstream,
+		cache:        cache,
 	}
 
 	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
@@ -256,7 +269,11 @@ func TestForwardResponses_DeepSeekReasoningOnlyStreamProducesVisibleText(t *test
 	require.Contains(t, rec.Body.String(), "event: response.output_text.delta")
 	require.Contains(t, rec.Body.String(), `"delta":"visible fallback"`)
 	require.Contains(t, rec.Body.String(), `"status":"incomplete"`)
+	require.Contains(t, rec.Body.String(), `"cached_tokens":94`)
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
+	require.Zero(t, cache.callCount())
+	require.Nil(t, result.CacheHitTargetAdjustment)
+	require.Equal(t, 94, result.Usage.CacheReadInputTokens)
 }
 
 func TestForwardResponses_AutoSupportedAccountStillUsesResponsesEndpoint(t *testing.T) {

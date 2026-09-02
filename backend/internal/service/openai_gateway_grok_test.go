@@ -2168,13 +2168,12 @@ func TestForwardAsChatCompletionsForGrokStopFallsBackToXAIChatCompletions(t *tes
 func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
 	body := []byte(`{"input":"hi","stream":true,"reasoning_effort":"high"}`)
+	c, recorder, cache := newOpenAIAdapterCacheHitContext("/v1/responses")
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
-	c.Set("api_key", &APIKey{ID: 5201})
+	getAPIKeyFromContext(c).ID = 5201
 
 	account := healthyGrokOAuthGatewayTestAccount(52, "access-token")
 	repo := &grokQuotaAccountRepo{
@@ -2185,7 +2184,7 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 	upstreamBody := strings.Join([]string{
 		`data: {"type":"response.output_text.delta","sequence_number":0,"delta":"ok"}`,
 		"",
-		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_grok","model":"grok-4.3","usage":{"input_tokens":5,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`,
+		`data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_grok","model":"grok-4.3","usage":{"input_tokens":100,"output_tokens":3,"input_tokens_details":{"cached_tokens":94}}}}`,
 		"",
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -2204,6 +2203,7 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 		httpUpstream:      upstream,
 		grokTokenProvider: NewGrokTokenProvider(repo, nil),
 		accountRepo:       repo,
+		cache:             cache,
 	}
 
 	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "", true, time.Now())
@@ -2222,14 +2222,93 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 	require.True(t, result.Stream)
 	require.Equal(t, "resp_grok", result.ResponseID)
 	require.Equal(t, "xai-stream-req", result.RequestID)
-	require.Equal(t, 5, result.Usage.InputTokens)
+	require.Equal(t, 100, result.Usage.InputTokens)
 	require.Equal(t, 3, result.Usage.OutputTokens)
-	require.Equal(t, 2, result.Usage.CacheReadInputTokens)
+	require.Equal(t, 90, result.Usage.CacheReadInputTokens)
+	require.Equal(t, 1, cache.callCount())
+	require.NotNil(t, result.CacheHitTargetAdjustment)
+	require.Equal(t, 4, result.CacheHitTargetAdjustment.ShiftedTokens)
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "high", *result.ReasoningEffort)
 	require.Contains(t, recorder.Header().Get("Content-Type"), "text/event-stream")
 	require.Contains(t, recorder.Body.String(), "response.output_text.delta")
+	require.Contains(t, recorder.Body.String(), `"cached_tokens":90`)
+	require.NotContains(t, recorder.Body.String(), `"cached_tokens":94`)
 	require.NotNil(t, repo.updates[52][grokQuotaSnapshotExtraKey])
+}
+
+func TestForwardGrokResponsesStreamingUnsuccessfulTerminalDoesNotAdjust(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name          string
+		terminal      string
+		wantErr       string
+		wantResultNil bool
+	}{
+		{
+			name:     "incomplete",
+			terminal: `data: {"type":"response.incomplete","sequence_number":1,"response":{"id":"resp_grok_incomplete","status":"incomplete","usage":{"input_tokens":100,"output_tokens":3,"input_tokens_details":{"cached_tokens":94}}}}`,
+		},
+		{
+			name:          "failed",
+			terminal:      `data: {"type":"response.failed","sequence_number":1,"response":{"id":"resp_grok_failed","status":"failed","usage":{"input_tokens":100,"output_tokens":3,"input_tokens_details":{"cached_tokens":94}},"error":{"code":"server_error","message":"failed on purpose"}}}`,
+			wantErr:       "failed on purpose",
+			wantResultNil: true,
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"grok","input":"hi","stream":true}`)
+			c, recorder, cache := newOpenAIAdapterCacheHitContext("/v1/responses")
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			accountID := int64(5202 + i)
+			account := healthyGrokOAuthGatewayTestAccount(accountID, "access-token")
+			repo := &grokQuotaAccountRepo{
+				mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+					accountsByID: map[int64]*Account{accountID: account},
+				},
+			}
+			upstreamBody := strings.Join([]string{
+				`data: {"type":"response.output_text.delta","sequence_number":0,"delta":"ok"}`,
+				"",
+				tt.terminal,
+				"",
+			}, "\n")
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+			}}
+			svc := &OpenAIGatewayService{
+				httpUpstream:      upstream,
+				grokTokenProvider: NewGrokTokenProvider(repo, nil),
+				accountRepo:       repo,
+				cache:             cache,
+			}
+
+			result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", true, time.Now())
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			if tt.wantResultNil {
+				require.Nil(t, result)
+			} else {
+				require.NotNil(t, result)
+				require.Equal(t, 94, result.Usage.CacheReadInputTokens)
+				require.Nil(t, result.CacheHitTargetAdjustment)
+				require.Contains(t, recorder.Body.String(), `"cached_tokens":94`)
+			}
+			require.Zero(t, cache.callCount())
+			require.Nil(t, OpenAIStreamCacheHitAdjustmentFromContext(c))
+		})
+	}
 }
 
 func TestForwardGrokResponsesAPIKeyUsesXAIResponses(t *testing.T) {

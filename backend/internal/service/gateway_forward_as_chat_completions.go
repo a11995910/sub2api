@@ -346,8 +346,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}, nil
 }
 
-// handleCCStreamingFromAnthropic reads Anthropic SSE events, converts each
-// to Responses events, then to Chat Completions chunks, and writes them.
+// handleCCStreamingFromAnthropic 读取 Anthropic SSE 事件，先转换为 Responses
+// 事件，再转换为 Chat Completions 分块并写给客户端。
 func (s *GatewayService) handleCCStreamingFromAnthropic(
 	resp *http.Response,
 	c *gin.Context,
@@ -358,6 +358,10 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	includeUsage bool,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	requestCtx := context.Background()
+	if c != nil && c.Request != nil {
+		requestCtx = c.Request.Context()
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -368,16 +372,37 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
 
-	// Use Anthropic→Responses state machine, then convert Responses→CC
+	// 先使用 Anthropic→Responses 状态机，再转换为 Chat Completions。
 	anthState := apicompat.NewAnthropicEventToResponsesState()
 	anthState.Model = originalModel
 	ccState := apicompat.NewResponsesEventToChatState()
 	ccState.Model = originalModel
-	ccState.IncludeUsage = includeUsage
+	// 仅当本次请求确实启用划拨时强制尾部 usage；未启用配置时保持客户端原始语义。
+	ccState.IncludeUsage = includeUsage || openAIStreamCacheHitTargetEnabled(c)
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	meaningfulData := false
+	successfulWrites := 0
+	var cacheHitAdjustment *CacheHitTargetAdjustment
+	adjustTerminalUsage := func() {
+		// 仅明确的 Anthropic 成功终因可以推进累计状态；空值、refusal、
+		// pause_turn 与供应商私有值都保留原始 usage。
+		if !meaningfulData || !isSuccessfulAnthropicStopReason(anthState.StopReason) {
+			return
+		}
+		syncAnthropicResponsesStateUsage(anthState, &usage)
+		adjustment, adjustErr := s.AdjustOpenAIStreamUsage(requestCtx, c, &usage)
+		if adjustment == nil {
+			return
+		}
+		cacheHitAdjustment = adjustment
+		// 划拨函数会在重复成功终态时恢复首次完整 usage；重新同步整份状态，
+		// 避免后续 message_delta 的 output_tokens 残留在转换器中。
+		syncAnthropicResponsesStateUsage(anthState, &usage)
+		_ = adjustErr
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -387,15 +412,20 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	resultWithUsage := func() *ForwardResult {
+		resultUsage := usage
+		if snapshot, ok := openAIStreamCacheHitClaudeUsageFromContext(c); ok {
+			resultUsage = snapshot
+		}
 		return &ForwardResult{
-			RequestID:       requestID,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:                requestID,
+			Usage:                    resultUsage,
+			Model:                    originalModel,
+			UpstreamModel:            mappedModel,
+			ReasoningEffort:          reasoningEffort,
+			Stream:                   true,
+			Duration:                 time.Since(startTime),
+			FirstTokenMs:             firstTokenMs,
+			CacheHitTargetAdjustment: cacheHitAdjustment,
 		}
 	}
 
@@ -404,32 +434,39 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if err != nil {
 			return false
 		}
-		// Reverse tool name mapping: fake → real, per-chunk bytes.Replace.
+		// 逐分块执行工具名反向映射：伪名称 → 真实名称。
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			return true // client disconnected
 		}
+		successfulWrites++
 		return false
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+		eventMeaningful := isMeaningfulAnthropicStreamEvent(event)
+		writesBefore := successfulWrites
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
 
-		// Extract usage from message_delta
+		// 从 message_delta 提取 usage。
 		if event.Type == "message_delta" && event.Usage != nil {
 			mergeAnthropicUsage(&usage, *event.Usage)
 		}
-		// Also capture usage from message_start (carries cache fields)
+		// 同时从携带缓存字段的 message_start 提取 usage。
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
+		if event.Type == "message_stop" {
+			// 在 Anthropic→Responses 生成终态 usage 事件前完成划拨。
+			adjustTerminalUsage()
+		}
 
-		// Chain: Anthropic event → Responses events → CC chunks
+		// 转换链：Anthropic 事件 → Responses 事件 → Chat Completions 分块。
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
 		for _, resEvt := range responsesEvents {
 			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
@@ -438,6 +475,9 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 					return true
 				}
 			}
+		}
+		if eventMeaningful && successfulWrites > writesBefore {
+			meaningfulData = true
 		}
 		c.Writer.Flush()
 		return false
@@ -477,7 +517,8 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		}
 	}
 
-	// Finalize both state machines
+	// 收尾两个状态机。缺少 message_stop 时只会生成不完整的合成终态，
+	// 不能推进累计 tracker。
 	finalResEvents := apicompat.FinalizeAnthropicResponsesStream(anthState)
 	for _, resEvt := range finalResEvents {
 		ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
@@ -490,7 +531,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		writeChunk(chunk) //nolint:errcheck
 	}
 
-	// Write [DONE] marker
+	// 写入 [DONE] 结束标记。
 	fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
 	c.Writer.Flush()
 

@@ -329,6 +329,8 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	meaningfulData := false
+	cacheHitTargetEnabled := openAIStreamCacheHitTargetEnabled(c)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -338,18 +340,23 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	resultWithUsage := func() *OpenAIForwardResult {
+		resultUsage := usage
+		if snapshot, ok := openAIStreamCacheHitClaudeUsageFromContext(c); ok {
+			resultUsage = snapshot
+		}
 		return &OpenAIForwardResult{
-			RequestID:        requestID,
-			Usage:            claudeUsageToOpenAIUsage(&usage),
-			Model:            originalModel,
-			BillingModel:     billingModel,
-			UpstreamModel:    upstreamModel,
-			UpstreamEndpoint: "/v1/messages",
-			ReasoningEffort:  reasoningEffort,
-			Stream:           true,
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ClientDisconnect: clientDisconnected,
+			RequestID:                requestID,
+			Usage:                    claudeUsageToOpenAIUsage(&resultUsage),
+			Model:                    originalModel,
+			BillingModel:             billingModel,
+			UpstreamModel:            upstreamModel,
+			UpstreamEndpoint:         "/v1/messages",
+			ReasoningEffort:          reasoningEffort,
+			Stream:                   true,
+			Duration:                 time.Since(startTime),
+			FirstTokenMs:             firstTokenMs,
+			ClientDisconnect:         clientDisconnected,
+			CacheHitTargetAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
 		}
 	}
 
@@ -382,6 +389,8 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 	// output_tokens 只在末尾 message_delta 携带，提前退出会把整段生成记成 ~1
 	// token，payg 上游照常计费而平台漏记。状态机照常推进以保证 finalize 一致。
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) {
+		eventMeaningful := isMeaningfulAnthropicStreamEvent(event)
+		wroteEvent := false
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -393,6 +402,14 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+
+		if !clientDisconnected && meaningfulData && cacheHitTargetEnabled && event.Type == "message_stop" &&
+			!state.CompletedSent && isSuccessfulAnthropicStopReason(state.StopReason) {
+			syncAnthropicResponsesStateUsage(state, &usage)
+			if adjustment, _ := adjustClaudeUsageForOpenAIStream(c, &usage, s.cache); adjustment != nil {
+				syncAnthropicResponsesStateUsage(state, &usage)
+			}
 		}
 
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
@@ -415,7 +432,11 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 					clientDisconnected = true
 					return
 				}
+				wroteEvent = true
 			}
+		}
+		if eventMeaningful && wroteEvent {
+			meaningfulData = true
 		}
 		if len(events) > 0 {
 			c.Writer.Flush()

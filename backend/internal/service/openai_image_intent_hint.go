@@ -4,6 +4,7 @@ import "github.com/gin-gonic/gin"
 
 // 请求级 hint 仅限 HTTP：缺失表示 unknown，false/true 都表示已完成 canonical 判定。
 const openAIImageIntentHintContextKey = "openai_image_intent_hint"
+const openAIStreamCacheHitAttemptImageIntentContextKey = "openai_stream_cache_hit_attempt_image_intent"
 
 type openAIImageIntentClassifier func(endpoint string, requestedModel string, body []byte) bool
 
@@ -28,6 +29,28 @@ func getOpenAIImageIntentHint(c *gin.Context) (imageIntent bool, known bool) {
 		return false, false
 	}
 	value, ok := c.Get(openAIImageIntentHintContextKey)
+	if !ok {
+		return false, false
+	}
+	imageIntent, ok = value.(bool)
+	return imageIntent, ok
+}
+
+// setOpenAIStreamCacheHitAttemptImageIntent 记录当前账号尝试完成模型映射、
+// bridge 注入后的最终图片意图。它与 canonical hint 分离，下一次 failover
+// attempt 会显式重置，避免前一个账号的映射结果污染后续账号。
+func setOpenAIStreamCacheHitAttemptImageIntent(c *gin.Context, imageIntent bool) {
+	if c == nil {
+		return
+	}
+	c.Set(openAIStreamCacheHitAttemptImageIntentContextKey, imageIntent)
+}
+
+func getOpenAIStreamCacheHitAttemptImageIntent(c *gin.Context) (imageIntent bool, known bool) {
+	if c == nil {
+		return false, false
+	}
+	value, ok := c.Get(openAIStreamCacheHitAttemptImageIntentContextKey)
 	if !ok {
 		return false, false
 	}

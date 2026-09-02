@@ -193,12 +193,16 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state.ToolSearchDeclared = toolSearch
 	state.NamespaceTools = namespaceTools
 	clientDisconnected := false
+	clientStreamFlushed := false
+	cacheHitAdjustmentSuppressed := false
+	var cacheHitAdjustment *CacheHitTargetAdjustment
 
 	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
 		if clientDisconnected || len(events) == 0 {
 			return
 		}
 		writeStreamHeaders()
+		wroteEvent := false
 		for _, event := range events {
 			sse, err := apicompat.ResponsesEventToSSE(event)
 			if err != nil {
@@ -216,8 +220,12 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 				)
 				return
 			}
+			wroteEvent = true
 		}
-		c.Writer.Flush()
+		if wroteEvent {
+			c.Writer.Flush()
+			clientStreamFlushed = true
+		}
 	}
 
 	scan := s.scanCCStream(c, resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
@@ -239,8 +247,10 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Stream:                      true,
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
+			CacheHitTargetAdjustment:    cacheHitAdjustment,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
+
 	if err := state.ValidateToolCallArguments(); err != nil {
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
@@ -254,7 +264,26 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Stream:                      true,
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
+			CacheHitTargetAdjustment:    cacheHitAdjustment,
 		}, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
+	}
+
+	// 只有工具参数校验通过、收到 [DONE] 且客户端仍连接时，才生成最终成功
+	// Responses 终态并推进 tracker。usage-only chunk 已被转换器吞入 state，
+	// 因此可以在 finalize 前用同一快照改写其合成终态。
+	if scan.SawDone && !clientDisconnected && !clientStreamFlushed && isSuccessfulOpenAIChatFinishReason(state.FinishReason) {
+		cacheHitAdjustmentSuppressed = true
+	}
+	if scan.SawDone && !clientDisconnected && clientStreamFlushed && !cacheHitAdjustmentSuppressed && isSuccessfulOpenAIChatFinishReason(state.FinishReason) && openAIUsageHasTokens(&scan.Usage) {
+		if adjustment, adjustErr := s.AdjustOpenAIStreamUsage(c.Request.Context(), c, &scan.Usage); adjustment != nil {
+			cacheHitAdjustment = adjustment
+			if state.Usage == nil {
+				state.Usage = responsesUsageFromOpenAIUsage(scan.Usage)
+			} else {
+				applyOpenAIResponsesUsageCacheHitSnapshot(state.Usage, *adjustment)
+			}
+			_ = adjustErr
+		}
 	}
 
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
@@ -285,6 +314,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		Stream:                      true,
 		Duration:                    time.Since(startTime),
 		FirstTokenMs:                scan.FirstTokenMs,
+		CacheHitTargetAdjustment:    cacheHitAdjustment,
 	}, nil
 }
 

@@ -14,12 +14,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 type antigravityCompatStreamAdapter interface {
 	Emit(*apicompat.AnthropicStreamEvent, *antigravityClientWriter)
 	Finalize(*antigravityClientWriter)
 	WriteError(*antigravityClientWriter, string)
+	ApplyCacheHitAdjustment(CacheHitTargetAdjustment)
 }
 
 type antigravityChatStreamAdapter struct {
@@ -61,6 +63,10 @@ func (a *antigravityChatStreamAdapter) WriteError(writer *antigravityClientWrite
 	writer.Fprintf("data: {\"error\":{\"message\":%q,\"type\":\"upstream_error\"}}\n\n", reason)
 }
 
+func (a *antigravityChatStreamAdapter) ApplyCacheHitAdjustment(adjustment CacheHitTargetAdjustment) {
+	applyAnthropicResponsesStateCacheHitSnapshot(a.anthropicState, adjustment)
+}
+
 func (a *antigravityChatStreamAdapter) emitResponseEvent(event *apicompat.ResponsesStreamEvent, writer *antigravityClientWriter) {
 	for _, chunk := range apicompat.ResponsesEventToChatChunks(event, a.chatState) {
 		if data, err := apicompat.ChatChunkToSSE(chunk); err == nil {
@@ -95,6 +101,10 @@ func (a *antigravityResponsesStreamAdapter) WriteError(writer *antigravityClient
 	writer.Fprintf("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"upstream_error\",\"message\":%q}}\n\n", reason)
 }
 
+func (a *antigravityResponsesStreamAdapter) ApplyCacheHitAdjustment(adjustment CacheHitTargetAdjustment) {
+	applyAnthropicResponsesStateCacheHitSnapshot(a.anthropicState, adjustment)
+}
+
 func (a *antigravityResponsesStreamAdapter) emitResponseEvent(event apicompat.ResponsesStreamEvent, writer *antigravityClientWriter) {
 	if data, err := apicompat.ResponsesEventToSSE(event); err == nil {
 		writer.Write([]byte(data))
@@ -107,32 +117,45 @@ type antigravityCompatScanEvent struct {
 }
 
 type antigravityCompatStreamSession struct {
-	processor      *antigravity.StreamingProcessor
-	adapter        antigravityCompatStreamAdapter
-	writer         *antigravityClientWriter
-	usage          *ClaudeUsage
-	pendingEvents  []apicompat.AnthropicStreamEvent
-	firstTokenMs   *int
-	startTime      time.Time
-	meaningfulData bool
+	requestContext     *gin.Context
+	processor          *antigravity.StreamingProcessor
+	adapter            antigravityCompatStreamAdapter
+	writer             *antigravityClientWriter
+	usage              *ClaudeUsage
+	pendingEvents      []apicompat.AnthropicStreamEvent
+	firstTokenMs       *int
+	startTime          time.Time
+	meaningfulData     bool
+	stopReason         string
+	finishReason       string
+	finishing          bool
+	adjustUsage        func(*ClaudeUsage) *CacheHitTargetAdjustment
+	cacheHitAdjustment *CacheHitTargetAdjustment
 }
 
 func newAntigravityCompatStreamSession(
+	c *gin.Context,
 	model string,
 	startTime time.Time,
 	adapter antigravityCompatStreamAdapter,
 	writer *antigravityClientWriter,
+	adjustUsage func(*ClaudeUsage) *CacheHitTargetAdjustment,
 ) *antigravityCompatStreamSession {
 	return &antigravityCompatStreamSession{
-		processor: antigravity.NewStreamingProcessor(model),
-		adapter:   adapter,
-		writer:    writer,
-		usage:     &ClaudeUsage{},
-		startTime: startTime,
+		requestContext: c,
+		processor:      antigravity.NewStreamingProcessor(model),
+		adapter:        adapter,
+		writer:         writer,
+		usage:          &ClaudeUsage{},
+		startTime:      startTime,
+		adjustUsage:    adjustUsage,
 	}
 }
 
 func (s *antigravityCompatStreamSession) consume(line string) {
+	if finishReason := antigravityCompatLineFinishReason(line); finishReason != "" {
+		s.finishReason = finishReason
+	}
 	claudeEvents := s.processor.ProcessLine(strings.TrimRight(line, "\r\n"))
 	if len(claudeEvents) == 0 {
 		return
@@ -147,7 +170,10 @@ func (s *antigravityCompatStreamSession) hasMeaningfulData() bool {
 func (s *antigravityCompatStreamSession) finish() *antigravityStreamResult {
 	finalEvents, usage := s.processor.Finish()
 	mergeAntigravityCompatUsage(s.usage, usage)
+	s.reapplyCacheHitAdjustment()
+	s.finishing = true
 	s.consumeClaudeEvents(finalEvents)
+	s.finishing = false
 	s.adapter.Finalize(s.writer)
 	return s.result(s.writer.Disconnected())
 }
@@ -155,12 +181,17 @@ func (s *antigravityCompatStreamSession) finish() *antigravityStreamResult {
 func (s *antigravityCompatStreamSession) collectResult(clientDisconnect bool) *antigravityStreamResult {
 	_, usage := s.processor.Finish()
 	mergeAntigravityCompatUsage(s.usage, usage)
+	s.reapplyCacheHitAdjustment()
 	return s.result(clientDisconnect)
 }
 
 func (s *antigravityCompatStreamSession) result(clientDisconnect bool) *antigravityStreamResult {
+	usage := s.usage
+	if snapshot, ok := openAIStreamCacheHitClaudeUsageFromContext(s.requestContext); ok {
+		usage = &snapshot
+	}
 	return &antigravityStreamResult{
-		usage:            s.usage,
+		usage:            usage,
 		firstTokenMs:     s.firstTokenMs,
 		clientDisconnect: clientDisconnect,
 	}
@@ -193,7 +224,40 @@ func (s *antigravityCompatStreamSession) consumeClaudeData(eventType, payload st
 	if event.Message != nil {
 		mergeAnthropicUsage(s.usage, event.Message.Usage)
 	}
+	if event.Delta != nil && event.Delta.StopReason != "" {
+		s.stopReason = event.Delta.StopReason
+	}
+	if event.Type == "message_stop" && s.meaningfulData && !s.finishing && !s.writer.Disconnected() &&
+		strings.EqualFold(s.finishReason, "STOP") && s.stopReason != "max_tokens" && s.adjustUsage != nil {
+		if adjustment := s.adjustUsage(s.usage); adjustment != nil {
+			s.cacheHitAdjustment = adjustment
+			s.adapter.ApplyCacheHitAdjustment(*adjustment)
+		}
+	}
 	s.emitOrBuffer(event)
+}
+
+func (s *antigravityCompatStreamSession) reapplyCacheHitAdjustment() {
+	if s.cacheHitAdjustment != nil {
+		applyClaudeUsageCacheHitSnapshot(s.usage, *s.cacheHitAdjustment)
+	}
+}
+
+func antigravityCompatLineFinishReason(line string) string {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "data:") {
+		return ""
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return ""
+	}
+	for _, path := range []string{"response.candidates.0.finishReason", "candidates.0.finishReason"} {
+		if finishReason := strings.TrimSpace(gjson.Get(payload, path).String()); finishReason != "" {
+			return finishReason
+		}
+	}
+	return ""
 }
 
 func (s *antigravityCompatStreamSession) emitOrBuffer(event apicompat.AnthropicStreamEvent) {
@@ -236,8 +300,7 @@ func isMeaningfulAntigravityCompatEvent(event *apicompat.AnthropicStreamEvent) b
 		return delta.Text != "" ||
 			delta.PartialJSON != "" ||
 			delta.Thinking != "" ||
-			delta.Signature != "" ||
-			delta.StopReason != ""
+			delta.Signature != ""
 	}
 	return false
 }
@@ -274,7 +337,14 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 		c.Header("X-Accel-Buffering", "no")
 		c.Status(http.StatusOK)
 	}
-	session := newAntigravityCompatStreamSession(originalModel, startTime, adapter, writer)
+	var adjustUsage func(*ClaudeUsage) *CacheHitTargetAdjustment
+	if openAIStreamCacheHitTargetEnabled(c) {
+		adjustUsage = func(usage *ClaudeUsage) *CacheHitTargetAdjustment {
+			adjustment, _ := adjustClaudeUsageForOpenAIStream(c, usage, s.cache)
+			return adjustment
+		}
+	}
+	session := newAntigravityCompatStreamSession(c, originalModel, startTime, adapter, writer, adjustUsage)
 	events, stopScanner, maxLineSize := s.startAntigravityCompatScanner(resp.Body)
 	defer stopScanner()
 
@@ -452,7 +522,7 @@ func (s *AntigravityGatewayService) handleChatCompletionsStreamingFromAntigravit
 		resp,
 		startTime,
 		originalModel,
-		newAntigravityChatStreamAdapter(originalModel, includeUsage),
+		newAntigravityChatStreamAdapter(originalModel, includeUsage || openAIStreamCacheHitTargetEnabled(c)),
 		"antigravity chat completions stream",
 	)
 }

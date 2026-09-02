@@ -574,7 +574,7 @@ func TestForwardAsChatCompletions_StreamCyberPolicyNoFailover(t *testing.T) {
 	require.Contains(t, respBody, "data: [DONE]")
 }
 
-func TestForwardAsChatCompletions_StreamsUsageWithoutClientStreamOptions(t *testing.T) {
+func TestForwardAsChatCompletions_StreamsUsageWhenCacheHitTargetEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -582,6 +582,17 @@ func TestForwardAsChatCompletions_StreamsUsageWithoutClientStreamOptions(t *test
 	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	groupID := int64(901)
+	c.Set("api_key", &APIKey{
+		UserID:  902,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	})
 
 	upstreamBody := strings.Join([]string{
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.4","status":"in_progress","output":[]}}`,
@@ -631,7 +642,7 @@ func TestForwardAsChatCompletions_StreamsTopLevelTerminalUsage(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true,"stream_options":{"include_usage":true}}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 

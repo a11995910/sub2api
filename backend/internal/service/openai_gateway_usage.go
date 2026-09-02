@@ -183,14 +183,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
-	cacheHitAdjustment, cacheTargetErr := applyCacheHitTargetToInput(ctx, &tokens, apiKey, user.ID, s.cache)
-	if cacheTargetErr != nil {
-		logger.LegacyPrintf("service.openai_gateway", "cache_hit_target tracker unavailable, using per-request fallback (group=%d user=%d): %v",
-			valueOrZero(apiKey.GroupID), user.ID, cacheTargetErr)
-	}
-	if cacheHitAdjustment.ShiftedTokens > 0 {
-		logger.LegacyPrintf("service.openai_gateway", "cache_hit_target: %d cache_read_input_tokens -> input_tokens (group=%d user=%d account=%d)",
-			cacheHitAdjustment.ShiftedTokens, valueOrZero(apiKey.GroupID), user.ID, account.ID)
+	// 缓存命中率划拨只允许在 OpenAI HTTP 流式响应的末尾 usage 帧写出前执行。
+	// 此处只消费同一份快照；重新调用 tracker 会推进两次累计状态，并让下游账单
+	// 与本站落库口径再次分叉。nil 表示非流式、非 OpenAI 协议、流未正常收尾或
+	// 未携带 usage，这些场景即使分组开启配置也不划拨。
+	cacheHitAdjustment := CacheHitTargetAdjustment{}
+	if result.CacheHitTargetAdjustment != nil {
+		cacheHitAdjustment = *result.CacheHitTargetAdjustment
 	}
 
 	// Get rate multiplier

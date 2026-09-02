@@ -1472,10 +1472,22 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogA
 			Usage: OpenAIUsage{
 				InputTokens:          100,
 				OutputTokens:         20,
-				CacheReadInputTokens: 94,
+				CacheReadInputTokens: 90,
 			},
 			Model:    "gpt-5.4",
 			Duration: time.Second,
+			CacheHitTargetAdjustment: &CacheHitTargetAdjustment{
+				Enabled:                   true,
+				OriginalInputTokens:       6,
+				OriginalCacheReadTokens:   94,
+				ShiftedTokens:             4,
+				TargetPercent:             90,
+				TolerancePercent:          0.5,
+				CumulativePromptTokens:    100,
+				CumulativeCacheReadTokens: 90,
+				CumulativeHitPercent:      90,
+				StateVersion:              123,
+			},
 		},
 		APIKey: &APIKey{
 			ID:      1017,
@@ -1519,6 +1531,55 @@ func TestOpenAIGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogA
 	require.NoError(t, calcErr)
 	require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-10)
 	require.InDelta(t, expectedCost.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-10)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_CacheHitTargetEnabledWithoutSnapshotDoesNotReclassify(t *testing.T) {
+	groupID := int64(902)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_cache_hit_target_without_snapshot",
+			Usage: OpenAIUsage{
+				InputTokens:          100,
+				OutputTokens:         20,
+				CacheReadInputTokens: 94,
+			},
+			Model:    "gpt-5.4",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1018,
+			GroupID: &groupID,
+			Group: &Group{
+				ID:                             groupID,
+				RateMultiplier:                 1,
+				CacheHitQuarterToInput:         true,
+				CacheHitTargetPercent:          90,
+				CacheHitTargetTolerancePercent: 0.5,
+			},
+		},
+		User:    &User{ID: 2018},
+		Account: &Account{ID: 3018},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 6, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 94, usageRepo.lastLog.CacheReadTokens)
+	require.Zero(t, usageRepo.lastLog.CacheHitShiftedTokens)
+	require.Nil(t, usageRepo.lastLog.CacheHitTargetPercent)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, 6, billingRepo.lastCmd.InputTokens)
+	require.Equal(t, 94, billingRepo.lastCmd.CacheReadTokens)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_PreheldVideoSkipsSecondBalanceDeduction(t *testing.T) {

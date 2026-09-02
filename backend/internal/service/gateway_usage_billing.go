@@ -740,21 +740,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
-	cacheBillingTokens := UsageTokens{
-		InputTokens:         result.Usage.InputTokens,
-		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:     result.Usage.CacheReadInputTokens,
-	}
-	cacheHitAdjustment, cacheTargetErr := applyCacheHitTargetToInput(ctx, &cacheBillingTokens, apiKey, user.ID, s.cache)
-	if cacheTargetErr != nil {
-		logger.LegacyPrintf("service.gateway", "cache_hit_target tracker unavailable, using per-request fallback (group=%d user=%d): %v",
-			valueOrZero(apiKey.GroupID), user.ID, cacheTargetErr)
-	}
-	if cacheHitAdjustment.ShiftedTokens > 0 {
-		result.Usage.InputTokens = cacheBillingTokens.InputTokens
-		result.Usage.CacheReadInputTokens = cacheBillingTokens.CacheReadTokens
-		logger.LegacyPrintf("service.gateway", "cache_hit_target: %d cache_read_input_tokens -> input_tokens (group=%d user=%d account=%d)",
-			cacheHitAdjustment.ShiftedTokens, valueOrZero(apiKey.GroupID), user.ID, account.ID)
+	// 仅复用 OpenAI 协议流式响应在终止 usage 帧写出前生成的快照。
+	// 通用计费链路也服务 Anthropic、Gemini、非流式和 WebSocket；在这里重新
+	// 计算不仅会错误扩大生效范围，还会让 Redis 累计状态对同一请求推进两次。
+	cacheHitAdjustment := CacheHitTargetAdjustment{}
+	if result.CacheHitTargetAdjustment != nil {
+		cacheHitAdjustment = *result.CacheHitTargetAdjustment
 	}
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）

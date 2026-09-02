@@ -475,8 +475,8 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}, nil
 }
 
-// handleResponsesStreamingResponse reads Anthropic SSE events from upstream,
-// converts each to Responses SSE events, and writes them to the client.
+// handleResponsesStreamingResponse 读取上游 Anthropic SSE 事件，逐个转换为
+// Responses SSE 事件并写给客户端。
 func (s *GatewayService) handleResponsesStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
@@ -497,12 +497,34 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
 
+	requestCtx := context.Background()
+	if c != nil && c.Request != nil {
+		requestCtx = c.Request.Context()
+	}
+
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	meaningfulData := false
+	var cacheHitAdjustment *CacheHitTargetAdjustment
+
+	// 仅在终态 usage 累计完成后划拨。请求级帮助函数和转换器状态同步均保持幂等。
+	adjustTerminalUsage := func() {
+		if !meaningfulData || !isSuccessfulAnthropicStopReason(state.StopReason) {
+			return
+		}
+		syncAnthropicResponsesStateUsage(state, &usage)
+		adjustment, _ := s.AdjustOpenAIStreamUsage(requestCtx, c, &usage)
+		if adjustment == nil {
+			return
+		}
+		cacheHitAdjustment = adjustment
+		// 中央快照可能整份恢复首次 usage，转换器状态必须随之整份收口。
+		syncAnthropicResponsesStateUsage(state, &usage)
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -512,36 +534,48 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	resultWithUsage := func() *ForwardResult {
+		resultUsage := usage
+		if snapshot, ok := openAIStreamCacheHitClaudeUsageFromContext(c); ok {
+			resultUsage = snapshot
+		}
 		return &ForwardResult{
-			RequestID:       requestID,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:                requestID,
+			Usage:                    resultUsage,
+			Model:                    originalModel,
+			UpstreamModel:            mappedModel,
+			ReasoningEffort:          reasoningEffort,
+			Stream:                   true,
+			Duration:                 time.Since(startTime),
+			FirstTokenMs:             firstTokenMs,
+			CacheHitTargetAdjustment: cacheHitAdjustment,
 		}
 	}
 
-	// processEvent handles a single parsed Anthropic SSE event.
+	// processEvent 处理一个已解析的 Anthropic SSE 事件。
 	processEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+		eventMeaningful := isMeaningfulAnthropicStreamEvent(event)
+		wroteEvent := false
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
 
-		// Extract usage from message_delta
+		// 从 message_delta 提取 usage。
 		if event.Type == "message_delta" && event.Usage != nil {
 			mergeAnthropicUsage(&usage, *event.Usage)
 		}
-		// Also capture usage from message_start
+		// 同时从 message_start 提取 usage。
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 
-		// Convert to Responses events
+		// 先把缓存命中划拨同步到结果 usage 和转换器状态，再生成 response.completed。
+		if event.Type == "message_stop" {
+			adjustTerminalUsage()
+		}
+
+		// 转换为 Responses 事件。
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
 		for _, evt := range events {
 			payload, err := json.Marshal(evt)
@@ -569,7 +603,11 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					)
 					return true // client disconnected
 				}
+				wroteEvent = true
 			}
+		}
+		if eventMeaningful && wroteEvent {
+			meaningfulData = true
 		}
 		if len(events) > 0 {
 			c.Writer.Flush()
@@ -578,6 +616,8 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	}
 
 	finalizeStream := func() (*ForwardResult, error) {
+		// 兼容上游可能在没有 message_stop 时关闭；此类不完整合成终态保留原始
+		// usage，且不推进 tracker。
 		if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesEventToSSE(evt)
@@ -592,7 +632,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		return resultWithUsage(), nil
 	}
 
-	// Read Anthropic SSE events
+	// 读取 Anthropic SSE 事件。
 	for scanner.Scan() {
 		line := scanner.Text()
 		eventType, ok := parseAnthropicSSEField(line, "event")
@@ -600,7 +640,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
-		// Read data line
+		// 读取 data 行。
 		if !scanner.Scan() {
 			break
 		}

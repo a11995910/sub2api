@@ -1134,6 +1134,15 @@ func TestIsOpenAIChatUsageOnlyStreamChunk(t *testing.T) {
 	require.False(t, isOpenAIChatUsageOnlyStreamChunk(``))
 }
 
+func TestIsOpenAIChatTerminalUsageStreamChunk(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isOpenAIChatTerminalUsageStreamChunk(`{"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2}}`))
+	require.True(t, isOpenAIChatTerminalUsageStreamChunk(`{"choices":[{"index":0,"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2}}`))
+	require.False(t, isOpenAIChatTerminalUsageStreamChunk(`{"choices":[{"index":0,"finish_reason":null}],"usage":{"prompt_tokens":1,"completion_tokens":2}}`))
+	require.False(t, isOpenAIChatTerminalUsageStreamChunk(`{"choices":[{"index":0,"finish_reason":"stop"}]}`))
+}
+
 func TestEnsureOpenAIChatStreamUsage(t *testing.T) {
 	t.Parallel()
 

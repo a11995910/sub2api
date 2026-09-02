@@ -204,12 +204,24 @@ func TestGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogAndBill
 		Result: &ForwardResult{
 			RequestID: "gateway_cache_hit_target",
 			Usage: ClaudeUsage{
-				InputTokens:          6,
+				InputTokens:          10,
 				OutputTokens:         20,
-				CacheReadInputTokens: 94,
+				CacheReadInputTokens: 90,
 			},
 			Model:    "claude-sonnet-4",
 			Duration: time.Second,
+			CacheHitTargetAdjustment: &CacheHitTargetAdjustment{
+				Enabled:                   true,
+				OriginalInputTokens:       6,
+				OriginalCacheReadTokens:   94,
+				ShiftedTokens:             4,
+				TargetPercent:             90,
+				TolerancePercent:          0.5,
+				CumulativePromptTokens:    100,
+				CumulativeCacheReadTokens: 90,
+				CumulativeHitPercent:      90,
+				StateVersion:              123,
+			},
 		},
 		APIKey: &APIKey{
 			ID:      501,
@@ -244,6 +256,49 @@ func TestGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogAndBill
 	require.NotNil(t, billingRepo.lastCmd)
 	require.Equal(t, 10, billingRepo.lastCmd.InputTokens)
 	require.Equal(t, 90, billingRepo.lastCmd.CacheReadTokens)
+}
+
+func TestGatewayServiceRecordUsage_CacheHitTargetEnabledWithoutSnapshotDoesNotReclassify(t *testing.T) {
+	groupID := int64(902)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_cache_hit_target_without_snapshot",
+			Usage: ClaudeUsage{
+				InputTokens:          6,
+				OutputTokens:         20,
+				CacheReadInputTokens: 94,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      502,
+			GroupID: &groupID,
+			Group: &Group{
+				ID:                             groupID,
+				RateMultiplier:                 1,
+				CacheHitQuarterToInput:         true,
+				CacheHitTargetPercent:          90,
+				CacheHitTargetTolerancePercent: 0.5,
+			},
+		},
+		User:    &User{ID: 602},
+		Account: &Account{ID: 702},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 6, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 94, usageRepo.lastLog.CacheReadTokens)
+	require.Zero(t, usageRepo.lastLog.CacheHitShiftedTokens)
+	require.Nil(t, usageRepo.lastLog.CacheHitTargetPercent)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, 6, billingRepo.lastCmd.InputTokens)
+	require.Equal(t, 94, billingRepo.lastCmd.CacheReadTokens)
 }
 
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {

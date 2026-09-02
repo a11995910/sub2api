@@ -221,6 +221,9 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	thinkingEnabled := claudeRequest.Thinking != nil &&
 		(claudeRequest.Thinking.Type == "enabled" || claudeRequest.Thinking.Type == "adaptive")
 	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+	setOpenAIStreamCacheHitAttemptImageIntent(c,
+		isImageGenerationModel(request.originalModel) || isImageGenerationModel(mappedModel),
+	)
 
 	if s.tokenProvider == nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
@@ -374,6 +377,7 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 		FirstTokenMs:                  streamResult.firstTokenMs,
 		ReasoningEffort:               call.request.reasoningEffort,
 		ClientDisconnect:              streamResult.clientDisconnect,
+		CacheHitTargetAdjustment:      OpenAIStreamCacheHitAdjustmentFromContext(c),
 	}, nil
 }
 

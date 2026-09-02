@@ -36,6 +36,9 @@ type openAIRawStreamTerminalState struct {
 	sawDone         bool
 	sawUsage        bool
 	sawFinishReason bool
+	outputLimit     bool
+	successfulEnd   bool
+	unsuccessfulEnd bool
 }
 
 // ObserveDataLine 从单行 SSE `data:` 载荷中提取终止信号。payload 需已 TrimSpace。
@@ -51,14 +54,19 @@ func (t *openAIRawStreamTerminalState) ObserveDataLine(payload string) {
 	if usage := gjson.Get(payload, "usage"); usage.Exists() && usage.IsObject() {
 		t.sawUsage = true
 	}
-	if t.sawFinishReason {
-		return
-	}
 	for _, choice := range gjson.Get(payload, "choices").Array() {
 		// finish_reason 为 null 时 String() 返回空串，不算终止。
-		if strings.TrimSpace(choice.Get("finish_reason").String()) != "" {
+		finishReason := strings.TrimSpace(choice.Get("finish_reason").String())
+		if finishReason != "" {
 			t.sawFinishReason = true
-			return
+			if finishReason == "length" {
+				t.outputLimit = true
+			}
+			if isSuccessfulOpenAIChatFinishReason(finishReason) {
+				t.successfulEnd = true
+			} else {
+				t.unsuccessfulEnd = true
+			}
 		}
 	}
 }
@@ -66,6 +74,16 @@ func (t *openAIRawStreamTerminalState) ObserveDataLine(payload string) {
 // Terminated 表示上游给出过终止信号。
 func (t *openAIRawStreamTerminalState) Terminated() bool {
 	return t != nil && (t.sawDone || t.sawUsage || t.sawFinishReason)
+}
+
+func (t *openAIRawStreamTerminalState) ReachedOutputLimit() bool {
+	return t != nil && t.outputLimit
+}
+
+// SuccessfullyFinished 只有在至少一个 choice 明确正常结束，且没有任何 choice
+// 报告不完整、拦截或未知终态时才返回 true。
+func (t *openAIRawStreamTerminalState) SuccessfullyFinished() bool {
+	return t != nil && t.successfulEnd && !t.unsuccessfulEnd
 }
 
 // IsTruncated 判定上游是否在任何终止信号之前结束。clientOutputStarted 用于放行

@@ -165,6 +165,95 @@ func TestHandleResponsesStreamingResponse_RestoresNamespaceTool(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), `"name":"codex_app__read_thread"`)
 }
 
+func TestHandleResponsesStreamingResponse_CacheHitTargetAlignsCompletedUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(911)
+	cache := &responsesCacheHitGatewayCache{}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("api_key", &APIKey{
+		UserID:  912,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	})
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_cache","type":"message","role":"assistant","content":[],"model":"claude-test","usage":{"input_tokens":6,"cache_read_input_tokens":94}}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")))}
+
+	result, err := (&GatewayService{cache: cache}).handleResponsesStreamingResponse(
+		resp, c, "gpt-test", "claude-test", nil, time.Now(), apicompat.ResponsesClientToolMapping{},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.callCount())
+	require.NotNil(t, result.CacheHitTargetAdjustment)
+	require.Equal(t, 4, result.CacheHitTargetAdjustment.ShiftedTokens)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 90, result.Usage.CacheReadInputTokens)
+	require.Contains(t, rec.Body.String(), `"type":"response.completed"`)
+	require.Contains(t, rec.Body.String(), `"input_tokens":100`)
+	require.Contains(t, rec.Body.String(), `"cached_tokens":90`)
+}
+
+func TestHandleResponsesStreamingResponse_MaxTokensDoesNotAdjust(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(913)
+	cache := &responsesCacheHitGatewayCache{}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set("api_key", &APIKey{
+		UserID:  914,
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	})
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_max","type":"message","role":"assistant","content":[],"model":"claude-test","usage":{"input_tokens":6,"cache_read_input_tokens":94}}}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":2}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")))}
+
+	result, err := (&GatewayService{cache: cache}).handleResponsesStreamingResponse(
+		resp, c, "gpt-test", "claude-test", nil, time.Now(), apicompat.ResponsesClientToolMapping{},
+	)
+
+	require.NoError(t, err)
+	require.Zero(t, cache.callCount())
+	require.Nil(t, result.CacheHitTargetAdjustment)
+	require.Equal(t, 6, result.Usage.InputTokens)
+	require.Equal(t, 94, result.Usage.CacheReadInputTokens)
+	require.Contains(t, rec.Body.String(), `"type":"response.incomplete"`)
+	require.Contains(t, rec.Body.String(), `"cached_tokens":94`)
+}
+
 func TestExtractResponsesReasoningEffortFromBody(t *testing.T) {
 	t.Parallel()
 

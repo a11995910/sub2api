@@ -319,12 +319,15 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	anthState.Model = originalModel
 	ccState := apicompat.NewResponsesEventToChatState()
 	ccState.Model = originalModel
-	ccState.IncludeUsage = includeUsage
+	cacheHitTargetEnabled := openAIStreamCacheHitTargetEnabled(c)
+	ccState.IncludeUsage = includeUsage || cacheHitTargetEnabled
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	meaningfulData := false
+	successfulWrites := 0
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -334,18 +337,23 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	resultWithUsage := func() *OpenAIForwardResult {
+		resultUsage := usage
+		if snapshot, ok := openAIStreamCacheHitClaudeUsageFromContext(c); ok {
+			resultUsage = snapshot
+		}
 		return &OpenAIForwardResult{
-			RequestID:        requestID,
-			Usage:            claudeUsageToOpenAIUsage(&usage),
-			Model:            originalModel,
-			BillingModel:     billingModel,
-			UpstreamModel:    upstreamModel,
-			UpstreamEndpoint: "/v1/messages",
-			ReasoningEffort:  reasoningEffort,
-			Stream:           true,
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ClientDisconnect: clientDisconnected,
+			RequestID:                requestID,
+			Usage:                    claudeUsageToOpenAIUsage(&resultUsage),
+			Model:                    originalModel,
+			BillingModel:             billingModel,
+			UpstreamModel:            upstreamModel,
+			UpstreamEndpoint:         "/v1/messages",
+			ReasoningEffort:          reasoningEffort,
+			Stream:                   true,
+			Duration:                 time.Since(startTime),
+			FirstTokenMs:             firstTokenMs,
+			ClientDisconnect:         clientDisconnected,
+			CacheHitTargetAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
 		}
 	}
 
@@ -390,10 +398,13 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			clientDisconnected = true
 			return false
 		}
+		successfulWrites++
 		return false
 	}
 
 	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+		eventMeaningful := isMeaningfulAnthropicStreamEvent(event)
+		writesBefore := successfulWrites
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -413,6 +424,13 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		if clientDisconnected {
 			return false
 		}
+		if meaningfulData && cacheHitTargetEnabled && event.Type == "message_stop" &&
+			!anthState.CompletedSent && isSuccessfulAnthropicStopReason(anthState.StopReason) {
+			syncAnthropicResponsesStateUsage(anthState, &usage)
+			if adjustment, _ := adjustClaudeUsageForOpenAIStream(c, &usage, s.cache); adjustment != nil {
+				syncAnthropicResponsesStateUsage(anthState, &usage)
+			}
+		}
 
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
 		for _, resEvt := range responsesEvents {
@@ -420,6 +438,9 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			for _, chunk := range ccChunks {
 				writeChunk(chunk)
 			}
+		}
+		if eventMeaningful && successfulWrites > writesBefore {
+			meaningfulData = true
 		}
 		if len(responsesEvents) > 0 {
 			c.Writer.Flush()
@@ -483,4 +504,62 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	}
 
 	return resultWithUsage(), nil
+}
+
+func isSuccessfulAnthropicStopReason(stopReason string) bool {
+	switch strings.TrimSpace(stopReason) {
+	case "end_turn", "stop_sequence", "tool_use":
+		return true
+	default:
+		return false
+	}
+}
+
+func isMeaningfulAnthropicStreamEvent(event *apicompat.AnthropicStreamEvent) bool {
+	if event == nil {
+		return false
+	}
+	switch event.Type {
+	case "content_block_start":
+		if event.ContentBlock == nil {
+			return false
+		}
+		switch event.ContentBlock.Type {
+		case "text":
+			return event.ContentBlock.Text != ""
+		case "thinking":
+			return event.ContentBlock.Thinking != ""
+		case "tool_use":
+			return event.ContentBlock.ID != "" || event.ContentBlock.Name != ""
+		default:
+			return false
+		}
+	case "content_block_delta":
+		return event.Delta != nil &&
+			(event.Delta.Text != "" || event.Delta.Thinking != "" || event.Delta.PartialJSON != "")
+	default:
+		return false
+	}
+}
+
+func syncAnthropicResponsesStateUsage(state *apicompat.AnthropicEventToResponsesState, usage *ClaudeUsage) {
+	if state == nil || usage == nil {
+		return
+	}
+	state.InputTokens = max(usage.InputTokens, 0)
+	state.OutputTokens = max(usage.OutputTokens, 0)
+	state.CacheReadInputTokens = max(usage.CacheReadInputTokens, 0)
+	state.CacheCreationInputTokens = max(usage.CacheCreationInputTokens, 0)
+}
+
+func adjustClaudeUsageForOpenAIStream(
+	c *gin.Context,
+	usage *ClaudeUsage,
+	tracker any,
+) (*CacheHitTargetAdjustment, error) {
+	requestCtx := context.Background()
+	if c != nil && c.Request != nil {
+		requestCtx = c.Request.Context()
+	}
+	return adjustClaudeUsageForOpenAIStreamWithTracker(requestCtx, c, usage, tracker)
 }

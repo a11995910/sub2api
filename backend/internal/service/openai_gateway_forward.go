@@ -21,6 +21,9 @@ import (
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	// imageIntent 会受账号模型映射和 bridge 注入影响，因此必须按 attempt
+	// 重置；失败账号的最终判定不能泄漏到下一次 failover。
+	setOpenAIStreamCacheHitAttemptImageIntent(c, false)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
@@ -734,6 +737,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
+	setOpenAIStreamCacheHitAttemptImageIntent(c, imageIntent)
 	if imageIntent {
 		var imageCfg OpenAIResponsesImageBillingConfig
 		var imageCfgErr error
@@ -1171,6 +1175,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		searchCount := 0
 		var imageOutputSizes []string
+		var cacheHitAdjustment *CacheHitTargetAdjustment
 		if reqStream {
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
@@ -1211,6 +1216,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, err
 			}
 			usage = streamResult.usage
+			cacheHitAdjustment = streamResult.cacheHitAdjustment
 			firstTokenMs = streamResult.firstTokenMs
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
@@ -1271,6 +1277,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:                  false,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+		}
+		if reqStream {
+			forwardResult.CacheHitTargetAdjustment = cacheHitAdjustment
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

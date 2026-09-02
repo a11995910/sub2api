@@ -346,9 +346,12 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	var usage OpenAIUsage
+	var cacheHitAdjustment *CacheHitTargetAdjustment
+	var cacheHitAdjustedUsageObject []byte
 	var firstTokenMs *int
 	clientDisconnected := false
 	clientOutputStarted := false
+	cacheHitAdjustmentSuppressed := false
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var terminal openAIRawStreamTerminalState
@@ -396,6 +399,46 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
+					if len(cacheHitAdjustedUsageObject) > 0 {
+						// 首次成功终态推进 tracker 后，后续 usage 即使声称 length、
+						// content_filter 或携带冲突计数，也只能复用同一份下游快照。
+						rewritten, rewriteErr := rewriteOpenAIStreamUsageObjectsFromSnapshot([]byte(payload), cacheHitAdjustedUsageObject)
+						if rewriteErr != nil {
+							logger.L().Warn("openai chat_completions raw: cache-hit usage snapshot rewrite failed",
+								zap.Error(rewriteErr),
+								zap.String("request_id", requestID),
+							)
+						} else {
+							payload = string(rewritten)
+							line = "data: " + payload
+							if snapshot, ok := openAIStreamCacheHitOpenAIUsageFromContext(c); ok {
+								usage = snapshot
+							}
+						}
+					} else {
+						// 标准上游把 usage 放在 choices:[] 尾帧；部分兼容实现则把
+						// usage 与 finish_reason 放在同一帧。两种终止形态都需对齐。
+						if !clientDisconnected && !clientOutputStarted && terminal.SuccessfullyFinished() && isOpenAIChatTerminalUsageStreamChunk(payload) {
+							cacheHitAdjustmentSuppressed = true
+						}
+						if !clientDisconnected && clientOutputStarted && !cacheHitAdjustmentSuppressed && terminal.SuccessfullyFinished() && isOpenAIChatTerminalUsageStreamChunk(payload) {
+							rewritten, adjustedUsage, adjustment, rewriteErr := s.adjustAndRewriteOpenAIStreamUsagePayload(c.Request.Context(), c, []byte(payload), usage)
+							if rewriteErr != nil {
+								logger.L().Warn("openai chat_completions raw: cache-hit usage rewrite failed",
+									zap.Error(rewriteErr),
+									zap.String("request_id", requestID),
+								)
+							} else if adjustment != nil {
+								usage = adjustedUsage
+								payload = string(rewritten)
+								line = "data: " + payload
+								cacheHitAdjustment = adjustment
+								if len(cacheHitAdjustedUsageObject) == 0 {
+									cacheHitAdjustedUsageObject = extractOpenAIStreamUsageObject(rewritten)
+								}
+							}
+						}
+					}
 				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
@@ -419,9 +462,17 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 
 	resultWithUsage := func() *OpenAIForwardResult {
+		resultUsage := usage
+		if snapshot, ok := openAIStreamCacheHitOpenAIUsageFromContext(c); ok {
+			resultUsage = snapshot
+		}
+		resultAdjustment := cacheHitAdjustment
+		if snapshot := OpenAIStreamCacheHitAdjustmentFromContext(c); snapshot != nil {
+			resultAdjustment = snapshot
+		}
 		return &OpenAIForwardResult{
 			RequestID:                     requestID,
-			Usage:                         usage,
+			Usage:                         resultUsage,
 			Model:                         originalModel,
 			BillingModel:                  billingModel,
 			UpstreamModel:                 upstreamModel,
@@ -433,6 +484,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			CacheHitTargetAdjustment:      resultAdjustment,
 		}
 	}
 
@@ -521,6 +573,26 @@ func isOpenAIChatUsageOnlyStreamChunk(payload string) bool {
 	}
 	choices := gjson.Get(payload, "choices")
 	return choices.Exists() && choices.IsArray() && len(choices.Array()) == 0
+}
+
+func isOpenAIChatTerminalUsageStreamChunk(payload string) bool {
+	if strings.TrimSpace(payload) == "" {
+		return false
+	}
+	usage := gjson.Get(payload, "usage")
+	if !usage.Exists() || !usage.IsObject() {
+		return false
+	}
+	choices := gjson.Get(payload, "choices")
+	if choices.Exists() && choices.IsArray() && len(choices.Array()) == 0 {
+		return true
+	}
+	for _, choice := range choices.Array() {
+		if strings.TrimSpace(choice.Get("finish_reason").String()) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // extractCCStreamUsage 从单个 CC 流式 chunk 的 payload 中提取 usage 字段。

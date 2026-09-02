@@ -281,6 +281,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		attemptImageIntentInvalidated,
 		IsImageGenerationIntent,
 	)
+	setOpenAIStreamCacheHitAttemptImageIntent(c, imageIntent)
 	if imageIntent && !GroupAllowsImageGeneration(apiKeyGroup(apiKey)) {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusForbidden, gin.H{
@@ -360,6 +361,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
+	var cacheHitAdjustment *CacheHitTargetAdjustment
 	for {
 		actualModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 		if actualModel == "" {
@@ -467,6 +469,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				return nil, handleErr
 			}
 			usage = result.usage
+			cacheHitAdjustment = result.cacheHitAdjustment
 			firstTokenMs = result.firstTokenMs
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
@@ -529,6 +532,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		ReasoningEffort:               reasoningEffort,
 		Stream:                        reqStream,
+		CacheHitTargetAdjustment:      cacheHitAdjustment,
 		OpenAIWSMode:                  false,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
@@ -1023,11 +1027,12 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage              *OpenAIUsage
+	cacheHitAdjustment *CacheHitTargetAdjustment
+	firstTokenMs       *int
+	responseID         string
+	imageCount         int
+	imageOutputSizes   []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -1859,6 +1864,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
 	clientOutputStarted := false
+	cacheHitAdjustmentSuppressed := false
+	var cacheHitAdjustedUsageSnapshot *OpenAIUsage
+	var cacheHitAdjustedUsageObject []byte
 	codexFailureTerminal := account != nil && account.Platform == PlatformOpenAI
 	failureDelivered := false
 	suppressCurrentEvent := false
@@ -1962,11 +1970,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:              usage,
+			cacheHitAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
+			firstTokenMs:       firstTokenMs,
+			responseID:         responseID,
+			imageCount:         imageCounter.Count(),
+			imageOutputSizes:   imageCounter.Sizes(),
 		}
 	}
 
@@ -2138,11 +2147,57 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				openAIResponsesCompletedEventIsEmpty(dataBytes, usage) {
 				return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
 			}
+
+			usageHandledForEvent := false
+			successfulTerminal := isSuccessfulOpenAIResponsesTerminalPayload(eventType, dataBytes) && !sawFailedEvent
+			if cacheHitAdjustedUsageSnapshot != nil {
+				*usage = *cacheHitAdjustedUsageSnapshot
+				usageHandledForEvent = true
+				if len(cacheHitAdjustedUsageObject) > 0 && len(extractOpenAIStreamUsageObject(dataBytes)) > 0 {
+					frozen, freezeErr := rewriteOpenAIStreamUsageObjectsFromSnapshot(dataBytes, cacheHitAdjustedUsageObject)
+					if freezeErr != nil {
+						logger.L().Warn("openai_stream.cache_hit_usage_snapshot_rewrite_failed",
+							zap.Error(freezeErr), zap.String("event_type", eventType), zap.String("path", "passthrough"))
+					} else {
+						dataBytes = frozen
+						trimmedData = strings.TrimSpace(string(frozen))
+						line = "data: " + string(frozen)
+					}
+				}
+			} else if successfulTerminal {
+				// 与原生 Responses handler 保持一致：终态 usage 可能只有部分
+				// 字段，不能覆盖早期事件已经累计到的 output/cache 明细。
+				var terminalParsedUsage OpenAIUsage
+				s.parseSSEUsageBytesWithType(dataBytes, eventType, &terminalParsedUsage)
+				mergeOpenAIUsageNonZero(usage, terminalParsedUsage)
+				usageHandledForEvent = true
+			}
+			if successfulTerminal && !clientDisconnected && !clientOutputStarted {
+				cacheHitAdjustmentSuppressed = true
+			}
+			if successfulTerminal && cacheHitAdjustedUsageSnapshot == nil &&
+				!clientDisconnected && clientOutputStarted && !cacheHitAdjustmentSuppressed {
+				rewritten, adjustedUsage, adjustment, rewriteErr := s.adjustAndRewriteOpenAIStreamUsagePayload(ctx, c, dataBytes, *usage)
+				if rewriteErr != nil {
+					logger.L().Warn("openai_stream.cache_hit_usage_rewrite_failed",
+						zap.Error(rewriteErr), zap.String("event_type", eventType), zap.String("path", "passthrough"))
+				} else if adjustment != nil {
+					*usage = adjustedUsage
+					dataBytes = rewritten
+					trimmedData = strings.TrimSpace(string(rewritten))
+					line = "data: " + string(rewritten)
+					snapshot := adjustedUsage
+					cacheHitAdjustedUsageSnapshot = &snapshot
+					cacheHitAdjustedUsageObject = extractOpenAIStreamUsageObject(rewritten)
+				}
+			}
 			if firstTokenMs == nil && openAIStreamDataStartsTTFT(trimmedData, eventType, forceFlushFailedEvent, ttftMode) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
-			s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+			if !usageHandledForEvent {
+				s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+			}
 		}
 		if line == "" {
 			pendingSSEEventType = ""

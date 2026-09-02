@@ -27,12 +27,13 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage              *OpenAIUsage
+	cacheHitAdjustment *CacheHitTargetAdjustment
+	firstTokenMs       *int
+	responseID         string
+	imageCount         int
+	imageOutputSizes   []string
+	searchCount        int
 }
 
 type openaiNonStreamingResult struct {
@@ -266,6 +267,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	eventStartsClientOutput := false
 	eventStartsTTFTOutput := false
 	eventShouldFlush := false
+	cacheHitAdjustmentSuppressed := false
+	var cacheHitAdjustedUsageSnapshot *OpenAIUsage
+	var cacheHitAdjustedUsageObject []byte
 	handlePendingWriteError := func(err error) {
 		if firstOutputStage != nil && !firstOutputStage.closed {
 			message := "OpenAI first-output staging failed"
@@ -347,12 +351,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	streamSearchSeen := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
-			searchCount:      searchCounter,
+			usage:              usage,
+			cacheHitAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
+			firstTokenMs:       firstTokenMs,
+			responseID:         responseID,
+			imageCount:         imageCounter.Count(),
+			imageOutputSizes:   imageCounter.Sizes(),
+			searchCount:        searchCounter,
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -482,7 +487,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			dataBytes := []byte(data)
 			eventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
 			if codexFailureTerminal && sawBareError && !sawResponseFailed &&
-				(eventType == "response.completed" || eventType == "response.done") {
+				isSuccessfulOpenAIResponsesTerminalPayload(eventType, dataBytes) {
 				// A later successful terminal is authoritative over a pending bare
 				// error. Keep its usage and terminal visible to the client.
 				sawBareError = false
@@ -687,6 +692,58 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				return
 			}
 
+			usageHandledForEvent := false
+			successfulTerminal := isSuccessfulOpenAIResponsesTerminalPayload(eventType, dataBytes) && !sawFailedEvent
+			if cacheHitAdjustedUsageSnapshot != nil {
+				// tracker 成功推进后，所有后续 usage 都只能复用首份完整快照。
+				// 失败或不完整尾帧仍保留原事件语义，但不能覆盖本站计费口径。
+				*usage = *cacheHitAdjustedUsageSnapshot
+				usageHandledForEvent = true
+				if len(cacheHitAdjustedUsageObject) > 0 && len(extractOpenAIStreamUsageObject(dataBytes)) > 0 {
+					frozen, freezeErr := rewriteOpenAIStreamUsageObjectsFromSnapshot(dataBytes, cacheHitAdjustedUsageObject)
+					if freezeErr != nil {
+						logger.L().Warn("openai_stream.cache_hit_usage_snapshot_rewrite_failed",
+							zap.Error(freezeErr), zap.String("event_type", eventType))
+					} else {
+						dataBytes = frozen
+						data = string(frozen)
+						line = "data: " + data
+					}
+				}
+			} else if successfulTerminal {
+				// 兼容上游可能在早期事件给出完整 usage，而 completed/done
+				// 只携带部分非零字段。终态先独立解析再合并，避免把已经确认的
+				// output/cache 明细清零。
+				var terminalParsedUsage OpenAIUsage
+				s.parseSSEUsageBytesWithType(dataBytes, eventType, &terminalParsedUsage)
+				mergeOpenAIUsageNonZero(usage, terminalParsedUsage)
+				usageHandledForEvent = true
+			}
+			// 空成功终态已经在上方完成 failover 判定。只有真正会发往客户端的
+			// completed/done 才能推进 tracker，并且必须先验证同一 payload 可改写。
+			if successfulTerminal && !clientDisconnected && !clientOutputStarted {
+				cacheHitAdjustmentSuppressed = true
+			}
+			if successfulTerminal && cacheHitAdjustedUsageSnapshot == nil &&
+				!clientDisconnected && clientOutputStarted && !cacheHitAdjustmentSuppressed {
+				rewritten, adjustedUsage, adjustment, rewriteErr := s.adjustAndRewriteOpenAIStreamUsagePayload(ctx, c, dataBytes, *usage)
+				if rewriteErr != nil {
+					logger.L().Warn("openai_stream.cache_hit_usage_rewrite_failed",
+						zap.Error(rewriteErr), zap.String("event_type", eventType))
+				} else if adjustment != nil {
+					*usage = adjustedUsage
+					dataBytes = rewritten
+					data = string(rewritten)
+					line = "data: " + data
+					snapshot := adjustedUsage
+					cacheHitAdjustedUsageSnapshot = &snapshot
+					cacheHitAdjustedUsageObject = extractOpenAIStreamUsageObject(rewritten)
+				}
+			}
+			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
+				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			}
+
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected && !failureDelivered && !suppressCurrentEvent {
 				shouldFlush := queueDrained && (clientOutputStarted || startsClientOutput)
@@ -710,7 +767,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				firstTokenMs = &ms
 				stopFirstOutputTimer()
 			}
-			s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+			if !usageHandledForEvent {
+				s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
+			}
 			return
 		}
 
@@ -1337,6 +1396,174 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 		}
 	}
 	return OpenAIUsage{}, false
+}
+
+// rewriteOpenAIStreamUsagePayload 将划拨后的完整 token 快照写回下游 usage。
+// OpenAI 的 input_tokens/prompt_tokens 已包含缓存 token，因此划拨只改变缓存
+// 明细；同时补齐兼容上游在终态省略的 output 与 total，避免下游和本站计费漂移。
+func rewriteOpenAIStreamUsagePayload(body []byte, adjustedUsage OpenAIUsage) ([]byte, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil, errors.New("invalid OpenAI stream usage payload")
+	}
+	cacheReadTokens := max(adjustedUsage.CacheReadInputTokens, 0)
+	cacheWriteTokens := max(adjustedUsage.CacheCreationInputTokens, 0)
+	usagePaths := []string{"usage", "response.usage", "data.usage", "data.response.usage"}
+	cacheReadPaths := []string{
+		"input_tokens_details.cached_tokens",
+		"prompt_tokens_details.cached_tokens",
+		"cache_read_input_tokens",
+		"cache_read_tokens",
+		"cached_tokens",
+	}
+	cacheWriteAliasPaths := []string{
+		"input_tokens_details.cache_creation_tokens",
+		"prompt_tokens_details.cache_creation_tokens",
+		"cache_creation_input_tokens",
+		"cache_write_input_tokens",
+		"cache_creation_tokens",
+		"cache_write_tokens",
+	}
+
+	rewritten := body
+	foundUsage := false
+	updated := false
+	for _, usagePath := range usagePaths {
+		usageNode := gjson.GetBytes(body, usagePath)
+		if _, ok := openAIUsageFromGJSON(usageNode); !ok {
+			continue
+		}
+		foundUsage = true
+
+		usesResponsesFields := usageNode.Get("input_tokens").Exists() ||
+			usageNode.Get("output_tokens").Exists() ||
+			usageNode.Get("input_tokens_details").Exists() ||
+			usageNode.Get("output_tokens_details").Exists()
+		usesChatFields := usageNode.Get("prompt_tokens").Exists() ||
+			usageNode.Get("completion_tokens").Exists() ||
+			usageNode.Get("prompt_tokens_details").Exists() ||
+			usageNode.Get("completion_tokens_details").Exists()
+		if !usesResponsesFields && !usesChatFields {
+			usesResponsesFields = true
+		}
+
+		type usageTokenField struct {
+			name  string
+			value int
+		}
+		tokenFields := []usageTokenField{{
+			name:  "total_tokens",
+			value: max(adjustedUsage.InputTokens, 0) + max(adjustedUsage.OutputTokens, 0),
+		}}
+		if usesResponsesFields {
+			tokenFields = append(tokenFields,
+				usageTokenField{name: "input_tokens", value: max(adjustedUsage.InputTokens, 0)},
+				usageTokenField{name: "output_tokens", value: max(adjustedUsage.OutputTokens, 0)},
+			)
+		}
+		if usesChatFields {
+			tokenFields = append(tokenFields,
+				usageTokenField{name: "prompt_tokens", value: max(adjustedUsage.InputTokens, 0)},
+				usageTokenField{name: "completion_tokens", value: max(adjustedUsage.OutputTokens, 0)},
+			)
+		}
+		for _, field := range tokenFields {
+			var err error
+			rewritten, err = sjson.SetBytes(rewritten, usagePath+"."+field.name, field.value)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite OpenAI usage %s.%s: %w", usagePath, field.name, err)
+			}
+		}
+		if usesResponsesFields {
+			path := usagePath + ".input_tokens_details.cache_write_tokens"
+			var err error
+			rewritten, err = sjson.SetBytes(rewritten, path, cacheWriteTokens)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite OpenAI cache-write usage %s: %w", path, err)
+			}
+		}
+		if usesChatFields {
+			path := usagePath + ".prompt_tokens_details.cache_write_tokens"
+			var err error
+			rewritten, err = sjson.SetBytes(rewritten, path, cacheWriteTokens)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite OpenAI cache-write usage %s: %w", path, err)
+			}
+		}
+		for _, cacheWritePath := range cacheWriteAliasPaths {
+			path := usagePath + "." + cacheWritePath
+			if !gjson.GetBytes(body, path).Exists() {
+				continue
+			}
+			var err error
+			rewritten, err = sjson.SetBytes(rewritten, path, cacheWriteTokens)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite OpenAI cache-write usage %s: %w", path, err)
+			}
+		}
+
+		for _, cacheReadPath := range cacheReadPaths {
+			path := usagePath + "." + cacheReadPath
+			if !gjson.GetBytes(body, path).Exists() {
+				continue
+			}
+			var err error
+			rewritten, err = sjson.SetBytes(rewritten, path, cacheReadTokens)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite OpenAI cache-read usage %s: %w", path, err)
+			}
+			updated = true
+		}
+	}
+
+	if !foundUsage {
+		return nil, errors.New("OpenAI stream usage payload has no usage object")
+	}
+	if !updated {
+		if cacheReadTokens == 0 {
+			return rewritten, nil
+		}
+		return nil, errors.New("OpenAI stream usage payload has no cache-read field")
+	}
+	return rewritten, nil
+}
+
+func extractOpenAIStreamUsageObject(body []byte) []byte {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil
+	}
+	for _, path := range []string{"usage", "response.usage", "data.usage", "data.response.usage"} {
+		usage := gjson.GetBytes(body, path)
+		if usage.Exists() && usage.IsObject() {
+			return append([]byte(nil), usage.Raw...)
+		}
+	}
+	return nil
+}
+
+// rewriteOpenAIStreamUsageObjectsFromSnapshot 将重复成功终态中的所有 usage
+// 对象替换为首个已完成划拨的权威对象。直接复用原始 JSON 可以保留 reasoning、
+// image 等兼容扩展字段，同时保证 token 总数与 cache 明细不会在后续帧漂移。
+func rewriteOpenAIStreamUsageObjectsFromSnapshot(body, usageObject []byte) ([]byte, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil, errors.New("invalid OpenAI stream usage payload")
+	}
+	if len(usageObject) == 0 || !gjson.ValidBytes(usageObject) || !gjson.ParseBytes(usageObject).IsObject() {
+		return nil, errors.New("invalid OpenAI stream usage snapshot")
+	}
+
+	rewritten := body
+	for _, path := range []string{"usage", "response.usage", "data.usage", "data.response.usage"} {
+		usage := gjson.GetBytes(body, path)
+		if !usage.Exists() || !usage.IsObject() {
+			continue
+		}
+		var err error
+		rewritten, err = sjson.SetRawBytes(rewritten, path, usageObject)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite OpenAI usage snapshot %s: %w", path, err)
+		}
+	}
+	return rewritten, nil
 }
 
 // openAIResponsesCompletedEventIsEmpty reports whether a response.completed /

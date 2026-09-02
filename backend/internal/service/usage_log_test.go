@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -14,8 +15,21 @@ type memoryCacheHitTargetTracker struct {
 	states map[string][2]int64
 }
 
+type failingCacheHitTargetTracker struct {
+	err error
+}
+
+func (f failingCacheHitTargetTracker) AdjustCacheHitToTarget(
+	context.Context,
+	string,
+	int64, int64, int64, int64, int64, int64, int64, int64,
+) (CacheHitTargetAdjustment, error) {
+	return CacheHitTargetAdjustment{}, f.err
+}
+
 func (m *memoryCacheHitTargetTracker) AdjustCacheHitToTarget(
 	_ context.Context,
+	_ string,
 	userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens int64,
 ) (CacheHitTargetAdjustment, error) {
 	m.mu.Lock()
@@ -193,7 +207,7 @@ func TestApplyCacheHitTargetToInput_CumulativeUserGroupTarget(t *testing.T) {
 	require.Equal(t, 90, third.CacheReadTokens)
 }
 
-func TestApplyCacheHitTargetToInput_PerRequestFallback(t *testing.T) {
+func TestApplyCacheHitTargetToInput_TrackerUnavailableDoesNotAdjust(t *testing.T) {
 	t.Parallel()
 
 	groupID := int64(10)
@@ -210,9 +224,72 @@ func TestApplyCacheHitTargetToInput_PerRequestFallback(t *testing.T) {
 	adjustment, err := applyCacheHitTargetToInput(context.Background(), tokens, apiKey, 102, nil)
 
 	require.NoError(t, err)
-	require.Equal(t, 4, adjustment.ShiftedTokens)
-	require.Equal(t, 10, tokens.InputTokens)
-	require.Equal(t, 90, tokens.CacheReadTokens)
+	require.False(t, adjustment.Enabled)
+	require.Equal(t, 6, tokens.InputTokens)
+	require.Equal(t, 94, tokens.CacheReadTokens)
+}
+
+func TestApplyCacheHitTargetToInput_MissingCumulativeDimensionDoesNotAdjust(t *testing.T) {
+	t.Parallel()
+
+	validGroupID := int64(10)
+	for _, tc := range []struct {
+		name    string
+		userID  int64
+		groupID int64
+	}{
+		{name: "missing user", userID: 0, groupID: validGroupID},
+		{name: "missing group", userID: 102, groupID: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			groupID := tc.groupID
+			apiKey := &APIKey{
+				GroupID: &groupID,
+				Group: &Group{
+					CacheHitQuarterToInput:         true,
+					CacheHitTargetPercent:          90,
+					CacheHitTargetTolerancePercent: 0.5,
+				},
+			}
+			tokens := &UsageTokens{InputTokens: 6, CacheReadTokens: 94}
+
+			adjustment, err := applyCacheHitTargetToInput(
+				context.Background(), tokens, apiKey, tc.userID, &memoryCacheHitTargetTracker{},
+			)
+
+			require.NoError(t, err)
+			require.False(t, adjustment.Enabled)
+			require.Equal(t, 6, tokens.InputTokens)
+			require.Equal(t, 94, tokens.CacheReadTokens)
+		})
+	}
+}
+
+func TestApplyCacheHitTargetToInput_TrackerErrorDoesNotAdjust(t *testing.T) {
+	t.Parallel()
+
+	groupID := int64(12)
+	apiKey := &APIKey{
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                             groupID,
+			CacheHitQuarterToInput:         true,
+			CacheHitTargetPercent:          90,
+			CacheHitTargetTolerancePercent: 0.5,
+		},
+	}
+	tokens := &UsageTokens{InputTokens: 6, CacheReadTokens: 94}
+	trackerErr := errors.New("tracker unavailable")
+
+	adjustment, err := applyCacheHitTargetToInput(
+		context.Background(), tokens, apiKey, 104, failingCacheHitTargetTracker{err: trackerErr},
+	)
+
+	require.ErrorIs(t, err, trackerErr)
+	require.False(t, adjustment.Enabled)
+	require.Equal(t, 6, tokens.InputTokens)
+	require.Equal(t, 94, tokens.CacheReadTokens)
 }
 
 func TestApplyCacheHitTargetToInput_ToleranceAndIntegerRecovery(t *testing.T) {
@@ -245,6 +322,10 @@ func TestApplyCacheHitTargetToInput_ToleranceAndIntegerRecovery(t *testing.T) {
 	require.Equal(t, 1, second.CacheReadTokens)
 	require.InDelta(t, 90, adjustment.CumulativeHitPercent, 1e-9)
 
-	// 恰好位于容差上沿也不触发。
-	require.Zero(t, cacheHitShiftForSingleRequest(200, 181, 9000, 50))
+	// 单个全新累计恰好位于容差上沿也不触发。
+	boundary := &UsageTokens{InputTokens: 19, CacheReadTokens: 181}
+	adjustment, err = applyCacheHitTargetToInput(context.Background(), boundary, apiKey, 104, tracker)
+	require.NoError(t, err)
+	require.Zero(t, adjustment.ShiftedTokens)
+	require.Equal(t, 181, boundary.CacheReadTokens)
 }

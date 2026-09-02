@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -263,10 +265,11 @@ func (u *UsageLog) SyncRequestTypeAndLegacyFields() {
 const cacheHitTargetBasisPoints = int64(10000)
 
 // CacheHitTargetTracker 是 GatewayCache 的可选扩展。生产 Redis 实现通过原子脚本按
-// 用户+分组累计控制；测试缓存与降级路径无需实现该接口。
+// 用户+分组累计控制；未实现该接口的测试缓存与降级路径会跳过划拨。
 type CacheHitTargetTracker interface {
 	AdjustCacheHitToTarget(
 		ctx context.Context,
+		operationID string,
 		userID, groupID, targetBasisPoints, toleranceBasisPoints, halfLifeSeconds, stateVersion, promptTokens, cacheReadTokens int64,
 	) (CacheHitTargetAdjustment, error)
 }
@@ -324,26 +327,11 @@ func groupCacheHitTarget(apiKey *APIKey) (cacheHitTargetConfig, bool) {
 	}, true
 }
 
-// cacheHitShiftForSingleRequest 是 Redis 不可用时的安全降级：只控制本次请求命中率，
-// 只有超过目标加容差时才回调到目标，避免在边界附近频繁划拨。
-func cacheHitShiftForSingleRequest(promptTokens, cacheReadTokens, targetBasisPoints, toleranceBasisPoints int64) int64 {
-	if promptTokens <= 0 || cacheReadTokens <= 0 {
-		return 0
-	}
-	triggerBasisPoints := min(targetBasisPoints+toleranceBasisPoints, cacheHitTargetBasisPoints)
-	triggerAllowed := (promptTokens/cacheHitTargetBasisPoints)*triggerBasisPoints +
-		(promptTokens%cacheHitTargetBasisPoints)*triggerBasisPoints/cacheHitTargetBasisPoints
-	if cacheReadTokens <= triggerAllowed {
-		return 0
-	}
-	targetAllowed := (promptTokens/cacheHitTargetBasisPoints)*targetBasisPoints +
-		(promptTokens%cacheHitTargetBasisPoints)*targetBasisPoints/cacheHitTargetBasisPoints
-	return cacheReadTokens - targetAllowed
-}
-
 // applyCacheHitTargetToInput 保持 token 总量不变，只把达到累计目标所必需的缓存读取
 // token 重分类为普通输入。即便本次 cache_read=0 也会更新累计分母，使后续请求不会被多调。
-func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey *APIKey, userID int64, tracker any) (adjustment CacheHitTargetAdjustment, trackerErr error) {
+// Tracker 缺失、累计维度不完整或返回错误时放弃本次划拨并保留原 usage，不使用
+// 单请求 fallback。
+func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey *APIKey, userID int64, tracker any) (CacheHitTargetAdjustment, error) {
 	if tokens == nil {
 		return CacheHitTargetAdjustment{}, nil
 	}
@@ -354,7 +342,7 @@ func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey
 	input := max(tokens.InputTokens, 0)
 	cacheCreation := max(tokens.CacheCreationTokens, 0)
 	cacheRead := max(tokens.CacheReadTokens, 0)
-	adjustment = CacheHitTargetAdjustment{
+	adjustment := CacheHitTargetAdjustment{
 		Enabled:                 true,
 		OriginalInputTokens:     input,
 		OriginalCacheReadTokens: cacheRead,
@@ -367,38 +355,35 @@ func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey
 		return adjustment, nil
 	}
 
-	shift := cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), config.targetBasisPoints, config.toleranceBasisPoints)
-	adjustment.CumulativePromptTokens = promptTokens
-	adjustment.CumulativeCacheReadTokens = int64(cacheRead) - shift
-	if cumulative, ok := tracker.(CacheHitTargetTracker); ok {
-		groupID := valueOrZero(apiKey.GroupID)
-		if groupID == 0 && apiKey.Group != nil {
-			groupID = apiKey.Group.ID
-		}
-		if groupID > 0 && userID > 0 {
-			var err error
-			var cumulativeAdjustment CacheHitTargetAdjustment
-			cumulativeAdjustment, err = cumulative.AdjustCacheHitToTarget(
-				ctx,
-				userID,
-				groupID,
-				config.targetBasisPoints,
-				config.toleranceBasisPoints,
-				config.halfLifeSeconds,
-				config.stateVersion,
-				promptTokens,
-				int64(cacheRead),
-			)
-			if err != nil {
-				trackerErr = err
-				shift = cacheHitShiftForSingleRequest(promptTokens, int64(cacheRead), config.targetBasisPoints, config.toleranceBasisPoints)
-			} else {
-				shift = int64(cumulativeAdjustment.ShiftedTokens)
-				adjustment.CumulativePromptTokens = cumulativeAdjustment.CumulativePromptTokens
-				adjustment.CumulativeCacheReadTokens = cumulativeAdjustment.CumulativeCacheReadTokens
-			}
-		}
+	cumulative, ok := tracker.(CacheHitTargetTracker)
+	if !ok {
+		return CacheHitTargetAdjustment{}, nil
 	}
+	groupID := valueOrZero(apiKey.GroupID)
+	if groupID == 0 && apiKey.Group != nil {
+		groupID = apiKey.Group.ID
+	}
+	if groupID <= 0 || userID <= 0 {
+		return CacheHitTargetAdjustment{}, nil
+	}
+	cumulativeAdjustment, err := cumulative.AdjustCacheHitToTarget(
+		ctx,
+		uuid.NewString(),
+		userID,
+		groupID,
+		config.targetBasisPoints,
+		config.toleranceBasisPoints,
+		config.halfLifeSeconds,
+		config.stateVersion,
+		promptTokens,
+		int64(cacheRead),
+	)
+	if err != nil {
+		return CacheHitTargetAdjustment{}, err
+	}
+	shift := int64(cumulativeAdjustment.ShiftedTokens)
+	adjustment.CumulativePromptTokens = cumulativeAdjustment.CumulativePromptTokens
+	adjustment.CumulativeCacheReadTokens = cumulativeAdjustment.CumulativeCacheReadTokens
 	if shift < 0 {
 		shift = 0
 	}
@@ -411,7 +396,7 @@ func applyCacheHitTargetToInput(ctx context.Context, tokens *UsageTokens, apiKey
 	if adjustment.CumulativePromptTokens > 0 {
 		adjustment.CumulativeHitPercent = float64(adjustment.CumulativeCacheReadTokens) * 100 / float64(adjustment.CumulativePromptTokens)
 	}
-	return adjustment, trackerErr
+	return adjustment, nil
 }
 
 func applyCacheHitTargetAudit(log *UsageLog, adjustment CacheHitTargetAdjustment) {

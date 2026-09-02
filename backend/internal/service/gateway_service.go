@@ -695,6 +695,9 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 	SearchCount        int
 	AudioUsage         *AudioUsage
+	// CacheHitTargetAdjustment 在 OpenAI 协议流式终止帧发往下游前只计算一次；
+	// 用量计费只消费该快照，不得再次推进累计 tracker。
+	CacheHitTargetAdjustment *CacheHitTargetAdjustment
 }
 
 // GatewayFailureStage identifies which request stage failed. The zero value is

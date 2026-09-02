@@ -216,6 +216,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	s.updateGrokUsageFromResponse(stateCtx, account, resp.Header, resp.StatusCode)
 
 	var usage *OpenAIUsage
+	var cacheHitAdjustment *CacheHitTargetAdjustment
 	var firstTokenMs *int
 	responseID := ""
 	searchCount := 0
@@ -235,6 +236,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			return nil, err
 		}
 		usage = streamResult.usage
+		cacheHitAdjustment = streamResult.cacheHitAdjustment
 		firstTokenMs = streamResult.firstTokenMs
 		responseID = strings.TrimSpace(streamResult.responseID)
 		searchCount = streamResult.searchCount
@@ -257,18 +259,19 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	}
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(patchedBody, originalModel)
 	result := &OpenAIForwardResult{
-		RequestID:       firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           originalModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		ResponseHeaders: resp.Header.Clone(),
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:                firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+		ResponseID:               responseID,
+		Usage:                    *usage,
+		Model:                    originalModel,
+		UpstreamModel:            upstreamModel,
+		ReasoningEffort:          reasoningEffort,
+		ServiceTier:              serviceTier,
+		Stream:                   reqStream,
+		OpenAIWSMode:             false,
+		ResponseHeaders:          resp.Header.Clone(),
+		Duration:                 time.Since(startTime),
+		FirstTokenMs:             firstTokenMs,
+		CacheHitTargetAdjustment: cacheHitAdjustment,
 	}
 	// Propagate search/image counters from the shared Responses handler — without
 	// this, stream/JSON counting runs but search_price_per_1k / image bills never apply.
