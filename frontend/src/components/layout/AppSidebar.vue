@@ -702,6 +702,7 @@ const ChevronDownIcon = {
 // yet. Admin-only flags (not in public settings) stay inline below.
 const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
+const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagCheckin = makeSidebarFlag(FeatureFlags.checkin)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
@@ -723,8 +724,7 @@ function customMenuToNavItem(item: { id: string; label: string; icon_svg: string
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 模型广场 → 自定义菜单 → 模型测试台 → 订阅/支付 → 兑换/资料。
-// 模型广场聚合展示模型、分组与倍率后价格，用户侧不再暴露渠道名和渠道状态。
+// 条目顺序：密钥 → 用量 → 模型广场 → 可用渠道 → 自定义菜单 → 模型测试台 → 订阅/支付 → 兑换/资料。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -736,6 +736,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/account-pool', label: t('nav.accountPool'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/model-market', label: t('nav.modelMarket'), icon: ChannelIcon, hideInSimpleMode: true },
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     ...customMenuItemsForUser.value.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },

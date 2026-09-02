@@ -86,3 +86,21 @@ describe('AppSidebar 抽奖功能开关', () => {
     expect(lotteryItems.every((line) => line.includes('featureFlag: flagLottery'))).toBe(true)
   })
 })
+
+describe('AppSidebar 可用渠道功能开关', () => {
+  it('在模型广场后展示受可用渠道开关控制的入口', () => {
+    const modelMarketIndex = componentSource.indexOf("path: '/model-market'")
+    const availableChannelsIndex = componentSource.indexOf("path: '/available-channels'")
+    const customMenuIndex = componentSource.indexOf('...customMenuItemsForUser.value.map(customMenuToNavItem)')
+    const availableChannelsItem = componentSource
+      .split('\n')
+      .find((line) => line.includes("path: '/available-channels'"))
+
+    expect(componentSource).toContain(
+      'const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)',
+    )
+    expect(availableChannelsItem).toContain('featureFlag: flagAvailableChannels')
+    expect(availableChannelsIndex).toBeGreaterThan(modelMarketIndex)
+    expect(customMenuIndex).toBeGreaterThan(availableChannelsIndex)
+  })
+})
