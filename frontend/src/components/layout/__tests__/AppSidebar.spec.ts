@@ -104,3 +104,18 @@ describe('AppSidebar 可用渠道功能开关', () => {
     expect(customMenuIndex).toBeGreaterThan(availableChannelsIndex)
   })
 })
+
+describe('AppSidebar 渠道状态功能开关', () => {
+  it('用户端和管理端渠道监控入口都绑定渠道监控功能标记', () => {
+    const monitorItems = componentSource
+      .split('\n')
+      .filter((line) => line.includes("path: '/monitor'") || line.includes("path: '/admin/channels/monitor'"))
+
+    expect(monitorItems).toHaveLength(2)
+    expect(monitorItems.every((line) => line.includes('featureFlag: flagChannelMonitor'))).toBe(true)
+
+    const userItem = monitorItems.find((line) => line.includes("path: '/monitor'"))
+    expect(userItem).toContain("label: t('nav.channelStatus')")
+    expect(userItem).toContain('icon: SignalIcon')
+  })
+})

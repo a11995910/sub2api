@@ -724,7 +724,8 @@ function customMenuToNavItem(item: { id: string; label: string; icon_svg: string
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 模型广场 → 可用渠道 → 自定义菜单 → 模型测试台 → 订阅/支付 → 兑换/资料。
+// 条目顺序：密钥 → 用量 → 模型广场 → 可用渠道 → 渠道状态 → 自定义菜单 → 模型测试台 → 订阅/支付 → 兑换/资料。
+// 可用渠道和渠道状态入口分别跟随各自的功能开关。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -737,6 +738,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/account-pool', label: t('nav.accountPool'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/model-market', label: t('nav.modelMarket'), icon: ChannelIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     ...customMenuItemsForUser.value.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
@@ -761,8 +763,7 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard).
-// Admins access 可用渠道 from this section just like regular users — there is no
-// separate admin entry, since the page is purely a user-facing view.
+// Admins access 可用渠道 and 渠道状态 from this section just like regular users.
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
 
 // Custom menu items filtered by visibility
