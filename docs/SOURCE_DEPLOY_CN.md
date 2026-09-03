@@ -1,6 +1,6 @@
 # Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库与正式 VPS 的固定上线流程。项目只使用正式 VPS `207.57.145.15`，在同一台服务器上通过相互隔离的 staging 和 prod 完成预发布验证与正式切换。
+本文档记录当前源码仓库与正式 VPS 的固定上线流程。项目只使用正式 VPS `205.185.113.15`，在同一台服务器上通过相互隔离的 staging 和 prod 完成预发布验证与正式切换。
 
 ## 强制原则
 
@@ -10,7 +10,7 @@
 - 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
 - 正式 VPS 的 `/opt/sub2api/repo` 必须保持在 `main` 并拉取到本次构建对应的已推送 `origin/main` commit，确保运行镜像有可追溯源码。
 - 正式 VPS 登录账户为 `root`，本机 SSH 别名为 `sub2api-new-vps`。
-- 正式 VPS 默认使用 `deploy/Dockerfile` 构建完整 Docker 镜像；只有资源核对确认紧张时才使用低资源构建参数。
+- 正式 VPS 使用 `deploy/Dockerfile` 构建完整 Docker 镜像；构建前统一执行资源门禁，根据在线 CPU、可用内存和配置上限动态设置 `GOMAXPROCS`。
 - 镜像化流程必须执行 `docker buildx build -f deploy/Dockerfile ... --load .`，由 Dockerfile 先构建前端，再把前端资源嵌入 Go 后端镜像。
 - 不允许只执行 `go build -tags embed` 就覆盖线上；必须确认前端资源、后端二进制、资源文件和源码 commit 属于同一次构建。
 - 内嵌前端由后端直接提供时，`/assets/*` 会返回长期缓存头，HTML/JS/CSS/JSON 会按浏览器 `Accept-Encoding` 返回 gzip 压缩；外层 Nginx 或 Caddy 仍可继续做 HTTPS、HTTP/2 和代理层优化。
@@ -115,7 +115,7 @@ git log -1 --oneline
 
 | 项目 | 当前值 |
 | --- | --- |
-| 正式 VPS | `207.57.145.15` |
+| 正式 VPS | `205.185.113.15` |
 | 登录账户 | `root` |
 | SSH 别名 | `sub2api-new-vps` |
 | Git 分支 | `/opt/sub2api/repo`、staging、prod 都只使用 `main` |
@@ -158,7 +158,7 @@ sha256sum deploy/release-prod /opt/sub2api/scripts/release-prod
 
 ## 正式 VPS 镜像化部署流程
 
-正式 VPS `207.57.145.15` 默认目录结构如下：
+正式 VPS `205.185.113.15` 默认目录结构如下：
 
 ```bash
 /opt/sub2api/
@@ -462,7 +462,7 @@ install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/rele
 /opt/sub2api/scripts/release-staging "$expected_commit"
 ```
 
-脚本先检查磁盘、内存、一分钟负载和 prod 健康状态，再用构建锁和 `GOMAXPROCS=2` 构建目标 commit。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。异机备份凭证和 prod 必须使用这次输出的同一 commit 与 run ID。
+脚本先检查磁盘、总内存、可用内存、一分钟负载和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 4 vCPU、约 16GiB 内存、4GiB Swap、约 276GiB 可用磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，负载低于 CPU 容量的 75%，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，新机通常为 4）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。异机备份凭证和 prod 必须使用这次输出的同一 commit 与 run ID。
 
 新正式 VPS 迁移期的首次 staging 发布可能早于 prod 迁移。经用户明确授权后，可在目标主机调用 `/opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod`。该模式会 fail-closed 核对 prod `.env`、compose override、compose 容器和 prod 数据文件均不存在，并在 `staging-result.json` 记录 `bootstrap_without_prod: true`。只要目标主机出现任一 prod 状态，该模式必须拒绝执行；正常发布继续要求同机 prod 健康。
 

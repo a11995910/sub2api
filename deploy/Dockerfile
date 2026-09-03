@@ -49,7 +49,7 @@ ARG COMMIT=docker
 ARG DATE
 ARG GOPROXY
 ARG GOSUMDB
-ARG GOMAXPROCS
+ARG GOMAXPROCS=2
 
 ENV GOPROXY=${GOPROXY}
 ENV GOSUMDB=${GOSUMDB}
@@ -74,7 +74,7 @@ COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
 RUN VERSION_VALUE="${VERSION}" && \
     if [ -z "${VERSION_VALUE}" ]; then VERSION_VALUE="$(./scripts/resolve-version.sh)"; fi && \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
-    CGO_ENABLED=0 GOOS=linux go build \
+    GOMAXPROCS="${GOMAXPROCS}" CGO_ENABLED=0 GOOS=linux go build \
     -tags embed \
     -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=docker" \
     -o /app/sub2api \

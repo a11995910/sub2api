@@ -82,6 +82,12 @@ compose_prod() {
     -f "$prod_override" "$@"
 }
 
+build_resources="$("$release_gates" check-build-resources "$repo_dir")"
+IFS='|' read -r build_gomaxprocs available_disk_kb total_mem_kb available_mem_kb cpu_count load_one <<< "$build_resources"
+printf 'prod 资源检查：磁盘=%sGiB 内存=%sMiB/%sMiB CPU=%s GOMAXPROCS=%s 负载=%s\n' \
+  "$((available_disk_kb / 1024 / 1024))" "$((available_mem_kb / 1024))" "$((total_mem_kb / 1024))" \
+  "$cpu_count" "$build_gomaxprocs" "$load_one"
+
 exec 9>/var/lock/sub2api-build.lock
 flock -n 9
 
@@ -122,7 +128,7 @@ ensure_target_image() {
         -f deploy/Dockerfile \
         --build-arg COMMIT="$short_commit" \
         --build-arg DATE="$commit_date" \
-        --build-arg GOMAXPROCS=2 \
+        --build-arg GOMAXPROCS="$build_gomaxprocs" \
         -t "$target_image" \
         --load .
     fi

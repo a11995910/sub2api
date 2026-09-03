@@ -88,6 +88,50 @@ grep -Fqx 'external_backup_archive=sub2api-prod-20260816T134952Z.dump.zst' "$rec
 grep -Fqx "external_backup_sha256=$(printf 'a%.0s' {1..64})" "$receipt_output"
 grep -Fqx 'external_backup_verified_at=2026-08-16T14:00:00+00:00' "$receipt_output"
 
+resource_dir="$tmp_dir/resource"
+mkdir -p "$resource_dir"
+cat > "$tmp_dir/meminfo" <<'EOF'
+MemTotal:       16777216 kB
+MemAvailable:   12582912 kB
+EOF
+printf '0.50 0.40 0.30 2/100 1234\n' > "$tmp_dir/loadavg"
+resource_output="$(env \
+  SUB2API_BUILD_MIN_DISK_GIB=1 \
+  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
+  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
+  SUB2API_BUILD_CPU_COUNT=4 \
+  "$gate" check-build-resources "$resource_dir")"
+resource_gomaxprocs="$(printf '%s\n' "$resource_output" | cut -d '|' -f 1)"
+test "$resource_gomaxprocs" -eq 4
+run_expect_fail env \
+  SUB2API_BUILD_MIN_DISK_GIB=1 \
+  SUB2API_BUILD_MIN_AVAILABLE_MEM_GIB=13 \
+  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
+  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
+  SUB2API_BUILD_CPU_COUNT=4 \
+  "$gate" check-build-resources "$resource_dir"
+printf '3.50 0.40 0.30 2/100 1234\n' > "$tmp_dir/loadavg-high"
+run_expect_fail env \
+  SUB2API_BUILD_MIN_DISK_GIB=1 \
+  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
+  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg-high" \
+  SUB2API_BUILD_CPU_COUNT=4 \
+  "$gate" check-build-resources "$resource_dir"
+run_expect_fail env \
+  SUB2API_BUILD_MIN_DISK_GIB=1 \
+  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
+  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
+  SUB2API_BUILD_CPU_COUNT=4 \
+  SUB2API_BUILD_GOMAXPROCS=5 \
+  "$gate" check-build-resources "$resource_dir"
+printf 'MemTotal:       8388608 kB\nMemAvailable:   6291456 kB\n' > "$tmp_dir/meminfo-low-total"
+run_expect_fail env \
+  SUB2API_BUILD_MIN_DISK_GIB=1 \
+  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo-low-total" \
+  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
+  SUB2API_BUILD_CPU_COUNT=4 \
+  "$gate" check-build-resources "$resource_dir"
+
 fake_bin="$tmp_dir/bin"
 mkdir -p "$fake_bin"
 state_file="$tmp_dir/docker-states"

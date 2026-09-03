@@ -104,7 +104,7 @@ npm install -g pnpm
 1. 本地更新 `origin/main`，执行 `git fetch upstream --prune`，记录目标上游完整 SHA 和当前 `origin/main` 基线。
 2. 在本地 `main` 或隔离 worktree 执行三方合并，逐项处理冲突，检查冲突标记、`git diff --check`、生成文件和必要测试。
 3. 生成保留双方父提交的 merge commit；重新 fetch 并确认上游 SHA 与 `origin/main` 基线未变化后，普通 push `main`，禁止 force push。
-4. 手工 SSH 到 `207.57.145.15`，安装并执行 `deploy/release-staging <完整 commit>`；记录脚本输出的数字 run ID。
+4. 手工 SSH 到 `205.185.113.15`（`sub2api-new-vps`），安装并执行 `deploy/release-staging <完整 commit>`；记录脚本输出的数字 run ID。
 5. 用户验收 staging 后明确确认 prod，人工生成绑定同一 commit/run ID 的异机备份凭证，再执行 `deploy/release-prod`。
 
 完整命令和服务器目录见 [`docs/SOURCE_DEPLOY_CN.md`](docs/SOURCE_DEPLOY_CN.md)。任何机器人、定时任务或

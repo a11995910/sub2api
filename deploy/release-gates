@@ -6,6 +6,7 @@ usage() {
 用法：
   release-gates validate-backup-receipt <receipt> <target-commit> <staging-run-id> [now-epoch]
   release-gates print-backup-receipt <receipt>
+  release-gates check-build-resources <repo-dir>
   release-gates wait-container-healthy <container-id> <timeout-seconds> <interval-seconds>
   release-gates wait-http <url> <timeout-seconds> <interval-seconds>
 EOF
@@ -124,6 +125,85 @@ print(f"external_backup_verified_at={payload['verified_at']}")
 PY
 }
 
+check_build_resources() {
+  if [[ $# -ne 1 ]]; then
+    usage >&2
+    return 2
+  fi
+  local repo_dir="$1"
+  local min_disk_gib="${SUB2API_BUILD_MIN_DISK_GIB:-20}"
+  local min_total_mem_gib="${SUB2API_BUILD_MIN_TOTAL_MEM_GIB:-12}"
+  local min_available_mem_gib="${SUB2API_BUILD_MIN_AVAILABLE_MEM_GIB:-4}"
+  local load_limit_percent="${SUB2API_BUILD_LOAD_LIMIT_PERCENT:-75}"
+  local max_gomaxprocs="${SUB2API_BUILD_MAX_GOMAXPROCS:-8}"
+  local meminfo_path="${SUB2API_BUILD_MEMINFO_PATH:-/proc/meminfo}"
+  local loadavg_path="${SUB2API_BUILD_LOADAVG_PATH:-/proc/loadavg}"
+  local available_disk_kb total_mem_kb available_mem_kb cpu_count load_one
+  local build_gomaxprocs memory_limited_procs
+
+  test -d "$repo_dir"
+  [[ "$min_disk_gib" =~ ^[1-9][0-9]*$ ]]
+  [[ "$min_total_mem_gib" =~ ^[1-9][0-9]*$ ]]
+  [[ "$min_available_mem_gib" =~ ^[1-9][0-9]*$ ]]
+  [[ "$load_limit_percent" =~ ^[1-9][0-9]?$|^100$ ]]
+  [[ "$max_gomaxprocs" =~ ^[1-9][0-9]*$ ]]
+  test -r "$meminfo_path"
+  test -r "$loadavg_path"
+
+  available_disk_kb="$(df -Pk "$repo_dir" | awk 'NR == 2 {print $4}')"
+  total_mem_kb="$(awk '/MemTotal:/ {print $2; exit}' "$meminfo_path")"
+  available_mem_kb="$(awk '/MemAvailable:/ {print $2; exit}' "$meminfo_path")"
+  load_one="$(awk '{print $1}' "$loadavg_path")"
+  cpu_count="${SUB2API_BUILD_CPU_COUNT:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)}"
+
+  [[ "$available_disk_kb" =~ ^[0-9]+$ ]]
+  [[ "$total_mem_kb" =~ ^[0-9]+$ ]]
+  [[ "$available_mem_kb" =~ ^[0-9]+$ ]]
+  [[ "$cpu_count" =~ ^[1-9][0-9]*$ ]]
+  [[ "$load_one" =~ ^[0-9]+([.][0-9]+)?$ ]]
+  if ! (( available_disk_kb >= min_disk_gib * 1024 * 1024 )); then
+    printf '构建资源不足：可用磁盘=%sKiB，最低要求=%sGiB\n' \
+      "$available_disk_kb" "$min_disk_gib" >&2
+    return 1
+  fi
+  if ! (( total_mem_kb >= min_total_mem_gib * 1024 * 1024 )); then
+    printf '构建资源不足：总内存=%sKiB，最低要求=%sGiB\n' \
+      "$total_mem_kb" "$min_total_mem_gib" >&2
+    return 1
+  fi
+  if ! (( available_mem_kb >= min_available_mem_gib * 1024 * 1024 )); then
+    printf '构建资源不足：可用内存=%sKiB，最低要求=%sGiB\n' \
+      "$available_mem_kb" "$min_available_mem_gib" >&2
+    return 1
+  fi
+  if ! awk -v load="$load_one" -v cpu="$cpu_count" -v limit="$load_limit_percent" \
+    'BEGIN { exit !(load < cpu * limit / 100) }'; then
+    printf '构建资源不足：一分钟负载=%s，CPU=%s，允许上限为 CPU 的 %s%%\n' \
+      "$load_one" "$cpu_count" "$load_limit_percent" >&2
+    return 1
+  fi
+
+  build_gomaxprocs="$cpu_count"
+  (( build_gomaxprocs > max_gomaxprocs )) && build_gomaxprocs="$max_gomaxprocs"
+  memory_limited_procs=$((available_mem_kb / (2 * 1024 * 1024)))
+  (( build_gomaxprocs > memory_limited_procs )) && build_gomaxprocs="$memory_limited_procs"
+  if [[ -n "${SUB2API_BUILD_GOMAXPROCS:-}" ]]; then
+    [[ "$SUB2API_BUILD_GOMAXPROCS" =~ ^[1-9][0-9]*$ ]]
+    build_gomaxprocs="$SUB2API_BUILD_GOMAXPROCS"
+  fi
+  if ! (( build_gomaxprocs >= 2 &&
+    build_gomaxprocs <= cpu_count &&
+    build_gomaxprocs <= max_gomaxprocs &&
+    build_gomaxprocs <= memory_limited_procs )); then
+    printf '构建并行度无效：GOMAXPROCS=%s，CPU=%s，内存上限=%s，配置上限=%s\n' \
+      "$build_gomaxprocs" "$cpu_count" "$memory_limited_procs" "$max_gomaxprocs" >&2
+    return 1
+  fi
+
+  printf '%s|%s|%s|%s|%s|%s\n' \
+    "$build_gomaxprocs" "$available_disk_kb" "$total_mem_kb" "$available_mem_kb" "$cpu_count" "$load_one"
+}
+
 validate_wait_arguments() {
   local timeout_seconds="$1" interval_seconds="$2"
   [[ "$timeout_seconds" =~ ^[0-9]+$ ]]
@@ -189,6 +269,10 @@ case "${1:-}" in
   print-backup-receipt)
     shift
     print_backup_receipt "$@"
+    ;;
+  check-build-resources)
+    shift
+    check_build_resources "$@"
     ;;
   wait-container-healthy)
     shift
