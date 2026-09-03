@@ -176,8 +176,8 @@ check_build_resources() {
       "$available_mem_kb" "$min_available_mem_gib" >&2
     return 1
   fi
-  if ! awk -v load="$load_one" -v cpu="$cpu_count" -v limit="$load_limit_percent" \
-    'BEGIN { exit !(load < cpu * limit / 100) }'; then
+  if ! awk -v load_value="$load_one" -v cpu="$cpu_count" -v limit="$load_limit_percent" \
+    'BEGIN { exit !(load_value < cpu * limit / 100) }'; then
     printf '构建资源不足：一分钟负载=%s，CPU=%s，允许上限为 CPU 的 %s%%\n' \
       "$load_one" "$cpu_count" "$load_limit_percent" >&2
     return 1
