@@ -21,8 +21,7 @@ assert_not_contains() {
   fi
 }
 
-assert_contains deploy/release-prod 'backup_result=/opt/sub2api/state/prod-backup-result.json'
-assert_contains deploy/release-prod 'validate-backup-receipt'
+assert_not_contains deploy/release-prod 'validate-backup-receipt'
 assert_contains deploy/release-prod '"$release_gates" wait-container-healthy "$rollback_container_id" 300 2'
 assert_contains deploy/release-prod '"$release_gates" wait-container-healthy "$container_id" 300 2'
 assert_contains deploy/release-prod 'build_resources="$("$release_gates" check-build-resources "$repo_dir")"'

@@ -23,9 +23,7 @@ repo_dir=/opt/sub2api/repo
 base_compose="$repo_dir/deploy/docker-compose.yml"
 prod_override=/opt/sub2api/compose/prod/docker-compose.yml
 scripts_dir=/opt/sub2api/scripts
-backup_dir=/opt/sub2api/backups
 staging_result=/opt/sub2api/state/staging-result.json
-backup_result=/opt/sub2api/state/prod-backup-result.json
 release_gates="$repo_dir/deploy/release-gates"
 
 [[ "$target_commit" =~ ^[0-9a-f]{40}$ ]]
@@ -36,7 +34,6 @@ test -f "$env_file"
 test -f "$base_compose"
 test -f "$prod_override"
 test -f "$staging_result"
-test -f "$backup_result"
 test -x "$release_gates"
 test "$(grep -c '^SUB2API_IMAGE=' "$env_file")" -eq 1
 test -x "$scripts_dir/update-sub2api-image"
@@ -66,9 +63,6 @@ if result.get("commit") != target_commit:
 if str(result.get("run_id")) != staging_run_id:
     raise SystemExit("staging result run id mismatch")
 PY
-
-"$release_gates" validate-backup-receipt \
-  "$backup_result" "$target_commit" "$staging_run_id"
 
 short_commit="$(git rev-parse --short=12 HEAD)"
 commit_date="$(git show -s --format=%cI HEAD)"
@@ -178,11 +172,9 @@ esac
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
 previous_image="sub2api:rollback-${timestamp}-${previous_commit_short}"
-release_record="$backup_dir/prod-release-before-${timestamp}.txt"
-pricing_backup="$backup_dir/prod-pricing-before-${timestamp}.dump"
-fast_policy_backup="$backup_dir/prod-fast-policy-before-${timestamp}.txt"
+release_record=/opt/sub2api/state/prod-release-before-${timestamp}.txt
 umask 077
-mkdir -p "$backup_dir"
+mkdir -p /opt/sub2api/state
 
 rollback_tag_created=0
 release_started=0
@@ -219,13 +211,6 @@ if [[ "$previous_supports_explicit_video_pricing" -eq 0 ]]; then
   "$scripts_dir/assert-no-explicit-video-pricing" "$env_file"
 fi
 
-compose_prod exec -T postgres sh -c \
-  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --data-only --table=channel_model_pricing --table=channel_pricing_intervals --table=channel_account_stats_model_pricing --table=channel_account_stats_pricing_intervals' \
-  </dev/null > "$pricing_backup"
-test -s "$pricing_backup"
-chmod 0600 "$pricing_backup"
-"$scripts_dir/snapshot-openai-fast-policy" "$env_file" "$fast_policy_backup"
-
 docker tag "$previous_image_id" "$previous_image"
 rollback_tag_created=1
 test "$(docker image inspect --format '{{.Id}}' "$previous_image")" = "$previous_image_id"
@@ -241,9 +226,6 @@ test "$(docker image inspect --format '{{.Id}}' "$previous_image")" = "$previous
   printf 'previous_supports_explicit_video_pricing=%s\n' "$previous_supports_explicit_video_pricing"
   printf 'target_commit=%s\n' "$target_commit"
   printf 'staging_run_id=%s\n' "$staging_run_id"
-  printf 'pricing_backup=%s\n' "$pricing_backup"
-  printf 'fast_policy_backup=%s\n' "$fast_policy_backup"
-  "$release_gates" print-backup-receipt "$backup_result"
 } > "$release_record"
 chmod 0600 "$release_record"
 
