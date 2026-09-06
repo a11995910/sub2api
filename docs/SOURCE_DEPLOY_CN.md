@@ -25,7 +25,7 @@
 
 仓库的 GitHub Actions 已关闭，当前没有 Environment、自托管 Runner、分支保护或规则集，也不使用 PR。GitHub 只保存 `main` 和 tag，不承担代码验证、上游同步、构建或部署。
 
-用户先在本地检查、合并、提交并普通推送 `main`，再使用 `ssh sub2api-new-vps` 登录正式 VPS。staging 必须手工调用 `/opt/sub2api/scripts/release-staging`；prod 必须在 staging 验收和用户明确确认后，手工生成异机备份凭证并调用 `/opt/sub2api/scripts/release-prod`。脚本保留资源、版本、健康、备份和回滚门禁，但不会自行定时运行。
+用户先在本地检查、合并、提交并普通推送 `main`，再使用 `ssh sub2api-new-vps` 登录正式 VPS。staging 必须手工调用 `/opt/sub2api/scripts/release-staging`；prod 在 staging 验收和用户明确确认后直接调用 `/opt/sub2api/scripts/release-prod`。脚本保留资源、版本、健康和回滚门禁，但不会自行定时运行。
 
 ## 图片 URL 本地存储
 
@@ -543,7 +543,7 @@ WHERE billing_mode = 'video';
 
 `channel_account_stats_model_pricing` 必须始终为 `0`，因为账号统计链路不按视频时长计费。`channel_model_pricing` 是否必须为 `0` 取决于回滚镜像能力：新镜像必须在 `--version` 中显式声明 `explicit_video_pricing_per_second`；历史镜像只有精确 commit `a08a958be9a29594692ab87f74c9227504c09d27` 和 `7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6` 经过代码审查确认兼容。其他没有能力标识的镜像一律按不支持处理，不能只看版本号或祖先关系。
 
-prod 切换前必须在异机备份机生成新的全库归档，并独立完成 SHA-256、`zstd -t` 和 `pg_restore --list` 校验。异机归档只存放在备份机 `/opt/sub2api-prod-backup/archives`；`release-prod` 不得在正式 VPS 创建全库 dump。校验结果写入正式 VPS `/opt/sub2api/state/prod-backup-result.json`，文件必须为 `root:root`、`0600`，且 JSON 只能包含以下字段：
+后续 prod 切换不再要求备份机归档或 `prod-backup-result.json` 凭证。prod 只能切换到 staging 已验证的同一个 `main` commit，并继续执行资源、版本、定价策略、容器健康、HTTP 健康和失败回滚门禁。
 
 ```json
 {
@@ -578,12 +578,6 @@ git pull --ff-only origin main
 expected_commit='填写已确认上线且完成 staging 验证的 main commit'
 staging_run_id='填写该 commit 对应的 staging run ID'
 test "$(git rev-parse HEAD)" = "$expected_commit"
-test "$(stat -c '%U:%G %a' /opt/sub2api/state/prod-backup-result.json)" = 'root:root 600'
-deploy/release-gates validate-backup-receipt \
-  /opt/sub2api/state/prod-backup-result.json \
-  "$expected_commit" \
-  "$staging_run_id"
-
 install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release-prod
 test "$(sha256sum deploy/release-prod | awk '{print $1}')" = \
   "$(sha256sum /opt/sub2api/scripts/release-prod | awk '{print $1}')"
@@ -762,7 +756,7 @@ Docker 镜像构建的运行模式为 `docker`。管理端只提供版本检查�
 4. 生成保留当前仓库和上游双方父提交的 merge commit。提交前检查 diff，确认没有凭据、构建产物或无关改动。
 5. 再次 fetch `origin` 和 `upstream`，确认固定的上游 SHA 未变化，且 `origin/main` 仍等于合并基线；任一不一致都必须停止并重新合并。
 6. 基线核对通过后，由用户普通 push `main`，禁止 force push。推送不会触发 GitHub 代码验证或 VPS 发布。
-7. 用户手工 SSH 到正式 VPS，用完整 `main` commit 执行隔离 staging；验收后明确确认 prod，再生成异机备份凭证并手工执行生产脚本。
+7. 用户手工 SSH 到正式 VPS，用完整 `main` commit 执行隔离 staging；验收后明确确认 prod，直接手工执行生产脚本。
 
 正式 VPS 只能从已推送的 `origin/main` 拉取可追溯 merge commit，不得拉取或构建 `upstream/main`、临时分支或本地未提交源码。
 
