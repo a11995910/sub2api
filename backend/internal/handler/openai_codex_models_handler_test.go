@@ -158,7 +158,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 		nil,
 		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
 	group := &service.Group{
