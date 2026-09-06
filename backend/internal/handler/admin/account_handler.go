@@ -205,6 +205,19 @@ type AccountWithConcurrency struct {
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
 }
 
+// AccountListItemWithConcurrency is the compact account-list envelope used
+// for lite=1. It embeds dto.AccountListItem instead of the full dto.Account,
+// so groups/account_groups never appear in the list payload.
+type AccountListItemWithConcurrency struct {
+	*dto.AccountListItem
+	CurrentConcurrency int                          `json:"current_concurrency"`
+	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
+	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
+	CurrentWindowCost  *float64                     `json:"current_window_cost,omitempty"`
+	ActiveSessions     *int                         `json:"active_sessions,omitempty"`
+	CurrentRPM         *int                         `json:"current_rpm,omitempty"`
+}
+
 type AccountSchedulerScore struct {
 	BaseScore             float64 `json:"base_score"`
 	StickyScore           float64 `json:"sticky_score"`
@@ -269,6 +282,17 @@ func parseAccountListQuery(c *gin.Context) (accountListQuery, error) {
 
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromService(account)
+	if h != nil && h.ollamaCloudUsage != nil && out != nil {
+		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
+	}
+	return out
+}
+
+func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
+	out := dto.AccountFromServiceShallow(account)
+	if out != nil && account != nil {
+		out.Proxy = dto.ProxyFromService(account.Proxy)
+	}
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
@@ -675,8 +699,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
+		accountResponse := h.accountResponseFromService(acc)
 		item := AccountWithConcurrency{
-			Account:            h.accountResponseFromService(acc),
+			Account:            accountResponse,
 			CurrentConcurrency: concurrencyCounts[acc.ID],
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
@@ -708,7 +733,34 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 	h.enrichShadowParents(c.Request.Context(), result)
 
-	etag := buildAccountsListETag(result, total, query.page, query.pageSize, query.platform, query.accountType, query.status, query.search, query.lite)
+	if query.lite {
+		compact := make([]AccountListItemWithConcurrency, len(result))
+		for i := range result {
+			item := result[i]
+			compact[i] = AccountListItemWithConcurrency{
+				AccountListItem:    dto.AccountListItemFromAccount(item.Account),
+				CurrentConcurrency: item.CurrentConcurrency,
+				SchedulerScore:     item.SchedulerScore,
+				SchedulerScores:    item.SchedulerScores,
+				CurrentWindowCost:  item.CurrentWindowCost,
+				ActiveSessions:     item.ActiveSessions,
+				CurrentRPM:         item.CurrentRPM,
+			}
+		}
+		etag := buildAccountsListETag(compact, total, query.page, query.pageSize, query.platform, query.accountType, query.status, query.search, true)
+		if etag != "" {
+			c.Header("ETag", etag)
+			c.Header("Vary", "If-None-Match")
+			if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
+				c.Status(http.StatusNotModified)
+				return
+			}
+		}
+		response.Paginated(c, compact, total, query.page, query.pageSize)
+		return
+	}
+
+	etag := buildAccountsListETag(result, total, query.page, query.pageSize, query.platform, query.accountType, query.status, query.search, false)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -739,23 +791,23 @@ func (h *AccountHandler) ListIDs(c *gin.Context) {
 	response.Paginated(c, ids, total, query.page, query.pageSize)
 }
 
-func buildAccountsListETag(
-	items []AccountWithConcurrency,
+func buildAccountsListETag[T any](
+	items []T,
 	total int64,
 	page, pageSize int,
 	platform, accountType, status, search string,
 	lite bool,
 ) string {
 	payload := struct {
-		Total       int64                    `json:"total"`
-		Page        int                      `json:"page"`
-		PageSize    int                      `json:"page_size"`
-		Platform    string                   `json:"platform"`
-		AccountType string                   `json:"type"`
-		Status      string                   `json:"status"`
-		Search      string                   `json:"search"`
-		Lite        bool                     `json:"lite"`
-		Items       []AccountWithConcurrency `json:"items"`
+		Total       int64  `json:"total"`
+		Page        int    `json:"page"`
+		PageSize    int    `json:"page_size"`
+		Platform    string `json:"platform"`
+		AccountType string `json:"type"`
+		Status      string `json:"status"`
+		Search      string `json:"search"`
+		Lite        bool   `json:"lite"`
+		Items       []T    `json:"items"`
 	}{
 		Total:       total,
 		Page:        page,
@@ -881,6 +933,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 	applyAnthropicForwardingSafeDefaults(req.Platform, req.Type, &req.Extra)
+	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1014,6 +1070,10 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1479,6 +1539,10 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		return
 	}
 	if err := service.ValidateOpenAILongContextBillingExtra(existing.Platform, req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1956,6 +2020,15 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
 			applyAnthropicForwardingSafeDefaults(item.Platform, item.Type, &item.Extra)
+			if err := service.ValidateUpstreamRequestIDHeaderExtra(item.Extra); err != nil {
+				failed++
+				results = append(results, gin.H{
+					"name":    item.Name,
+					"success": false,
+					"error":   err.Error(),
+				})
+				continue
+			}
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
@@ -2150,6 +2223,10 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk

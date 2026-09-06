@@ -2168,12 +2168,19 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerAutoFallback(
 	currentGroupID := groupID
 	for {
 		attemptModel := autoGroupFallbackRoutingModel(ctx, currentGroupID, requestedModel)
+		// 每个承接组使用自己的渠道映射，避免沿用前一个分组的上游模型。
+		mapping, _ := s.ResolveChannelMappingAndRestrict(ctx, currentGroupID, attemptModel)
+		scheduleModel := attemptModel
+		if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+			scheduleModel = strings.TrimSpace(mapping.MappedModel)
+		}
+		attemptCtx := WithOpenAIForwardModel(ctx, scheduleModel, requireCompact)
 		selection, decision, err := s.selectAccountWithScheduler(
-			ctx,
+			attemptCtx,
 			currentGroupID,
 			previousResponseID,
 			sessionHash,
-			attemptModel,
+			scheduleModel,
 			excludedIDs,
 			requiredTransport,
 			requiredCapability,

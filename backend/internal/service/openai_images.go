@@ -673,6 +673,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(account),
+			ProxyName:          opsUpstreamProxyName(account),
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -692,6 +694,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
 				Platform:           account.Platform,
 				AccountID:          account.ID,
 				AccountName:        account.Name,
@@ -732,6 +736,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			if streamCount > 0 {
 				return &OpenAIForwardResult{
 					RequestID:        resp.Header.Get("x-request-id"),
+					UpstreamHeaders:  resp.Header,
 					Usage:            streamUsage,
 					Model:            requestModel,
 					UpstreamModel:    upstreamModel,
@@ -753,6 +758,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		firstTokenMs = ttft
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    upstreamModel,
@@ -783,6 +789,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		}
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    upstreamModel,
@@ -1323,6 +1330,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
+	body = s.backfillOpenAIImagesB64JSON(opts.ctx, opts.account, opts.parsed, body)
 	body, err = s.inlineOpenAIImagesResponseURLs(body, opts)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err

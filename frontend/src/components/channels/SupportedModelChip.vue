@@ -98,8 +98,16 @@
                   :multiplier="rate.multiplier"
                 />
                 <PricingRow
-                  :label="t(prefixKey('cacheWritePrice'))"
+                  :label="t(prefixKey('cacheWrite5mPrice'))"
                   :value="model.pricing.cache_write_price"
+                  :unit="t(prefixKey('unitPerMillion'))"
+                  :scale="perMillionScale"
+                  :multiplier="rate.multiplier"
+                />
+                <PricingRow
+                  v-if="model.pricing.cache_write_1h_price != null"
+                  :label="t(prefixKey('cacheWrite1hPrice'))"
+                  :value="model.pricing.cache_write_1h_price"
                   :unit="t(prefixKey('unitPerMillion'))"
                   :scale="perMillionScale"
                   :multiplier="rate.multiplier"

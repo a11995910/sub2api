@@ -1041,6 +1041,7 @@ export default {
     cacheHitRate: 'Cache Hit Rate',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
+    serviceTierUltrafast: 'Ultrafast',
     serviceTierFlex: 'Flex',
     serviceTierStandard: 'Standard',
     rate: 'Rate',

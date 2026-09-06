@@ -1045,6 +1045,7 @@ export default {
     cacheHitRate: '缓存命中率',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
+    serviceTierUltrafast: 'Ultrafast',
     serviceTierFlex: 'Flex',
     serviceTierStandard: 'Standard',
     rate: '倍率',

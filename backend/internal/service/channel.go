@@ -116,25 +116,27 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID               int64               `json:"id,omitempty"`
-	ChannelID        int64               `json:"channel_id,omitempty"`
-	Platform         string              `json:"platform"`          // 所属平台（anthropic/openai/gemini/...）
-	Models           []string            `json:"models"`            // 绑定的模型列表
-	BillingMode      BillingMode         `json:"billing_mode"`      // 计费模式
-	PriceCurrency    PriceCurrency       `json:"price_currency"`    // 原价币种（USD/CNY）；数值不换算，直接进入灵石计费
-	InputPrice       *float64            `json:"input_price"`       // token 模式为每 token 输入价；video 模式历史保留字段，不参与计费
-	OutputPrice      *float64            `json:"output_price"`      // 每 token 输出原价（PriceCurrency）
-	CacheWritePrice  *float64            `json:"cache_write_price"` // 每 token 缓存写入原价（PriceCurrency）
-	CacheReadPrice   *float64            `json:"cache_read_price"`  // 每 token 缓存读取原价（PriceCurrency）
-	FastMultiplier   *float64            `json:"fast_multiplier"`   // Fast/Priority 服务层级倍率
-	FlexMultiplier   *float64            `json:"flex_multiplier"`   // Flex 服务层级倍率
-	ImageInputPrice  *float64            `json:"image_input_price"` // 图片输入 token 原价；未配置时回退文本输入价
-	ImageOutputPrice *float64            `json:"image_output_price"`
-	PerRequestPrice  *float64            `json:"per_request_price"`
-	Intervals        []PricingInterval   `json:"intervals"`
-	TimePricing      *ChannelTimePricing `json:"time_pricing,omitempty"`
-	CreatedAt        time.Time           `json:"created_at,omitempty"`
-	UpdatedAt        time.Time           `json:"updated_at,omitempty"`
+	ID                           int64               `json:"id,omitempty"`
+	ChannelID                    int64               `json:"channel_id,omitempty"`
+	Platform                     string              `json:"platform"`          // 所属平台（anthropic/openai/gemini/...）
+	Models                       []string            `json:"models"`            // 绑定的模型列表
+	BillingMode                  BillingMode         `json:"billing_mode"`      // 计费模式
+	PriceCurrency                PriceCurrency       `json:"price_currency"`    // 原价币种（USD/CNY）；数值不换算，直接进入灵石计费
+	InputPrice                   *float64            `json:"input_price"`       // token 模式为每 token 输入价；video 模式历史保留字段，不参与计费
+	OutputPrice                  *float64            `json:"output_price"`      // 每 token 输出原价（PriceCurrency）
+	CacheWritePrice              *float64            `json:"cache_write_price"` // 每 token 缓存写入原价（PriceCurrency）
+	CacheReadPrice               *float64            `json:"cache_read_price"`  // 每 token 缓存读取原价（PriceCurrency）
+	FastMultiplier               *float64            `json:"fast_multiplier"`   // Fast/Priority 服务层级倍率
+	FlexMultiplier               *float64            `json:"flex_multiplier"`   // Flex 服务层级倍率
+	ImageInputPrice              *float64            `json:"image_input_price"` // 图片输入 token 原价；未配置时回退文本输入价
+	ImageOutputPrice             *float64            `json:"image_output_price"`
+	PerRequestPrice              *float64            `json:"per_request_price"`
+	Intervals                    []PricingInterval   `json:"intervals"`
+	TimePricing                  *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt                    time.Time           `json:"created_at,omitempty"`
+	UpdatedAt                    time.Time           `json:"updated_at,omitempty"`
+	CacheWrite1hPrice            *float64            `json:"cache_write_1h_price"`
+	MaxReasoningEffortMultiplier *float64            `json:"max_reasoning_effort_multiplier"`
 }
 
 // ChannelTimePricing 渠道模型定价的分时倍率配置。
@@ -161,6 +163,7 @@ type PricingInterval struct {
 	InputPrice           *float64  `json:"input_price"`
 	OutputPrice          *float64  `json:"output_price"`
 	CacheWritePrice      *float64  `json:"cache_write_price"`
+	CacheWrite1hPrice    *float64  `json:"cache_write_1h_price"`
 	CacheReadPrice       *float64  `json:"cache_read_price"`
 	InputMultiplier      *float64  `json:"input_multiplier"`
 	OutputMultiplier     *float64  `json:"output_multiplier"`
@@ -428,6 +431,7 @@ func validateIntervalPrices(iv *PricingInterval, idx int) error {
 		{"input_price", iv.InputPrice},
 		{"output_price", iv.OutputPrice},
 		{"cache_write_price", iv.CacheWritePrice},
+		{"cache_write_1h_price", iv.CacheWrite1hPrice},
 		{"cache_read_price", iv.CacheReadPrice},
 		{"per_request_price", iv.PerRequestPrice},
 	}

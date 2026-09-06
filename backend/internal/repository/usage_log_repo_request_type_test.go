@@ -108,6 +108,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // cache_hit_cumulative_cache_read_tokens
 			sqlmock.AnyArg(), // cache_hit_cumulative_percent
 			sqlmock.AnyArg(), // cache_hit_state_version
+			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
 			log.NativeCompactionV2,
 			createdAt,
@@ -211,6 +212,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // cache_hit_cumulative_cache_read_tokens
 			sqlmock.AnyArg(), // cache_hit_cumulative_percent
 			sqlmock.AnyArg(), // cache_hit_state_version
+			sqlmock.AnyArg(), // upstream_request_id
 			sqlmock.AnyArg(), // session_id
 			log.NativeCompactionV2,
 			createdAt,
@@ -979,6 +981,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(0), int64(0),
 			sql.NullFloat64{},
 			int64(0),
+			sql.NullString{}, // upstream_request_id
 			sql.NullString{},
 			false, // native_compaction_v2
 			now,
@@ -1067,6 +1070,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(90),  // cache_hit_cumulative_cache_read_tokens
 			sql.NullFloat64{Valid: true, Float64: 90.0}, // cache_hit_cumulative_percent
 			int64(123),       // cache_hit_state_version
+			sql.NullString{}, // upstream_request_id
 			sql.NullString{}, // session_id
 			false,            // native_compaction_v2
 			now,
@@ -1150,6 +1154,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(0),          // cache_hit_cumulative_cache_read_tokens
 			sql.NullFloat64{}, // cache_hit_cumulative_percent
 			int64(0),          // cache_hit_state_version
+			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			true,              // native_compaction_v2
 			now,
@@ -1222,6 +1227,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(0),          // cache_hit_cumulative_cache_read_tokens
 			sql.NullFloat64{}, // cache_hit_cumulative_percent
 			int64(0),          // cache_hit_state_version
+			sql.NullString{},  // upstream_request_id
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
 			now,
