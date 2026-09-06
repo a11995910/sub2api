@@ -42,8 +42,9 @@ type OpenAIRecordUsageInput struct {
 	// BalanceAlreadyHeld is only used by deferred async video settlement.
 	// The task ledger already moved the charge into users.frozen_balance.
 	BalanceAlreadyHeld bool
-	// PrecalculatedCost preserves the create-time price for deferred video settlement.
-	PrecalculatedCost *CostBreakdown
+	// PrecalculatedCost 固定视频提交时的报价，余额延迟结算和非预留路径共用。
+	PrecalculatedCost         *CostBreakdown
+	VideoAccountStatsSnapshot *VideoAccountStatsSnapshot
 	// NativeCompactionV2 is an orthogonal semantic flag captured by the
 	// Responses handler from stream=true + compaction_trigger. It never stores
 	// the request payload and does not replace the transport request type.
@@ -211,25 +212,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	var cost *CostBreakdown
 	var err error
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	if result.BillingModel != "" {
-		billingModel = strings.TrimSpace(result.BillingModel)
-	}
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
-	}
-	billingModels := usageBillingModelCandidates(
-		billingModel,
-		result.BillingModel,
-		input.ChannelMappedModel,
-		input.OriginalModel,
-		result.UpstreamModel,
-		result.Model,
-	)
-	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
+	billingModels := s.openAIUsageBillingModels(ctx, account, apiKey, result, input.ChannelUsageFields)
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
@@ -438,7 +421,27 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
-	if apiKey.GroupID != nil {
+	if isVideoUsage && input.VideoAccountStatsSnapshot != nil {
+		snapshot := input.VideoAccountStatsSnapshot
+		if !validVideoStatsAmount(snapshot.RateMultiplier) || (snapshot.Cost != nil && !validVideoStatsAmount(*snapshot.Cost)) {
+			return errors.New("视频账号成本快照无效")
+		}
+		usageLog.AccountStatsCost = snapshot.Cost
+		accountRateMultiplier = snapshot.RateMultiplier
+		usageLog.AccountRateMultiplier = &accountRateMultiplier
+	} else if isVideoUsage && result.VideoCount > 0 && apiKey.GroupID != nil {
+		usageLog.AccountStatsCost, err = resolveVideoAccountStatsCost(ctx, s.channelService,
+			account.ID, *apiKey.GroupID, upstreamSentModel(result.Model, result.UpstreamModel),
+			*usageLog.VideoResolution, result.VideoCount, *usageLog.VideoDurationSeconds, cost.TotalCost, false)
+		if err != nil {
+			// 已提交的兼容请求不能因统计成本缺失而漏扣费；nil 保留历史估算口径。
+			logger.L().With(
+				zap.Int64("account_id", account.ID),
+				zap.Int64("group_id", *apiKey.GroupID),
+				zap.String("request_id", requestID),
+			).Warn("openai_usage.video_account_stats_unavailable", zap.Error(err))
+		}
+	} else if apiKey.GroupID != nil {
 		applyAccountStatsCostAt(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			tokens, cost.TotalCost, pricingAt,
@@ -516,6 +519,37 @@ func openAILongContextBillingGate(account *Account) *bool {
 	return &enabled
 }
 
+// openAIUsageBillingModels 统一提交前模式判断与最终记账的模型选择顺序。
+func (s *OpenAIGatewayService) openAIUsageBillingModels(ctx context.Context, account *Account, apiKey *APIKey, result *OpenAIForwardResult, fields ChannelUsageFields) []string {
+	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if result.BillingModel != "" {
+		billingModel = strings.TrimSpace(result.BillingModel)
+	}
+	if fields.BillingModelSource == BillingModelSourceChannelMapped && fields.ChannelMappedModel != "" && fields.ChannelMappedModel != fields.OriginalModel {
+		billingModel = fields.ChannelMappedModel
+	}
+	if fields.BillingModelSource == BillingModelSourceRequested && fields.OriginalModel != "" {
+		billingModel = fields.OriginalModel
+	}
+	models := usageBillingModelCandidates(billingModel, result.BillingModel, fields.ChannelMappedModel, fields.OriginalModel, result.UpstreamModel, result.Model)
+	return s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, models)
+}
+
+func (s *OpenAIGatewayService) resolveOpenAIVideoUsagePricing(ctx context.Context, apiKey *APIKey, result *OpenAIForwardResult, billingModels []string) (string, *ResolvedPricing) {
+	model := firstGrokVideoBillingModel(billingModels, result)
+	if model == "" {
+		model = firstUsageBillingModel(billingModels)
+	}
+	return model, s.resolveOpenAIChannelPricing(ctx, model, apiKey)
+}
+
+// UsesTokenVideoBilling 按既有记账规则识别 token 视频，避免用预估视频价覆盖实际用量。
+func (s *OpenAIGatewayService) UsesTokenVideoBilling(ctx context.Context, account *Account, apiKey *APIKey, result *OpenAIForwardResult, fields ChannelUsageFields) bool {
+	models := s.openAIUsageBillingModels(ctx, account, apiKey, result, fields)
+	_, pricing := s.resolveOpenAIVideoUsagePricing(ctx, apiKey, result, models)
+	return pricing != nil && pricing.Mode == BillingModeToken
+}
+
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	ctx context.Context,
 	result *OpenAIForwardResult,
@@ -539,11 +573,8 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
 	if isVideoUsageResult(result, billingModels) {
-		videoBillingModel := firstGrokVideoBillingModel(billingModels, result)
-		if videoBillingModel == "" {
-			videoBillingModel = billingModel
-		}
-		if resolved := s.resolveOpenAIChannelPricing(ctx, videoBillingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
+		videoBillingModel, resolved := s.resolveOpenAIVideoUsagePricing(ctx, apiKey, result, billingModels)
+		if resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, videoBillingModel, apiKey, result, videoMultiplier), nil
 		}
 	}
@@ -821,8 +852,47 @@ func (s *OpenAIGatewayService) EstimateVideoCost(
 	model, resolution string,
 	durationSeconds int,
 ) (*CostBreakdown, error) {
+	return s.estimateVideoCost(ctx, apiKey, model, resolution, durationSeconds, VideoResolutionRequiresExplicitPrice(resolution))
+}
+
+// EstimateVideoCostForAccount 按账号协议检查价格；ZYCA 不使用其他供应商的系统默认价。
+func (s *OpenAIGatewayService) EstimateVideoCostForAccount(
+	ctx context.Context,
+	account *Account,
+	apiKey *APIKey,
+	model, resolution string,
+	durationSeconds int,
+) (*CostBreakdown, error) {
+	requireExplicitPrice := ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA || VideoResolutionRequiresExplicitPrice(resolution)
+	return s.estimateVideoCost(ctx, apiKey, model, resolution, durationSeconds, requireExplicitPrice)
+}
+
+func (s *OpenAIGatewayService) estimateVideoCost(
+	ctx context.Context,
+	apiKey *APIKey,
+	model, resolution string,
+	durationSeconds int,
+	requireExplicitPrice bool,
+) (*CostBreakdown, error) {
 	if s == nil || s.billingService == nil || apiKey == nil || strings.TrimSpace(model) == "" {
 		return nil, errors.New("video pricing is unavailable")
+	}
+	if requireExplicitPrice {
+		var known bool
+		resolution, known = LookupVideoBillingResolution(resolution)
+		if !known {
+			return nil, errors.New("视频清晰度无效，无法确定价格")
+		}
+		apiKey = s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey)
+		resolved := s.resolveOpenAIChannelPricing(ctx, strings.TrimSpace(model), apiKey)
+		configured := resolved != nil && resolved.Mode == BillingModeVideo && hasExplicitVideoChannelPrice(resolved, resolution)
+		// 分组统一定价优先级最高，不允许缺少当前档位时借用低优先级价格。
+		if resolved == nil || resolved.Source != PricingSourceGroup || resolved.Mode != BillingModeVideo {
+			configured = configured || apiKeyHasConfiguredVideoPrice(apiKey, strings.TrimSpace(model), resolution)
+		}
+		if !configured {
+			return nil, fmt.Errorf("视频 %s 尚未配置明确的每秒价格", resolution)
+		}
 	}
 	baseMultiplier := 1.0
 	if s.cfg != nil {

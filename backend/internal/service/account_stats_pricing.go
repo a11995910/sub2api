@@ -205,6 +205,9 @@ func calculateStatsCost(pricing *ChannelModelPricing, tokens UsageTokens, reques
 		return nil
 	}
 	switch pricing.BillingMode {
+	case BillingModeVideo:
+		// 视频必须携带时长和分辨率，不能落入 token 成本计算。
+		return nil
 	case BillingModePerRequest, BillingModeImage:
 		return calculatePerRequestStatsCost(pricing, requestCount)
 	default:
@@ -281,9 +284,19 @@ func applyAccountStatsCostAt(
 	totalCost float64,
 	pricingAt time.Time,
 ) {
+	if usageLog == nil {
+		return
+	}
 	model := upstreamModel
 	if model == "" {
 		model = requestedModel
+	}
+	if usageLog.VideoCount > 0 && usageLog.VideoDurationSeconds != nil && usageLog.VideoResolution != nil {
+		usageLog.AccountStatsCost, _ = resolveVideoAccountStatsCost(
+			ctx, cs, accountID, groupID, model, *usageLog.VideoResolution,
+			usageLog.VideoCount, *usageLog.VideoDurationSeconds, totalCost, false,
+		)
+		return
 	}
 	requestCount := 1
 	if usageLog != nil && usageLog.ImageCount > 0 {

@@ -24,20 +24,57 @@ func (h *OpenAIGatewayHandler) reserveOpenAIVideoTask(
 	pricingAt time.Time,
 	body []byte,
 ) (*service.VideoTaskBilling, error) {
-	if h == nil || h.videoTaskBilling == nil || !shouldReserveOpenAIVideoBilling(c, apiKey, subscription) {
+	if h == nil {
 		return nil, nil
 	}
 	meta, ok := service.OpenAIVideoContextFromGin(c)
-	if !ok || account == nil || apiKey == nil || apiKey.User == nil {
+	if !ok {
+		return nil, nil
+	}
+	if account == nil || apiKey == nil || apiKey.User == nil {
 		return nil, errors.New("video task billing context is incomplete")
+	}
+	forwardModel := model
+	if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+		forwardModel = strings.TrimSpace(mapping.MappedModel)
+	}
+	upstreamModel := account.GetMappedModel(forwardModel)
+	if h.videoTaskBilling == nil || !shouldReserveOpenAIVideoBilling(c, apiKey, subscription) {
+		if h.gatewayService == nil {
+			return nil, errors.New("视频计费服务不可用")
+		}
+		// 故障切换到其他账号时，不能沿用上一账号的快照。
+		meta.CostSnapshot = nil
+		meta.AccountStatsSnapshot = nil
+		service.SetOpenAIVideoContext(c, meta)
+		if service.ResolveOpenAIVideoRequestProfile(account) != service.OpenAIVideoRequestProfileZYCA &&
+			h.gatewayService.UsesTokenVideoBilling(c.Request.Context(), account, apiKey, &service.OpenAIForwardResult{
+				Model: forwardModel, BillingModel: forwardModel, UpstreamModel: upstreamModel, VideoCount: 1,
+			}, clientRequestedUsageFields(c, mapping, model, upstreamModel)) {
+			// token 视频等待上游实际用量，成本统计也沿用结算时的处理。
+			return nil, nil
+		}
+		// 按秒/按次视频先校验成本；售价使用入口模型，不随上游映射改变。
+		cost, err := h.gatewayService.EstimateVideoCostForAccount(c.Request.Context(), account, apiKey, model, meta.Resolution, meta.DurationSeconds)
+		if err != nil {
+			return nil, err
+		}
+		stats, err := h.gatewayService.EstimateVideoAccountStats(c.Request.Context(), service.VideoTaskReserveInput{
+			Account: account, AccountID: account.ID, GroupID: apiKey.GroupID,
+			Model: model, UpstreamModel: upstreamModel,
+			Resolution: meta.Resolution, DurationSeconds: meta.DurationSeconds,
+		}, cost.TotalCost)
+		if err != nil {
+			return nil, err
+		}
+		meta.CostSnapshot = cost
+		meta.AccountStatsSnapshot = stats
+		service.SetOpenAIVideoContext(c, meta)
+		return nil, nil
 	}
 	requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
 	if requestID = strings.TrimSpace(requestID); requestID == "" {
 		requestID = uuid.NewString()
-	}
-	upstreamModel := strings.TrimSpace(mapping.MappedModel)
-	if upstreamModel == "" {
-		upstreamModel = account.GetMappedModel(model)
 	}
 	usageContext, err := json.Marshal(service.VideoTaskUsageContext{
 		InboundEndpoint:    GetInboundEndpoint(c),
@@ -60,6 +97,7 @@ func (h *OpenAIGatewayHandler) reserveOpenAIVideoTask(
 		APIKeyID:            apiKey.ID,
 		GroupID:             apiKey.GroupID,
 		AccountID:           account.ID,
+		Account:             account,
 		APIKey:              apiKey,
 		Model:               model,
 		UpstreamModel:       upstreamModel,

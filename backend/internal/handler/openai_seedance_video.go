@@ -66,7 +66,8 @@ func shouldReserveOpenAIVideoBilling(c *gin.Context, apiKey *service.APIKey, sub
 }
 
 func (h *OpenAIGatewayHandler) validateOpenAIVideoRequestForAccount(c *gin.Context, account *service.Account, body []byte, streamStarted bool) bool {
-	if !service.HasOpenAIVideoContext(c) {
+	meta, ok := service.OpenAIVideoContextFromGin(c)
+	if !ok {
 		return true
 	}
 	prepared, err := service.PrepareOpenAIVideoCreateBodyForAccount(account, body)
@@ -74,12 +75,20 @@ func (h *OpenAIGatewayHandler) validateOpenAIVideoRequestForAccount(c *gin.Conte
 		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", err.Error(), streamStarted)
 		return false
 	}
-	if meta, ok := service.OpenAIVideoContextFromGin(c); ok {
-		meta.Resolution = prepared.Resolution
-		meta.DurationSeconds = prepared.DurationSeconds
-		meta.ReferenceImageCount = len(prepared.ImageURLs)
-		service.SetOpenAIVideoContext(c, meta)
+	// ZYCA 始终按秒计费，必须在转发前确认客户价格；其他协议的 token 视频
+	// 仍按上游实际 token 用量结算，高分辨率不应触发固定视频价格门禁。
+	if service.ResolveOpenAIVideoRequestProfile(account) == service.OpenAIVideoRequestProfileZYCA {
+		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+		// body 可能已经过渠道映射；费用预留使用的仍是入口记录的原始模型名。
+		if _, err := h.gatewayService.EstimateVideoCostForAccount(c.Request.Context(), account, apiKey, meta.Model, prepared.Resolution, prepared.DurationSeconds); err != nil {
+			h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", err.Error(), streamStarted)
+			return false
+		}
 	}
+	meta.Resolution = prepared.Resolution
+	meta.DurationSeconds = prepared.DurationSeconds
+	meta.ReferenceImageCount = len(prepared.ImageURLs)
+	service.SetOpenAIVideoContext(c, meta)
 	return true
 }
 

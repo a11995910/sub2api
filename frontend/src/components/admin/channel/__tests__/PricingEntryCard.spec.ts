@@ -93,11 +93,26 @@ describe('PricingEntryCard', () => {
     expect(options.map((option) => option.value)).toEqual(['token', 'per_request', 'image', 'video'])
   })
 
-  it('账号统计规则可通过 allowedBillingModes 隐藏 video 选项', () => {
+  it('调用方可通过 allowedBillingModes 隐藏 video 选项', () => {
     const wrapper = mountCard(makeEntry(), ['token', 'per_request', 'image'])
     const options = wrapper.findComponent(SelectStub).props('options') as Array<{ value: string }>
 
     expect(options.map((option) => option.value)).toEqual(['token', 'per_request', 'image'])
+  })
+
+  it('账号视频成本规则支持每秒价格和分辨率层级', () => {
+    const wrapper = mountCard(makeEntry({
+      models: ['minimax-h3'],
+      billing_mode: 'video',
+      per_request_price: null,
+      intervals: [],
+    }), ['token', 'per_request', 'image', 'video'], false, true)
+    expect(wrapper.findComponent(SelectStub).props('options')).toContainEqual({
+      value: 'video', label: 'admin.channels.billingMode.video',
+    })
+    expect(wrapper.text()).toContain('admin.channels.form.defaultVideoPrice')
+    expect(wrapper.text()).toContain('admin.channels.form.videoTiers')
+    expect(wrapper.emitted('update')).toBeUndefined()
   })
 
   it('历史 video 值不在允许列表时保留原始值且挂载时不主动转换', () => {

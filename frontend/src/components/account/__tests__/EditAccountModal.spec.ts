@@ -55,6 +55,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import VideoRequestProfileSelect from '../VideoRequestProfileSelect.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -324,6 +325,33 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
+  it('读取并保存已有 ZYCA 协议，切回自动时移除覆盖配置', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    account.credentials.video_request_profile = 'zyca'
+    const wrapper = mountModal(account)
+    expect(wrapper.getComponent(VideoRequestProfileSelect).props('modelValue')).toBe('zyca')
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.video_request_profile).toBe('zyca')
+    wrapper.unmount()
+
+    updateAccountMock.mockClear()
+    const automatic = mountModal(account)
+    await automatic.get('[data-testid="video-request-profile"]').setValue('auto')
+    await automatic.get('form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('video_request_profile')
+    automatic.unmount()
+  })
+
+  it('其他平台不显示视频协议选择器', () => {
+    const account = buildAccount()
+    account.platform = 'grok'
+    const wrapper = mountModal(account)
+    expect(wrapper.findComponent(VideoRequestProfileSelect).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
   })

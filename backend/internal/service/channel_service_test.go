@@ -1525,8 +1525,11 @@ func TestCreate_RejectsVideoIntervalWithoutPerSecondPrice(t *testing.T) {
 	require.Equal(t, "VIDEO_INTERVAL_MISSING_PRICE", infraerrors.Reason(err))
 }
 
-func TestCreate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
+func TestCreate_AllowsVideoBillingInAccountStatsPricingRules(t *testing.T) {
+	var saved *Channel
 	repo := &mockChannelRepository{
+		createFn:  func(_ context.Context, channel *Channel) error { saved = channel.Clone(); return nil },
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) { return saved.Clone(), nil },
 		existsByNameFn: func(_ context.Context, _ string) (bool, error) {
 			return false, nil
 		},
@@ -1546,8 +1549,9 @@ func TestCreate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
 		}},
 	})
 
-	require.Error(t, err)
-	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+	require.NoError(t, err)
+	require.NotNil(t, saved)
+	require.Equal(t, BillingModeVideo, saved.AccountStatsPricingRules[0].Pricing[0].BillingMode)
 }
 
 func TestCreate_AllowsVideoBillingInMainModelPricing(t *testing.T) {
@@ -1833,13 +1837,15 @@ func TestUpdate_RejectsDuplicateVideoResolutionTiers(t *testing.T) {
 	require.Equal(t, "DUPLICATE_VIDEO_RESOLUTION", infraerrors.Reason(err))
 }
 
-func TestUpdate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
+func TestUpdate_AllowsVideoBillingInAccountStatsPricingRules(t *testing.T) {
 	existing := &Channel{
 		ID:     1,
 		Name:   "video-stats-channel",
 		Status: StatusActive,
 	}
+	var saved *Channel
 	repo := &mockChannelRepository{
+		updateFn: func(_ context.Context, channel *Channel) error { saved = channel.Clone(); return nil },
 		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
 			return existing.Clone(), nil
 		},
@@ -1859,8 +1865,9 @@ func TestUpdate_RejectsVideoBillingInAccountStatsPricingRules(t *testing.T) {
 		AccountStatsPricingRules: &rules,
 	})
 
-	require.Error(t, err)
-	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+	require.NoError(t, err)
+	require.NotNil(t, saved)
+	require.Equal(t, BillingModeVideo, saved.AccountStatsPricingRules[0].Pricing[0].BillingMode)
 }
 
 func TestUpdate_AllowsUnrelatedUpdateWithHistoricalVideoAccountStatsPricing(t *testing.T) {
@@ -1973,7 +1980,7 @@ func TestUpdate_AllowsUnchangedHistoricalVideoAccountStatsPricingRoundTrip(t *te
 	require.NoError(t, err)
 }
 
-func TestUpdate_RejectsChangedHistoricalVideoAccountStatsPrice(t *testing.T) {
+func TestUpdate_AllowsChangedHistoricalVideoAccountStatsPrice(t *testing.T) {
 	existing := &Channel{
 		ID:     1,
 		Name:   "video-stats-channel",
@@ -1988,7 +1995,9 @@ func TestUpdate_RejectsChangedHistoricalVideoAccountStatsPrice(t *testing.T) {
 			}},
 		}},
 	}
+	var saved *Channel
 	repo := &mockChannelRepository{
+		updateFn: func(_ context.Context, channel *Channel) error { saved = channel.Clone(); return nil },
 		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
 			return existing.Clone(), nil
 		},
@@ -2001,11 +2010,12 @@ func TestUpdate_RejectsChangedHistoricalVideoAccountStatsPrice(t *testing.T) {
 		AccountStatsPricingRules: &changed,
 	})
 
-	require.Error(t, err)
-	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+	require.NoError(t, err)
+	require.NotNil(t, saved)
+	require.Equal(t, BillingModeVideo, saved.AccountStatsPricingRules[0].Pricing[0].BillingMode)
 }
 
-func TestUpdate_RejectsChangedHistoricalVideoAccountStatsExtendedPrices(t *testing.T) {
+func TestUpdate_AllowsChangedHistoricalVideoAccountStatsExtendedPrices(t *testing.T) {
 	base := ChannelModelPricing{
 		Platform:        PlatformGrok,
 		Models:          []string{"grok-imagine-video"},
@@ -2042,13 +2052,12 @@ func TestUpdate_RejectsChangedHistoricalVideoAccountStatsExtendedPrices(t *testi
 
 			err := validateAccountStatsPricingRulesUpdate(existing, updated)
 
-			require.Error(t, err)
-			require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+			require.NoError(t, err)
 		})
 	}
 }
 
-func TestUpdate_RejectsChangedHistoricalVideoAccountStatsIntervalOrder(t *testing.T) {
+func TestUpdate_AllowsChangedHistoricalVideoAccountStatsIntervalOrder(t *testing.T) {
 	existing := []AccountStatsPricingRule{{
 		GroupIDs: []int64{10},
 		Pricing: []ChannelModelPricing{{
@@ -2068,11 +2077,10 @@ func TestUpdate_RejectsChangedHistoricalVideoAccountStatsIntervalOrder(t *testin
 
 	err := validateAccountStatsPricingRulesUpdate(existing, updated)
 
-	require.Error(t, err)
-	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+	require.NoError(t, err)
 }
 
-func TestUpdate_RejectsReorderedHistoricalVideoAccountStatsRules(t *testing.T) {
+func TestUpdate_AllowsReorderedHistoricalVideoAccountStatsRules(t *testing.T) {
 	existing := []AccountStatsPricingRule{
 		{
 			Name:     "first",
@@ -2095,8 +2103,7 @@ func TestUpdate_RejectsReorderedHistoricalVideoAccountStatsRules(t *testing.T) {
 
 	err := validateAccountStatsPricingRulesUpdate(existing, updated)
 
-	require.Error(t, err)
-	require.Equal(t, "ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED", infraerrors.Reason(err))
+	require.NoError(t, err)
 }
 
 func TestUpdate_InvalidatesChannelCache(t *testing.T) {

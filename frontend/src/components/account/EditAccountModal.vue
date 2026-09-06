@@ -28,6 +28,7 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <VideoRequestProfileSelect v-if="account.platform === 'openai'" v-model="videoRequestProfile" />
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -2886,6 +2887,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import VideoRequestProfileSelect from './VideoRequestProfileSelect.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -3003,6 +3005,7 @@ interface TempUnschedRuleForm {
 // State
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
+const videoRequestProfile = ref('auto')
 const editApiKey = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
@@ -4002,6 +4005,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions
       : (credentials.base_url as string) || platformDefaultUrl
+    videoRequestProfile.value = typeof credentials.video_request_profile === 'string'
+      ? credentials.video_request_profile
+      : 'auto'
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4678,6 +4684,10 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+      if (props.account.platform === 'openai') {
+        if (videoRequestProfile.value === 'auto') delete newCredentials.video_request_profile
+        else newCredentials.video_request_profile = videoRequestProfile.value
       }
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。

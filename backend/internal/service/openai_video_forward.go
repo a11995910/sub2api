@@ -54,7 +54,13 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoCreate(
 	}
 	requestProfile := ResolveOpenAIVideoRequestProfile(account)
 	var upstreamBody []byte
-	if requestProfile == OpenAIVideoRequestProfileUnifiedJSON {
+	if requestProfile == OpenAIVideoRequestProfileZYCA {
+		prepared, prepareErr := PrepareZYCAVideoCreateBody(payload, requestInfo, upstreamModel)
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		upstreamBody, requestInfo = prepared.Body, prepared.Request
+	} else if requestProfile == OpenAIVideoRequestProfileUnifiedJSON {
 		prepared, prepareErr := PrepareUnifiedOpenAIVideoCreateBody(payload, requestInfo, upstreamModel)
 		if prepareErr != nil {
 			return nil, prepareErr
@@ -154,19 +160,27 @@ func (s *OpenAIGatewayService) QueryOpenAIVideoTask(ctx context.Context, account
 			Headers:    resp.Header.Clone(),
 		}
 	}
-	videoResult, err := ParseOpenAIVideoResult(body)
+	videoResult, err := parseOpenAIVideoResultForAccount(account, body)
 	if err != nil {
 		return nil, err
 	}
 	if videoResult.TaskID == "" {
 		videoResult.TaskID = taskID
 	}
+	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && videoResult.TaskID != taskID {
+		return nil, fmt.Errorf("ZYCA 返回的任务 ID 与查询不一致")
+	}
+	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && videoResult.VideoURL != "" {
+		if _, err := validateOpenAIVideoContentURL(ctx, videoResult.VideoURL); err != nil {
+			videoResult.VideoURL = ""
+		}
+	}
 	progress := float64(videoResult.Progress)
 	return &OpenAIForwardResult{
 		RequestID:              firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
 		ResponseID:             videoResult.TaskID,
 		Model:                  videoResult.Model,
-		UpstreamEndpoint:       "/v1/videos/{task_id}",
+		UpstreamEndpoint:       openAIVideoUpstreamEndpoint(account) + "/{task_id}",
 		ResponseHeaders:        resp.Header.Clone(),
 		Duration:               time.Since(startTime),
 		VideoStatus:            videoResult.Status,
@@ -187,19 +201,30 @@ func (s *OpenAIGatewayService) ForwardOpenAIVideoContent(
 	if taskID == "" {
 		return nil, fmt.Errorf("video task_id is required")
 	}
-	resp, startTime, err := s.sendOpenAIVideoLookup(
-		WithHTTPUpstreamRedirectsDisabled(ctx),
-		c,
-		account,
-		"/"+url.PathEscape(taskID)+"/content",
-		"video/mp4,video/*;q=0.9,application/octet-stream;q=0.8",
-		true,
-	)
+	var resp *http.Response
+	startTime := time.Now()
+	var err error
+	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA {
+		var contentURL string
+		contentURL, err = s.resolveOpenAIVideoStatusContentURL(ctx, c, account, taskID)
+		if err == nil {
+			resp, err = s.sendOpenAIVideoPublicContent(ctx, c, account, contentURL)
+		}
+	} else {
+		resp, startTime, err = s.sendOpenAIVideoLookup(
+			WithHTTPUpstreamRedirectsDisabled(ctx),
+			c,
+			account,
+			"/"+url.PathEscape(taskID)+"/content",
+			"video/mp4,video/*;q=0.9,application/octet-stream;q=0.8",
+			true,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer func(body io.ReadCloser) { _ = body.Close() }(resp.Body)
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+	if ResolveOpenAIVideoRequestProfile(account) != OpenAIVideoRequestProfileZYCA && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
 		_ = resp.Body.Close()
 		contentURL, resolveErr := s.resolveOpenAIVideoStatusContentURL(ctx, c, account, taskID)
 		if resolveErr != nil {
@@ -329,9 +354,12 @@ func (s *OpenAIGatewayService) resolveOpenAIVideoStatusContentURL(
 	if resp.StatusCode >= 400 {
 		return "", fmt.Errorf("video upstream returned status %d", resp.StatusCode)
 	}
-	result, err := ParseOpenAIVideoResult(body)
+	result, err := parseOpenAIVideoResultForAccount(account, body)
 	if err != nil {
 		return "", err
+	}
+	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && (result.TaskID != taskID || result.Status != "completed") {
+		return "", fmt.Errorf("ZYCA 任务尚未完成或任务 ID 不匹配")
 	}
 	parsed, err := validateOpenAIVideoContentURL(ctx, result.VideoURL)
 	if err != nil {
@@ -593,8 +621,13 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 		return nil, false, errors.New(upstreamMsg)
 	}
 
-	videoResult, err := ParseOpenAIVideoResult(respBody)
+	videoResult, err := parseOpenAIVideoResultForAccount(account, respBody)
 	if err != nil {
+		var rejected *zycaVideoRejectedError
+		if errors.As(err, &rejected) {
+			writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", rejected.Error())
+			return nil, false, rejected
+		}
 		return nil, false, videoTaskErrorAfterSubmission(err)
 	}
 	if strings.TrimSpace(videoResult.TaskID) == "" {
@@ -603,6 +636,11 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 	}
 	if videoResult.Status == "" {
 		videoResult.Status = "queued"
+	}
+	if requestProfile == OpenAIVideoRequestProfileZYCA && videoResult.VideoURL != "" {
+		if _, err := validateOpenAIVideoContentURL(ctx, videoResult.VideoURL); err != nil {
+			videoResult.VideoURL = ""
+		}
 	}
 	if videoMeta, ok := openAIVideoContextFromGin(c); ok && videoMeta.BindTask {
 		groupID := videoMeta.GroupID
@@ -651,23 +689,24 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 	c.Status(http.StatusOK)
 	_, _ = c.Writer.Write(normalizedResponse)
 	s.setCachedOpenAIVideoProtocol(ctx, account.ID, upstreamModel, requestProfile, OpenAIVideoProtocolVideos)
-	SetActualOpenAIUpstreamEndpoint(c, "/v1/videos")
+	SetActualOpenAIUpstreamEndpoint(c, openAIVideoUpstreamEndpoint(account))
 	return &OpenAIForwardResult{
-		RequestID:            firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
-		ResponseID:           videoResult.TaskID,
-		Model:                requestedModel,
-		BillingModel:         requestedModel,
-		UpstreamModel:        upstreamModel,
-		UpstreamEndpoint:     "/v1/videos",
-		ResponseHeaders:      resp.Header.Clone(),
-		Duration:             time.Since(startTime),
-		VideoCount:           1,
-		VideoResolution:      requestInfo.Resolution,
-		VideoDurationSeconds: requestInfo.DurationSeconds,
-		VideoInputImageCount: len(requestInfo.ImageURLs),
-		VideoStatus:          videoResult.Status,
-		VideoErrorMessage:    videoResult.ErrorMessage,
-		VideoResponseJSON:    append(json.RawMessage(nil), normalizedResponse...),
+		RequestID:              firstNonEmpty(resp.Header.Get("x-request-id"), videoResult.TaskID),
+		ResponseID:             videoResult.TaskID,
+		Model:                  requestedModel,
+		BillingModel:           requestedModel,
+		UpstreamModel:          upstreamModel,
+		UpstreamEndpoint:       openAIVideoUpstreamEndpoint(account),
+		ResponseHeaders:        resp.Header.Clone(),
+		Duration:               time.Since(startTime),
+		VideoCount:             1,
+		VideoResolution:        requestInfo.Resolution,
+		VideoDurationSeconds:   requestInfo.DurationSeconds,
+		VideoInputImageCount:   len(requestInfo.ImageURLs),
+		VideoStatus:            videoResult.Status,
+		VideoErrorMessage:      videoResult.ErrorMessage,
+		VideoResponseJSON:      append(json.RawMessage(nil), normalizedResponse...),
+		VideoArtifactAvailable: requestProfile == OpenAIVideoRequestProfileZYCA && strings.TrimSpace(videoResult.VideoURL) != "",
 	}, false, nil
 }
 
@@ -729,7 +768,7 @@ func BuildOpenAIVideoChatRequest(request OpenAIVideoRequest, upstreamModel strin
 }
 
 func stopUnifiedOpenAIVideoAccountFailover(err error, requestProfile OpenAIVideoRequestProfile) {
-	if requestProfile != OpenAIVideoRequestProfileUnifiedJSON {
+	if requestProfile != OpenAIVideoRequestProfileUnifiedJSON && requestProfile != OpenAIVideoRequestProfileZYCA {
 		return
 	}
 	var failoverErr *UpstreamFailoverError
@@ -747,7 +786,7 @@ func (s *OpenAIGatewayService) openAIVideoTargetURL(account *Account, suffix str
 	if err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
-	return buildOpenAIEndpointURL(validatedURL, "/v1/videos"+suffix), nil
+	return buildOpenAIEndpointURL(validatedURL, openAIVideoUpstreamEndpoint(account)+suffix), nil
 }
 
 func (s *OpenAIGatewayService) getCachedOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile) OpenAIVideoProtocol {
@@ -763,6 +802,9 @@ func (s *OpenAIGatewayService) getCachedOpenAIVideoProtocol(ctx context.Context,
 }
 
 func (s *OpenAIGatewayService) setCachedOpenAIVideoProtocol(ctx context.Context, accountID int64, mappedModel string, requestProfile OpenAIVideoRequestProfile, protocol OpenAIVideoProtocol) {
+	if requestProfile == OpenAIVideoRequestProfileZYCA {
+		return
+	}
 	cache, ok := s.cache.(OpenAIVideoProtocolCache)
 	if !ok || cache == nil {
 		return

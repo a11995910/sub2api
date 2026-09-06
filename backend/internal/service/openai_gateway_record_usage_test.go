@@ -69,6 +69,37 @@ func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
 	require.Error(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{}))
 }
 
+func TestOpenAIVideoUsageKeepsAccountCostSnapshot(t *testing.T) {
+	for _, free := range []bool{false, true} {
+		usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+		billingRepo := &openAIRecordUsageBillingRepoStub{}
+		userRepo := &openAIRecordUsageUserRepoStub{}
+		svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+		upstreamCost, capturedRate, currentRate := 1.3, 0.5, 9.0
+		if free {
+			upstreamCost = 0
+		}
+		err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID: "video_task:9:capture", Model: "public-video", UpstreamModel: "minimax-h3",
+				VideoCount: 1, VideoResolution: "4K", VideoDurationSeconds: 5,
+			},
+			APIKey: &APIKey{ID: 11}, User: &User{ID: 7}, Account: &Account{ID: 17, RateMultiplier: &currentRate},
+			BalanceAlreadyHeld:        true,
+			PrecalculatedCost:         &CostBreakdown{TotalCost: 2, ActualCost: 1.6, BillingMode: string(BillingModeVideo)},
+			VideoAccountStatsSnapshot: &VideoAccountStatsSnapshot{Cost: &upstreamCost, RateMultiplier: capturedRate},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, usageRepo.lastLog)
+		require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+		require.Equal(t, upstreamCost, *usageRepo.lastLog.AccountStatsCost)
+		require.Equal(t, capturedRate, *usageRepo.lastLog.AccountRateMultiplier)
+		require.Equal(t, 1.6, usageRepo.lastLog.ActualCost)
+		require.Equal(t, "4K", *usageRepo.lastLog.VideoResolution)
+		require.Zero(t, userRepo.deductCalls)
+	}
+}
+
 func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

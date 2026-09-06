@@ -69,6 +69,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import VideoRequestProfileSelect from '../VideoRequestProfileSelect.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -210,6 +211,19 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+  })
+
+  it('新增 OpenAI 账号时保存 ZYCA 视频协议', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    wrapper.getComponent(VideoRequestProfileSelect).vm.$emit('update:modelValue', 'zyca')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ZYCA')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.video_request_profile).toBe('zyca')
+    wrapper.unmount()
   })
 
   it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {

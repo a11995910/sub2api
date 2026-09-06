@@ -32,6 +32,7 @@ const (
 	OpenAIVideoRequestProfileAuto        OpenAIVideoRequestProfile = "auto"
 	OpenAIVideoRequestProfileUnifiedJSON OpenAIVideoRequestProfile = "unified_json"
 	OpenAIVideoRequestProfileLegacy      OpenAIVideoRequestProfile = "legacy"
+	OpenAIVideoRequestProfileZYCA        OpenAIVideoRequestProfile = "zyca"
 )
 
 func ResolveOpenAIVideoRequestProfile(account *Account) OpenAIVideoRequestProfile {
@@ -40,6 +41,8 @@ func ResolveOpenAIVideoRequestProfile(account *Account) OpenAIVideoRequestProfil
 	}
 	configured := strings.ToLower(strings.TrimSpace(account.GetCredential("video_request_profile")))
 	switch OpenAIVideoRequestProfile(configured) {
+	case OpenAIVideoRequestProfileZYCA:
+		return OpenAIVideoRequestProfileZYCA
 	case OpenAIVideoRequestProfileUnifiedJSON:
 		return OpenAIVideoRequestProfileUnifiedJSON
 	case OpenAIVideoRequestProfileLegacy:
@@ -55,6 +58,8 @@ func ResolveOpenAIVideoRequestProfile(account *Account) OpenAIVideoRequestProfil
 		return OpenAIVideoRequestProfileLegacy
 	}
 	switch strings.ToLower(parsed.Hostname()) {
+	case "api.zyca.top", "canvas.zyca.top":
+		return OpenAIVideoRequestProfileZYCA
 	case "ai.cangyuansuanli.cn", "vip-api.cangyuansuanli.cn":
 		return OpenAIVideoRequestProfileUnifiedJSON
 	default:
@@ -84,6 +89,9 @@ type OpenAIVideoContext struct {
 	BillingTaskID       int64
 	BindTask            bool
 	RecordModelTestTask bool
+	// 非预留路径在提交前固定报价，异步用量记录直接消费这份快照。
+	CostSnapshot         *CostBreakdown
+	AccountStatsSnapshot *VideoAccountStatsSnapshot
 }
 
 const openAIVideoContextKey = "openai_video_context"
@@ -279,6 +287,10 @@ func PrepareOpenAIVideoCreateBodyForAccount(account *Account, body []byte) (Open
 	payload, request, err := ParseOpenAIVideoCreateBody(body)
 	if err != nil {
 		return OpenAIVideoRequest{}, err
+	}
+	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA {
+		prepared, err := PrepareZYCAVideoCreateBody(payload, request, resolveOpenAIForwardModel(account, request.Model, ""))
+		return prepared.Request, err
 	}
 	if ResolveOpenAIVideoRequestProfile(account) != OpenAIVideoRequestProfileUnifiedJSON {
 		if request.DurationSeconds > 15 {

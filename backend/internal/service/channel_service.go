@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"slices"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -729,163 +726,14 @@ func validateAccountStatsTimePricing(rules []AccountStatsPricingRule) error {
 	return nil
 }
 
-// validateAccountStatsPricingEntries 校验账号统计规则内的定价。
-// 当前统计计算链路未消费视频数量、分辨率和时长，先明确拒绝，避免配置成功后静默回退到其他价格。
+// validateAccountStatsPricingEntries 与客户定价共用视频分辨率和每秒价格校验。
 func validateAccountStatsPricingEntries(pricing []ChannelModelPricing) error {
-	for _, p := range pricing {
-		if p.BillingMode == BillingModeVideo {
-			return infraerrors.BadRequest(
-				"ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED",
-				"video billing mode is not supported in account stats pricing rules",
-			)
-		}
-	}
 	return validatePricingEntries(pricing)
 }
 
-// validateAccountStatsPricingRulesUpdate 允许历史 video 定价随完整表单原样回传，
-// 但禁止改变其作用域、模型、价格或层级。账号统计链路尚不支持视频时长，
-// 因此任何新增、删除或修改都必须继续失败。
-func validateAccountStatsPricingRulesUpdate(existing, updated []AccountStatsPricingRule) error {
-	if err := validateAccountStatsTimePricing(updated); err != nil {
-		return err
-	}
-	existingVideoPricing, err := accountStatsVideoPricingSignatures(existing)
-	if err != nil {
-		return fmt.Errorf("snapshot existing account stats video pricing: %w", err)
-	}
-	updatedVideoPricing, err := accountStatsVideoPricingSignatures(updated)
-	if err != nil {
-		return fmt.Errorf("snapshot updated account stats video pricing: %w", err)
-	}
-	if !slices.Equal(existingVideoPricing, updatedVideoPricing) {
-		return infraerrors.BadRequest(
-			"ACCOUNT_STATS_VIDEO_BILLING_UNSUPPORTED",
-			"video billing mode is not supported in account stats pricing rules",
-		)
-	}
-
-	for i, rule := range updated {
-		if err := validateNoConflictingModels(rule.Pricing); err != nil {
-			return fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-		}
-
-		nonVideoPricing := make([]ChannelModelPricing, 0, len(rule.Pricing))
-		for _, pricing := range rule.Pricing {
-			if pricing.BillingMode != BillingModeVideo {
-				nonVideoPricing = append(nonVideoPricing, pricing)
-			}
-		}
-		if err := validatePricingEntries(nonVideoPricing); err != nil {
-			return fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-		}
-	}
-	return nil
-}
-
-// accountStatsVideoPricingSignatures 返回历史 video 定价的稳定语义签名。
-// 数据库 ID、时间戳和规则内集合顺序不影响计费语义；规则间顺序、作用域和所有价格字段必须一致。
-func accountStatsVideoPricingSignatures(rules []AccountStatsPricingRule) ([]string, error) {
-	signatures := make([]string, 0)
-	for ruleIndex, rule := range rules {
-		groupIDs := append([]int64(nil), rule.GroupIDs...)
-		accountIDs := append([]int64(nil), rule.AccountIDs...)
-		sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
-		sort.Slice(accountIDs, func(i, j int) bool { return accountIDs[i] < accountIDs[j] })
-		if groupIDs == nil {
-			groupIDs = []int64{}
-		}
-		if accountIDs == nil {
-			accountIDs = []int64{}
-		}
-
-		for _, pricing := range rule.Pricing {
-			if pricing.BillingMode != BillingModeVideo {
-				continue
-			}
-			models := append([]string(nil), pricing.Models...)
-			sort.Strings(models)
-			if models == nil {
-				models = []string{}
-			}
-
-			intervals := make([]string, 0, len(pricing.Intervals))
-			for _, interval := range pricing.Intervals {
-				encoded, err := json.Marshal(struct {
-					MinTokens            int
-					MaxTokens            *int
-					TierLabel            string
-					InputPrice           *float64
-					OutputPrice          *float64
-					CacheWritePrice      *float64
-					CacheReadPrice       *float64
-					InputMultiplier      *float64
-					OutputMultiplier     *float64
-					CacheWriteMultiplier *float64
-					CacheReadMultiplier  *float64
-					PerRequestPrice      *float64
-					SortOrder            int
-				}{
-					MinTokens:            interval.MinTokens,
-					MaxTokens:            interval.MaxTokens,
-					TierLabel:            interval.TierLabel,
-					InputPrice:           interval.InputPrice,
-					OutputPrice:          interval.OutputPrice,
-					CacheWritePrice:      interval.CacheWritePrice,
-					CacheReadPrice:       interval.CacheReadPrice,
-					InputMultiplier:      interval.InputMultiplier,
-					OutputMultiplier:     interval.OutputMultiplier,
-					CacheWriteMultiplier: interval.CacheWriteMultiplier,
-					CacheReadMultiplier:  interval.CacheReadMultiplier,
-					PerRequestPrice:      interval.PerRequestPrice,
-					SortOrder:            interval.SortOrder,
-				})
-				if err != nil {
-					return nil, fmt.Errorf("marshal video pricing interval: %w", err)
-				}
-				intervals = append(intervals, string(encoded))
-			}
-			sort.Strings(intervals)
-
-			encoded, err := json.Marshal(struct {
-				RuleIndex        int
-				GroupIDs         []int64
-				AccountIDs       []int64
-				Platform         string
-				Models           []string
-				PriceCurrency    PriceCurrency
-				InputPrice       *float64
-				OutputPrice      *float64
-				CacheWritePrice  *float64
-				CacheReadPrice   *float64
-				ImageInputPrice  *float64
-				ImageOutputPrice *float64
-				PerRequestPrice  *float64
-				Intervals        []string
-			}{
-				RuleIndex:        ruleIndex,
-				GroupIDs:         groupIDs,
-				AccountIDs:       accountIDs,
-				Platform:         pricing.Platform,
-				Models:           models,
-				PriceCurrency:    pricing.PriceCurrency.OrDefault(),
-				InputPrice:       pricing.InputPrice,
-				OutputPrice:      pricing.OutputPrice,
-				CacheWritePrice:  pricing.CacheWritePrice,
-				CacheReadPrice:   pricing.CacheReadPrice,
-				ImageInputPrice:  pricing.ImageInputPrice,
-				ImageOutputPrice: pricing.ImageOutputPrice,
-				PerRequestPrice:  pricing.PerRequestPrice,
-				Intervals:        intervals,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("marshal video pricing: %w", err)
-			}
-			signatures = append(signatures, string(encoded))
-		}
-	}
-	sort.Strings(signatures)
-	return signatures, nil
+// validateAccountStatsPricingRulesUpdate 对新增和修改使用同一套校验。
+func validateAccountStatsPricingRulesUpdate(_ []AccountStatsPricingRule, updated []AccountStatsPricingRule) error {
+	return validateAccountStatsPricingRules(updated)
 }
 
 // validatePricingBillingMode 校验计费模式配置：按次/图片/视频模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
@@ -928,7 +776,7 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 }
 
 // checkVideoPricingIntervals 校验视频分辨率层级。视频运行时只读取每秒价格，
-// 且请求分辨率会归一化为三个规范标签，因此保存时拒绝无法生效或会相互遮蔽的配置。
+// 且请求分辨率会归一化为规范标签，因此保存时拒绝无法生效或会相互遮蔽的配置。
 func checkVideoPricingIntervals(p ChannelModelPricing) error {
 	if p.BillingMode != BillingModeVideo {
 		return nil
@@ -961,7 +809,8 @@ func checkVideoPricingIntervals(p ChannelModelPricing) error {
 
 func isCanonicalVideoBillingResolution(resolution string) bool {
 	switch resolution {
-	case VideoBillingResolution480P, VideoBillingResolution720P, VideoBillingResolution1080P:
+	case VideoBillingResolution480P, VideoBillingResolution720P, VideoBillingResolution1080P,
+		VideoBillingResolution768P, VideoBillingResolution2K, VideoBillingResolution4K:
 		return true
 	default:
 		return false

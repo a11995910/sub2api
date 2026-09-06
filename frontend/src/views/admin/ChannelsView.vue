@@ -582,6 +582,7 @@
                       :entry="entry"
                       :platform="section.platform"
                       :allowed-billing-modes="accountStatsBillingModes"
+                      enable-price-currency
                       enable-interval-multipliers
                       @update="rule.pricing.splice(pIdx, 1, $event)"
                       @remove="removeRulePricingEntry(sIdx, ruleIndex, pIdx)"
@@ -660,7 +661,7 @@ import { mapChannelPricingToForm } from './channelPricingCompatibility'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const accountStatsBillingModes: BillingMode[] = ['token', 'per_request', 'image']
+const accountStatsBillingModes: BillingMode[] = ['token', 'per_request', 'image', 'video']
 
 // Web Search global enabled state (loaded once on mount)
 const webSearchGlobalEnabled = ref(false)
@@ -1081,12 +1082,11 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
         name: rule.name,
         group_ids: rule.group_ids,
         account_ids: rule.account_ids,
-        pricing: rule.pricing
-          .filter(p => p.models.length > 0)
-          .map(p => ({
+        pricing: rule.pricing.map(p => ({
             platform: section.platform,
             models: p.models,
             billing_mode: p.billing_mode,
+            price_currency: p.price_currency || 'USD',
             input_price: pricingInputToAPI(p.billing_mode, p.input_price),
             output_price: mTokToPerToken(p.output_price),
             cache_write_price: mTokToPerToken(p.cache_write_price),
@@ -1546,6 +1546,25 @@ async function handleSubmit() {
         appStore.showError(`${platformLabel} - ${modelLabel}: ${timePricingError}`)
         activeTab.value = section.platform
         return
+      }
+    }
+  }
+
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    for (const rule of section.account_stats_pricing_rules) {
+      for (const entry of rule.pricing) {
+        const missingPrice = ['per_request', 'image', 'video'].includes(entry.billing_mode) &&
+          (entry.per_request_price == null || entry.per_request_price === '') && entry.intervals.length === 0
+        const error = entry.models.length === 0
+          ? t('admin.channels.emptyModelsInPricing', { platform: section.platform })
+          : missingPrice
+            ? t('admin.channels.form.perRequestPriceRequired')
+            : validateIntervals(entry.intervals, entry.billing_mode, t)
+        if (error) {
+          appStore.showError(error)
+          activeTab.value = section.platform
+          return
+        }
       }
     }
   }

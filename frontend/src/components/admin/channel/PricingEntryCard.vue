@@ -393,7 +393,7 @@ function addInterval() {
 function addMediaTier() {
   const intervals = [...(props.entry.intervals || [])]
   const labels = props.entry.billing_mode === 'video'
-    ? ['480p', '720p', '1080p']
+    ? ['480p', '720p', '1080p', '768p', '2K', '4K']
     : ['1K', '2K', '4K', 'HD']
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',

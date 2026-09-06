@@ -164,6 +164,7 @@ type VideoTaskBalanceCache interface {
 
 type VideoTaskCostEstimator interface {
 	EstimateVideoCost(ctx context.Context, apiKey *APIKey, model, resolution string, durationSeconds int) (*CostBreakdown, error)
+	EstimateVideoAccountStats(ctx context.Context, input VideoTaskReserveInput, totalCost float64) (*VideoAccountStatsSnapshot, error)
 }
 
 type VideoTaskReserveInput struct {
@@ -173,6 +174,7 @@ type VideoTaskReserveInput struct {
 	APIKeyID            int64
 	GroupID             *int64
 	AccountID           int64
+	Account             *Account
 	APIKey              *APIKey
 	Model               string
 	UpstreamModel       string
@@ -228,6 +230,10 @@ func (s *VideoTaskBillingService) Reserve(ctx context.Context, input VideoTaskRe
 		}
 	}
 	usageContext.CostSnapshot = &costSnapshot
+	usageContext.AccountStatsSnapshot, err = s.estimator.EstimateVideoAccountStats(ctx, input, cost.TotalCost)
+	if err != nil {
+		return nil, err
+	}
 	usageContextJSON, err := json.Marshal(usageContext)
 	if err != nil {
 		return nil, fmt.Errorf("encode video task usage context: %w", err)

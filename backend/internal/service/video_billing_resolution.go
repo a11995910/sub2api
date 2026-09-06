@@ -6,6 +6,9 @@ const (
 	VideoBillingResolution480P  = "480p"
 	VideoBillingResolution720P  = "720p"
 	VideoBillingResolution1080P = "1080p"
+	VideoBillingResolution768P  = "768p"
+	VideoBillingResolution2K    = "2K"
+	VideoBillingResolution4K    = "4K"
 )
 
 // xAI 视频生成按秒计费，duration 请求参数允许 1-15 秒；未指定时上游默认生成 8 秒。
@@ -32,7 +35,7 @@ func NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds int) int {
 }
 
 // LookupVideoBillingResolution 归一化分辨率并报告是否为已知档位。
-// 配置解析路径必须用它而不是 OrDefault：把无法识别的档位（如 "4k"、拼错的
+// 配置解析路径必须用它而不是 OrDefault：把无法识别的档位（如 "8k"、拼错的
 // "1080i"）静默折算成 480p，会让管理员配的高分辨率单价被挂到低分辨率档上。
 func LookupVideoBillingResolution(resolution string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(resolution)) {
@@ -42,9 +45,21 @@ func LookupVideoBillingResolution(resolution string) (string, bool) {
 		return VideoBillingResolution720P, true
 	case "1080", "1080p", "full_hd", "full-hd", "fhd":
 		return VideoBillingResolution1080P, true
+	case "768p":
+		return VideoBillingResolution768P, true
+	case "2k":
+		return VideoBillingResolution2K, true
+	case "4k":
+		return VideoBillingResolution4K, true
 	default:
 		return "", false
 	}
+}
+
+// 新增档位没有系统默认价格，提交前必须检查运营配置。
+func VideoResolutionRequiresExplicitPrice(resolution string) bool {
+	value, _ := LookupVideoBillingResolution(resolution)
+	return value == VideoBillingResolution768P || value == VideoBillingResolution2K || value == VideoBillingResolution4K
 }
 
 // NormalizeVideoBillingResolutionOrDefault 用于运行时计费：上游回传的分辨率

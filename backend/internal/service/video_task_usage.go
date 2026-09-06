@@ -9,15 +9,16 @@ import (
 )
 
 type VideoTaskUsageContext struct {
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string
-	IPAddress          string
-	SessionID          string
-	RequestPayloadHash string
-	QuotaPlatform      string
-	PricingAt          time.Time
-	CostSnapshot       *CostBreakdown
+	InboundEndpoint      string
+	UpstreamEndpoint     string
+	UserAgent            string
+	IPAddress            string
+	SessionID            string
+	RequestPayloadHash   string
+	QuotaPlatform        string
+	PricingAt            time.Time
+	CostSnapshot         *CostBreakdown
+	AccountStatsSnapshot *VideoAccountStatsSnapshot
 	ChannelUsageFields
 }
 
@@ -109,20 +110,21 @@ func (s *VideoTaskUsageService) RecordDeferredVideoUsage(ctx context.Context, ta
 			VideoStatus:          VideoTaskStatusCompleted,
 			VideoResponseJSON:    append(json.RawMessage(nil), task.ResponseJSON...),
 		},
-		APIKey:             apiKey,
-		User:               user,
-		Account:            account,
-		InboundEndpoint:    usageContext.InboundEndpoint,
-		UpstreamEndpoint:   usageContext.UpstreamEndpoint,
-		UserAgent:          usageContext.UserAgent,
-		IPAddress:          usageContext.IPAddress,
-		SessionID:          usageContext.SessionID,
-		RequestPayloadHash: usageContext.RequestPayloadHash,
-		APIKeyService:      s.apiKeyService,
-		QuotaPlatform:      usageContext.QuotaPlatform,
-		PricingAt:          usageContext.PricingAt,
-		BalanceAlreadyHeld: true,
-		PrecalculatedCost:  precalculatedCost,
-		ChannelUsageFields: usageContext.ChannelUsageFields,
+		APIKey:                    apiKey,
+		User:                      user,
+		Account:                   account,
+		InboundEndpoint:           usageContext.InboundEndpoint,
+		UpstreamEndpoint:          usageContext.UpstreamEndpoint,
+		UserAgent:                 usageContext.UserAgent,
+		IPAddress:                 usageContext.IPAddress,
+		SessionID:                 usageContext.SessionID,
+		RequestPayloadHash:        usageContext.RequestPayloadHash,
+		APIKeyService:             s.apiKeyService,
+		QuotaPlatform:             usageContext.QuotaPlatform,
+		PricingAt:                 usageContext.PricingAt,
+		BalanceAlreadyHeld:        true,
+		PrecalculatedCost:         precalculatedCost,
+		VideoAccountStatsSnapshot: usageContext.AccountStatsSnapshot,
+		ChannelUsageFields:        usageContext.ChannelUsageFields,
 	})
 }

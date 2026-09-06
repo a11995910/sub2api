@@ -66,7 +66,7 @@
           {{ mode === 'image' || mode === 'video' ? t('admin.channels.form.resolution') : t('admin.channels.form.tierLabel') }}
         </label>
         <input :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
-          type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : mode === 'video' ? '480p / 720p / 1080p' : ''" />
+          type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : mode === 'video' ? '480p / 720p / 768p / 1080p / 2K / 4K' : ''" />
       </div>
       <div class="w-20">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>

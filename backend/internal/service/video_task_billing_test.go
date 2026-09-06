@@ -117,6 +117,37 @@ func TestVideoTaskBillingServiceReserveStoresQuantizedActualCostSnapshot(t *test
 	require.Equal(t, 0.0000625, usageContext.CostSnapshot.TotalCost)
 }
 
+func TestVideoTaskBillingServiceReserveFreezesAccountCostBeforeHold(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		repo := &fakeVideoTaskBillingRepo{}
+		baseCost := 1.3
+		estimator := &fakeVideoTaskCostEstimator{
+			cost:  &CostBreakdown{TotalCost: 2, ActualCost: 1.6},
+			stats: &VideoAccountStatsSnapshot{Cost: &baseCost, RateMultiplier: 0.5},
+		}
+		if rejected {
+			estimator.statsErr = errors.New("缺少上游成本")
+		}
+		svc := NewVideoTaskBillingService(repo, estimator, nil)
+		task, err := svc.Reserve(context.Background(), VideoTaskReserveInput{
+			RequestID: "cost-snapshot", Platform: PlatformOpenAI, UserID: 7, APIKeyID: 11, AccountID: 17,
+			APIKey: &APIKey{ID: 11}, Model: "public-video", UpstreamModel: "minimax-h3", Resolution: "4K", DurationSeconds: 5,
+		})
+		if rejected {
+			require.Error(t, err)
+			require.Nil(t, repo.task)
+			continue
+		}
+		require.NoError(t, err)
+		baseCost = 99
+		var restored VideoTaskUsageContext
+		require.NoError(t, json.Unmarshal(task.UsageContextJSON, &restored))
+		require.Equal(t, 1.3, *restored.AccountStatsSnapshot.Cost)
+		require.Equal(t, 0.5, restored.AccountStatsSnapshot.RateMultiplier)
+		require.Equal(t, 1.6, task.EstimatedCost)
+	}
+}
+
 func TestVideoTaskBillingServiceApplyFailedInvalidatesBalanceCache(t *testing.T) {
 	task := &VideoTaskBilling{ID: 9, UserID: 7, EstimatedCost: 1.25, TaskStatus: VideoTaskStatusProcessing, BillingStatus: VideoTaskBillingReserved}
 	repo := &fakeVideoTaskBillingRepo{task: task}
@@ -294,9 +325,11 @@ func TestEstimateVideoCostUsesExistingPerSecondPricingMultiplierAndPromo(t *test
 }
 
 func TestVideoTaskUsageServiceRebuildsPreheldUsageFromDurableIDs(t *testing.T) {
+	upstreamCost := 0.65
 	usageContext, err := json.Marshal(VideoTaskUsageContext{
 		InboundEndpoint: "/v1/videos", UpstreamEndpoint: "/v1/videos", UserAgent: "test-client",
 		IPAddress: "127.0.0.1", SessionID: "session-1", RequestPayloadHash: "payload-hash", QuotaPlatform: PlatformOpenAI,
+		AccountStatsSnapshot: &VideoAccountStatsSnapshot{Cost: &upstreamCost, RateMultiplier: 0.5},
 	})
 	require.NoError(t, err)
 	recorder := &fakeDeferredOpenAIUsageRecorder{}
@@ -320,6 +353,9 @@ func TestVideoTaskUsageServiceRebuildsPreheldUsageFromDurableIDs(t *testing.T) {
 	require.InDelta(t, 1.25, recorder.input.PrecalculatedCost.ActualCost, 0.000001)
 	require.Equal(t, "test-client", recorder.input.UserAgent)
 	require.Equal(t, "payload-hash", recorder.input.RequestPayloadHash)
+	require.NotNil(t, recorder.input.VideoAccountStatsSnapshot)
+	require.Equal(t, upstreamCost, *recorder.input.VideoAccountStatsSnapshot.Cost)
+	require.Equal(t, 0.5, recorder.input.VideoAccountStatsSnapshot.RateMultiplier)
 }
 
 func TestVideoTaskUsageServiceUsesSnapshotGroupAfterAPIKeyMoves(t *testing.T) {
@@ -436,9 +472,15 @@ type fakeVideoTaskUsageRecorder struct {
 }
 
 type fakeVideoTaskCostEstimator struct {
-	cost  *CostBreakdown
-	err   error
-	calls int
+	stats    *VideoAccountStatsSnapshot
+	statsErr error
+	cost     *CostBreakdown
+	err      error
+	calls    int
+}
+
+func (e *fakeVideoTaskCostEstimator) EstimateVideoAccountStats(_ context.Context, _ VideoTaskReserveInput, _ float64) (*VideoAccountStatsSnapshot, error) {
+	return e.stats, e.statsErr
 }
 
 func (e *fakeVideoTaskCostEstimator) EstimateVideoCost(_ context.Context, _ *APIKey, _, _ string, _ int) (*CostBreakdown, error) {

@@ -38,6 +38,26 @@ function createPricing(overrides: Partial<ChannelModelPricing> = {}): ChannelMod
 }
 
 describe('渠道视频定价兼容', () => {
+  it('视频成本配置保留高分辨率档位、币种和显式零价', () => {
+    const result = mapChannelPricingToForm(createPricing({
+      platform: 'openai',
+      models: ['minimax-h3'],
+      billing_mode: BILLING_MODE_VIDEO,
+      price_currency: 'USD',
+      per_request_price: null,
+      intervals: ['768p', '1080p', '2K', '4K'].map((tier_label, sort_order) => ({
+        min_tokens: 0, max_tokens: null, tier_label, sort_order,
+        input_price: null, output_price: null, cache_write_price: null, cache_read_price: null,
+        per_request_price: sort_order === 0 ? 0 : 0.24,
+      })),
+    }))
+    expect(result.billing_mode).toBe(BILLING_MODE_VIDEO)
+    expect(result.price_currency).toBe('USD')
+    expect(result.per_request_price).toBeNull()
+    expect(result.intervals.map(tier => tier.tier_label)).toEqual(['768p', '1080p', '2K', '4K'])
+    expect(result.intervals[0].per_request_price).toBe(0)
+    expect(result.intervals[1].per_request_price).toBe(0.24)
+  })
   it.each([
     BILLING_MODE_IMAGE,
     BILLING_MODE_PER_REQUEST,

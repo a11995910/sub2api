@@ -1280,6 +1280,7 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+        <VideoRequestProfileSelect v-if="form.platform === 'openai'" v-model="videoRequestProfile" />
         <div v-if="!isCNPlatform || apiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -3797,6 +3798,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import VideoRequestProfileSelect from './VideoRequestProfileSelect.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -4000,6 +4002,7 @@ const submitting = ref(false)
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
+const videoRequestProfile = ref('auto')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
@@ -5103,6 +5106,7 @@ const resetForm = () => {
   apiProtocol.value = 'adaptive'
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
+  videoRequestProfile.value = 'auto'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
@@ -5560,6 +5564,9 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
+  }
+  if (form.platform === 'openai' && videoRequestProfile.value !== 'auto') {
+    credentials.video_request_profile = videoRequestProfile.value
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
