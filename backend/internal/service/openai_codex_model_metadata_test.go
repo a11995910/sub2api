@@ -48,7 +48,7 @@ func TestAstraUltraCatalogPreservesExplicitWorkflowOverrides(t *testing.T) {
 			`{"data":[{"id":"gpt-6-astra",` + fields + `}]}`,
 		} {
 			converted := convertOpenAIModelListToCodexManifestForAccount([]byte(source), account)
-			body, err := completeAPIKeyCodexModelsManifestMetadata(converted, true, account)
+			body, err := completeAPIKeyCodexModelsManifestMetadata(converted, true, account, false)
 			require.NoError(t, err)
 			model := decodeCodexManifestModels(t, body)[0]
 			var expected map[string]any

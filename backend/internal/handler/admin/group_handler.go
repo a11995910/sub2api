@@ -688,6 +688,17 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	if h.isSimpleMode() {
 		sanitizeCreateGroupRequestForSimpleMode(&req)
 	}
+	cacheHitTargetPercent := service.NormalizeCacheHitTargetPercent(req.CacheHitTargetPercent)
+	cacheHitTargetTolerancePercent := service.NormalizeCacheHitTargetTolerancePercent(req.CacheHitTargetTolerancePercent)
+	if err := service.ValidateCacheHitTargetConfig(cacheHitTargetPercent, cacheHitTargetTolerancePercent); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	cacheHitHalfLifeDays := service.NormalizeCacheHitHalfLifeDays(req.CacheHitHalfLifeDays)
+	if err := service.ValidateCacheHitHalfLifeDays(cacheHitHalfLifeDays); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	if err := service.ValidatePeakRateConfig(req.SubscriptionType, req.PeakRateEnabled, req.PeakStart, req.PeakEnd, float64ValueOrDefault(req.PeakRateMultiplier, 1.0)); err != nil {
 		response.BadRequest(c, err.Error())
@@ -874,6 +885,40 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	if h.isSimpleMode() {
 		sanitizeUpdateGroupRequestForSimpleMode(&req)
 	}
+	if req.CacheHitTargetPercent != nil {
+		cacheHitTargetPercent := service.NormalizeCacheHitTargetPercent(req.CacheHitTargetPercent)
+		if err := service.ValidateCacheHitTargetPercent(cacheHitTargetPercent); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+	if req.CacheHitTargetTolerancePercent != nil {
+		cacheHitTargetTolerancePercent := service.NormalizeCacheHitTargetTolerancePercent(req.CacheHitTargetTolerancePercent)
+		if err := service.ValidateCacheHitTargetTolerancePercent(cacheHitTargetTolerancePercent); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+	if req.CacheHitHalfLifeDays != nil {
+		cacheHitHalfLifeDays := service.NormalizeCacheHitHalfLifeDays(req.CacheHitHalfLifeDays)
+		if err := service.ValidateCacheHitHalfLifeDays(cacheHitHalfLifeDays); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+
+	// 活动折扣时间字符串预解析（naive 时间按站点时区解释）；未提交（nil）表示不修改，
+	// 配置合法性由 service 统一校验。
+	promoDiscountStart, err := parsePromoDiscountTime(req.PromoDiscountStart)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	promoDiscountEnd, err := parsePromoDiscountTime(req.PromoDiscountEnd)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
@@ -979,10 +1024,39 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	var replacementGroupID *int64
+	if raw := strings.TrimSpace(c.Query("replacement_group_id")); raw != "" {
+		parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || parsed < 0 {
+			response.BadRequest(c, "Invalid replacement group ID")
+			return
+		}
+		if parsed > 0 {
+			replacementGroupID = &parsed
+		}
+	}
+	if c.Request.ContentLength > 0 {
+		var req DeleteGroupRequest
+		if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
+			response.BadRequest(c, "Invalid request: "+bindErr.Error())
+			return
+		}
+		if req.ReplacementGroupID != nil {
+			if *req.ReplacementGroupID < 0 {
+				response.BadRequest(c, "Invalid replacement group ID")
+				return
+			}
+			replacementGroupID = nil
+			if *req.ReplacementGroupID > 0 {
+				replacementGroupID = req.ReplacementGroupID
+			}
+		}
+	}
+
 	if h.isSimpleMode() {
 		err = h.adminService.DeleteGroupIfEmpty(c.Request.Context(), groupID)
 	} else {
-		err = h.adminService.DeleteGroup(c.Request.Context(), groupID)
+		err = h.adminService.DeleteGroup(c.Request.Context(), groupID, replacementGroupID)
 	}
 	if err != nil {
 		response.ErrorFrom(c, err)

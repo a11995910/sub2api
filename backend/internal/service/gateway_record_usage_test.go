@@ -230,7 +230,8 @@ func TestGatewayServiceRecordUsage_GeminiFlashThinkingTierUsesCatalogPrice(t *te
 	}
 }
 
-func TestGatewayServiceRecordUsage_PreservesChannelMappedUpstreamModel(t *testing.T) {
+func TestGatewayServiceRecordUsage_CacheHitTargetUsesAdjustedTokensForLogAndBilling(t *testing.T) {
+	groupID := int64(901)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})

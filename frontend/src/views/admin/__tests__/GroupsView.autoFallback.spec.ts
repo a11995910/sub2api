@@ -3,12 +3,16 @@ import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AdminGroup } from '@/types'
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({ isSimpleMode: false }),
+}));
+
 import GroupsView from '@/views/admin/GroupsView.vue'
 
 const {
   listGroups,
   getAllGroups,
-  getModelsListCandidates,
+  getModelAllowlistCandidates,
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
@@ -17,7 +21,7 @@ const {
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   getAllGroups: vi.fn(),
-  getModelsListCandidates: vi.fn(),
+  getModelAllowlistCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
@@ -30,7 +34,7 @@ vi.mock('@/api/admin', () => ({
     groups: {
       list: listGroups,
       getAll: getAllGroups,
-      getModelsListCandidates,
+      getModelAllowlistCandidates,
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
@@ -150,7 +154,7 @@ describe('GroupsView 自动承接分组', () => {
   beforeEach(() => {
     listGroups.mockReset()
     getAllGroups.mockReset()
-    getModelsListCandidates.mockReset()
+    getModelAllowlistCandidates.mockReset()
     getUsageSummary.mockReset()
     getCapacitySummary.mockReset()
     getLiveCapability.mockReset()
@@ -176,7 +180,7 @@ describe('GroupsView 自动承接分组', () => {
     getAllGroups.mockImplementation((platform?: string) =>
       Promise.resolve(platform ? allGroups.filter((group) => group.platform === platform) : allGroups),
     )
-    getModelsListCandidates.mockResolvedValue([])
+    getModelAllowlistCandidates.mockResolvedValue([])
     getUsageSummary.mockResolvedValue([])
     getCapacitySummary.mockResolvedValue([])
     getLiveCapability.mockResolvedValue({ supported: false })

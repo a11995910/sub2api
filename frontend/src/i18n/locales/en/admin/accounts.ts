@@ -1,5 +1,30 @@
 export default {
     accounts: {
+      accountCreatedSuccess: 'Account created successfully',
+      accountDeletedSuccess: 'Account deleted successfully',
+      accountUpdatedSuccess: 'Account updated successfully',
+      cookieRefreshedSuccess: 'Cookie refreshed successfully',
+      deleteConfirmMessage: 'Delete this account?',
+      failedToSave: 'Failed to save account',
+      noAccounts: 'No accounts',
+      noAccountsDescription: 'No accounts are available',
+      refreshCookie: 'Refresh Cookie',
+      refreshing: 'Refreshing...',
+      saving: 'Saving...',
+      testAccount: 'Test Account',
+      testSuccess: 'Test successful',
+      filters: {
+        allPlatforms: 'All Platforms', allStatuses: 'All Statuses', allTypes: 'All Types',
+        platform: 'Platform', status: 'Status', type: 'Type',
+      },
+      form: {
+        credentialsLabel: 'Credentials', credentialsPlaceholder: 'Enter credentials',
+        nameLabel: 'Name', namePlaceholder: 'Enter account name',
+        platformLabel: 'Platform', selectPlatform: 'Select platform',
+        priorityHint: 'Lower values have higher priority', priorityLabel: 'Priority',
+        selectType: 'Select type', statusLabel: 'Status', typeLabel: 'Type',
+        weightHint: 'Scheduling weight', weightLabel: 'Weight',
+      },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
@@ -161,6 +186,8 @@ export default {
         noBalanceEndpoint: 'This platform has no balance query endpoint',
       },
       types: {
+        api_key: 'API Key',
+        cookie: 'Cookie',
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
@@ -850,6 +877,30 @@ export default {
       grokClientToolCache: {
         title: 'Client Tool Cache (May Change Automatic Tool Selection)',
         hint: 'For detected Grok Free OAuth accounts, this is enabled by default for client function tools such as Codex and Trae. Turn it off to opt out if the automatic tool-selection behavior is not acceptable.'
+      },
+      grokMediaEligibility: {
+        title: 'Media Generation Eligibility',
+        hint: 'Controls whether this Grok OAuth account may be selected for image and video generation.',
+        auto: 'Automatic detection',
+        enabled: 'Force enable',
+        disabled: 'Force disable',
+        current: 'Current decision:',
+        eligible: 'Eligible',
+        ineligible: 'Not eligible',
+        loading: 'Loading eligibility…',
+        loadFailed: 'Unable to load media eligibility',
+        autoHint: 'Automatic detection only clears the manual override; it does not trigger a media request.',
+        forceEnableWarning: 'Force enable bypasses automatic eligibility checks. Use only for accounts confirmed to support image/video generation.',
+        partialSave: 'Other account settings may have been saved, but media eligibility was not updated. Please retry.',
+        reasons: {
+          eligible: 'Paid entitlement confirmed',
+          billing_inconclusive: 'Billing information inconclusive',
+          billing_forbidden: 'Billing endpoint forbidden',
+          billing_free_tier: 'Free tier account',
+          billing_unobserved: 'Billing not observed yet',
+          override_enabled: 'Manually forced enabled',
+          override_disabled: 'Manually forced disabled'
+        }
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',

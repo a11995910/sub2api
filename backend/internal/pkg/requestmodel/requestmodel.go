@@ -19,7 +19,6 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -208,13 +207,10 @@ func isMultipartContentType(contentType string) bool {
 }
 
 // ResetRequestBody 把已读取（可能已被改写）的请求体回填到请求上，
-// 供后续 handler 重新读取。使用 httputil.PrereadBody 回填，后续经
-// ReadRequestBodyWithPrealloc 读取时零拷贝。
+// 同步定制请求缓存和可重放 reader，避免改写后下游读回旧模型。
 func ResetRequestBody(req *http.Request, body []byte) {
 	if req == nil {
 		return
 	}
-	req.Body = httputil.NewPrereadBody(body)
-	req.ContentLength = int64(len(body))
-	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	*req = *httputil.WithCachedRequestBody(req, body)
 }

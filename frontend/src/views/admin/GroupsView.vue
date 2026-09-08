@@ -412,6 +412,16 @@
                 <span class="text-xs">{{ t("common.edit") }}</span>
               </button>
               <button
+                v-if="canViewAuthorizedUsers(row)"
+                @click="handleAuthorizedUsers(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+              >
+                <Icon name="users" size="sm" />
+                <span class="text-xs">{{
+                  t("admin.groups.authorizedUsers.action")
+                }}</span>
+              </button>
+              <button
                 v-if="!authStore.isSimpleMode"
                 data-testid="group-duplicate"
                 :title="
@@ -5743,12 +5753,42 @@ const createCodexManifestDefaults = (): CodexModelsManifestConfig => ({
 const editCodexManifestConfig = ref<CodexModelsManifestConfig>(createCodexManifestDefaults());
 const editCodexManifestAccountNames = ref<Record<number, string>>({});
 const modelAllowlistCandidatesTracker = createModelAllowlistCandidatesTracker();
+const createImage4KEnhancementModels = ref<string[]>([]);
+const editImage4KEnhancementModels = ref<string[]>([]);
+const createImage4KEnhancementModelsLoading = ref(false);
+const editImage4KEnhancementModelsLoading = ref(false);
+const image4KEnhancementModelsRequestID = {
+  create: 0,
+  edit: 0,
+};
+let editImage4KEnhancementModelInitializing = false;
 const createModelAllowlistSelectedCount = computed(
   () => createModelAllowlistState.items.filter((item) => item.selected).length,
 );
 const editModelAllowlistSelectedCount = computed(
   () => editModelAllowlistState.items.filter((item) => item.selected).length,
 );
+const authorizedUsersDialogTitle = computed(() => {
+  const groupName = authorizedUsersGroup.value?.name || "";
+  return groupName
+    ? t("admin.groups.authorizedUsers.titleWithGroup", { name: groupName })
+    : t("admin.groups.authorizedUsers.title");
+});
+
+const canViewAuthorizedUsers = (group: AdminGroup): boolean => {
+  return group.is_exclusive && group.subscription_type !== "subscription";
+};
+
+const imageResponseFormatOptions = computed(() => [
+  {
+    value: "b64_json",
+    label: t("admin.groups.imagePricing.responseFormatBase64"),
+  },
+  {
+    value: "url",
+    label: t("admin.groups.imagePricing.responseFormatURL"),
+  },
+]);
 const createAllowlistCustomEntry = ref("");
 const editAllowlistCustomEntry = ref("");
 const createAllowlistCustomErrorKey = ref<string | null>(null);
@@ -6654,7 +6694,7 @@ const loadImage4KEnhancementModels = async (
   }
   loadingRef.value = true;
   try {
-    const models = await adminAPI.groups.getModelsListCandidates(groupID, "openai");
+    const models = await adminAPI.groups.getModelAllowlistCandidates(groupID, "openai");
     if (requestID !== image4KEnhancementModelsRequestID[mode]) {
       return;
     }
@@ -6700,6 +6740,8 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const openCreateModal = () => {
   showCreateModal.value = true;
+  loadAutoFallbackGroups();
+  loadImageEnhancementGroups();
   loadModelAllowlistCandidates("create", 0, createForm.platform);
 };
 
@@ -7088,6 +7130,7 @@ const handleCreateGroup = async () => {
     requestData.peak_rate_multiplier = normalizeRateMultiplier(
       createForm.peak_rate_multiplier,
     );
+    if (!authStore.isSimpleMode && !validatePromoForm(createForm)) return;
     const payload = authStore.isSimpleMode
       ? {
           name: createForm.name,
@@ -7261,6 +7304,8 @@ const handleEdit = async (group: AdminGroup) => {
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
   );
+  loadImageEnhancementGroups();
+  loadImage4KEnhancementModels("edit", editForm.image_4k_enhancement_group_id);
   loadModelAllowlistCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
 };
@@ -7519,6 +7564,7 @@ const handleUpdateGroup = async () => {
     payload.peak_rate_multiplier = normalizeRateMultiplier(
       editForm.peak_rate_multiplier,
     );
+    if (!authStore.isSimpleMode && !validatePromoForm(editForm)) return;
     const requestData = authStore.isSimpleMode
       ? {
           name: editForm.name,
@@ -8222,6 +8268,8 @@ const saveSortOrder = async () => {
 onMounted(() => {
   loadGroups();
   if (!authStore.isSimpleMode) {
+    loadAutoFallbackGroups();
+    loadImageEnhancementGroups();
     void loadLiveCapability();
     loadModelAllowlistCandidates("create", 0, createForm.platform);
   }

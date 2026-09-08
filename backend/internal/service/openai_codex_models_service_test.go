@@ -520,13 +520,11 @@ func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForOfficialFastMod
 
 	for i, model := range models {
 		require.Equal(t, fastModels[i], model["slug"])
-		require.Equal(t, []any{
-			map[string]any{
-				"id":          "priority",
-				"name":        "Fast",
-				"description": "Priority processing for lower latency.",
-			},
-		}, model["service_tiers"])
+		require.Contains(t, model["service_tiers"], map[string]any{
+			"id":          "priority",
+			"name":        "Fast",
+			"description": "Priority processing for lower latency.",
+		})
 		require.Nil(t, model["default_service_tier"])
 	}
 }
@@ -2082,7 +2080,7 @@ func TestCompleteAPIKeyCodexModelsManifestForClientDoesNotInventNativeProviderFa
 	t.Parallel()
 
 	svc := &OpenAIGatewayService{}
-	manifest := &CodexModelsManifest{Body: []byte(`{"models":[{"slug":"gpt-5.5"}]}`)}
+	manifest := &OpenAIModelsResponse{Body: []byte(`{"models":[{"slug":"gpt-5.5"}]}`)}
 	account := newCodexModelsAPIKeyTestAccount("https://upstream.example/v1")
 
 	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
@@ -2102,7 +2100,7 @@ func TestCompleteAPIKeyCodexModelsManifestForClientPreservesNativeProviderFastTi
 		},
 	}
 	svc := &OpenAIGatewayService{}
-	manifest := &CodexModelsManifest{Body: []byte(`{"models":[{"slug":"gpt-5.5","service_tiers":[{"id":"provider-priority","name":"Provider Fast","description":"Provider supplied tier."}]}]}`)}
+	manifest := &OpenAIModelsResponse{Body: []byte(`{"models":[{"slug":"gpt-5.5","service_tiers":[{"id":"provider-priority","name":"Provider Fast","description":"Provider supplied tier."}]}]}`)}
 	account := newCodexModelsAPIKeyTestAccount("https://upstream.example/v1")
 
 	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))

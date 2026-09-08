@@ -395,6 +395,48 @@ func TestCompositeGeminiTargetPlatformMiddlewareUsesPathRoute(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
+func TestCompositeGeminiTargetPlatformMiddlewarePreservesGetModelResolution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/models/gemini-2.5-pro", nil)
+	c := newCompositeMiddlewareContext(req)
+	c.Params = gin.Params{{Key: "model", Value: "gemini-2.5-pro"}}
+
+	require.NotPanics(t, func() {
+		compositeGeminiTargetPlatformMiddleware(nil)(c)
+	})
+	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, service.PlatformGemini, platform)
+}
+
+func TestCompositeGeminiTargetPlatformMiddlewareHandlesNilRequestFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name string
+		req  *http.Request
+	}{
+		{name: "nil request", req: nil},
+		{name: "nil url", req: &http.Request{Method: http.MethodPost, Body: http.NoBody, Header: make(http.Header)}},
+		{
+			name: "nil body",
+			req: func() *http.Request {
+				req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", nil)
+				req.Body = nil
+				return req
+			}(),
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newCompositeMiddlewareContext(tt.req)
+			require.NotPanics(t, func() {
+				compositeGeminiTargetPlatformMiddleware(nil)(c)
+			})
+		})
+	}
+}
+
 // Live 入口顶层 model 与 session.model 不一致时，合成路由必须按 session.model
 // 分发与改写（与白名单准入、Live handler 一致），不得命中顶层别名的映射并把
 // session 模型覆盖为别名上游。

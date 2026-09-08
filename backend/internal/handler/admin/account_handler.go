@@ -812,7 +812,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	for i := range accounts {
 		acc := &accounts[i]
 		accountResponse := h.accountResponseFromService(acc)
-		if lite {
+		if query.lite {
 			accountResponse = h.accountListResponseFromService(acc)
 			if h.isSimpleMode() {
 				accountResponse.GroupIDs = filterSimpleModeGroupIDs(accountResponse.GroupIDs, simpleModeCompositeServiceGroupIDs(acc))

@@ -3,11 +3,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SupportedModelChip from '../SupportedModelChip.vue'
 
+vi.mock('@/i18n', () => ({
+  i18n: { global: { t: (key: string) => key === 'common.currencyName' ? 'USD' : key } },
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({ t: (key: string) => key })
+    useI18n: () => ({ t: (key: string) => key === 'common.currencyName' ? 'USD' : key })
   }
 })
 
@@ -48,7 +52,7 @@ describe('SupportedModelChip', () => {
     await wrapper.find('[tabindex="0"]').trigger('mouseenter')
     await nextTick()
 
-    expect(document.body.textContent).toContain('$20 / $75')
+    expect(document.body.textContent).toContain('20 USD / 75 USD')
     wrapper.unmount()
   })
 })

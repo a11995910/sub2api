@@ -287,6 +287,9 @@ type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
 	deleteCalls     []int64
+	groupsByID      map[int64]*Group
+	getByIDLiteIDs  []int64
+	getByIDLiteErr  error
 	guardedCalls    []int64
 }
 

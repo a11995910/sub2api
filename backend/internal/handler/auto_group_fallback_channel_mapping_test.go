@@ -219,7 +219,7 @@ func TestOpenAIResponsesAutoGroupFallbackUsesTargetChannelMapping(t *testing.T) 
 			},
 		},
 		groupPlatforms: map[int64]string{plusID: service.PlatformOpenAI, proID: service.PlatformOpenAI},
-	}, groupRepo, nil, nil)
+	}, groupRepo, nil, nil, nil)
 
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1

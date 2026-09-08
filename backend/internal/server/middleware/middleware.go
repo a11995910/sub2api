@@ -110,6 +110,20 @@ func AnthropicErrorWriter(c *gin.Context, status int, message string) {
 	case http.StatusForbidden:
 		errorType = "permission_error"
 	}
+	writeAnthropicError(c, status, errorType, message)
+}
+
+// AnthropicInvalidRequestErrorWriter 返回 Anthropic 客户端可识别的请求错误。
+func AnthropicInvalidRequestErrorWriter(c *gin.Context, status int, message string) {
+	writeAnthropicError(c, status, "invalid_request_error", message)
+}
+
+// AnthropicRateLimitErrorWriter 返回 Anthropic 客户端可识别的限流错误。
+func AnthropicRateLimitErrorWriter(c *gin.Context, status int, message string) {
+	writeAnthropicError(c, status, "rate_limit_error", message)
+}
+
+func writeAnthropicError(c *gin.Context, status int, errorType, message string) {
 	c.JSON(status, gin.H{
 		"type":  "error",
 		"error": gin.H{"type": errorType, "message": message},

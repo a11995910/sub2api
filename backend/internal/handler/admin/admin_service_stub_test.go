@@ -399,9 +399,17 @@ func (s *stubAdminService) UpdateGroup(ctx context.Context, id int64, input *ser
 	return &group, nil
 }
 
-func (s *stubAdminService) DeleteGroup(ctx context.Context, id int64) error {
+func (s *stubAdminService) DeleteGroup(ctx context.Context, id int64, replacementGroupID *int64) error {
 	s.deletedGroupIDs = append(s.deletedGroupIDs, id)
 	return nil
+}
+
+func (s *stubAdminService) SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error {
+	return nil
+}
+
+func (s *stubAdminService) GetGroupAuthorizedUsers(ctx context.Context, groupID int64, page, pageSize int, search string) ([]service.GroupAuthorizedUser, *pagination.PaginationResult, error) {
+	return []service.GroupAuthorizedUser{}, &pagination.PaginationResult{Total: 0, Page: page, PageSize: pageSize, Pages: 0}, nil
 }
 
 func (s *stubAdminService) DeleteGroupIfEmpty(ctx context.Context, id int64) error {

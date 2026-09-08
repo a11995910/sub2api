@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import en from '../locales/en'
-import zh from '../locales/zh'
+import enCustom from '../locales/en'
+import zhCustom from '../locales/zh'
+import enBase from '../locales/en/index'
+import zhBase from '../locales/zh/index'
+import { mergeLocaleMessages } from '../mergeLocaleMessages'
+
+// 与运行时一致，校验基础语言包和定制覆盖合并后的消息。
+const en = mergeLocaleMessages(enBase, enCustom)
+const zh = mergeLocaleMessages(zhBase, zhCustom)
 
 type LocaleValue = Record<string, unknown>
 

@@ -138,7 +138,7 @@ func TestZYCANonReservedVideoPricingSnapshot(t *testing.T) {
 					}}}},
 				}},
 				groupPlatforms: map[int64]string{groupID: service.PlatformOpenAI},
-			}, nil, nil, nil)
+			}, nil, nil, nil, nil)
 			gateway := zycaHandlerGateway(nil, channelService)
 			account := zycaHandlerAccount()
 			account.RateMultiplier = &accountRate

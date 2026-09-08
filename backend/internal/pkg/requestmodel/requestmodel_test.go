@@ -2,6 +2,7 @@ package requestmodel
 
 import (
 	"bytes"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -109,6 +110,26 @@ func TestResetRequestBodyAllowsRereadWithoutCopy(t *testing.T) {
 
 func TestResetRequestBodyNilRequestIsNoop(t *testing.T) {
 	ResetRequestBody(nil, []byte("x"))
+}
+
+func TestResetRequestBodyReplacesCachedModelAndReplay(t *testing.T) {
+	original := []byte(`{"model":"public-alias"}`)
+	rewritten := []byte(`{"model":"upstream-model"}`)
+	req := httputil.WithCachedRequestBody(httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(original)), original)
+	ResetRequestBody(req, rewritten)
+	got, err := httputil.ReadRequestBodyWithPrealloc(req)
+	if err != nil || !bytes.Equal(got, rewritten) {
+		t.Fatalf("模型改写后缓存仍为旧请求: %s, %v", got, err)
+	}
+	replay, err := req.GetBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replay.Close()
+	got, err = io.ReadAll(replay)
+	if err != nil || !bytes.Equal(got, rewritten) {
+		t.Fatalf("重试请求未使用改写后的模型: %s, %v", got, err)
+	}
 }
 
 func TestFromBodyForRouteLivePrefersSessionModel(t *testing.T) {

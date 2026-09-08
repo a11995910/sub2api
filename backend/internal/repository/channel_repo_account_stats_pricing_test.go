@@ -24,22 +24,22 @@ func TestAccountStatsPricingExtendedFieldsRoundTrip(t *testing.T) {
 		WithArgs(sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "rule_id", "platform", "models", "billing_mode", "price_currency", "input_price", "output_price",
-			"cache_write_price", "cache_read_price", "image_input_price", "image_output_price",
+			"cache_write_price", "cache_write_1h_price", "cache_read_price", "image_input_price", "image_output_price",
 			"per_request_price", "created_at", "updated_at",
 		}).AddRow(
 			int64(11), int64(7), "openai", `["gpt-image-2"]`, service.BillingModeToken, service.PriceCurrencyCNY,
-			0.001, 0.002, 0.003, 0.0005, 0.004, 0.01, nil, loadedAt, loadedAt,
+			0.001, 0.002, 0.003, 0.006, 0.0005, 0.004, 0.01, nil, loadedAt, loadedAt,
 		))
 	mock.ExpectQuery(`(?s)SELECT id, pricing_id, min_tokens, max_tokens, tier_label,.*input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier.*FROM channel_account_stats_pricing_intervals`).
 		WithArgs(sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "pricing_id", "min_tokens", "max_tokens", "tier_label",
-			"input_price", "output_price", "cache_write_price", "cache_read_price",
+			"input_price", "output_price", "cache_write_price", "cache_write_1h_price", "cache_read_price",
 			"input_multiplier", "output_multiplier", "cache_write_multiplier", "cache_read_multiplier",
 			"per_request_price", "sort_order", "created_at", "updated_at",
 		}).AddRow(
 			int64(21), int64(11), 200000, 1000000, "long-context",
-			nil, nil, nil, nil,
+			nil, nil, nil, nil, nil,
 			2.0, 1.5, 1.25, 0.8,
 			nil, 1, loadedAt, loadedAt,
 		))
@@ -48,6 +48,8 @@ func TestAccountStatsPricingExtendedFieldsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pricingByRule[7], 1)
 	require.Equal(t, service.PriceCurrencyCNY, pricingByRule[7][0].PriceCurrency)
+	require.NotNil(t, pricingByRule[7][0].CacheWrite1hPrice)
+	require.InDelta(t, 0.006, *pricingByRule[7][0].CacheWrite1hPrice, 1e-12)
 	require.NotNil(t, pricingByRule[7][0].ImageInputPrice)
 	require.InDelta(t, 0.004, *pricingByRule[7][0].ImageInputPrice, 1e-12)
 	require.Len(t, pricingByRule[7][0].Intervals, 1)
@@ -64,17 +66,17 @@ func TestAccountStatsPricingExtendedFieldsRoundTrip(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_account_stats_model_pricing (rule_id, platform, models, billing_mode, price_currency, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price)")).
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_account_stats_model_pricing (rule_id, platform, models, billing_mode, price_currency, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, image_input_price, image_output_price, per_request_price)")).
 		WithArgs(
 			int64(7), "openai", []byte(`["gpt-image-2"]`), service.BillingModeToken, service.PriceCurrencyCNY,
-			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), nil, sqlmock.AnyArg(),
 			sqlmock.AnyArg(), sqlmock.AnyArg(), nil,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(int64(12), time.Time{}, time.Time{}))
-	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_account_stats_pricing_intervals (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier, per_request_price, sort_order)")).
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_account_stats_pricing_intervals (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, input_multiplier, output_multiplier, cache_write_multiplier, cache_read_multiplier, per_request_price, sort_order)")).
 		WithArgs(
 			int64(12), 200000, 1000000, "long-context",
-			nil, nil, nil, nil,
+			nil, nil, nil, nil, nil,
 			2.0, 1.5, 1.25, 0.8,
 			nil, 1,
 		).
