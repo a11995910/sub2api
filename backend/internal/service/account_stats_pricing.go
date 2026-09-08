@@ -34,26 +34,6 @@ func resolveAccountStatsCost(
 	pricingAt time.Time,
 	reasoningEfforts ...string,
 ) *float64 {
-	return resolveAccountStatsCostAt(
-		ctx, channelService, billingService, accountID, groupID, upstreamModel,
-		tokens, requestCount, totalCost, serviceTier, timezone.Now(), reasoningEfforts...,
-	)
-}
-
-func resolveAccountStatsCostAt(
-	ctx context.Context,
-	channelService *ChannelService,
-	billingService *BillingService,
-	accountID int64,
-	groupID int64,
-	upstreamModel string,
-	tokens UsageTokens,
-	requestCount int,
-	totalCost float64,
-	serviceTier string,
-	pricingAt time.Time,
-	reasoningEfforts ...string,
-) *float64 {
 	reasoningEffort := ""
 	if len(reasoningEfforts) > 0 {
 		reasoningEffort = reasoningEfforts[0]
@@ -212,9 +192,6 @@ func calculateStatsCost(pricing *ChannelModelPricing, tokens UsageTokens, reques
 		return nil
 	}
 	switch pricing.BillingMode {
-	case BillingModeVideo:
-		// 视频必须携带时长和分辨率，不能落入 token 成本计算。
-		return nil
 	case BillingModePerRequest, BillingModeImage:
 		return calculatePerRequestStatsCost(pricing, requestCount)
 	default:
@@ -231,36 +208,47 @@ func calculatePerRequestStatsCost(pricing *ChannelModelPricing, requestCount int
 	return &cost
 }
 
-// calculateTokenStatsCost 按 token 计费；存在区间时按输入侧上下文总量选档，
-// 命中区间价格后覆盖基础平价字段。
+// calculateTokenStatsCost Token 计费。
+// If the pricing has intervals, find the matching interval by total token count
+// and use its prices instead of the flat pricing fields.
 func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *float64 {
-	p := &ModelPricing{}
-	applyChannelTokenPriceOverrides(p, pricing)
-	applyChannelImageInputPrice(pricing, p)
-	if pricing.ImageOutputPrice != nil {
-		p.ImageOutputPricePerToken = *pricing.ImageOutputPrice
-		p.ImageOutputPriceExplicit = true
-	}
-
+	p := pricing
 	if len(pricing.Intervals) > 0 {
-		totalContext := tokens.InputTokens + tokens.CacheCreationTokens + tokens.CacheReadTokens
-		if iv := FindMatchingInterval(pricing.Intervals, totalContext); iv != nil {
-			p = intervalToModelPricing(iv, p, pricing)
+		totalTokens := tokens.InputTokens + tokens.OutputTokens + tokens.CacheCreationTokens + tokens.CacheReadTokens
+		if iv := FindMatchingInterval(pricing.Intervals, totalTokens); iv != nil {
+			p = &ChannelModelPricing{
+				InputPrice:        iv.InputPrice,
+				OutputPrice:       iv.OutputPrice,
+				CacheWritePrice:   iv.CacheWritePrice,
+				CacheWrite1hPrice: iv.CacheWrite1hPrice,
+				CacheReadPrice:    iv.CacheReadPrice,
+				PerRequestPrice:   iv.PerRequestPrice,
+			}
 		}
 	}
-
-	// 账号统计规则历史上未配置图片输出价时，图片 token 已作为 OutputTokens
-	// 的子集按文本输出价计费。拆分子集后继续沿用当前命中档位的输出价，保持兼容。
-	if pricing.ImageOutputPrice == nil {
-		p.ImageOutputPricePerToken = p.OutputPricePerToken
-		p.ImageOutputPriceExplicit = false
+	deref := func(ptr *float64) float64 {
+		if ptr == nil {
+			return 0
+		}
+		return *ptr
 	}
-
-	breakdown := new(BillingService).computeTokenBreakdown(p, tokens, 1, "", false)
-	if breakdown == nil || breakdown.TotalCost <= 0 {
+	cacheCreationCost := float64(tokens.CacheCreationTokens) * deref(p.CacheWritePrice)
+	if p.CacheWrite1hPrice != nil {
+		cache5m, cache1h := normalizeCacheCreationBreakdown(tokens)
+		if cache5m > 0 || cache1h > 0 {
+			cacheCreationCost = float64(cache5m)*deref(p.CacheWritePrice) +
+				float64(cache1h)*deref(p.CacheWrite1hPrice)
+		}
+	}
+	cost := float64(tokens.InputTokens)*deref(p.InputPrice) +
+		float64(tokens.OutputTokens)*deref(p.OutputPrice) +
+		cacheCreationCost +
+		float64(tokens.CacheReadTokens)*deref(p.CacheReadPrice) +
+		float64(tokens.ImageOutputTokens)*deref(p.ImageOutputPrice)
+	if cost <= 0 {
 		return nil
 	}
-	return &breakdown.TotalCost
+	return &cost
 }
 
 // applyAccountStatsCost resolves the account stats cost for a usage log entry.
@@ -276,35 +264,9 @@ func applyAccountStatsCost(
 	totalCost float64,
 	pricingAt time.Time,
 ) {
-	applyAccountStatsCostAt(
-		ctx, usageLog, cs, bs, accountID, groupID, upstreamModel, requestedModel,
-		tokens, totalCost, timezone.Now(),
-	)
-}
-
-func applyAccountStatsCostAt(
-	ctx context.Context,
-	usageLog *UsageLog,
-	cs *ChannelService, bs *BillingService,
-	accountID int64, groupID int64,
-	upstreamModel, requestedModel string,
-	tokens UsageTokens,
-	totalCost float64,
-	pricingAt time.Time,
-) {
-	if usageLog == nil {
-		return
-	}
 	model := upstreamModel
 	if model == "" {
 		model = requestedModel
-	}
-	if usageLog.VideoCount > 0 && usageLog.VideoDurationSeconds != nil && usageLog.VideoResolution != nil {
-		usageLog.AccountStatsCost, _ = resolveVideoAccountStatsCost(
-			ctx, cs, accountID, groupID, model, *usageLog.VideoResolution,
-			usageLog.VideoCount, *usageLog.VideoDurationSeconds, totalCost, false,
-		)
-		return
 	}
 	requestCount := 1
 	if usageLog != nil && usageLog.ImageCount > 0 {

@@ -22,66 +22,6 @@ func canonicalizeOpenAIModelAliasSpelling(model string) string {
 	return openai.CanonicalizeOpenAIModelAliasSpelling(model)
 }
 
-func canonicalizeOpenAIModelAliasSpelling(model string) string {
-	normalized := canonicalizeOpenAIModelSpelling(model)
-	if !strings.HasPrefix(normalized, "gpt-") && !strings.Contains(normalized, "codex") {
-		return ""
-	}
-	return normalized
-}
-
-func isOpenAIFastAliasSuffix(suffix string) bool {
-	switch suffix {
-	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "openai-compact":
-		return true
-	}
-	if !isCodexDateSuffix(suffix) {
-		return false
-	}
-	_, err := time.Parse("2006-01-02", suffix)
-	return err == nil
-}
-
-func openAIModelMatchesFastSKU(normalized, sku string) bool {
-	if normalized == sku {
-		return true
-	}
-	suffix, ok := strings.CutPrefix(normalized, sku+"-")
-	return ok && isOpenAIFastAliasSuffix(suffix)
-}
-
-// resolveOpenAIFastModelPolicy 是 Fast 能力声明和缺失价格兜底共用的 fail-closed
-// 入口。允许 provider 前缀、拼写变体、日期快照、reasoning effort 与 compact
-// 别名；官方 SKU 表之外的产品后缀一律不匹配。
-func resolveOpenAIFastModelPolicy(model string) (openAIFastModelPolicy, bool) {
-	normalized := canonicalizeOpenAIModelSpelling(model)
-	if normalized == "" {
-		return openAIFastModelPolicy{}, false
-	}
-	for _, policy := range openAIFastModelPolicies {
-		if openAIModelMatchesFastSKU(normalized, policy.CanonicalSKU) {
-			return policy, true
-		}
-	}
-	// 仅继承 codexModelMap 中的精确已知映射；这样 gpt-5.2-codex、
-	// codex-mini-latest 等实际会改写到官方 Fast SKU 的兼容别名保持一致，
-	// preview、Pro、Spark 和未知产品后缀仍然 fail-closed。
-	if mapped := getNormalizedCodexModel(normalized); mapped != "" && mapped != normalized {
-		for _, policy := range openAIFastModelPolicies {
-			if mapped == policy.CanonicalSKU {
-				return policy, true
-			}
-		}
-	}
-	if normalized == "gpt-5.6" {
-		return openAIFastModelPolicy{CanonicalSKU: "gpt-5.6-sol", FallbackRatio: 2}, true
-	}
-	if suffix, ok := strings.CutPrefix(normalized, "gpt-5.6-"); ok && isOpenAIFastAliasSuffix(suffix) {
-		return openAIFastModelPolicy{CanonicalSKU: "gpt-5.6-sol", FallbackRatio: 2}, true
-	}
-	return openAIFastModelPolicy{}, false
-}
-
 func normalizeKnownOpenAICodexModel(model string) string {
 	normalized := canonicalizeOpenAIModelAliasSpelling(model)
 	if normalized == "" {
@@ -100,11 +40,11 @@ func normalizeKnownOpenAICodexModel(model string) string {
 	switch {
 	case normalized == "gpt-6" || normalized == "gpt-6-astra":
 		return "gpt-6-astra"
-	case openAIModelMatchesFastSKU(normalized, "gpt-5.6-sol"):
+	case strings.Contains(normalized, "gpt-5.6-sol"):
 		return "gpt-5.6-sol"
-	case openAIModelMatchesFastSKU(normalized, "gpt-5.6-terra"):
+	case strings.Contains(normalized, "gpt-5.6-terra"):
 		return "gpt-5.6-terra"
-	case openAIModelMatchesFastSKU(normalized, "gpt-5.6-luna"):
+	case strings.Contains(normalized, "gpt-5.6-luna"):
 		return "gpt-5.6-luna"
 	case normalized == "gpt-5.6":
 		return "gpt-5.6-sol"
@@ -118,8 +58,6 @@ func normalizeKnownOpenAICodexModel(model string) string {
 		return "gpt-5.5-pro"
 	case strings.Contains(normalized, "gpt-5.5"):
 		return "gpt-5.5"
-	case strings.Contains(normalized, "gpt-5.4-pro"):
-		return "gpt-5.4-pro"
 	case strings.Contains(normalized, "gpt-5.4-mini"):
 		return "gpt-5.4-mini"
 	case strings.Contains(normalized, "gpt-5.4-nano"):

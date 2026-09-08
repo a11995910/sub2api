@@ -2,18 +2,12 @@ package service
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 // AdminService interface defines admin management operations
@@ -68,7 +62,6 @@ type AdminService interface {
 	ClearGroupRPMOverrides(ctx context.Context, groupID int64) error
 	BatchSetGroupRPMOverrides(ctx context.Context, groupID int64, entries []GroupRPMOverrideInput) error
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
-	GetGroupAllowedUsers(ctx context.Context, groupID int64, page, pageSize int) ([]UserGroupAccessMeta, int64, error)
 
 	// API Key management (admin)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
@@ -85,7 +78,6 @@ type AdminService interface {
 	// ListOpenAISchedulableAccountsForSchedulerScore 返回指定分组（nil 为未分组）内
 	// 可调度的 OpenAI 账号，用于按组计算调度分数。
 	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error)
-	ListAccountIDs(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]int64, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -193,10 +185,6 @@ type UpdateUserInput struct {
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
-	// BlockedGroups 保存用户不可使用的公开标准分组；nil 表示不修改。
-	BlockedGroups *[]int64
-	// AllowedGroupAccess 保存专属分组授权有效期；nil 表示不修改，非 nil 表示同步授权集合和时间。
-	AllowedGroupAccess *[]UserAllowedGroupAccessInput
 	// RestrictPublicGroups 指针区分"未提供"和"显式开关"。
 	RestrictPublicGroups *bool
 	// GroupRates 用户专属分组倍率配置
@@ -250,49 +238,32 @@ type CreateGroupInput struct {
 	Platform                  string
 	RateMultiplier            float64
 	IsExclusive               bool
-	OAuthPoolVisible          bool
 	SubscriptionType          string   // standard/subscription
 	DailyLimitUSD             *float64 // 日限额 (USD)
 	WeeklyLimitUSD            *float64 // 周限额 (USD)
 	MonthlyLimitUSD           *float64 // 月限额 (USD)
 	LongContextPricingEnabled bool
 	ModelPricing              []ChannelModelPricing
-	// 图片生成计费配置
-	AllowImageGeneration           bool
-	ImageResponseFormat            string
-	AllowBatchImageGeneration      bool
-	ImageSuperResolutionEnabled    bool
-	Image2KEnhancementEnabled      bool
-	Image2KEnhancementGroupID      *int64
-	Image4KEnhancementEnabled      bool
-	Image4KEnhancementGroupID      *int64
-	Image4KEnhancementModel        *string
-	ImageRateIndependent           bool
-	CacheHitQuarterToInput         bool
-	CacheHitTargetPercent          *float64
-	CacheHitTargetTolerancePercent *float64
-	CacheHitHalfLifeDays           *float64
-	ImageRateMultiplier            *float64
-	BatchImageDiscountMultiplier   *float64
-	BatchImageHoldMultiplier       *float64
-	VideoRateIndependent           bool
-	VideoRateMultiplier            *float64
+	// 图片生成计费配置（仅 antigravity 平台使用）
+	AllowImageGeneration         bool
+	AllowBatchImageGeneration    bool
+	ImageRateIndependent         bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
+	VideoRateIndependent         bool
+	VideoRateMultiplier          *float64
 	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
 	PeakRateEnabled    bool
 	PeakStart          string
 	PeakEnd            string
 	PeakRateMultiplier *float64
-	// 限时活动折扣配置（PromoDiscountRate 为 nil 时按 1.0 处理）
-	PromoDiscountEnabled bool
-	PromoDiscountStart   *time.Time
-	PromoDiscountEnd     *time.Time
-	PromoDiscountRate    *float64
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	VideoPrice480P       *float64
-	VideoPrice720P       *float64
-	VideoPrice1080P      *float64
+	ImagePrice1K       *float64
+	ImagePrice2K       *float64
+	ImagePrice4K       *float64
+	VideoPrice480P     *float64
+	VideoPrice720P     *float64
+	VideoPrice1080P    *float64
 	// VideoModelPrices 可选按模型族×分辨率覆盖视频每秒单价。
 	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；nil/负数按默认价 0.01 处理
@@ -307,8 +278,6 @@ type CreateGroupInput struct {
 	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
-	// 同模型账号耗尽时使用的承接分组 ID；nil 表示关闭。
-	AutoFallbackGroupID *int64
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool // 是否启用模型路由
@@ -349,7 +318,6 @@ type UpdateGroupInput struct {
 	Platform                  string
 	RateMultiplier            *float64 // 使用指针以支持设置为0
 	IsExclusive               *bool
-	OAuthPoolVisible          *bool
 	Status                    string
 	SubscriptionType          string   // standard/subscription
 	DailyLimitUSD             *float64 // 日限额 (USD)
@@ -357,42 +325,26 @@ type UpdateGroupInput struct {
 	MonthlyLimitUSD           *float64 // 月限额 (USD)
 	LongContextPricingEnabled *bool
 	ModelPricing              *[]ChannelModelPricing
-	// 图片生成计费配置
-	AllowImageGeneration           *bool
-	ImageResponseFormat            *string
-	AllowBatchImageGeneration      *bool
-	ImageSuperResolutionEnabled    *bool
-	Image2KEnhancementEnabled      *bool
-	Image2KEnhancementGroupID      *int64
-	Image4KEnhancementEnabled      *bool
-	Image4KEnhancementGroupID      *int64
-	Image4KEnhancementModel        *string
-	ImageRateIndependent           *bool
-	CacheHitQuarterToInput         *bool
-	CacheHitTargetPercent          *float64
-	CacheHitTargetTolerancePercent *float64
-	CacheHitHalfLifeDays           *float64
-	ImageRateMultiplier            *float64
-	BatchImageDiscountMultiplier   *float64
-	BatchImageHoldMultiplier       *float64
-	VideoRateIndependent           *bool
-	VideoRateMultiplier            *float64
+	// 图片生成计费配置（仅 antigravity 平台使用）
+	AllowImageGeneration         *bool
+	AllowBatchImageGeneration    *bool
+	ImageRateIndependent         *bool
+	ImageRateMultiplier          *float64
+	BatchImageDiscountMultiplier *float64
+	BatchImageHoldMultiplier     *float64
+	VideoRateIndependent         *bool
+	VideoRateMultiplier          *float64
 	// 高峰时段倍率配置（nil 表示不修改）
 	PeakRateEnabled    *bool
 	PeakStart          *string
 	PeakEnd            *string
 	PeakRateMultiplier *float64
-	// 限时活动折扣配置（nil 表示不修改）
-	PromoDiscountEnabled *bool
-	PromoDiscountStart   *time.Time
-	PromoDiscountEnd     *time.Time
-	PromoDiscountRate    *float64
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	VideoPrice480P       *float64
-	VideoPrice720P       *float64
-	VideoPrice1080P      *float64
+	ImagePrice1K       *float64
+	ImagePrice2K       *float64
+	ImagePrice4K       *float64
+	VideoPrice480P     *float64
+	VideoPrice720P     *float64
+	VideoPrice1080P    *float64
 	// VideoModelPrices 可选按模型族×分辨率覆盖；nil 表示不修改，空 map 表示清除。
 	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示不修改，负数表示清除回默认价 0.01
@@ -407,8 +359,6 @@ type UpdateGroupInput struct {
 	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
-	// 同模型账号耗尽时使用的承接分组 ID；nil 表示不修改，非正数表示清空。
-	AutoFallbackGroupID *int64
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled *bool // 是否启用模型路由
@@ -731,8 +681,6 @@ const (
 
 var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_STATUS_UNAVAILABLE", "RPM cache not available")
 
-var ErrVideoTaskBillingPending = infraerrors.New(http.StatusConflict, "VIDEO_TASK_BILLING_PENDING", "存在待确认或待结算的视频任务，请先完成异常视频任务核对")
-
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
 	cfg                  *config.Config
@@ -803,7 +751,6 @@ func NewAdminService(
 	affiliateService *AffiliateService,
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
-	videoTaskDeletionGuard VideoTaskDeletionGuard,
 	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
@@ -837,315 +784,3 @@ func NewAdminService(
 		channelCacheInvalidator: channelCacheInvalidator,
 	}
 }
-
-func (s *adminServiceImpl) loadUserAllowedGroupAccessBatch(ctx context.Context, users []User) {
-	if len(users) == 0 {
-		return
-	}
-	reader, ok := s.userRepo.(UserGroupAccessAdminRepository)
-	if !ok {
-		return
-	}
-	userIDs := make([]int64, 0, len(users))
-	for i := range users {
-		userIDs = append(userIDs, users[i].ID)
-	}
-	accessByUser, err := reader.ListActiveUserGroupAccessMetaByUserIDs(ctx, userIDs)
-	if err != nil {
-		logger.LegacyPrintf("service.admin", "failed to load user allowed group access: err=%v", err)
-		return
-	}
-	for i := range users {
-		users[i].AllowedGroupAccess = accessByUser[users[i].ID]
-	}
-}
-
-func (s *adminServiceImpl) loadUserAllowedGroupAccess(ctx context.Context, user *User) {
-	if user == nil {
-		return
-	}
-	reader, ok := s.userRepo.(UserGroupAccessAdminRepository)
-	if !ok {
-		return
-	}
-	accessByUser, err := reader.ListActiveUserGroupAccessMetaByUserIDs(ctx, []int64{user.ID})
-	if err != nil {
-		logger.LegacyPrintf("service.admin", "failed to load user allowed group access: user_id=%d err=%v", user.ID, err)
-		return
-	}
-	user.AllowedGroupAccess = accessByUser[user.ID]
-}
-
-func (s *adminServiceImpl) GetGroupAuthorizedUsers(ctx context.Context, groupID int64, page, pageSize int, search string) ([]GroupAuthorizedUser, *pagination.PaginationResult, error) {
-	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !group.IsExclusive || group.SubscriptionType == SubscriptionTypeSubscription {
-		return nil, nil, infraerrors.BadRequest("GROUP_AUTHORIZED_USERS_UNSUPPORTED", "authorized users can only be listed for standard exclusive groups")
-	}
-
-	repo, ok := s.userRepo.(GroupAuthorizedUserRepository)
-	if !ok || repo == nil {
-		return nil, nil, infraerrors.New(http.StatusNotImplemented, "GROUP_AUTHORIZED_USERS_UNAVAILABLE", "authorized user listing is unavailable")
-	}
-
-	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
-	return repo.ListAuthorizedUsersByGroup(ctx, groupID, params, search)
-}
-
-func accountPlatformMatchesModelCandidatePlatform(accountPlatform, requestedPlatform string) bool {
-	accountPlatform = strings.TrimSpace(accountPlatform)
-	requestedPlatform = strings.TrimSpace(requestedPlatform)
-	if requestedPlatform == "" {
-		return true
-	}
-	if accountPlatform == requestedPlatform {
-		return true
-	}
-	if requestedPlatform == PlatformComposite {
-		return isConcreteRequestPlatform(accountPlatform)
-	}
-	if requestedPlatform == PlatformOpenAI {
-		return NormalizeOpenAICompatiblePlatform(accountPlatform) == PlatformOpenAI
-	}
-	return false
-}
-
-func normalizePositiveInt64Ptr(value *int64) *int64 {
-	if value == nil || *value <= 0 {
-		return nil
-	}
-	return value
-}
-
-func normalizeImageTierEnhancementGroupID(enabled bool, value *int64) *int64 {
-	if !enabled {
-		return nil
-	}
-	return normalizePositiveInt64Ptr(value)
-}
-
-func normalizeImageTierEnhancementModel(enabled bool, value *string) *string {
-	if !enabled || value == nil {
-		return nil
-	}
-	model := strings.TrimSpace(*value)
-	if model == "" {
-		return nil
-	}
-	return &model
-}
-
-func (s *adminServiceImpl) validateImageTierEnhancementConfig(ctx context.Context, currentGroupID int64, platform string, allowImageGeneration, enabled bool, targetGroupID *int64, tier string) error {
-	if !enabled {
-		return nil
-	}
-	tier = strings.ToUpper(strings.TrimSpace(tier))
-	if tier != ImageBillingSize2K && tier != ImageBillingSize4K {
-		return fmt.Errorf("unsupported image enhancement tier %q", tier)
-	}
-	fieldPrefix := strings.ToLower(tier)
-	if platform != PlatformOpenAI {
-		return fmt.Errorf("image_%s_enhancement_enabled is only supported for openai groups", fieldPrefix)
-	}
-	if !allowImageGeneration {
-		return fmt.Errorf("image_%s_enhancement_enabled requires allow_image_generation", fieldPrefix)
-	}
-	// 2K 超分为纯本地等比放大，不依赖目标分组，无需校验 target group。
-	if tier == ImageBillingSize2K {
-		return nil
-	}
-	if targetGroupID == nil || *targetGroupID <= 0 {
-		return fmt.Errorf("image_%s_enhancement_group_id is required when image %s enhancement is enabled", fieldPrefix, tier)
-	}
-	if currentGroupID > 0 && *targetGroupID == currentGroupID {
-		return fmt.Errorf("image_%s_enhancement_group_id cannot use self", fieldPrefix)
-	}
-	target, err := s.groupRepo.GetByIDLite(ctx, *targetGroupID)
-	if err != nil {
-		return fmt.Errorf("image_%s_enhancement_group_id %d not found: %w", fieldPrefix, *targetGroupID, err)
-	}
-	if target.Platform != PlatformOpenAI {
-		return fmt.Errorf("image_%s_enhancement_group_id %d must be an openai group", fieldPrefix, *targetGroupID)
-	}
-	if target.Status != StatusActive {
-		return fmt.Errorf("image_%s_enhancement_group_id %d must be active", fieldPrefix, *targetGroupID)
-	}
-	if !target.AllowImageGeneration {
-		return fmt.Errorf("image_%s_enhancement_group_id %d must allow image generation", fieldPrefix, *targetGroupID)
-	}
-	return nil
-}
-
-func (s *adminServiceImpl) reassignAPIKeysBeforeGroupDelete(ctx context.Context, groupID int64, replacementGroupID *int64) error {
-	if s.apiKeyRepo == nil {
-		return nil
-	}
-	count, err := s.apiKeyRepo.CountByGroupID(ctx, groupID)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return nil
-	}
-
-	targetGroupID := int64(0)
-	usingCustomReplacement := false
-	if replacementGroupID != nil && *replacementGroupID > 0 {
-		targetGroupID = *replacementGroupID
-		usingCustomReplacement = true
-	} else {
-		defaultGroupID, err := s.apiKeyDefaultGroupID(ctx)
-		if err != nil {
-			return err
-		}
-		targetGroupID = defaultGroupID
-	}
-
-	if targetGroupID <= 0 {
-		return infraerrors.BadRequest(
-			"API_KEY_DEFAULT_GROUP_REQUIRED",
-			"cannot delete group with bound api keys before configuring api key default group",
-		)
-	}
-	if targetGroupID == groupID {
-		if usingCustomReplacement {
-			return infraerrors.BadRequest(
-				"API_KEY_REPLACEMENT_GROUP_SELF_DELETE",
-				"cannot replace api keys with the group being deleted",
-			)
-		}
-		return infraerrors.BadRequest(
-			"API_KEY_DEFAULT_GROUP_SELF_DELETE",
-			"cannot delete the current api key default group while api keys are bound to it",
-		)
-	}
-	targetGroup, err := s.groupRepo.GetByIDLite(ctx, targetGroupID)
-	if err != nil {
-		if errors.Is(err, ErrGroupNotFound) {
-			if usingCustomReplacement {
-				return infraerrors.BadRequest(
-					"API_KEY_REPLACEMENT_GROUP_INVALID",
-					"api key replacement group is invalid",
-				).WithMetadata(map[string]string{
-					"group_id": strconv.FormatInt(targetGroupID, 10),
-				})
-			}
-			return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(targetGroupID, 10),
-			})
-		}
-		return err
-	}
-	if !targetGroup.IsActive() {
-		if usingCustomReplacement {
-			return infraerrors.BadRequest(
-				"API_KEY_REPLACEMENT_GROUP_INVALID",
-				"api key replacement group is invalid",
-			).WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(targetGroupID, 10),
-			})
-		}
-		return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
-			"group_id": strconv.FormatInt(targetGroupID, 10),
-		})
-	}
-	if _, err := s.apiKeyRepo.UpdateGroupIDByGroup(ctx, groupID, targetGroupID); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *adminServiceImpl) apiKeyDefaultGroupID(ctx context.Context) (int64, error) {
-	if s.settingService == nil || s.settingService.settingRepo == nil {
-		return 0, nil
-	}
-	raw, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyAPIKeyDefaultGroupID)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, nil
-	}
-	return id, nil
-}
-
-func (s *adminServiceImpl) SetAPIKeyDefaultGroup(ctx context.Context, groupID int64) error {
-	if s.settingService == nil || s.settingService.settingRepo == nil {
-		return ErrSettingNotFound
-	}
-	if groupID > 0 {
-		group, err := s.groupRepo.GetByIDLite(ctx, groupID)
-		if err != nil {
-			if errors.Is(err, ErrGroupNotFound) {
-				return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
-					"group_id": strconv.FormatInt(groupID, 10),
-				})
-			}
-			return err
-		}
-		if !group.IsActive() {
-			return ErrAPIKeyDefaultGroupInvalid.WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(groupID, 10),
-			})
-		}
-	}
-	return s.settingService.settingRepo.Set(ctx, SettingKeyAPIKeyDefaultGroupID, strconv.FormatInt(groupID, 10))
-}
-
-func (s *adminServiceImpl) GetGroupAllowedUsers(ctx context.Context, groupID int64, page, pageSize int) ([]UserGroupAccessMeta, int64, error) {
-	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
-	if err != nil {
-		return nil, 0, err
-	}
-	if !group.IsExclusive || group.IsSubscriptionType() {
-		return []UserGroupAccessMeta{}, 0, nil
-	}
-	repo, ok := s.userRepo.(UserGroupAccessAdminRepository)
-	if !ok {
-		return nil, 0, fmt.Errorf("user group access repository is not configured")
-	}
-	return repo.ListActiveUserGroupAccessMetaByGroupID(ctx, groupID, page, pageSize)
-}
-
-type accountAllListRepository interface {
-	ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
-}
-
-type accountIDListRepository interface {
-	ListIDsWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]int64, *pagination.PaginationResult, error)
-}
-
-func (s *adminServiceImpl) ListAccountIDs(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]int64, int64, error) {
-	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
-	if repo, ok := s.accountRepo.(accountIDListRepository); ok {
-		ids, result, err := repo.ListIDsWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
-		if err != nil {
-			return nil, 0, err
-		}
-		if result == nil {
-			return ids, int64(len(ids)), nil
-		}
-		return ids, result.Total, nil
-	}
-
-	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
-	if err != nil {
-		return nil, 0, err
-	}
-	ids := make([]int64, 0, len(accounts))
-	for _, account := range accounts {
-		ids = append(ids, account.ID)
-	}
-	if result == nil {
-		return ids, int64(len(ids)), nil
-	}
-	return ids, result.Total, nil
-}
-
-// MixedChannelError 混合渠道错误

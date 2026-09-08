@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -110,27 +109,26 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
-	accountCandidates := make([]string, 0)
 	for _, acc := range accounts {
-		if !accountPlatformMatchesModelCandidatePlatform(acc.Platform, platform) {
+		if platform == PlatformComposite {
+			if !isConcreteRequestPlatform(acc.Platform) {
+				continue
+			}
+		} else if acc.Platform != platform {
 			continue
 		}
-		for model, mapped := range acc.GetModelMapping() {
-			for _, candidate := range []string{model, mapped} {
-				candidate = strings.TrimSpace(candidate)
-				if candidate == "" || strings.Contains(candidate, "*") {
-					continue
-				}
-				if _, ok := seen[candidate]; ok {
-					continue
-				}
-				seen[candidate] = struct{}{}
-				accountCandidates = append(accountCandidates, candidate)
+		for model := range acc.GetModelMapping() {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
 			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			candidates = append(candidates, model)
 		}
 	}
-	sort.Strings(accountCandidates)
-	candidates = append(candidates, accountCandidates...)
 	return candidates, nil
 }
 
@@ -412,10 +410,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
 	}
-	imageResponseFormat, err := NormalizeImageResponseFormat(input.ImageResponseFormat)
-	if err != nil {
-		return nil, err
-	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
@@ -440,15 +434,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, errors.New("image_rate_multiplier must be >= 0")
 		}
 		imageRateMultiplier = *input.ImageRateMultiplier
-	}
-	cacheHitTargetPercent := NormalizeCacheHitTargetPercent(input.CacheHitTargetPercent)
-	cacheHitTargetTolerancePercent := NormalizeCacheHitTargetTolerancePercent(input.CacheHitTargetTolerancePercent)
-	if err := ValidateCacheHitTargetConfig(cacheHitTargetPercent, cacheHitTargetTolerancePercent); err != nil {
-		return nil, err
-	}
-	cacheHitHalfLifeDays := NormalizeCacheHitHalfLifeDays(input.CacheHitHalfLifeDays)
-	if err := ValidateCacheHitHalfLifeDays(cacheHitHalfLifeDays); err != nil {
-		return nil, err
 	}
 	batchImageDiscountMultiplier := defaultBatchImageDiscountMultiplier
 	if input.BatchImageDiscountMultiplier != nil {
@@ -487,16 +472,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
-	promoDiscountRate := 1.0
-	if input.PromoDiscountRate != nil {
-		promoDiscountRate = *input.PromoDiscountRate
-	}
-	// 活动折扣与高峰倍率同一收口：先归一化清洗、后校验，Create 与 Update 共用。
-	promoDiscountEnabled, promoDiscountStart, promoDiscountEnd, promoDiscountRate := NormalizePromoDiscountConfig(input.PromoDiscountEnabled, input.PromoDiscountStart, input.PromoDiscountEnd, promoDiscountRate)
-	if err := ValidatePromoDiscountConfig(promoDiscountEnabled, promoDiscountStart, promoDiscountEnd, promoDiscountRate); err != nil {
-		return nil, err
-	}
-
 	profitMinMargin := 0.0
 	if input.ProfitMinMargin != nil {
 		profitMinMargin = *input.ProfitMinMargin
@@ -527,12 +502,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
-	autoFallbackGroupID := normalizePositiveInt64Ptr(input.AutoFallbackGroupID)
-	if autoFallbackGroupID != nil {
-		if err := s.validateAutoFallbackGroup(ctx, 0, platform, subscriptionType, *autoFallbackGroupID); err != nil {
-			return nil, err
-		}
-	}
 
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
@@ -542,18 +511,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
-	var image2KEnhancementGroupID *int64
-	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, allowImageGeneration, input.Image2KEnhancementEnabled, image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
-		return nil, err
-	}
-	image4KEnhancementGroupID := normalizeImageTierEnhancementGroupID(input.Image4KEnhancementEnabled, input.Image4KEnhancementGroupID)
-	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, allowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
-		return nil, err
-	}
-	image4KEnhancementModel := normalizeImageTierEnhancementModel(input.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
-	if input.Image4KEnhancementEnabled && image4KEnhancementModel == nil {
-		return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
-	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -599,7 +556,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
-		OAuthPoolVisible:                input.OAuthPoolVisible,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
@@ -608,18 +564,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		LongContextPricingEnabled:       input.LongContextPricingEnabled,
 		ModelPricing:                    modelPricing,
 		AllowImageGeneration:            allowImageGeneration,
-		ImageResponseFormat:             imageResponseFormat,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
-		Image2KEnhancementEnabled:       input.Image2KEnhancementEnabled,
-		Image2KEnhancementGroupID:       image2KEnhancementGroupID,
-		Image4KEnhancementEnabled:       input.Image4KEnhancementEnabled,
-		Image4KEnhancementGroupID:       image4KEnhancementGroupID,
-		Image4KEnhancementModel:         image4KEnhancementModel,
 		ImageRateIndependent:            input.ImageRateIndependent,
-		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
-		CacheHitTargetPercent:           cacheHitTargetPercent,
-		CacheHitTargetTolerancePercent:  cacheHitTargetTolerancePercent,
-		CacheHitHalfLifeDays:            cacheHitHalfLifeDays,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        batchImageHoldMultiplier,
@@ -629,10 +575,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
 		PeakRateMultiplier:              peakRateMultiplier,
-		PromoDiscountEnabled:            promoDiscountEnabled,
-		PromoDiscountStart:              promoDiscountStart,
-		PromoDiscountEnd:                promoDiscountEnd,
-		PromoDiscountRate:               promoDiscountRate,
 		ProfitControlEnabled:            profitControlEnabled,
 		ProfitMinMargin:                 profitMinMargin,
 		ProfitSafetyBuffer:              profitSafetyBuffer,
@@ -651,7 +593,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
-		AutoFallbackGroupID:             autoFallbackGroupID,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
@@ -799,46 +740,6 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	return nil
 }
 
-// validateAutoFallbackGroup 保证承接链只在同平台标准分组之间流转，并拒绝循环配置。
-func (s *adminServiceImpl) validateAutoFallbackGroup(ctx context.Context, currentGroupID int64, platform, subscriptionType string, fallbackGroupID int64) error {
-	if subscriptionType != SubscriptionTypeStandard {
-		return errors.New("only standard groups can configure auto fallback")
-	}
-	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
-		return errors.New("cannot set self as auto fallback group")
-	}
-
-	visited := make(map[int64]struct{})
-	for nextID := fallbackGroupID; nextID > 0; {
-		if currentGroupID > 0 && nextID == currentGroupID {
-			return errors.New("auto fallback group cycle detected")
-		}
-		if _, exists := visited[nextID]; exists {
-			return errors.New("auto fallback group cycle detected")
-		}
-		visited[nextID] = struct{}{}
-
-		target, err := s.groupRepo.GetByIDLite(ctx, nextID)
-		if err != nil {
-			return fmt.Errorf("auto fallback group not found: %w", err)
-		}
-		if target.Status != StatusActive {
-			return errors.New("auto fallback group must be active")
-		}
-		if target.Platform != platform {
-			return errors.New("auto fallback group must use the same platform")
-		}
-		if target.SubscriptionType != SubscriptionTypeStandard {
-			return errors.New("auto fallback group must be a standard group")
-		}
-		if target.AutoFallbackGroupID == nil {
-			return nil
-		}
-		nextID = *target.AutoFallbackGroupID
-	}
-	return nil
-}
-
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
@@ -875,9 +776,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
 	}
-	if input.OAuthPoolVisible != nil {
-		group.OAuthPoolVisible = *input.OAuthPoolVisible
-	}
 	if input.Status != "" {
 		group.Status = input.Status
 	}
@@ -910,59 +808,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *input.AllowImageGeneration
 	}
-	if input.ImageResponseFormat != nil {
-		imageResponseFormat, err := NormalizeImageResponseFormat(*input.ImageResponseFormat)
-		if err != nil {
-			return nil, err
-		}
-		group.ImageResponseFormat = imageResponseFormat
-	}
 	if input.AllowBatchImageGeneration != nil {
 		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
 	}
 	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false
 	}
-	if input.Image2KEnhancementEnabled != nil {
-		group.Image2KEnhancementEnabled = *input.Image2KEnhancementEnabled
-	}
-	group.Image2KEnhancementGroupID = nil
-	if input.Image4KEnhancementEnabled != nil {
-		group.Image4KEnhancementEnabled = *input.Image4KEnhancementEnabled
-	}
-	if input.Image4KEnhancementGroupID != nil {
-		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
-	}
-	if input.Image4KEnhancementModel != nil {
-		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(group.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
-	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
-	}
-	if input.CacheHitQuarterToInput != nil {
-		group.CacheHitQuarterToInput = *input.CacheHitQuarterToInput
-	}
-	if input.CacheHitTargetPercent != nil {
-		group.CacheHitTargetPercent = NormalizeCacheHitTargetPercent(input.CacheHitTargetPercent)
-	} else if group.CacheHitTargetPercent <= 0 {
-		// 兼容迁移前构造的内存对象或测试桩；数据库升级后该列始终有 90% 默认值。
-		group.CacheHitTargetPercent = DefaultCacheHitTargetPercent
-	}
-	if input.CacheHitTargetTolerancePercent != nil {
-		group.CacheHitTargetTolerancePercent = NormalizeCacheHitTargetTolerancePercent(input.CacheHitTargetTolerancePercent)
-	} else if group.CacheHitTargetTolerancePercent < 0 {
-		group.CacheHitTargetTolerancePercent = DefaultCacheHitTargetTolerancePercent
-	}
-	if err := ValidateCacheHitTargetConfig(group.CacheHitTargetPercent, group.CacheHitTargetTolerancePercent); err != nil {
-		return nil, err
-	}
-	if input.CacheHitHalfLifeDays != nil {
-		group.CacheHitHalfLifeDays = NormalizeCacheHitHalfLifeDays(input.CacheHitHalfLifeDays)
-	} else if group.CacheHitHalfLifeDays <= 0 {
-		group.CacheHitHalfLifeDays = DefaultCacheHitHalfLifeDays
-	}
-	if err := ValidateCacheHitHalfLifeDays(group.CacheHitHalfLifeDays); err != nil {
-		return nil, err
 	}
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {
@@ -1014,24 +867,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。与 CreateGroup 同一收口。
 	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = NormalizePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier)
 	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {
-		return nil, err
-	}
-	if input.PromoDiscountEnabled != nil {
-		group.PromoDiscountEnabled = *input.PromoDiscountEnabled
-	}
-	if input.PromoDiscountStart != nil {
-		group.PromoDiscountStart = input.PromoDiscountStart
-	}
-	if input.PromoDiscountEnd != nil {
-		group.PromoDiscountEnd = input.PromoDiscountEnd
-	}
-	if input.PromoDiscountRate != nil {
-		group.PromoDiscountRate = *input.PromoDiscountRate
-	}
-	// 活动折扣与高峰倍率同一收口：Update 可能只传部分字段，需对合并后的最终配置统一
-	// 归一化与校验，防止单独修改 start/end 导致 end<=start 等非法配置入库。
-	group.PromoDiscountEnabled, group.PromoDiscountStart, group.PromoDiscountEnd, group.PromoDiscountRate = NormalizePromoDiscountConfig(group.PromoDiscountEnabled, group.PromoDiscountStart, group.PromoDiscountEnd, group.PromoDiscountRate)
-	if err := ValidatePromoDiscountConfig(group.PromoDiscountEnabled, group.PromoDiscountStart, group.PromoDiscountEnd, group.PromoDiscountRate); err != nil {
 		return nil, err
 	}
 	if input.ProfitControlEnabled != nil {
@@ -1117,14 +952,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
-	if input.AutoFallbackGroupID != nil {
-		group.AutoFallbackGroupID = normalizePositiveInt64Ptr(input.AutoFallbackGroupID)
-	}
-	if group.AutoFallbackGroupID != nil {
-		if err := s.validateAutoFallbackGroup(ctx, id, group.Platform, group.SubscriptionType, *group.AutoFallbackGroupID); err != nil {
-			return nil, err
-		}
-	}
 
 	// 模型路由配置
 	if input.ModelRouting != nil {
@@ -1205,22 +1032,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	sanitizeGroupOpenAIFast(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
-	}
-	if !group.Image4KEnhancementEnabled {
-		group.Image4KEnhancementGroupID = nil
-		group.Image4KEnhancementModel = nil
-	}
-	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image2KEnhancementEnabled, group.Image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
-		return nil, err
-	}
-	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
-		return nil, err
-	}
-	if group.Image4KEnhancementEnabled {
-		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(true, group.Image4KEnhancementModel)
-		if group.Image4KEnhancementModel == nil {
-			return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
-		}
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
 	// 固定账号 manifest 配置：按最终平台归一化（切出 openai 平台时静默归零，
@@ -1375,9 +1186,6 @@ func (s *adminServiceImpl) deleteGroup(ctx context.Context, id int64, requireEmp
 		if err == nil {
 			groupKeys = keys
 		}
-	}
-	if err := s.reassignAPIKeysBeforeGroupDelete(ctx, id, replacementGroupID); err != nil {
-		return err
 	}
 
 	var affectedUserIDs []int64
@@ -1535,9 +1343,6 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		}
 		if group.Status != StatusActive {
 			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
-		}
-		if !group.IsSubscriptionType() && !group.IsExclusive && apiKey.User != nil && !apiKey.User.CanBindGroup(group.ID, false) {
-			return nil, infraerrors.BadRequest("GROUP_NOT_ALLOWED", "target group is blocked for this user")
 		}
 		// 订阅类型分组：用户须持有该分组的有效订阅才可绑定
 		if group.IsSubscriptionType() {
