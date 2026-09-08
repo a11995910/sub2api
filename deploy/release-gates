@@ -134,33 +134,30 @@ check_build_resources() {
   local min_disk_gib="${SUB2API_BUILD_MIN_DISK_GIB:-20}"
   local min_total_mem_gib="${SUB2API_BUILD_MIN_TOTAL_MEM_GIB:-12}"
   local min_available_mem_gib="${SUB2API_BUILD_MIN_AVAILABLE_MEM_GIB:-4}"
-  local load_limit_percent="${SUB2API_BUILD_LOAD_LIMIT_PERCENT:-75}"
   local max_gomaxprocs="${SUB2API_BUILD_MAX_GOMAXPROCS:-8}"
   local meminfo_path="${SUB2API_BUILD_MEMINFO_PATH:-/proc/meminfo}"
-  local loadavg_path="${SUB2API_BUILD_LOADAVG_PATH:-/proc/loadavg}"
-  local available_disk_kb total_mem_kb available_mem_kb cpu_count load_one
+  local stat_path="${SUB2API_BUILD_PROC_STAT_PATH:-/proc/stat}"
+  local available_disk_kb total_mem_kb available_mem_kb cpu_count cpu_usage_percent
+  local cpu_before cpu_after
   local build_gomaxprocs memory_limited_procs
 
   test -d "$repo_dir"
   [[ "$min_disk_gib" =~ ^[1-9][0-9]*$ ]]
   [[ "$min_total_mem_gib" =~ ^[1-9][0-9]*$ ]]
   [[ "$min_available_mem_gib" =~ ^[1-9][0-9]*$ ]]
-  [[ "$load_limit_percent" =~ ^[1-9][0-9]?$|^100$ ]]
   [[ "$max_gomaxprocs" =~ ^[1-9][0-9]*$ ]]
   test -r "$meminfo_path"
-  test -r "$loadavg_path"
+  test -r "$stat_path"
 
   available_disk_kb="$(df -Pk "$repo_dir" | awk 'NR == 2 {print $4}')"
   total_mem_kb="$(awk '/MemTotal:/ {print $2; exit}' "$meminfo_path")"
   available_mem_kb="$(awk '/MemAvailable:/ {print $2; exit}' "$meminfo_path")"
-  load_one="$(awk '{print $1}' "$loadavg_path")"
   cpu_count="${SUB2API_BUILD_CPU_COUNT:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)}"
 
   [[ "$available_disk_kb" =~ ^[0-9]+$ ]]
   [[ "$total_mem_kb" =~ ^[0-9]+$ ]]
   [[ "$available_mem_kb" =~ ^[0-9]+$ ]]
   [[ "$cpu_count" =~ ^[1-9][0-9]*$ ]]
-  [[ "$load_one" =~ ^[0-9]+([.][0-9]+)?$ ]]
   if ! (( available_disk_kb >= min_disk_gib * 1024 * 1024 )); then
     printf '构建资源不足：可用磁盘=%sKiB，最低要求=%sGiB\n' \
       "$available_disk_kb" "$min_disk_gib" >&2
@@ -176,12 +173,32 @@ check_build_resources() {
       "$available_mem_kb" "$min_available_mem_gib" >&2
     return 1
   fi
-  if ! awk -v load_value="$load_one" -v cpu="$cpu_count" -v limit="$load_limit_percent" \
-    'BEGIN { exit !(load_value < cpu * limit / 100) }'; then
-    printf '构建资源不足：一分钟负载=%s，CPU=%s，允许上限为 CPU 的 %s%%\n' \
-      "$load_one" "$cpu_count" "$load_limit_percent" >&2
-    return 1
-  fi
+  # 采样整机所有 CPU 的累计时间差，不使用历史 load average。
+  cpu_before="$(head -n 1 "$stat_path")"
+  sleep 1
+  cpu_after="$(head -n 1 "$stat_path")"
+  cpu_usage_percent="$(python3 - "$cpu_before" "$cpu_after" <<'PY'
+import sys
+
+def counters(raw):
+    fields = raw.split()
+    if len(fields) < 9 or fields[0] != 'cpu' or not all(v.isdigit() for v in fields[1:]):
+        raise SystemExit('无法读取有效的整机 CPU 时间计数，拒绝发布')
+    # guest 已计入 user/nice，不重复累计；idle 和 iowait 不计为 CPU 占用。
+    return [int(v) for v in fields[1:9]]
+
+before, after = map(counters, sys.argv[1:])
+delta = [end - start for start, end in zip(before, after)]
+total = sum(delta)
+if total <= 0 or any(value < 0 for value in delta):
+    raise SystemExit('CPU 采样无增量或计数回退，拒绝发布')
+busy = total - delta[3] - delta[4]
+usage = busy * 100 / total
+if busy * 100 > total * 50:
+    raise SystemExit(f'构建资源不足：当前整机 CPU 使用率={usage:.6f}%，已超过上限 50%')
+print(f'{usage:.2f}')
+PY
+)" || return 1
 
   build_gomaxprocs="$cpu_count"
   (( build_gomaxprocs > max_gomaxprocs )) && build_gomaxprocs="$max_gomaxprocs"
@@ -201,7 +218,7 @@ check_build_resources() {
   fi
 
   printf '%s|%s|%s|%s|%s|%s\n' \
-    "$build_gomaxprocs" "$available_disk_kb" "$total_mem_kb" "$available_mem_kb" "$cpu_count" "$load_one"
+    "$build_gomaxprocs" "$available_disk_kb" "$total_mem_kb" "$available_mem_kb" "$cpu_count" "$cpu_usage_percent"
 }
 
 validate_wait_arguments() {

@@ -462,7 +462,7 @@ install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/rele
 /opt/sub2api/scripts/release-staging "$expected_commit"
 ```
 
-脚本先检查磁盘、总内存、可用内存、一分钟负载和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 4 vCPU、约 16GiB 内存、4GiB Swap、约 276GiB 可用磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，负载低于 CPU 容量的 75%，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，新机通常为 4）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。prod 必须使用这次输出的同一 commit 与 run ID。
+脚本先检查磁盘、总内存、可用内存、当前整机 CPU 使用率和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 4 vCPU、约 16GiB 内存、4GiB Swap、约 276GiB 可用磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，通过 `/proc/stat` 间隔 1 秒采样整机 CPU 使用率，不超过 50% 才放行（等于 50% 允许）；idle 和 iowait 不计入 CPU 占用，不再使用 load average，采样失败时拒绝发布，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，新机通常为 4）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。prod 必须使用这次输出的同一 commit 与 run ID。
 
 新正式 VPS 迁移期的首次 staging 发布可能早于 prod 迁移。经用户明确授权后，可在目标主机调用 `/opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod`。该模式会 fail-closed 核对 prod `.env`、compose override、compose 容器和 prod 数据文件均不存在，并在 `staging-result.json` 记录 `bootstrap_without_prod: true`。只要目标主机出现任一 prod 状态，该模式必须拒绝执行；正常发布继续要求同机 prod 健康。
 

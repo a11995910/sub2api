@@ -87,51 +87,49 @@ BACKUP_RECEIPT_OWNER_UID="$(id -u)" \
 grep -Fqx 'external_backup_archive=sub2api-prod-20260816T134952Z.dump.zst' "$receipt_output"
 grep -Fqx "external_backup_sha256=$(printf 'a%.0s' {1..64})" "$receipt_output"
 grep -Fqx 'external_backup_verified_at=2026-08-16T14:00:00+00:00' "$receipt_output"
-
 resource_dir="$tmp_dir/resource"
-mkdir -p "$resource_dir"
+mkdir -p "$resource_dir" "$tmp_dir/cpu-bin"
 cat > "$tmp_dir/meminfo" <<'EOF'
 MemTotal:       16777216 kB
 MemAvailable:   12582912 kB
 EOF
-printf '0.50 0.40 0.30 2/100 1234\n' > "$tmp_dir/loadavg"
-resource_output="$(env \
-  SUB2API_BUILD_MIN_DISK_GIB=1 \
-  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
-  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
-  SUB2API_BUILD_CPU_COUNT=4 \
-  "$gate" check-build-resources "$resource_dir")"
-resource_gomaxprocs="$(printf '%s\n' "$resource_output" | cut -d '|' -f 1)"
-test "$resource_gomaxprocs" -eq 4
-run_expect_fail env \
-  SUB2API_BUILD_MIN_DISK_GIB=1 \
-  SUB2API_BUILD_MIN_AVAILABLE_MEM_GIB=13 \
-  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
-  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
-  SUB2API_BUILD_CPU_COUNT=4 \
-  "$gate" check-build-resources "$resource_dir"
-printf '3.50 0.40 0.30 2/100 1234\n' > "$tmp_dir/loadavg-high"
-run_expect_fail env \
-  SUB2API_BUILD_MIN_DISK_GIB=1 \
-  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
-  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg-high" \
-  SUB2API_BUILD_CPU_COUNT=4 \
-  "$gate" check-build-resources "$resource_dir"
-run_expect_fail env \
-  SUB2API_BUILD_MIN_DISK_GIB=1 \
-  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
-  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
-  SUB2API_BUILD_CPU_COUNT=4 \
-  SUB2API_BUILD_GOMAXPROCS=5 \
-  "$gate" check-build-resources "$resource_dir"
+# 用替身 sleep 切换两次 /proc/stat 采样，避免计时竞争。
+cat > "$tmp_dir/cpu-bin/sleep" <<'SH'
+#!/bin/sh
+cp "$CPU_SAMPLE_AFTER" "$SUB2API_BUILD_PROC_STAT_PATH"
+SH
+chmod +x "$tmp_dir/cpu-bin/sleep"
+sample_resources() {
+  local after="$1"
+  shift
+  printf 'cpu 100 0 0 100 0 0 0 0 0 0\n' > "$tmp_dir/stat"
+  printf '%s\n' "$after" > "$tmp_dir/stat-after"
+  env PATH="$tmp_dir/cpu-bin:$PATH" \
+    CPU_SAMPLE_AFTER="$tmp_dir/stat-after" \
+    SUB2API_BUILD_PROC_STAT_PATH="$tmp_dir/stat" \
+    SUB2API_BUILD_MIN_DISK_GIB=1 \
+    SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo" \
+    SUB2API_BUILD_CPU_COUNT=4 \
+    "$@" "$gate" check-build-resources "$resource_dir"
+}
+resource_output="$(sample_resources 'cpu 125 0 0 175 0 0 0 0 0 0')"
+test "$(printf '%s\n' "$resource_output" | cut -d '|' -f 1)" -eq 4
+test "$(printf '%s\n' "$resource_output" | cut -d '|' -f 6)" = 25.00
+# 50% 边界、guest 不重复累计、iowait 不算 CPU 占用。
+test "$(sample_resources 'cpu 150 0 0 150 0 0 0 0 50 0' | cut -d '|' -f 6)" = 50.00
+test "$(sample_resources 'cpu 125 0 0 100 75 0 0 0 0 0' | cut -d '|' -f 6)" = 25.00
+run_expect_fail sample_resources 'cpu 151 0 0 149 0 0 0 0 0 0'
+# 不允许先四舍五入成 50.00 再放行。
+run_expect_fail sample_resources 'cpu 50101 0 0 50099 0 0 0 0 0 0'
+run_expect_fail sample_resources 'cpu 100 0 0 100 0 0 0 0 0 0'
+run_expect_fail sample_resources 'cpu 99 0 0 200 0 0 0 0 0 0'
+run_expect_fail sample_resources 'cpu invalid'
+run_expect_fail sample_resources 'cpu 125 0 0 175 0 0 0 0 0 0' SUB2API_BUILD_MIN_AVAILABLE_MEM_GIB=13
+run_expect_fail sample_resources 'cpu 125 0 0 175 0 0 0 0 0 0' SUB2API_BUILD_GOMAXPROCS=5
 printf 'MemTotal:       8388608 kB\nMemAvailable:   6291456 kB\n' > "$tmp_dir/meminfo-low-total"
-run_expect_fail env \
-  SUB2API_BUILD_MIN_DISK_GIB=1 \
-  SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo-low-total" \
-  SUB2API_BUILD_LOADAVG_PATH="$tmp_dir/loadavg" \
-  SUB2API_BUILD_CPU_COUNT=4 \
-  "$gate" check-build-resources "$resource_dir"
-
+run_expect_fail sample_resources 'cpu 125 0 0 175 0 0 0 0 0 0' SUB2API_BUILD_MEMINFO_PATH="$tmp_dir/meminfo-low-total"
+# 旧负载参数不再参与判定。
+sample_resources 'cpu 125 0 0 175 0 0 0 0 0 0' SUB2API_BUILD_LOAD_LIMIT_PERCENT=1 SUB2API_BUILD_LOADAVG_PATH=/missing >/dev/null
 fake_bin="$tmp_dir/bin"
 mkdir -p "$fake_bin"
 state_file="$tmp_dir/docker-states"

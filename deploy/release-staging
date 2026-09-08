@@ -121,7 +121,7 @@ PY
 trap record_result EXIT
 
 build_resources="$("$release_gates" check-build-resources "$repo_dir")"
-IFS='|' read -r build_gomaxprocs available_disk_kb total_mem_kb available_mem_kb cpu_count load_one <<< "$build_resources"
+IFS='|' read -r build_gomaxprocs available_disk_kb total_mem_kb available_mem_kb cpu_count cpu_usage_percent <<< "$build_resources"
 
 prod_status=healthy
 if [[ "$bootstrap_without_prod" -eq 1 ]]; then
@@ -148,9 +148,9 @@ else
   test "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$prod_id")" = healthy
 fi
 
-printf 'staging 资源检查：磁盘=%sGiB 内存=%sMiB/%sMiB CPU=%s GOMAXPROCS=%s 负载=%s prod=%s\n' \
+printf 'staging 资源检查：磁盘=%sGiB 内存=%sMiB/%sMiB CPU=%s GOMAXPROCS=%s CPU使用率=%s%% prod=%s\n' \
   "$((available_disk_kb / 1024 / 1024))" "$((available_mem_kb / 1024))" "$((total_mem_kb / 1024))" \
-  "$cpu_count" "$build_gomaxprocs" "$load_one" "$prod_status"
+  "$cpu_count" "$build_gomaxprocs" "$cpu_usage_percent" "$prod_status"
 
 cd "$repo_dir"
 test -z "$(git status --porcelain)"

@@ -77,10 +77,10 @@ compose_prod() {
 }
 
 build_resources="$("$release_gates" check-build-resources "$repo_dir")"
-IFS='|' read -r build_gomaxprocs available_disk_kb total_mem_kb available_mem_kb cpu_count load_one <<< "$build_resources"
-printf 'prod 资源检查：磁盘=%sGiB 内存=%sMiB/%sMiB CPU=%s GOMAXPROCS=%s 负载=%s\n' \
+IFS='|' read -r build_gomaxprocs available_disk_kb total_mem_kb available_mem_kb cpu_count cpu_usage_percent <<< "$build_resources"
+printf 'prod 资源检查：磁盘=%sGiB 内存=%sMiB/%sMiB CPU=%s GOMAXPROCS=%s CPU使用率=%s%%\n' \
   "$((available_disk_kb / 1024 / 1024))" "$((available_mem_kb / 1024))" "$((total_mem_kb / 1024))" \
-  "$cpu_count" "$build_gomaxprocs" "$load_one"
+  "$cpu_count" "$build_gomaxprocs" "$cpu_usage_percent"
 
 exec 9>/var/lock/sub2api-build.lock
 flock -n 9
