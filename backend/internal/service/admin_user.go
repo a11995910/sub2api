@@ -61,7 +61,6 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 			s.loadUserGroupRatesOneByOne(ctx, users)
 		}
 	}
-	s.loadUserAllowedGroupAccessBatch(ctx, users)
 	return users, result.Total, nil
 }
 
@@ -99,7 +98,6 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 			user.GroupRates = rates
 		}
 	}
-	s.loadUserAllowedGroupAccess(ctx, user)
 	return user, nil
 }
 
@@ -205,48 +203,6 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 			}
 		}
 	}
-	if input.AllowedGroupAccess != nil {
-		now := time.Now().UTC()
-		for _, entry := range *input.AllowedGroupAccess {
-			if entry.GroupID <= 0 {
-				continue
-			}
-			if entry.ExpiresAtSet && entry.ExpiresAt != nil && !entry.ExpiresAt.After(now) {
-				return nil, infraerrors.BadRequest(
-					"INVALID_ALLOWED_GROUP_EXPIRES_AT",
-					fmt.Sprintf("allowed group %d expires_at must be in the future", entry.GroupID),
-				)
-			}
-		}
-	}
-	var normalizedBlockedGroups []int64
-	if input.BlockedGroups != nil {
-		if s.groupRepo == nil {
-			return nil, fmt.Errorf("group repository is not configured")
-		}
-		seen := make(map[int64]struct{}, len(*input.BlockedGroups))
-		normalizedBlockedGroups = make([]int64, 0, len(*input.BlockedGroups))
-		for _, groupID := range *input.BlockedGroups {
-			if groupID <= 0 {
-				return nil, infraerrors.BadRequest("INVALID_BLOCKED_GROUP", "blocked group id must be positive")
-			}
-			if _, ok := seen[groupID]; ok {
-				continue
-			}
-			group, err := s.groupRepo.GetByIDLite(ctx, groupID)
-			if err != nil {
-				if errors.Is(err, ErrGroupNotFound) {
-					return nil, infraerrors.BadRequest("INVALID_BLOCKED_GROUP", fmt.Sprintf("blocked group %d does not exist", groupID))
-				}
-				return nil, fmt.Errorf("get blocked group %d: %w", groupID, err)
-			}
-			if group.SubscriptionType != SubscriptionTypeStandard || group.IsExclusive {
-				return nil, infraerrors.BadRequest("INVALID_BLOCKED_GROUP", fmt.Sprintf("blocked group %d must be a public standard group", groupID))
-			}
-			seen[groupID] = struct{}{}
-			normalizedBlockedGroups = append(normalizedBlockedGroups, groupID)
-		}
-	}
 
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -263,16 +219,6 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
 	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
-	oldBlockedGroups := append([]int64(nil), user.BlockedGroups...)
-	allowedGroupAccessUpdated := input.AllowedGroupAccess != nil
-	var accessRepo UserGroupAccessAdminRepository
-	if input.AllowedGroupAccess != nil {
-		var ok bool
-		accessRepo, ok = s.userRepo.(UserGroupAccessAdminRepository)
-		if !ok {
-			return nil, fmt.Errorf("user group access repository is not configured")
-		}
-	}
 
 	// fields 与下面的 input.X 判空条件一一对应：管理员没提交的列不写回，
 	// 避免这份快照回滚并发的扣费、状态变更或批量限额调整。
@@ -330,21 +276,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		fields.RPMLimit = true
 	}
 
-	if input.AllowedGroupAccess != nil {
-		allowedGroups := make([]int64, 0, len(*input.AllowedGroupAccess))
-		for _, entry := range *input.AllowedGroupAccess {
-			if entry.GroupID > 0 {
-				allowedGroups = append(allowedGroups, entry.GroupID)
-			}
-		}
-		user.AllowedGroups = allowedGroups
-	} else if input.AllowedGroups != nil {
+	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 		fields.AllowedGroups = true
-	}
-	if input.BlockedGroups != nil {
-		user.BlockedGroups = normalizedBlockedGroups
-		fields.BlockedGroups = true
 	}
 
 	oldRestrictPublicGroups := user.RestrictPublicGroups
@@ -353,35 +287,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		fields.RestrictPublicGroups = true
 	}
 
-	if input.AllowedGroupAccess != nil {
-		if s.entClient != nil {
-			tx, err := s.entClient.Tx(ctx)
-			if err != nil {
-				return nil, err
-			}
-			defer func() { _ = tx.Rollback() }()
-			opCtx := dbent.NewTxContext(ctx, tx)
-			if err := s.userRepo.Update(opCtx, user, fields); err != nil {
-				return nil, err
-			}
-			if err := accessRepo.SyncUserAllowedGroupAccess(opCtx, user.ID, *input.AllowedGroupAccess); err != nil {
-				return nil, err
-			}
-			if err := tx.Commit(); err != nil {
-				return nil, err
-			}
-		} else {
-			if err := s.userRepo.Update(ctx, user, fields); err != nil {
-				return nil, err
-			}
-			if err := accessRepo.SyncUserAllowedGroupAccess(ctx, user.ID, *input.AllowedGroupAccess); err != nil {
-				return nil, err
-			}
-		}
-	} else if err := s.userRepo.Update(ctx, user, fields); err != nil {
+	if err := s.userRepo.Update(ctx, user, fields); err != nil {
 		return nil, err
 	}
-	s.loadUserAllowedGroupAccess(ctx, user)
 
 	// 角色变更属权限敏感操作，落审计日志（含操作者），便于事后追溯。
 	if user.Role != oldRole {
@@ -398,8 +306,8 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
-		// allowed_groups、blocked_groups 和公开分组限制都参与 API Key 分组授权判断；修改后必须立即失效旧快照。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || user.RestrictPublicGroups != oldRestrictPublicGroups || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || !sameInt64Set(user.BlockedGroups, oldBlockedGroups) {
+		// allowed_groups 参与 API Key 专属分组授权判断；不失效缓存会让修改在一个 L2 TTL 内失去效果。
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || user.RestrictPublicGroups != oldRestrictPublicGroups || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -457,33 +365,30 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
-	var apiKeys []APIKey
-	deleteUser := func() error {
-		var err error
-		apiKeys, err = s.listUserAPIKeysForDeletion(ctx, id)
-		if err != nil {
-			return err
-		}
-		if s.entClient == nil {
-			return s.deleteUserWithAPIKeys(ctx, id, apiKeys)
-		}
+
+	apiKeys, err := s.listUserAPIKeysForDeletion(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if s.entClient != nil {
 		tx, err := s.entClient.Tx(ctx)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = tx.Rollback() }()
-		if err := s.deleteUserWithAPIKeys(dbent.NewTxContext(ctx, tx), id, apiKeys); err != nil {
+
+		opCtx := dbent.NewTxContext(ctx, tx)
+		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys); err != nil {
 			return err
 		}
-		return tx.Commit()
-	}
-	if s.videoTaskDeletionGuard != nil {
-		err = s.videoTaskDeletionGuard.WithUserDeletionGuard(ctx, id, deleteUser)
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	} else {
-		err = deleteUser()
-	}
-	if err != nil {
-		return fmt.Errorf("delete user: %w", err)
+		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys); err != nil {
+			return err
+		}
 	}
 
 	if s.authCacheInvalidator != nil {
