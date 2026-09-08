@@ -81,4 +81,4 @@ pnpm test:run
 pnpm build
 ```
 
-生产发布仍遵守仓库的 staging、同 commit 验证、异机备份和明确口头确认门禁。
+生产发布仍遵守仓库的 staging、同 commit 验证、资源、健康、回滚和明确口头确认门禁；不执行或要求异机备份及其凭证。

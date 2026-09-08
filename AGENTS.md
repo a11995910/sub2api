@@ -11,7 +11,7 @@
 ## VPS 连接
 
 - 当前正式 VPS：`205.185.113.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`，使用 SSH 密钥认证。
-- 备份机器：`192.220.36.75`，仅承担 prod 数据库归档。
+- 原备份机器：`192.220.36.75`，不再参与发布；除非用户另行要求，不连接该机器或执行异机备份。
 - 旧正式主机 `207.57.145.15` 不再作为 Sub2API 正式线上环境；除非用户明确要求，不对其执行发布或迁移操作。
 - 服务器密码不得写入规则、脚本、文档或代码；如需调整访问权限，优先更新密钥授权。
 
@@ -83,8 +83,8 @@
 - 每次构建必须使用 `deploy/Dockerfile` 在正式 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
 - Docker 构建必须传入可追溯版本信息，至少包含 `COMMIT=$(git rev-parse --short=12 HEAD)` 和 `DATE=$(git show -s --format=%cI HEAD)`。
 - 仓库 `deploy/release-staging` 和 `deploy/release-prod` 分别是 `/opt/sub2api/scripts/release-staging` 和 `/opt/sub2api/scripts/release-prod` 的唯一受版本控制来源；安装或升级时必须从已推送的 `origin/main` 复制并设置为 `root:root`、`0700`，不得在 VPS 上直接手写简化发布脚本。
-- 异机备份机只承担 prod 数据库归档，归档目录为 `/opt/sub2api-prod-backup/archives`；正式 VPS 不保存 prod 全库 dump，`deploy/release-prod` 也不得在正式 VPS 创建全库 dump。
-- prod 发布前必须存在 `/opt/sub2api/state/prod-backup-result.json`，并保持 `root:root`、`0600`。凭证必须由已完成 SHA-256、zstd 和 `pg_restore --list` 校验的异机归档生成，绑定目标完整 commit 与 staging run ID，且校验时不得超过两小时。
+- staging 和 prod 发布不再执行或要求异机备份，不要求 `prod-backup-result.json`，不调用 `validate-backup-receipt`；不得因旧凭证缺失、过期或备份机不可达而阻止发布。历史归档不删除；独立备份操作仅在用户另行要求时执行，正式 VPS 不创建 prod 全库 dump。
+- 取消异机备份要求不取消其他门禁：必须保留同一完整 commit 和 staging run 的验证、资源检查、版本与能力检查、定价策略检查、容器与 HTTP 健康检查、原镜像记录和失败回滚。prod 仍须用户明确授权。
 - staging 与 prod 切换应用容器后必须先使用 `deploy/release-gates wait-container-healthy` 等待 Docker health 为 `healthy`，再使用 `wait-http` 检查宿主机健康接口；禁止在 `compose up -d` 后立即以单次 `curl` 判定失败。
 - prod 发布失败时必须把 `.env` 恢复为发布前记录的原正式镜像 tag，并确认恢复后的容器与 HTTP 均健康；临时 `sub2api:rollback-*` tag 只能在恢复成功后删除，不得让 `.env` 指向已删除的临时 tag。
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
@@ -116,10 +116,10 @@ expected_commit='填写本地 main 的 git rev-parse HEAD 输出'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/release-staging
 /opt/sub2api/scripts/release-staging "$expected_commit"
-# 记录脚本输出的数字 run_id，后续异机备份凭证和 prod 必须使用同一值。
+# 记录脚本输出的数字 run_id，后续 prod 必须使用同一值。
 ```
 
-prod 发布必须在用户明确确认后执行，并使用同一 commit、staging run 和两小时内的异机备份凭证。正式 VPS 只调用受版本控制的 root-only 发布脚本，不复制其内部切换逻辑：
+prod 发布必须在用户明确确认后执行，并使用同一 commit 和 staging run；不执行异机备份，也不校验备份凭证。正式 VPS 只调用受版本控制的 root-only 发布脚本，不复制其内部切换逻辑：
 
 ```bash
 cd /opt/sub2api/repo
@@ -131,9 +131,6 @@ expected_commit='填写已确认上线的 main commit'
 test "$(git rev-parse HEAD)" = "$expected_commit"
 commit="$(git rev-parse --short=12 HEAD)"
 staging_run_id='填写对应 staging 验证 run ID'
-test "$(stat -c '%U:%G %a' /opt/sub2api/state/prod-backup-result.json)" = 'root:root 600'
-deploy/release-gates validate-backup-receipt \
-  /opt/sub2api/state/prod-backup-result.json "$expected_commit" "$staging_run_id"
 install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release-prod
 /opt/sub2api/scripts/release-prod \
   /opt/sub2api/env/prod/.env \

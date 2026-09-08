@@ -462,7 +462,7 @@ install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/rele
 /opt/sub2api/scripts/release-staging "$expected_commit"
 ```
 
-脚本先检查磁盘、总内存、可用内存、一分钟负载和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 4 vCPU、约 16GiB 内存、4GiB Swap、约 276GiB 可用磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，负载低于 CPU 容量的 75%，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，新机通常为 4）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。异机备份凭证和 prod 必须使用这次输出的同一 commit 与 run ID。
+脚本先检查磁盘、总内存、可用内存、一分钟负载和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 4 vCPU、约 16GiB 内存、4GiB Swap、约 276GiB 可用磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，负载低于 CPU 容量的 75%，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，新机通常为 4）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。prod 必须使用这次输出的同一 commit 与 run ID。
 
 新正式 VPS 迁移期的首次 staging 发布可能早于 prod 迁移。经用户明确授权后，可在目标主机调用 `/opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod`。该模式会 fail-closed 核对 prod `.env`、compose override、compose 容器和 prod 数据文件均不存在，并在 `staging-result.json` 记录 `bootstrap_without_prod: true`。只要目标主机出现任一 prod 状态，该模式必须拒绝执行；正常发布继续要求同机 prod 健康。
 
@@ -543,28 +543,9 @@ WHERE billing_mode = 'video';
 
 `channel_account_stats_model_pricing` 必须始终为 `0`，因为账号统计链路不按视频时长计费。`channel_model_pricing` 是否必须为 `0` 取决于回滚镜像能力：新镜像必须在 `--version` 中显式声明 `explicit_video_pricing_per_second`；历史镜像只有精确 commit `a08a958be9a29594692ab87f74c9227504c09d27` 和 `7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6` 经过代码审查确认兼容。其他没有能力标识的镜像一律按不支持处理，不能只看版本号或祖先关系。
 
-后续 prod 切换不再要求备份机归档或 `prod-backup-result.json` 凭证。prod 只能切换到 staging 已验证的同一个 `main` commit，并继续执行资源、版本、定价策略、容器健康、HTTP 健康和失败回滚门禁。
+staging 和 prod 发布不执行或要求异机备份，不要求 `prod-backup-result.json`，不调用 `validate-backup-receipt`，不因历史凭证过期或备份机不可达而阻止发布。历史归档不删除；独立备份仅在用户另行要求时执行。prod 只能切换到 staging 已验证的同一个 `main` commit，并继续执行资源、版本、定价策略、容器健康、HTTP 健康和失败回滚门禁。
 
-```json
-{
-  "environment": "prod-backup",
-  "status": "verified",
-  "target_commit": "40 位目标 commit",
-  "staging_run_id": "对应 staging run ID",
-  "backup_host": "backup-host-1",
-  "archive": "sub2api-prod-YYYYMMDDTHHMMSSZ.dump.zst",
-  "sha256": "64 位小写 SHA-256",
-  "size_bytes": 1,
-  "toc_entries": 100,
-  "zstd_verified": true,
-  "pg_restore_list_verified": true,
-  "verified_at": "带时区的 ISO 8601 时间"
-}
-```
-
-凭证必须绑定待发布的完整 commit 和同一次 staging 验证 run；`verified_at` 不得来自未来，发布脚本校验时最多两小时。归档大小必须为正数，TOC 项数至少为 100。凭证不包含密码、连接串或其他运行时凭据。
-
-生产发布只手工调用受版本控制的 root-only 脚本，不复制内部实现。脚本会验证凭证和 staging 结果、检查目标镜像能力、保存定价与 Fast/Flex 策略小型快照、记录原正式镜像 tag、创建专用回滚 tag，然后执行切换：
+生产发布只手工调用受版本控制的 root-only 脚本，不复制内部实现。脚本会验证 staging 结果、检查资源、目标镜像能力与定价策略、记录原正式镜像 tag、创建专用回滚 tag，然后执行切换。涉及数据库结构变化时必须核实迁移和回滚兼容性，不能把切回旧镜像视为数据库回滚：
 
 ```bash
 ssh sub2api-new-vps
