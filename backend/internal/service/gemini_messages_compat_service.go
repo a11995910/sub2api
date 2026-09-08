@@ -1830,7 +1830,13 @@ func sanitizeUpstreamErrorMessage(msg string) string {
 	}
 	msg = sensitiveQueryParamRegex.ReplaceAllString(msg, `$1***`)
 	msg = upstreamURLRegex.ReplaceAllString(msg, "[upstream address hidden]")
-	msg = upstreamDomainRegex.ReplaceAllString(msg, "[upstream address hidden]")
+	msg = upstreamDomainRegex.ReplaceAllStringFunc(msg, func(value string) string {
+		// 参数路径不是域名；带协议的同名地址已在上一层脱敏。
+		if value == "reasoning.mode" || value == "reasoning.effort" {
+			return value
+		}
+		return "[upstream address hidden]"
+	})
 	return upstreamIPRegex.ReplaceAllString(msg, "[upstream address hidden]")
 }
 

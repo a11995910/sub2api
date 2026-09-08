@@ -1,5 +1,30 @@
 export default {
     accounts: {
+      accountCreatedSuccess: 'Account created successfully',
+      accountDeletedSuccess: 'Account deleted successfully',
+      accountUpdatedSuccess: 'Account updated successfully',
+      cookieRefreshedSuccess: 'Cookie refreshed successfully',
+      deleteConfirmMessage: 'Delete this account?',
+      failedToSave: 'Failed to save account',
+      noAccounts: 'No accounts',
+      noAccountsDescription: 'No accounts are available',
+      refreshCookie: 'Refresh Cookie',
+      refreshing: 'Refreshing...',
+      saving: 'Saving...',
+      testAccount: 'Test Account',
+      testSuccess: 'Test successful',
+      filters: {
+        allPlatforms: 'All Platforms', allStatuses: 'All Statuses', allTypes: 'All Types',
+        platform: 'Platform', status: 'Status', type: 'Type',
+      },
+      form: {
+        credentialsLabel: 'Credentials', credentialsPlaceholder: 'Enter credentials',
+        nameLabel: 'Name', namePlaceholder: 'Enter account name',
+        platformLabel: 'Platform', selectPlatform: 'Select platform',
+        priorityHint: 'Lower values have higher priority', priorityLabel: 'Priority',
+        selectType: 'Select type', statusLabel: 'Status', typeLabel: 'Type',
+        weightHint: 'Scheduling weight', weightLabel: 'Weight',
+      },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
@@ -112,6 +137,7 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
       },
       cnProviders: {
         accountMode: {
@@ -160,6 +186,8 @@ export default {
         noBalanceEndpoint: 'This platform has no balance query endpoint',
       },
       types: {
+        api_key: 'API Key',
+        cookie: 'Cookie',
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
@@ -753,6 +781,8 @@ export default {
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
+      fromModel: 'Request model',
+      toModel: 'Target model',
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
@@ -1537,7 +1567,9 @@ export default {
         grokLastProbe: 'Probe {time}',
         grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
-        activeQuery: 'Query'
+        activeQuery: 'Query',
+        estimatedTotalCost: 'Est. total ${cost}',
+        estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },
       openaiQuotaReset: {
         count: 'Credits',

@@ -57,6 +57,14 @@ func TestClientSafeUpstreamErrorMessage_HidesAddressInClientCorrectableError(t *
 	assert.NotContains(t, message, "access_token=secret")
 }
 
+func TestSanitizeUpstreamErrorPreservesReasoningFields(t *testing.T) {
+	message := sanitizeUpstreamErrorMessage("reasoning.mode and reasoning.effort rejected by https://reasoning.mode/check at api.example.com 192.0.2.1")
+	assert.Contains(t, message, "reasoning.mode and reasoning.effort rejected")
+	assert.NotContains(t, message, "https://")
+	assert.NotContains(t, message, "api.example.com")
+	assert.NotContains(t, message, "192.0.2.1")
+}
+
 func TestApplyErrorPassthroughRule_524DoesNotExposeUpstreamBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
