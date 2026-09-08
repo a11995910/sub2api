@@ -1917,7 +1917,7 @@ func newOpenAIImages4KEnhancementTestServiceWithChannel(upstream *httpUpstreamRe
 		cfg:            &config.Config{},
 		httpUpstream:   upstream,
 		accountRepo:    &openAIImages4KEnhancementAccountRepo{accountsByGroup: map[int64][]Account{targetGroupID: targetAccounts}},
-		channelService: NewChannelService(channelRepo, nil, nil, nil),
+		channelService: NewChannelService(channelRepo, nil, nil, nil, nil),
 	}
 }
 
