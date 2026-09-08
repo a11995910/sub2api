@@ -112,6 +112,15 @@ parse_commit() {
   printf '%s\n' "$1" | sed -nE 's/.*commit: ([0-9a-f]{12}).*/\1/p'
 }
 
+version_supports_account_stats_video() {
+  local version_output="$1" full_commit="$2"
+  # 该历史生产提交已逐项核对视频成本预留、结算和回退链路；其他旧版本不推断兼容。
+  if [[ "$full_commit" = 94cb824216f568f31404cca403c5b817074b91ab ]]; then
+    return 0
+  fi
+  version_has_capability "$version_output" account_stats_video_pricing_per_second
+}
+
 ensure_target_image() {
   if ! docker image inspect "$target_image" >/dev/null 2>&1; then
     staging_image="sub2api:staging-$short_commit"
@@ -131,6 +140,7 @@ ensure_target_image() {
   test "$(printf '%s\n' "$target_version_output" | wc -l)" -eq 1
   test "$(parse_commit "$target_version_output")" = "$short_commit"
   version_has_capability "$target_version_output" explicit_video_pricing_per_second
+  version_has_capability "$target_version_output" account_stats_video_pricing_per_second
 }
 
 compose_prod config -q
@@ -206,7 +216,9 @@ restore_previous_release() {
 }
 trap 'restore_previous_release "$?"' ERR
 
-"$scripts_dir/assert-no-account-stats-video-pricing" "$env_file"
+if ! version_supports_account_stats_video "$previous_version_output" "$previous_commit"; then
+  "$scripts_dir/assert-no-account-stats-video-pricing" "$env_file"
+fi
 if [[ "$previous_supports_explicit_video_pricing" -eq 0 ]]; then
   "$scripts_dir/assert-no-explicit-video-pricing" "$env_file"
 fi

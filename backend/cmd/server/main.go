@@ -39,6 +39,7 @@ var (
 )
 
 const explicitVideoPricingCapability = "explicit_video_pricing_per_second"
+const accountStatsVideoPricingCapability = "account_stats_video_pricing_per_second"
 
 func init() {
 	// 如果 Version 已通过 ldflags 注入（例如 -X main.Version=...），则不要覆盖。
@@ -103,7 +104,7 @@ func formatVersionInfo(version, commit, date string) string {
 		version,
 		commit,
 		date,
-		explicitVideoPricingCapability,
+		explicitVideoPricingCapability+","+accountStatsVideoPricingCapability,
 	)
 }
 

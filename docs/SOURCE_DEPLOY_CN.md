@@ -440,7 +440,7 @@ SCRIPT
 chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 ```
 
-账号统计定价链路不消费视频时长，因此 `assert-no-account-stats-video-pricing` 是发布与回滚都必须执行的 fail-closed 门禁。主渠道显式视频定价只有在回滚镜像不包含每秒计费能力时才执行 `assert-no-explicit-video-pricing`；已证明兼容的镜像允许保留主表中的合法 `video` 记录。Fast/Flex 断言只在回滚目标不支持 `user_ids` 时执行。数据库连接、JSON 解析、SQL、输出内容或计数任一不符合预期都会返回非零。Fast/Flex 断言只用退出码 `10` 表示明确存在无法由旧版安全解释的 `user_ids`；其他非零值均表示检查失败，不得自动覆盖数据库。Fast/Flex 断言不得把非法 JSON 或非法 `user_ids` 类型当成安全配置。
+账号统计已支持视频时长和分辨率成本，版本能力标识为 `account_stats_video_pricing_per_second`。新目标镜像必须声明该能力；回滚镜像没有该能力且不属于已核实的历史提交时，必须执行 `assert-no-account-stats-video-pricing` 并拒绝存在视频配置的发布。不得为通过门禁删除合法视频定价。主渠道视频能力单独以 `explicit_video_pricing_per_second` 判断。Fast/Flex 断言只在回滚目标不支持 `user_ids` 时执行；数据库、解析或兼容性检查失败均不得自动覆盖业务配置。
 
 ### staging 构建与发布
 
@@ -541,7 +541,7 @@ FROM channel_account_stats_model_pricing
 WHERE billing_mode = 'video';
 ```
 
-`channel_account_stats_model_pricing` 必须始终为 `0`，因为账号统计链路不按视频时长计费。`channel_model_pricing` 是否必须为 `0` 取决于回滚镜像能力：新镜像必须在 `--version` 中显式声明 `explicit_video_pricing_per_second`；历史镜像只有精确 commit `a08a958be9a29594692ab87f74c9227504c09d27` 和 `7d5b9bc6bb6d854e00d97bf185ed131e69bfbcd6` 经过代码审查确认兼容。其他没有能力标识的镜像一律按不支持处理，不能只看版本号或祖先关系。
+`channel_account_stats_model_pricing` 中的合法视频配置可保留，但目标及回滚镜像必须支持视频账号成本。历史生产提交 `94cb824216f568f31404cca403c5b817074b91ab` 已核实具备视频成本预留、结算和回退链路，允许在未输出新能力标识时作为回滚目标。其他镜像必须以完整能力标识判定，不能只看版本号或祖先关系。主渠道视频定价仍独立检查 `explicit_video_pricing_per_second`。
 
 staging 和 prod 发布不执行或要求异机备份，不要求 `prod-backup-result.json`，不调用 `validate-backup-receipt`，不因历史凭证过期或备份机不可达而阻止发布。历史归档不删除；独立备份仅在用户另行要求时执行。prod 只能切换到 staging 已验证的同一个 `main` commit，并继续执行资源、版本、定价策略、容器健康、HTTP 健康和失败回滚门禁。
 
@@ -679,7 +679,10 @@ trap restore_current_release_state ERR
 compose_prod stop sub2api
 /opt/sub2api/scripts/snapshot-openai-fast-policy "$env_file" "$rollback_policy_backup"
 rollback_policy_snapshot_ready=1
-/opt/sub2api/scripts/assert-no-account-stats-video-pricing "$env_file"
+if [ "$actual_rollback_commit" != 94cb824216f568f31404cca403c5b817074b91ab ] && \
+  ! version_has_capability "$rollback_version_output" account_stats_video_pricing_per_second; then
+  /opt/sub2api/scripts/assert-no-account-stats-video-pricing "$env_file"
+fi
 if [ "$rollback_supports_explicit_video_pricing" -eq 0 ]; then
   /opt/sub2api/scripts/assert-no-explicit-video-pricing "$env_file"
 fi
