@@ -1,46 +1,10 @@
 package service
 
 import (
-	"sort"
 	"strings"
-	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
-
-type openAIFastModelPolicy struct {
-	CanonicalSKU  string
-	FallbackRatio float64
-}
-
-// 源列表保持可读，初始化时按 SKU 长度降序排列，避免 mini/nano 和日期快照
-// 被较短的基础型号提前匹配。
-var openAIFastModelPolicies = func() []openAIFastModelPolicy {
-	policies := []openAIFastModelPolicy{
-		{CanonicalSKU: "gpt-6-astra", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.6-sol", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.6-terra", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.6-luna", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.5", FallbackRatio: 2.5},
-		{CanonicalSKU: "gpt-5.4", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.4-mini", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.2", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5.1", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-5-mini", FallbackRatio: 1.8},
-		{CanonicalSKU: "gpt-4.1", FallbackRatio: 1.75},
-		{CanonicalSKU: "gpt-4.1-mini", FallbackRatio: 1.75},
-		{CanonicalSKU: "gpt-4.1-nano", FallbackRatio: 2},
-		{CanonicalSKU: "gpt-4o", FallbackRatio: 1.7},
-		{CanonicalSKU: "gpt-4o-2024-05-13", FallbackRatio: 1.75},
-		{CanonicalSKU: "gpt-4o-mini", FallbackRatio: 5.0 / 3.0},
-		{CanonicalSKU: "o3", FallbackRatio: 1.75},
-		{CanonicalSKU: "o4-mini", FallbackRatio: 20.0 / 11.0},
-		{CanonicalSKU: "gpt-5.3-codex", FallbackRatio: 2},
-	}
-	sort.SliceStable(policies, func(i, j int) bool {
-		return len(policies[i].CanonicalSKU) > len(policies[j].CanonicalSKU)
-	})
-	return policies
-}()
 
 func lastOpenAIModelSegment(model string) string {
 	model = strings.TrimSpace(model)
@@ -54,35 +18,8 @@ func lastOpenAIModelSegment(model string) string {
 	return strings.TrimSpace(model)
 }
 
-func canonicalizeOpenAIModelSpelling(model string) string {
-	model = strings.ToLower(lastOpenAIModelSegment(model))
-	if model == "" {
-		return ""
-	}
-
-	normalized := strings.ReplaceAll(model, "_", "-")
-	normalized = strings.Join(strings.Fields(normalized), "-")
-	for strings.Contains(normalized, "--") {
-		normalized = strings.ReplaceAll(normalized, "--", "-")
-	}
-
-	if strings.HasPrefix(normalized, "gpt5") {
-		normalized = "gpt-5" + strings.TrimPrefix(normalized, "gpt5")
-	}
-	replacements := []struct {
-		from string
-		to   string
-	}{
-		{"gpt-5.4mini", "gpt-5.4-mini"},
-		{"gpt-5.4nano", "gpt-5.4-nano"},
-		{"gpt-5.3-codexspark", "gpt-5.3-codex-spark"},
-		{"gpt-5.3codexspark", "gpt-5.3-codex-spark"},
-		{"gpt-5.3codex", "gpt-5.3-codex"},
-	}
-	for _, replacement := range replacements {
-		normalized = strings.ReplaceAll(normalized, replacement.from, replacement.to)
-	}
-	return normalized
+func canonicalizeOpenAIModelAliasSpelling(model string) string {
+	return openai.CanonicalizeOpenAIModelAliasSpelling(model)
 }
 
 func canonicalizeOpenAIModelAliasSpelling(model string) string {

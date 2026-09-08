@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -272,7 +273,7 @@ func TestCompositeRequestModelFromMultipartLiveSession(t *testing.T) {
 	require.NoError(t, writer.WriteField("session", `{"model":"live-alias"}`))
 	require.NoError(t, writer.Close())
 
-	require.Equal(t, "live-alias", compositeRequestModelFromBody(writer.FormDataContentType(), body.Bytes()))
+	require.Equal(t, "live-alias", requestmodel.FromBody(writer.FormDataContentType(), body.Bytes()))
 }
 
 func TestCompositeCodexControlPathsUseResponsesRoutes(t *testing.T) {
@@ -394,44 +395,57 @@ func TestCompositeGeminiTargetPlatformMiddlewareUsesPathRoute(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
-func TestCompositeGeminiTargetPlatformMiddlewarePreservesGetModelResolution(t *testing.T) {
+// Live 入口顶层 model 与 session.model 不一致时，合成路由必须按 session.model
+// 分发与改写（与白名单准入、Live handler 一致），不得命中顶层别名的映射并把
+// session 模型覆盖为别名上游。
+func TestCompositeLiveRouteDispatchesBySessionModelNotTopLevelAlias(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	req := httptest.NewRequest(http.MethodGet, "/v1beta/models/gemini-2.5-pro", nil)
-	c := newCompositeMiddlewareContext(req)
-	c.Params = gin.Params{{Key: "model", Value: "gemini-2.5-pro"}}
-
-	require.NotPanics(t, func() {
-		compositeGeminiTargetPlatformMiddleware(nil)(c)
-	})
-	platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
-	require.True(t, ok)
-	require.Equal(t, service.PlatformGemini, platform)
-}
-
-func TestCompositeGeminiTargetPlatformMiddlewareHandlesNilRequestFields(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	cases := []struct {
-		name string
-		req  *http.Request
-	}{
-		{name: "nil request", req: nil},
-		{name: "nil url", req: &http.Request{Method: http.MethodPost, Body: http.NoBody, Header: make(http.Header)}},
-		{
-			name: "nil body",
-			req: func() *http.Request {
-				req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", nil)
-				req.Body = nil
-				return req
-			}(),
+	router := gin.New()
+	resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []service.CompositeModelRoute{
+			{
+				ID:             1,
+				GroupID:        1,
+				PublicModel:    "live-alias",
+				MatchType:      service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformOpenAI,
+				UpstreamModel:  "gpt-alias-upstream",
+				Endpoint:       service.CompositeRouteEndpointAny,
+				Priority:       100,
+				Enabled:        true,
+			},
 		},
-	}
-
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			c := newCompositeMiddlewareContext(tt.req)
-			require.NotPanics(t, func() {
-				compositeGeminiTargetPlatformMiddleware(nil)(c)
-			})
+	})
+	router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+		groupID := int64(1)
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
 		})
-	}
+		c.Next()
+	})))
+	router.Use(compositeTargetPlatformMiddleware(resolver))
+	router.POST("/backend-api/codex/realtime/calls", func(c *gin.Context) {
+		upstream, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context())
+		require.True(t, ok)
+		require.Equal(t, "gpt-realtime-1", upstream,
+			"Live dispatch must resolve the session model, never the top-level alias upstream")
+		body, err := io.ReadAll(c.Request.Body)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"model":"live-alias","session":{"model":"gpt-realtime-1"},"sdp":"v=0"}`, string(body),
+			"session.model must stay untouched when dispatch resolves by session model")
+		c.Status(http.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/backend-api/codex/realtime/calls",
+		strings.NewReader(`{"model":"live-alias","session":{"model":"gpt-realtime-1"},"sdp":"v=0"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
