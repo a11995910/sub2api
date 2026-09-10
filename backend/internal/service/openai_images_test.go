@@ -2353,6 +2353,7 @@ func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testin
 			toolUsage: `{"input_tokens":4.6e1,"input_tokens_details":{"image_tokens":3.6e1},"output_tokens":2459e0,"output_tokens_details":{"image_tokens":24590e-1}}`,
 			want:      OpenAIUsage{InputTokens: 46, ImageInputTokens: 36, OutputTokens: 2459, ImageOutputTokens: 2459},
 		},
+		{name: "图片输入不超过总输入", toolUsage: `{"input_tokens":10,"input_tokens_details":{"image_tokens":20},"output_tokens":5,"output_tokens_details":{"image_tokens":5}}`, want: OpenAIUsage{InputTokens: 10, ImageInputTokens: 10, OutputTokens: 5, ImageOutputTokens: 5}},
 		{name: "absent", want: fallback},
 		{name: "malformed field", toolUsage: `{"input_tokens":"46","output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
 		{name: "malformed image input", toolUsage: `{"input_tokens":46,"input_tokens_details":{"image_tokens":"36"},"output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
