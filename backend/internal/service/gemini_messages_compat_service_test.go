@@ -117,6 +117,55 @@ func TestGeminiForwardAsChatCompletions_OAuthRoutesToGeminiAndReturnsChatFormat(
 	require.Equal(t, float64(10), usage["total_tokens"])
 }
 
+func TestGeminiForwardAsChatCompletions_DeduplicatesIdenticalImages(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	imagePart := `{"inlineData":{"mimeType":"image/png","data":"aW1hZ2U="}}`
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"candidates":[{"content":{"parts":[` + imagePart + `,` + imagePart + `]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":516}}`,
+			)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{httpUpstream: httpStub, cfg: &config.Config{}}
+	account := &Account{
+		ID:       104,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "gemini-api-key",
+		},
+		Concurrency: 1,
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"gemini-3.1-flash-image","messages":[{"role":"user","content":"draw one image"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Len(t, response.Choices, 1)
+	var content string
+	require.NoError(t, json.Unmarshal(response.Choices[0].Message.Content, &content))
+	require.Equal(t, 1, strings.Count(content, "![image]"))
+	require.Equal(t, 1, strings.Count(content, "aW1hZ2U="))
+}
+
 func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -8,12 +8,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 const geminiTestPNG = "iVBORw0KGgoAAAANSUhEUg=="
+const geminiTestPNG2 = "iVBORw0KGgoAAAANSUhEUh=="
 
 func newGeminiImageTestContext(t *testing.T) *gin.Context {
 	t.Helper()
@@ -54,8 +57,20 @@ func TestCountGeminiInlineImageOutputs(t *testing.T) {
 		{
 			name: "multiple images",
 			payload: geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
-				`{"inlineData":{"mimeType":"image/webp","data":"` + geminiTestPNG + `"}}`),
+				`{"inlineData":{"mimeType":"image/webp","data":"` + geminiTestPNG2 + `"}}`),
 			want: 2,
+		},
+		{
+			name: "identical images count once",
+			payload: geminiImageResponse(`{"inlineData":{"mimeType":"image/jpeg","data":"` + geminiTestPNG + `"}},` +
+				`{"inlineData":{"mimeType":"image/jpeg","data":"` + geminiTestPNG + `"}}`),
+			want: 1,
+		},
+		{
+			name: "thought image is not billable",
+			payload: geminiImageResponse(`{"thought":true,"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
+				`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG2 + `"}}`),
+			want: 1,
 		},
 		{
 			name:    "uppercase mime type",
@@ -90,8 +105,52 @@ func TestCountGeminiInlineImageOutputs(t *testing.T) {
 	}
 }
 
-// 累积式 SSE 会把同一张图在后续 chunk 里整段重发，逐 chunk 累加会重复计费。
-// 计数器取单个 payload 内的最大值，正是为了挡住这一点。
+func TestDeduplicateGeminiInlineImageOutputs(t *testing.T) {
+	t.Run("removes byte-identical final image", func(t *testing.T) {
+		payload := []byte(geminiImageResponse(
+			`{"inlineData":{"mimeType":"image/jpeg","data":"` + geminiTestPNG + `"}},` +
+				`{"inlineData":{"mimeType":"image/jpeg","data":"` + geminiTestPNG + `"}}`))
+
+		got, removed := deduplicateGeminiInlineImageOutputs(payload, nil)
+
+		require.Equal(t, 1, removed)
+		require.Len(t, gjson.GetBytes(got, "candidates.0.content.parts").Array(), 1)
+		require.Equal(t, 1, countGeminiInlineImageOutputs(got))
+	})
+
+	t.Run("keeps distinct and thought images", func(t *testing.T) {
+		payload := []byte(geminiImageResponse(
+			`{"thought":true,"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
+				`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
+				`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG2 + `"}}`))
+
+		got, removed := deduplicateGeminiInlineImageOutputs(payload, nil)
+
+		require.Zero(t, removed)
+		require.Equal(t, string(payload), string(got))
+		require.Len(t, gjson.GetBytes(got, "candidates.0.content.parts").Array(), 3)
+		require.Equal(t, 2, countGeminiInlineImageOutputs(got))
+	})
+
+	t.Run("deduplicates across streaming payloads", func(t *testing.T) {
+		seen := make(map[geminiInlineImageDigest]struct{})
+		first := []byte(geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}}`))
+		second := []byte(geminiImageResponse(
+			`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
+				`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG2 + `"}}`))
+
+		firstOut, firstRemoved := deduplicateGeminiInlineImageOutputs(first, seen)
+		secondOut, secondRemoved := deduplicateGeminiInlineImageOutputs(second, seen)
+
+		require.Zero(t, firstRemoved)
+		require.Equal(t, string(first), string(firstOut))
+		require.Equal(t, 1, secondRemoved)
+		require.Len(t, gjson.GetBytes(secondOut, "candidates.0.content.parts").Array(), 1)
+		require.Equal(t, geminiTestPNG2, gjson.GetBytes(secondOut, "candidates.0.content.parts.0.inlineData.data").String())
+	})
+}
+
+// 累积式 SSE 会把同一张图在后续 chunk 里整段重发，内容摘要必须挡住重复计费。
 func TestObserveGeminiImageOutputs_CumulativeChunksDoNotDoubleCount(t *testing.T) {
 	c := newGeminiImageTestContext(t)
 	beginGeminiImageOutputObservation(c)
@@ -104,14 +163,14 @@ func TestObserveGeminiImageOutputs_CumulativeChunksDoNotDoubleCount(t *testing.T
 	require.Equal(t, 1, observedGeminiImageOutputs(c))
 }
 
-func TestObserveGeminiImageOutputs_KeepsLargestChunk(t *testing.T) {
+func TestObserveGeminiImageOutputs_TracksDistinctImagesInPayload(t *testing.T) {
 	c := newGeminiImageTestContext(t)
 	beginGeminiImageOutputObservation(c)
 
 	observeGeminiImageOutputs(c, []byte(geminiImageResponse(`{"text":"working"}`)))
 	observeGeminiImageOutputs(c, []byte(geminiImageResponse(
 		`{"inlineData":{"mimeType":"image/png","data":"`+geminiTestPNG+`"}},`+
-			`{"inlineData":{"mimeType":"image/png","data":"`+geminiTestPNG+`"}}`)))
+			`{"inlineData":{"mimeType":"image/png","data":"`+geminiTestPNG2+`"}}`)))
 	// 收尾 chunk 只带 usageMetadata，不能把已数到的张数抹掉。
 	observeGeminiImageOutputs(c, []byte(`{"usageMetadata":{"promptTokenCount":9}}`))
 
@@ -174,6 +233,15 @@ func TestResolveGeminiImageCount(t *testing.T) {
 		require.Equal(t, 0, resolveGeminiImageCount(c, "gemini-2.5-pro", "gemini-2.5-pro"))
 	})
 
+	t.Run("thought-only response does not fall back to one image", func(t *testing.T) {
+		c := newGeminiImageTestContext(t)
+		beginGeminiImageOutputObservation(c)
+		observeGeminiImageOutputs(c, []byte(geminiImageResponse(
+			`{"thought":true,"inlineData":{"mimeType":"image/png","data":"`+geminiTestPNG+`"}}`)))
+
+		require.Equal(t, 0, resolveGeminiImageCount(c, "gemini-3.1-flash-image", "gemini-3.1-flash-image"))
+	})
+
 	t.Run("no counter on context degrades to name heuristic", func(t *testing.T) {
 		c := newGeminiImageTestContext(t)
 		require.Equal(t, 0, resolveGeminiImageCount(c, "nana-banana-2", "nana-banana-2"))
@@ -184,10 +252,16 @@ func TestResolveGeminiImageCount(t *testing.T) {
 // 端到端守住接线：/v1beta/models/{model}:generateContent 的非流式响应体
 // 必须真的喂进计数器，否则上面的单测全绿而线上依然记 $0。
 func TestHandleNativeNonStreamingResponse_FeedsImageCounter(t *testing.T) {
-	c := newGeminiImageTestContext(t)
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost,
+		"/v1beta/models/nana-banana-2:generateContent", strings.NewReader("{}"))
 	beginGeminiImageOutputObservation(c)
 
-	body := geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}}`)
+	body := geminiImageResponse(
+		`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
+			`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}}`)
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -201,4 +275,31 @@ func TestHandleNativeNonStreamingResponse_FeedsImageCounter(t *testing.T) {
 
 	require.Equal(t, 1, observedGeminiImageOutputs(c))
 	require.Equal(t, 1, resolveGeminiImageCount(c, "nana-banana-2", "nana-banana-2"))
+	require.Len(t, gjson.GetBytes(recorder.Body.Bytes(), "candidates.0.content.parts").Array(), 1)
+}
+
+func TestHandleNativeStreamingResponse_DeduplicatesImagesAcrossChunks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	beginGeminiImageOutputObservation(c)
+
+	first := geminiImageResponse(`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}}`)
+	second := geminiImageResponse(
+		`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG + `"}},` +
+			`{"inlineData":{"mimeType":"image/png","data":"` + geminiTestPNG2 + `"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			"data: " + first + "\n\n" +
+				"data: " + second + "\n\n" +
+				"data: [DONE]\n\n")),
+	}
+
+	_, err := (&GeminiMessagesCompatService{}).handleNativeStreamingResponse(c, resp, time.Now(), false)
+	require.NoError(t, err)
+	require.Equal(t, 2, observedGeminiImageOutputs(c))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), geminiTestPNG))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), geminiTestPNG2))
 }

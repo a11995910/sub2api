@@ -1604,6 +1604,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to read upstream stream")
 			}
 			b, _ := json.Marshal(collected)
+			b, _ = deduplicateGeminiInlineImageOutputs(b, nil)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(b)
 			observeGeminiImageOutputs(c, b)
 			c.Data(http.StatusOK, "application/json", b)
@@ -2706,6 +2707,11 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 			respBody = unwrappedBody
 		}
 	}
+	if deduplicated, removed := deduplicateGeminiInlineImageOutputs(respBody, nil); removed > 0 {
+		respBody = deduplicated
+		resp.Header.Del("Content-Encoding")
+		resp.Header.Del("ETag")
+	}
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -2764,6 +2770,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	seenInlineImages := make(map[geminiInlineImageDigest]struct{})
 	var firstTokenMs *int
 
 	for {
@@ -2791,6 +2798,14 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						rawBytes = []byte(payload)
 					}
 
+					removed := 0
+					if len(rawBytes) > 0 {
+						rawBytes, removed = deduplicateGeminiInlineImageOutputs(rawBytes, seenInlineImages)
+						if removed > 0 {
+							rawToWrite = string(rawBytes)
+						}
+					}
+
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
 					}
@@ -2802,7 +2817,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						firstTokenMs = &ms
 					}
 
-					if isOAuth {
+					if isOAuth || removed > 0 {
 						// SSE format requires double newline (\n\n) to separate events
 						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
 					} else {

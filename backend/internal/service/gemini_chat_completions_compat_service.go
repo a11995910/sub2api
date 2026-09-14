@@ -272,6 +272,13 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 		}
 		collectedBytes, _ := json.Marshal(collected)
+		if deduplicated, removed := deduplicateGeminiInlineImageOutputs(collectedBytes, nil); removed > 0 {
+			var normalized map[string]any
+			if err := json.Unmarshal(deduplicated, &normalized); err == nil {
+				collected = normalized
+				collectedBytes = deduplicated
+			}
+		}
 		chatResp, usageObj2, err := geminiResponseToChatCompletions(collected, originalModel, collectedBytes, usageObj)
 		if err != nil {
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
@@ -473,6 +480,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 			respBody = unwrappedBody
 		}
 	}
+	respBody, _ = deduplicateGeminiInlineImageOutputs(respBody, nil)
 
 	var geminiResp map[string]any
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
