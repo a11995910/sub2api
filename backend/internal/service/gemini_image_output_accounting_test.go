@@ -269,7 +269,7 @@ func TestHandleNativeNonStreamingResponse_FeedsImageCounter(t *testing.T) {
 	}
 
 	svc := &GeminiMessagesCompatService{}
-	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false)
+	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false, nil, "")
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 
@@ -297,7 +297,7 @@ func TestHandleNativeStreamingResponse_DeduplicatesImagesAcrossChunks(t *testing
 				"data: [DONE]\n\n")),
 	}
 
-	_, err := (&GeminiMessagesCompatService{}).handleNativeStreamingResponse(c, resp, time.Now(), false)
+	_, err := (&GeminiMessagesCompatService{}).handleNativeStreamingResponse(c, resp, time.Now(), false, nil, "")
 	require.NoError(t, err)
 	require.Equal(t, 2, observedGeminiImageOutputs(c))
 	require.Equal(t, 1, strings.Count(recorder.Body.String(), geminiTestPNG))

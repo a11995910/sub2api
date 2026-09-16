@@ -222,6 +222,11 @@ type DefaultPlatformQuotaSetting struct {
 	MonthlyLimitUSD *float64 `json:"monthly"`
 }
 
+// HasAnyLimit 报告是否至少配置了一档限额（0 也算配置）。nil receiver 视为未配置。
+func (q *DefaultPlatformQuotaSetting) HasAnyLimit() bool {
+	return q != nil && (q.DailyLimitUSD != nil || q.WeeklyLimitUSD != nil || q.MonthlyLimitUSD != nil)
+}
+
 type ProviderDefaultGrantSettings struct {
 	Balance          float64
 	Concurrency      int
@@ -746,7 +751,7 @@ func normalizeAndMarshalOpenAIFastPolicySettings(settings *OpenAIFastPolicySetti
 	}
 	validTiers := map[string]bool{
 		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierUltrafast: true, OpenAIFastTierFlex: true,
-		"auto": true, "default": true, "scale": true,
+		"auto": true, "default": true, "scale": true, OpenAIFastTierMissing: true,
 	}
 
 	for i, rule := range settings.Rules {

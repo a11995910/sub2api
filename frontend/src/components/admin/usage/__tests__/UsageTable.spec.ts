@@ -349,7 +349,54 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('0.092883 灵石')
     expect(text).toContain('5.0000 灵石 / 1M tokens')
     expect(text).toContain('30.0000 灵石 / 1M tokens')
-    expect(text).toContain('0.069568 灵石')
+    expect(text).toContain('0.06956800 灵石')
+  })
+
+  it.each(['token', 'image', 'per_request'])('%s 费用明细保留八位小数和灵石单位', async (billingMode) => {
+    const row = {
+      ...baseImageRow,
+      billing_mode: billingMode,
+      image_count: billingMode === 'image' ? 2 : 0,
+      input_cost: 0.00000001,
+      image_input_cost: 0.00000002,
+      output_cost: 0.00000003,
+      image_output_cost: 0.00000004,
+      cache_creation_cost: 0.00000005,
+      cache_read_cost: 0.00000006,
+      total_cost: 0.00000022,
+      actual_cost: 0.00000042,
+      account_stats_cost: 0.00000012,
+      account_rate_multiplier: 1.5,
+    }
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text())
+    expect(amounts).toEqual(expect.arrayContaining([
+      '0.00000001 灵石', '0.00000002 灵石', '0.00000003 灵石', '0.00000004 灵石',
+      '0.00000005 灵石', '0.00000006 灵石', '0.00000022 灵石', '0.00000042 灵石', '0.00000018 灵石',
+    ]))
+    if (billingMode === 'image') expect(amounts).toContain('0.00000011 灵石')
+    wrapper.unmount()
+  })
+
+  it('缺少费用时显示八位小数零值', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, billing_mode: 'per_request', image_count: 0, total_cost: undefined, actual_cost: undefined }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text()).filter(text => text.endsWith(' 灵石'))
+    expect(amounts).toEqual(['0.00000000 灵石', '0.00000000 灵石', '0.00000000 灵石', '0.00000000 灵石'])
+    wrapper.unmount()
   })
 
   it('shows requested and upstream models separately for admin rows', () => {

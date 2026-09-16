@@ -196,8 +196,13 @@ func TestEasyPayCustomMethodsUseConfiguredUpstreamType(t *testing.T) {
 	t.Parallel()
 
 	provider, err := NewEasyPay("test-instance", map[string]string{
-		"pid": "pid-1", "pkey": "pkey-1", "apiBase": "https://pay.example.com", "notifyUrl": "https://example.com/notify", "returnUrl": "https://example.com/return", "paymentMode": paymentModePopup,
-		"customMethods": `[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt","displayName":"USDT-TRC20"}]`,
+		"pid":           "pid-1",
+		"pkey":          "pkey-1",
+		"apiBase":       "https://pay.example.com",
+		"notifyUrl":     "https://example.com/notify",
+		"returnUrl":     "https://example.com/return",
+		"paymentMode":   paymentModePopup,
+		"customMethods": `[{"type":"ldc","upstreamType":"epay","displayName":"LDC"},{"type":"usdt_trc20","upstreamType":"usdt.trc20","displayName":"USDT-TRC20"}]`,
 	})
 	if err != nil {
 		t.Fatalf("NewEasyPay: %v", err)
@@ -210,8 +215,8 @@ func TestEasyPayCustomMethodsUseConfiguredUpstreamType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse pay url: %v", err)
 	}
-	if got := payURL.Query().Get("type"); got != "usdt" {
-		t.Fatalf("pay url type = %q, want usdt (%s)", got, resp.PayURL)
+	if got := payURL.Query().Get("type"); got != "usdt.trc20" {
+		t.Fatalf("pay url type = %q, want usdt.trc20 (%s)", got, resp.PayURL)
 	}
 }
 
