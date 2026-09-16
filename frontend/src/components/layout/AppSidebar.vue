@@ -759,7 +759,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     ...customMenuItemsForUser.value.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
-    { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+    // 定制购买页位于 /payment；/purchase 保留为兑换码页的历史别名。
+    { path: '/payment', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/checkin', label: t('nav.checkin'), icon: CalendarCheckIcon, hideInSimpleMode: true, featureFlag: flagCheckin },

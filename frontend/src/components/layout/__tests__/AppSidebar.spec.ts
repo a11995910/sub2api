@@ -143,6 +143,6 @@ describe('AppSidebar subscription feature flag', () => {
     expect(componentSource).toContain("import { resolveSiteBillingMode } from '@/utils/siteBillingMode'")
     expect(componentSource).toMatch(/case 'recharge_only':\s*return t\('nav\.recharge'\)/)
     expect(componentSource).toMatch(/case 'subscription_only':\s*return t\('nav\.subscribe'\)/)
-    expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
+    expect(componentSource).toMatch(/path: '\/payment'[^\n]*label: purchaseNavLabel\.value/)
   })
 })
