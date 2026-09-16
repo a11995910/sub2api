@@ -52,7 +52,7 @@ func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) 
 				ExpiresAt:   &accountExpiresAt,
 				Credentials: map[string]any{
 					"email":                   "owner@example.com",
-					"plan_type":               "pro",
+					"plan_type":               "self_serve_business_prolite",
 					"subscription_expires_at": subscriptionExpiresAt.Format(time.RFC3339),
 				},
 				Extra: map[string]any{
@@ -85,7 +85,7 @@ func TestOAuthAccountPoolServiceFiltersGroupsAndBuildsCachedUsage(t *testing.T) 
 	require.Equal(t, "公开分组", pool.Groups[0].Name)
 	require.Len(t, pool.Groups[0].Accounts, 1)
 	require.Equal(t, "owner@example.com", pool.Groups[0].Accounts[0].Identifier)
-	require.Equal(t, "Pro 20x", pool.Groups[0].Accounts[0].PlanType)
+	require.Equal(t, "Business Premium", pool.Groups[0].Accounts[0].PlanType)
 	require.Equal(t, 6, pool.Groups[0].Accounts[0].CurrentConcurrency)
 	require.Equal(t, 15, pool.Groups[0].Accounts[0].Concurrency)
 	require.Equal(t, subscriptionExpiresAt, *pool.Groups[0].Accounts[0].ExpiresAt)
@@ -112,13 +112,20 @@ func TestOAuthAccountIdentityNeverFallsBackToCustomName(t *testing.T) {
 	}
 
 	require.Equal(t, "extra@example.com", ResolveOAuthAccountDisplayIdentifier(account))
-	require.Equal(t, "K12", OAuthAccountPlanLabel(ResolveOAuthAccountPlanType(account)))
+	require.Equal(t, "K12", OAuthAccountPlanLabel(PlatformOpenAI, ResolveOAuthAccountPlanType(account)))
 	require.Empty(t, ResolveOAuthAccountDisplayIdentifier(&Account{Name: "Pro 正价"}))
-	require.Equal(t, "Pro 20x", OAuthAccountPlanLabel("chatgpt_pro"))
-	require.Equal(t, "Team", OAuthAccountPlanLabel("team"))
-	require.Equal(t, "Plus", OAuthAccountPlanLabel("plus"))
-	require.Equal(t, "Free", OAuthAccountPlanLabel("basic"))
-	require.Equal(t, "future_enterprise", OAuthAccountPlanLabel("future_enterprise"))
+	require.Equal(t, "Pro 20x", OAuthAccountPlanLabel(PlatformOpenAI, "chatgpt_pro"))
+	require.Equal(t, "Pro 5x", OAuthAccountPlanLabel(PlatformOpenAI, " PRO_LITE "))
+	require.Equal(t, "Business Standard", OAuthAccountPlanLabel(PlatformOpenAI, "team"))
+	require.Equal(t, "Business Premium", OAuthAccountPlanLabel(PlatformOpenAI, " Self-Serve_Business Prolite "))
+	require.Equal(t, "Business Premium", OAuthAccountPlanLabel(PlatformOpenAI, ResolveOAuthAccountPlanType(&Account{ParentPlanType: "self_serve_business_prolite"})))
+	require.Equal(t, "Plus", OAuthAccountPlanLabel(PlatformOpenAI, "plus"))
+	require.Equal(t, "Free", OAuthAccountPlanLabel(PlatformOpenAI, "basic"))
+	require.Equal(t, "future_enterprise", OAuthAccountPlanLabel(PlatformOpenAI, "future_enterprise"))
+	require.Empty(t, OAuthAccountPlanLabel(PlatformOpenAI, " "))
+	require.Equal(t, "Pro", OAuthAccountPlanLabel(PlatformAntigravity, "pro"))
+	require.Equal(t, "Pro", OAuthAccountPlanLabel(PlatformGrok, "pro"))
+	require.Equal(t, "Team", OAuthAccountPlanLabel(PlatformAntigravity, "team"))
 	require.Equal(t, time.Date(2026, 9, 24, 1, 49, 7, 0, time.UTC), *ResolveOAuthAccountDisplayExpiresAt(account))
 	require.Equal(t, parentExpiresAt, *ResolveOAuthAccountDisplayExpiresAt(&Account{ParentDisplayExpiresAt: &parentExpiresAt}))
 }

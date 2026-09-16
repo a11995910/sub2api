@@ -132,15 +132,19 @@ GET /api/v1/oauth-account-pool
 
 解析结果只下发字符串，不下发 `credentials` 或 `extra`。解析不到时保持空值，不允许使用 `accounts.name` 兜底。
 
-套餐读取账号自身 `accounts.credentials.plan_type`；影子账号没有自身套餐时读取母账号的 `plan_type`。已知展示映射为：
+套餐读取账号自身 `accounts.credentials.plan_type`；影子账号没有自身套餐时读取母账号的 `plan_type`。接口的 `plan_type` 返回展示标签，OpenAI 套餐命名与账号管理保持一致：
 
 - `pro`、`chatgptpro`：`Pro 20x`
-- `team`：`Team`
+- `prolite`：`Pro 5x`
+- `team`：`Business Standard`
+- `self_serve_business_prolite`：`Business Premium`
 - `plus`：`Plus`
 - `k12`、`chatgptk12`：`K12`
 - `free`、`basic`：`Free`
 
-匹配时忽略空格、下划线、连字符和大小写。未知非空套餐原样展示，避免把新的上游套餐误判为现有套餐。该映射只影响显示，不改变调度、计费或额度规则。
+ChatGPT 的倍率及 Business 命名仅用于 OpenAI；其他平台的 `pro`、`chatgptpro` 显示为 `Pro`，`team` 显示为 `Team`。Pro 系列标签使用紫色，Business/Team 使用靛蓝色，Plus 使用天蓝色，与账号管理保持一致并适配明暗主题。
+
+匹配时忽略空格、下划线、连字符和大小写。未知非空套餐原样展示，避免把新的上游套餐误判为现有套餐。该映射只影响显示，不修改原始套餐凭据，不改变调度、计费或额度规则。
 
 ## 额度、过期时间与连接数据
 
@@ -226,7 +230,7 @@ backend/migrations/192_group_oauth_pool_visible.sql
 - 分组创建、更新、复制和用户可访问分组过滤。
 - 号池仓储公开分组过滤、稳定排序、真实字段选择和影子母账号回退。
 - 真实账号绝不回退管理员自定义名称。
-- Pro 20x、Team、Plus、K12、Free 及未知套餐展示规则。
+- OpenAI 的 Pro 20x、Pro 5x、Business Standard、Business Premium、Plus、K12、Free，以及未知套餐、影子母账号和其他平台的套餐展示规则。
 - OpenAI 与 Anthropic 缓存额度构建。
 - 每账号不同窗口起点的 5h/7d/累计批量统计。
 - 实时连接批量读取及并发总数返回。

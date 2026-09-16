@@ -147,7 +147,7 @@ func (s *OAuthAccountPoolService) GetForUser(ctx context.Context, userID int64) 
 		usage := usageByAccountID[binding.Account.ID]
 		accountsByGroupID[binding.GroupID] = append(accountsByGroupID[binding.GroupID], OAuthAccountPoolAccount{
 			Identifier:         ResolveOAuthAccountDisplayIdentifier(&binding.Account),
-			PlanType:           OAuthAccountPlanLabel(ResolveOAuthAccountPlanType(&binding.Account)),
+			PlanType:           OAuthAccountPlanLabel(binding.Account.Platform, ResolveOAuthAccountPlanType(&binding.Account)),
 			CurrentConcurrency: concurrencyByAccountID[binding.Account.ID],
 			Concurrency:        binding.Account.Concurrency,
 			ExpiresAt:          ResolveOAuthAccountDisplayExpiresAt(&binding.Account),

@@ -50,14 +50,26 @@ func ResolveOAuthAccountDisplayExpiresAt(account *Account) *time.Time {
 	return account.ExpiresAt
 }
 
-// OAuthAccountPlanLabel 将已知套餐归一化为用户可读标签。
+// OAuthAccountPlanLabel 将已知套餐归一化为用户可读标签，ChatGPT 档位仅适用于 OpenAI。
 // 未知值原样保留，避免把新的上游套餐误判为现有套餐。
-func OAuthAccountPlanLabel(planType string) string {
+func OAuthAccountPlanLabel(platform, planType string) string {
 	planType = strings.TrimSpace(planType)
 	normalized := strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(planType))
+	if platform == PlatformOpenAI {
+		switch normalized {
+		case "pro", "chatgptpro":
+			return "Pro 20x"
+		case "prolite":
+			return "Pro 5x"
+		case "team":
+			return "Business Standard"
+		case "selfservebusinessprolite":
+			return "Business Premium"
+		}
+	}
 	switch normalized {
 	case "pro", "chatgptpro":
-		return "Pro 20x"
+		return "Pro"
 	case "team":
 		return "Team"
 	case "plus":

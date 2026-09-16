@@ -64,7 +64,7 @@ const buildPoolResponse = () => ({
     accounts: [
       {
         identifier: '1072******@qq.com',
-        plan_type: 'Pro 20x',
+        plan_type: 'Business Premium',
         current_concurrency: 6,
         concurrency: 15,
         expires_at: '2026-09-30T12:00:00Z',
@@ -104,7 +104,7 @@ describe('OAuthAccountPoolView', () => {
 
     expect(wrapper.text()).toContain('公开分组')
     expect(wrapper.text()).toContain('1 个账号')
-    expect(wrapper.text()).toContain('Pro 20x')
+    expect(wrapper.text()).toContain('Business Premium')
     expect(wrapper.text()).toContain('1072******@qq.com')
     expect(wrapper.text()).not.toContain('1072688154@qq.com')
     expect(wrapper.text()).not.toContain('请求次数')
