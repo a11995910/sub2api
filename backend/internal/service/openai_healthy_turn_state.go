@@ -17,7 +17,7 @@ import (
 const (
 	openAIHealthyTurnStateRecordKey  = "openai_healthy_turn_state_record"
 	openAIHealthyTurnStateReplaceKey = "openai_healthy_turn_state_replace"
-	// 这是本地缓存保留时间，不是上游状态的官方有效期。
+	// 这是本地使用期限，不是上游状态的官方有效期。
 	openAIHealthyTurnStateTTL        = 40 * time.Minute
 	openAIHealthyTurnStateMaxEntries = 1024
 	openAIHealthyTurnStateMaxBytes   = 16 << 10
@@ -30,7 +30,7 @@ func (a *Account) OpenAIHealthyTurnStateRecordEnabled() bool {
 	}
 	value, exists := a.Extra[openAIHealthyTurnStateRecordKey]
 	if !exists {
-		return true
+		return false
 	}
 	enabled, _ := value.(bool)
 	return enabled
@@ -59,13 +59,16 @@ func ValidateOpenAIHealthyTurnStateExtra(extra map[string]any) error {
 type openAIHealthyTurnStateScope struct {
 	accountID int64
 	model     string
-	// 凭据、出口、地址和传输方式只参与内存内散列，不能进入日志。
-	identity [32]byte
+	// 凭据、出口、地址和传输方式仅以组合散列隔离记录，不能进入日志。
+	identity  [32]byte
+	transport string
+	proxyID   int64
 }
 
 type openAIHealthyTurnStateEntry struct {
-	value     string
-	expiresAt time.Time
+	value      string
+	expiresAt  time.Time
+	leaseToken string
 }
 
 type openAIHealthyTurnStateRejected struct {
@@ -73,8 +76,9 @@ type openAIHealthyTurnStateRejected struct {
 	digest [32]byte
 }
 
-// 缓存不持久化；领取即移除，防止并发请求同时使用同一条健康记录。
+// 正式服务使用持久化仓储；内存实现仅供独立单测使用。
 type openAIHealthyTurnStateCache struct {
+	repo     HealthyTurnStateRepository
 	mu       sync.Mutex
 	entries  map[openAIHealthyTurnStateScope]openAIHealthyTurnStateEntry
 	rejected map[openAIHealthyTurnStateRejected]time.Time
@@ -102,6 +106,13 @@ func (c *openAIHealthyTurnStateCache) sweepLocked(now time.Time) {
 func (c *openAIHealthyTurnStateCache) store(scope openAIHealthyTurnStateScope, entry openAIHealthyTurnStateEntry) bool {
 	if entry.value == "" || len(entry.value) > openAIHealthyTurnStateMaxBytes || strings.ContainsAny(entry.value, "\r\n") {
 		return false
+	}
+	if c.repo != nil {
+		ctx, cancel := healthyTurnStateStoreContext()
+		defer cancel()
+		stored, err := c.repo.Save(ctx, scope.persistent(), entry.persistent())
+		healthyTurnStateStoreError("save", scope.accountID, err)
+		return err == nil && stored
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -136,6 +147,16 @@ func (c *openAIHealthyTurnStateCache) store(scope openAIHealthyTurnStateScope, e
 }
 
 func (c *openAIHealthyTurnStateCache) claim(scope openAIHealthyTurnStateScope, current string) (openAIHealthyTurnStateEntry, bool) {
+	if c.repo != nil {
+		ctx, cancel := healthyTurnStateStoreContext()
+		defer cancel()
+		value, err := c.repo.Claim(ctx, scope.persistent(), current)
+		healthyTurnStateStoreError("claim", scope.accountID, err)
+		if err != nil || value == nil {
+			return openAIHealthyTurnStateEntry{}, false
+		}
+		return openAIHealthyTurnStateEntry{value.Value, value.ExpiresAt, value.LeaseToken}, true
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sweepLocked(time.Now())
@@ -152,6 +173,12 @@ func (c *openAIHealthyTurnStateCache) claim(scope openAIHealthyTurnStateScope, c
 }
 
 func (c *openAIHealthyTurnStateCache) release(scope openAIHealthyTurnStateScope, entry openAIHealthyTurnStateEntry) {
+	if c.repo != nil {
+		ctx, cancel := healthyTurnStateStoreContext()
+		defer cancel()
+		healthyTurnStateStoreError("release", scope.accountID, c.repo.Release(ctx, scope.persistent(), entry.persistent()))
+		return
+	}
 	c.mu.Lock()
 	delete(c.held, openAIHealthyTurnStateRejected{scope, sha256.Sum256([]byte(entry.value))})
 	c.mu.Unlock()
@@ -159,6 +186,12 @@ func (c *openAIHealthyTurnStateCache) release(scope openAIHealthyTurnStateScope,
 
 func (c *openAIHealthyTurnStateCache) reject(scope openAIHealthyTurnStateScope, entry openAIHealthyTurnStateEntry) {
 	if entry.value == "" {
+		return
+	}
+	if c.repo != nil {
+		ctx, cancel := healthyTurnStateStoreContext()
+		defer cancel()
+		healthyTurnStateStoreError("reject", scope.accountID, c.repo.Reject(ctx, scope.persistent(), entry.value))
 		return
 	}
 	c.mu.Lock()
@@ -189,6 +222,8 @@ type openAIHealthyTurnStateAttempt struct {
 	clientContext   context.Context
 	record, replace bool
 	borrowed        openAIHealthyTurnStateEntry
+	sent            bool
+	httpStatus      int
 }
 
 func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, account *Account, model, endpoint, proxyURL string, headers http.Header) *openAIHealthyTurnStateAttempt {
@@ -210,9 +245,16 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 		}
 	}
 	identity := strings.Join([]string{endpoint, proxyURL, headers.Get("Authorization"), headers.Get("ChatGPT-Account-Id"), fmt.Sprint(account.Extra["codex_fingerprint_mode"])}, "\x00")
+	transport, proxyID := "http", int64(0)
+	if strings.HasPrefix(endpoint, "ws:") {
+		transport = "websocket"
+	}
+	if account.ProxyID != nil {
+		proxyID = *account.ProxyID
+	}
 	return &openAIHealthyTurnStateAttempt{
 		cache:  &s.openaiHealthyTurnStates,
-		scope:  openAIHealthyTurnStateScope{account.ID, model, sha256.Sum256([]byte(identity))},
+		scope:  openAIHealthyTurnStateScope{account.ID, model, sha256.Sum256([]byte(identity)), transport, proxyID},
 		budget: budget, clientContext: clientCtx,
 		record: account.OpenAIHealthyTurnStateRecordEnabled(), replace: account.OpenAIHealthyTurnStateReplaceEnabled(),
 	}
@@ -280,7 +322,7 @@ func (a *openAIHealthyTurnStateAttempt) failed() {
 	if a == nil || a.borrowed.value == "" {
 		return
 	}
-	a.cache.reject(a.scope, a.borrowed)
+	a.completed(false)
 	slog.Info("openai_healthy_turn_state", "action", "evict", "account_id", a.scope.accountID, "model", a.scope.model)
 	a.borrowed = openAIHealthyTurnStateEntry{}
 }
@@ -290,7 +332,9 @@ func (a *openAIHealthyTurnStateAttempt) restore() {
 		return
 	}
 	a.cache.release(a.scope, a.borrowed)
-	a.cache.store(a.scope, a.borrowed)
+	if a.cache.repo == nil {
+		a.cache.store(a.scope, a.borrowed)
+	}
 	a.borrowed = openAIHealthyTurnStateEntry{}
 }
 

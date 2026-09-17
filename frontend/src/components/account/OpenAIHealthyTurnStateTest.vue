@@ -1,4 +1,5 @@
 <template>
+  <OpenAIHealthyTurnStateStatus :account-id="accountId" :active="active" :proxies="proxies" :revision="statsRevision" />
   <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ t(`${prefix}.testTitle`) }}</span>
@@ -67,16 +68,18 @@ import { adminAPI } from '@/api/admin'
 import type { HealthyTurnStateTestResult } from '@/api/admin/accounts'
 import type { Proxy } from '@/types'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import OpenAIHealthyTurnStateStatus from './OpenAIHealthyTurnStateStatus.vue'
 
 const props = defineProps<{ accountId: number; proxies: Proxy[]; active: boolean; disabled?: boolean }>()
 const { t } = useI18n()
 const prefix = 'admin.accounts.openai'
 const expanded = ref(false)
-const model = ref('')
+const model = ref('gpt-5.6-sol')
 const transport = ref<'http' | 'websocket'>('http')
 const selected = ref(['account'])
 const search = ref('')
 const running = ref(false)
+const statsRevision = ref(0)
 type TestRow = Omit<Partial<HealthyTurnStateTestResult>, 'status'> & {
   key: string; label: string
   status: HealthyTurnStateTestResult['status'] | 'pending' | 'running' | 'cancelled'
@@ -115,6 +118,7 @@ async function runTests() {
         }, current.signal)
         if (current.signal.aborted) break
         Object.assign(row, result)
+        statsRevision.value++
       } catch (error: unknown) {
         if (current.signal.aborted) break
         row.status = 'failed'

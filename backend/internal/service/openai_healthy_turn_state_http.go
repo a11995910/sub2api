@@ -32,6 +32,10 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 				attempt.restore()
 				return response, nil
 			}
+			if !attempt.started(response.StatusCode) {
+				_ = body.Close()
+				return response, nil
+			}
 			if response.Body != nil {
 				_ = response.Body.Close()
 			}
@@ -39,6 +43,10 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 			retryReq.Body = body
 			retryReq.Header.Set(openAICodexTurnStateHeader, attempt.borrowed.value)
 			response, err = s.doOpenAIUpstreamOnce(retryReq, proxyURL, account)
+			attempt.httpStatus = 0
+			if response != nil {
+				attempt.httpStatus = response.StatusCode
+			}
 			if err != nil || response == nil || response.StatusCode < 200 || response.StatusCode >= 300 {
 				// 交给传输层后无法确认是否已发送，取消也不能当作健康成功归还。
 				attempt.failed()
@@ -181,7 +189,7 @@ func newOpenAIHealthyTurnStateObserver(attempt *openAIHealthyTurnStateAttempt, h
 	if (!attempt.record || value == "") && attempt.borrowed.value == "" {
 		return nil
 	}
-	return &openAIHealthyTurnStateObserver{attempt: attempt, candidate: openAIHealthyTurnStateEntry{value, time.Now().Add(openAIHealthyTurnStateTTL)}}
+	return &openAIHealthyTurnStateObserver{attempt: attempt, candidate: openAIHealthyTurnStateEntry{value: value, expiresAt: time.Now().Add(openAIHealthyTurnStateTTL)}}
 }
 
 func (o *openAIHealthyTurnStateObserver) observe(payload []byte, event string) {
@@ -206,10 +214,7 @@ func (o *openAIHealthyTurnStateObserver) observe(payload []byte, event string) {
 	}
 	if !o.healthy && openAIStreamDataStartsVisibleOutput(string(payload), event) {
 		o.healthy = true
-		// 替换试验要等正常终止再归还记录，防止失败流被其他请求提前复用。
-		if o.attempt.record && o.attempt.borrowed.value == "" {
-			o.attempt.cache.store(o.attempt.scope, o.candidate)
-		}
+		// 等完整响应成功后再持久化，首字不代表调用完成。
 	}
 	if event == "response.completed" || event == "response.done" {
 		o.terminal = true
@@ -239,7 +244,7 @@ func (o *openAIHealthyTurnStateObserver) finish() {
 	}
 	o.finished = true
 	if o.healthy && o.terminal && !o.failed {
-		o.attempt.restore()
+		o.attempt.completed(true)
 		if o.attempt.record {
 			o.attempt.cache.store(o.attempt.scope, o.candidate)
 		}

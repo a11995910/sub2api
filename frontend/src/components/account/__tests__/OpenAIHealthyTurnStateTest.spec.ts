@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { Proxy } from '@/types'
 
 const { testHealthyTurnState } = vi.hoisted(() => ({ testHealthyTurnState: vi.fn() }))
-vi.mock('@/api/admin', () => ({ adminAPI: { accounts: { testHealthyTurnState } } }))
+vi.mock('@/api/admin', () => ({ adminAPI: { accounts: { testHealthyTurnState, getHealthyTurnStateStats: vi.fn().mockResolvedValue({ available: 0, in_use: 0, captures: 0, attempts: 0, successes: 0, failures: 0, records: [], probes: [] }) } } }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 import OpenAIHealthyTurnStateTest from '../OpenAIHealthyTurnStateTest.vue'
 
@@ -85,6 +85,7 @@ describe('OpenAIHealthyTurnStateTest', () => {
     await button(wrapper, 'testStart').trigger('click')
     await flushPromises()
     expect(testHealthyTurnState.mock.calls[0]?.[1]?.proxy_id).toBe(0)
+    expect(testHealthyTurnState.mock.calls[0]?.[1]?.model).toBe('gpt-5.6-sol')
     expect(wrapper.text()).toContain('testStatus.no_header')
   })
 })

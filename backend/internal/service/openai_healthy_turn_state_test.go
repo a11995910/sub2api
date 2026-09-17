@@ -72,7 +72,7 @@ func (u *healthyTurnStateUpstream) DoWithTLS(req *http.Request, proxy string, id
 
 func TestOpenAIHealthyTurnStateFlags(t *testing.T) {
 	a := &Account{ID: 1, Platform: PlatformOpenAI}
-	require.True(t, a.OpenAIHealthyTurnStateRecordEnabled())
+	require.False(t, a.OpenAIHealthyTurnStateRecordEnabled())
 	require.False(t, a.OpenAIHealthyTurnStateReplaceEnabled())
 	a.Extra = map[string]any{openAIHealthyTurnStateRecordKey: false, openAIHealthyTurnStateReplaceKey: true}
 	require.False(t, a.OpenAIHealthyTurnStateRecordEnabled())
@@ -90,7 +90,7 @@ func TestOpenAIHealthyTurnStateFlags(t *testing.T) {
 
 func TestOpenAIHealthyTurnStateRecordsOnlyRealOutput(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	a := &Account{ID: 1, Platform: PlatformOpenAI}
+	a := &Account{ID: 1, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 	_, req := healthyTurnStateRequest(t, svc, a, "来源会话")
 	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
 	observer := newOpenAIHealthyTurnStateObserver(attempt, healthyTurnStateResponse(200, "健康状态", "").Header)
@@ -98,7 +98,7 @@ func TestOpenAIHealthyTurnStateRecordsOnlyRealOutput(t *testing.T) {
 	observer.observe([]byte(`{"type":"response.output_text.delta","delta":""}`), "")
 	require.Empty(t, svc.openaiHealthyTurnStates.entries)
 	observer.observe([]byte(healthyTurnStateDelta), "")
-	require.Equal(t, "健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope].value)
+	require.Empty(t, svc.openaiHealthyTurnStates.entries, "首字尚未完成，不能记录")
 	observer.observe([]byte(`{"type":"error","error":{"code":"server_is_overloaded"}}`), "")
 	require.Empty(t, svc.openaiHealthyTurnStates.entries)
 	require.False(t, svc.openaiHealthyTurnStates.store(attempt.scope, observer.candidate), "失败旧值不能被延迟响应重新写入")
@@ -114,7 +114,7 @@ func TestOpenAIHealthyTurnStateHTTPReplaceAndEvict(t *testing.T) {
 				healthyTurnStateResponse(status, "", "后续失败"),
 			}}
 			svc := &OpenAIGatewayService{httpUpstream: upstream}
-			a := &Account{ID: 1, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateReplaceKey: true}}
+			a := &Account{ID: 1, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true, openAIHealthyTurnStateReplaceKey: true}}
 			_, donor := healthyTurnStateRequest(t, svc, a, "来源会话")
 			resp, err := svc.doOpenAIUpstream(donor, "", a)
 			require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestOpenAIHealthyTurnStateHTTPSuccessKeepsIndependentSwitches(t *testing.T)
 	a := &Account{ID: 2, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: false, openAIHealthyTurnStateReplaceKey: true}}
 	c, req := healthyTurnStateRequest(t, svc, a, "会话")
 	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
-	entry := openAIHealthyTurnStateEntry{"已有健康状态", time.Now().Add(time.Minute)}
+	entry := openAIHealthyTurnStateEntry{value: "已有健康状态", expiresAt: time.Now().Add(time.Minute)}
 	require.True(t, svc.openaiHealthyTurnStates.store(attempt.scope, entry))
 	resp, err := svc.doOpenAIUpstream(req, "", a)
 	require.NoError(t, err)
@@ -166,10 +166,10 @@ func TestOpenAIHealthyTurnStateHTTPSuccessKeepsIndependentSwitches(t *testing.T)
 
 func TestOpenAIHealthyTurnStateRetryStreamFailureEvicts(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	a := &Account{ID: 3, Platform: PlatformOpenAI}
+	a := &Account{ID: 3, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 	_, req := healthyTurnStateRequest(t, svc, a, "会话")
 	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
-	attempt.borrowed = openAIHealthyTurnStateEntry{"旧健康状态", time.Now().Add(time.Minute)}
+	attempt.borrowed = openAIHealthyTurnStateEntry{value: "旧健康状态", expiresAt: time.Now().Add(time.Minute)}
 	observer := newOpenAIHealthyTurnStateObserver(attempt, healthyTurnStateResponse(200, "新状态", "").Header)
 	observer.observe([]byte(healthyTurnStateDelta), "")
 	require.Empty(t, svc.openaiHealthyTurnStates.entries, "替换试验期间不能提前归还状态")
@@ -192,10 +192,10 @@ func TestOpenAIHealthyTurnStateBodyPreservesChunksAndRejectsEmptySuccess(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := &OpenAIGatewayService{}
-			a := &Account{ID: 7, Platform: PlatformOpenAI}
+			a := &Account{ID: 7, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 			_, req := healthyTurnStateRequest(t, svc, a, "会话")
 			attempt := openAIHealthyTurnStateAttemptFromRequest(req)
-			entry := openAIHealthyTurnStateEntry{"旧健康状态", time.Now().Add(time.Minute)}
+			entry := openAIHealthyTurnStateEntry{value: "旧健康状态", expiresAt: time.Now().Add(time.Minute)}
 			require.True(t, svc.openaiHealthyTurnStates.store(attempt.scope, entry))
 			var claimed bool
 			attempt.borrowed, claimed = svc.openaiHealthyTurnStates.claim(attempt.scope, "")
@@ -222,12 +222,12 @@ func TestOpenAIHealthyTurnStateBodyPreservesChunksAndRejectsEmptySuccess(t *test
 
 func TestOpenAIHealthyTurnStateCacheIsolationExpiryAndConcurrency(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	a := &Account{ID: 4, Platform: PlatformOpenAI}
+	a := &Account{ID: 4, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 	_, req := healthyTurnStateRequest(t, svc, a, "会话")
 	scope := openAIHealthyTurnStateAttemptFromRequest(req).scope
-	entry := openAIHealthyTurnStateEntry{"健康状态", time.Now().Add(time.Minute)}
+	entry := openAIHealthyTurnStateEntry{value: "健康状态", expiresAt: time.Now().Add(time.Minute)}
 	require.True(t, svc.openaiHealthyTurnStates.store(scope, entry))
-	for _, foreign := range []openAIHealthyTurnStateScope{{5, scope.model, scope.identity}, {4, "不同模型", scope.identity}, {4, scope.model, [32]byte{1}}} {
+	for _, foreign := range []openAIHealthyTurnStateScope{{accountID: 5, model: scope.model, identity: scope.identity}, {accountID: 4, model: "不同模型", identity: scope.identity}, {accountID: 4, model: scope.model, identity: [32]byte{1}}} {
 		_, ok := svc.openaiHealthyTurnStates.claim(foreign, "")
 		require.False(t, ok)
 	}
@@ -254,10 +254,10 @@ func TestOpenAIHealthyTurnStateCacheIsolationExpiryAndConcurrency(t *testing.T) 
 
 func TestOpenAIHealthyTurnStateRetryAfterAndCancellation(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	a := &Account{ID: 5, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateReplaceKey: true}}
+	a := &Account{ID: 5, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true, openAIHealthyTurnStateReplaceKey: true}}
 	_, req := healthyTurnStateRequest(t, svc, a, "会话")
 	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
-	entry := openAIHealthyTurnStateEntry{"健康状态", time.Now().Add(time.Minute)}
+	entry := openAIHealthyTurnStateEntry{value: "健康状态", expiresAt: time.Now().Add(time.Minute)}
 	svc.openaiHealthyTurnStates.store(attempt.scope, entry)
 	for _, status := range []int{400, 401, 500, 502} {
 		retry, err := attempt.claimRetry(context.Background(), status, nil, "")
@@ -303,11 +303,11 @@ func TestOpenAIHealthyTurnStateWSHandshakeRetriesOnFreshConnection(t *testing.T)
 	defer svc.getOpenAIWSConnPool().Close()
 	dialer := &healthyTurnStateWSDialer{status: []int{503, 101}}
 	svc.getOpenAIWSConnPool().setClientDialerForTest(dialer)
-	a := &Account{ID: 6, Platform: PlatformOpenAI, Concurrency: 2, Extra: map[string]any{openAIHealthyTurnStateReplaceKey: true}}
+	a := &Account{ID: 6, Platform: PlatformOpenAI, Concurrency: 2, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true, openAIHealthyTurnStateReplaceKey: true}}
 	c, _ := healthyTurnStateRequest(t, svc, a, "会话")
 	req := openAIWSAcquireRequest{Account: a, WSURL: "wss://chatgpt.com/backend-api/codex/responses", Headers: http.Header{"Authorization": []string{"Bearer 测试凭据"}}}
 	attempt := svc.newOpenAIHealthyTurnStateAttempt(c, a, "gpt-test", "ws:"+req.WSURL, "", req.Headers)
-	svc.openaiHealthyTurnStates.store(attempt.scope, openAIHealthyTurnStateEntry{"已有健康状态", time.Now().Add(time.Minute)})
+	svc.openaiHealthyTurnStates.store(attempt.scope, openAIHealthyTurnStateEntry{value: "已有健康状态", expiresAt: time.Now().Add(time.Minute)})
 	lease, err := svc.acquireOpenAIWSWithHealthyTurnState(context.Background(), c, req, "gpt-test")
 	require.NoError(t, err)
 	require.NotNil(t, lease)
@@ -323,12 +323,12 @@ func TestOpenAIHealthyTurnStateWSHandshakeRetriesOnFreshConnection(t *testing.T)
 func TestOpenAIHealthyTurnStateWSFailedReplacementEvicts(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	dialer := &healthyTurnStateWSDialer{status: []int{429, 503}}
-	a := &Account{ID: 8, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateReplaceKey: true}}
+	a := &Account{ID: 8, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true, openAIHealthyTurnStateReplaceKey: true}}
 	c, _ := healthyTurnStateRequest(t, svc, a, "会话")
 	wsURL := "wss://chatgpt.com/backend-api/codex/responses"
 	headers := http.Header{"Authorization": []string{"Bearer 测试凭据"}}
 	attempt := svc.newOpenAIHealthyTurnStateAttempt(c, a, "gpt-test", "ws:"+wsURL, "", headers)
-	entry := openAIHealthyTurnStateEntry{"已有健康状态", time.Now().Add(time.Minute)}
+	entry := openAIHealthyTurnStateEntry{value: "已有健康状态", expiresAt: time.Now().Add(time.Minute)}
 	require.True(t, svc.openaiHealthyTurnStates.store(attempt.scope, entry))
 	conn, status, _, observer, err := svc.dialOpenAIWSWithHealthyTurnState(context.Background(), c, a, "gpt-test", wsURL, headers, "", dialer)
 	require.Error(t, err)

@@ -22,12 +22,21 @@ func (s *OpenAIGatewayService) acquireOpenAIWSWithHealthyTurnState(ctx context.C
 			return nil, retryErr
 		}
 		if retry {
+			if !attempt.started(dialErr.StatusCode) {
+				return lease, err
+			}
 			req.Headers = req.Headers.Clone()
 			req.Headers.Set(openAICodexTurnStateHeader, attempt.borrowed.value)
 			req.PreferredConnID = ""
 			req.ForceNewConn = true
 			lease, err = s.getOpenAIWSConnPool().Acquire(ctx, req)
+			attempt.httpStatus = http.StatusSwitchingProtocols
 			if err != nil {
+				attempt.httpStatus = 0
+				var retryDialErr *openAIWSDialError
+				if errors.As(err, &retryDialErr) {
+					attempt.httpStatus = retryDialErr.StatusCode
+				}
 				attempt.failed()
 			}
 		}
@@ -47,12 +56,16 @@ func (s *OpenAIGatewayService) dialOpenAIWSWithHealthyTurnState(ctx context.Cont
 			return nil, status, responseHeaders, nil, retryErr
 		}
 		if retry {
+			if !attempt.started(status) {
+				return conn, status, responseHeaders, nil, err
+			}
 			if conn != nil {
 				_ = conn.Close()
 			}
 			headers = headers.Clone()
 			headers.Set(openAICodexTurnStateHeader, attempt.borrowed.value)
 			conn, status, responseHeaders, err = dialer.Dial(ctx, wsURL, headers, proxyURL)
+			attempt.httpStatus = status
 			if err != nil || conn == nil {
 				attempt.failed()
 			}

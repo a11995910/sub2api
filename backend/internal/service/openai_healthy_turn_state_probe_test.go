@@ -39,12 +39,13 @@ func TestOpenAIHealthyTurnStateProbeHTTPOnlyRecordsCompleteResponses(t *testing.
 			gateway := &OpenAIGatewayService{httpUpstream: upstream}
 			svc := &AccountTestService{openaiGatewayService: gateway}
 			account := healthyTurnStateProbeAccount()
-			result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), account, "gpt-5.4", "http")
+			result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), account, "", "http")
 			require.NoError(t, err)
 			require.Equal(t, tc.want, result.Status)
 			require.Equal(t, tc.status, result.HTTPStatus)
 			require.Len(t, upstream.requests, 1, "失败也只能发送一次")
 			require.Equal(t, "hi", gjson.Get(upstream.bodies[0], "input.0.content.0.text").String())
+			require.Equal(t, "gpt-5.6-sol", gjson.Get(upstream.bodies[0], "model").String())
 			require.Empty(t, upstream.requests[0].Header.Get(openAICodexTurnStateHeader))
 			require.False(t, account.OpenAIHealthyTurnStateRecordEnabled(), "手动测试不能修改账号开关")
 			if tc.want == "recorded" {

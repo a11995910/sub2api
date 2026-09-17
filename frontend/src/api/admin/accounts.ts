@@ -58,6 +58,49 @@ export interface HealthyTurnStateTestResult {
   expires_at?: string
 }
 
+export interface HealthyTurnStateRecord {
+  model: string
+  transport: string
+  proxy_id: number
+  status: 'available' | 'in_use' | 'expired' | 'invalid'
+  captures: number
+  attempts: number
+  successes: number
+  failures: number
+  expires_at: string | null
+  last_captured_at: string | null
+  last_used_at: string | null
+  last_success_at: string | null
+  last_failure_at: string | null
+  last_outcome: string
+  last_http_status: number
+}
+
+export interface HealthyTurnStateProbeLog {
+  model: string
+  transport: string
+  proxy_id: number
+  status: HealthyTurnStateTestResult['status']
+  http_status: number
+  created_at: string
+}
+
+export interface HealthyTurnStateStats {
+  available: number
+  in_use: number
+  captures: number
+  attempts: number
+  successes: number
+  failures: number
+  records: HealthyTurnStateRecord[]
+  probes: HealthyTurnStateProbeLog[]
+}
+
+export async function getHealthyTurnStateStats(id: number, signal?: AbortSignal): Promise<HealthyTurnStateStats> {
+  const { data } = await apiClient.get<HealthyTurnStateStats>(`/admin/accounts/${id}/healthy-turn-state`, { signal })
+  return data
+}
+
 export async function testHealthyTurnState(
   id: number,
   input: { model: string; transport: 'http' | 'websocket'; proxy_id: number | null },
@@ -1126,6 +1169,7 @@ export const accountsAPI = {
   toggleStatus,
   testAccount,
   testHealthyTurnState,
+  getHealthyTurnStateStats,
   refreshCredentials,
   applyOAuthCredentials,
   getStats,

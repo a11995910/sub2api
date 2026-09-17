@@ -325,29 +325,29 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
-  it('健康状态默认仅记录，两个开关独立保存且重新打开不丢失', async () => {
+  it('健康状态默认均关闭，两个开关独立保存且重新打开不丢失', async () => {
     const account = buildOpenAIOAuthParentAccount()
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     let wrapper = mountModal(account)
     const record = '[data-testid="edit-healthy-turn-state-record"]'
     const replace = '[data-testid="edit-healthy-turn-state-replace"]'
-    expect(wrapper.get(record).attributes('aria-checked')).toBe('true')
+    expect(wrapper.get(record).attributes('aria-checked')).toBe('false')
     expect(wrapper.get(replace).attributes('aria-checked')).toBe('false')
     await wrapper.get(record).trigger('click')
     await wrapper.get(replace).trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(saved).toMatchObject({ openai_healthy_turn_state_record: false, openai_healthy_turn_state_replace: true })
+    expect(saved).toMatchObject({ openai_healthy_turn_state_record: true, openai_healthy_turn_state_replace: true })
     wrapper.unmount()
     wrapper = mountModal({ ...account, extra: saved })
-    expect(wrapper.get(record).attributes('aria-checked')).toBe('false')
+    expect(wrapper.get(record).attributes('aria-checked')).toBe('true')
     expect(wrapper.get(replace).attributes('aria-checked')).toBe('true')
     await wrapper.get(replace).trigger('click')
     updateAccountMock.mockClear()
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
-      openai_healthy_turn_state_record: false, openai_healthy_turn_state_replace: false
+      openai_healthy_turn_state_record: true, openai_healthy_turn_state_replace: false
     })
     wrapper.unmount()
   })

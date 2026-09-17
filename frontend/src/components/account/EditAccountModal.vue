@@ -3606,7 +3606,7 @@ const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const requestIntegrityMode = ref<'observe' | 'off'>('observe')
-const healthyTurnStateRecord = ref(true)
+const healthyTurnStateRecord = ref(false)
 const healthyTurnStateReplace = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
@@ -4095,7 +4095,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
   requestIntegrityMode.value = newAccount.platform === 'openai' && extra?.request_integrity_mode === 'off' ? 'off' : 'observe'
-  healthyTurnStateRecord.value = extra?.openai_healthy_turn_state_record !== false
+  healthyTurnStateRecord.value = extra?.openai_healthy_turn_state_record === true
   healthyTurnStateReplace.value = extra?.openai_healthy_turn_state_replace === true
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false

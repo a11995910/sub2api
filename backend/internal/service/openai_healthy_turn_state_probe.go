@@ -11,7 +11,6 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -37,7 +36,7 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		model = openai.DefaultTestModel
+		model = "gpt-5.6-sol"
 	}
 	if !account.IsModelSupported(model) || isOpenAIImageModel(model) {
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_MODEL", "请选择账号支持的文本模型")
@@ -49,6 +48,21 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_TRANSPORT", "测试方式仅支持 HTTP 或 WebSocket")
 	}
 	result := &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: model, Transport: transport}
+	defer func() {
+		if repo := s.openaiGatewayService.openaiHealthyTurnStates.repo; repo != nil {
+			storeCtx, cancel := healthyTurnStateStoreContext()
+			defer cancel()
+			proxyID := int64(0)
+			if account.ProxyID != nil {
+				proxyID = *account.ProxyID
+			}
+			probe := HealthyTurnStateProbeLog{Model: result.Model, Transport: transport, ProxyID: proxyID, Status: result.Status, HTTPStatus: result.HTTPStatus}
+			if err := repo.RecordProbe(storeCtx, account.ID, probe); err != nil {
+				healthyTurnStateStoreError("probe", account.ID, err)
+				result.Message = strings.TrimSpace(result.Message + " 测试结果历史保存失败，请稍后刷新统计核实")
+			}
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -111,10 +125,7 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 		result.Status, result.ExpiresAt = "recorded", &observer.candidate.expiresAt
 		return result, nil
 	}
-	cache.mu.Lock()
-	cache.sweepLocked(time.Now())
-	entry, exists := cache.entries[scope]
-	cache.mu.Unlock()
+	entry, exists := cache.get(scope)
 	if exists && entry.value == observer.candidate.value {
 		result.Status, result.ExpiresAt = "already_recorded", &entry.expiresAt
 	} else {
@@ -129,7 +140,7 @@ func newOpenAIHealthyTurnStateProbeObserver(attempt *openAIHealthyTurnStateAttem
 	if len(value) > openAIHealthyTurnStateMaxBytes || strings.ContainsAny(value, "\r\n") {
 		value = ""
 	}
-	return &openAIHealthyTurnStateObserver{attempt: attempt, candidate: openAIHealthyTurnStateEntry{value, time.Now().Add(openAIHealthyTurnStateTTL)}}
+	return &openAIHealthyTurnStateObserver{attempt: attempt, candidate: openAIHealthyTurnStateEntry{value: value, expiresAt: time.Now().Add(openAIHealthyTurnStateTTL)}}
 }
 
 func (s *OpenAIGatewayService) probeHealthyTurnStateHTTP(ctx context.Context, c *gin.Context, account *Account, token, session, proxyURL string, body []byte, result *OpenAIHealthyTurnStateProbeResult) *openAIHealthyTurnStateObserver {
