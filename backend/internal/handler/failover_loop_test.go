@@ -65,15 +65,70 @@ func TestSameAccountRetryDelayFor(t *testing.T) {
 	})
 }
 
-func TestSameAccountRetryAllowedUsesDeadlineInsteadOfPoolCount(t *testing.T) {
+func TestSameAccountRetryAllowedRequiresDeadlineAndCountBudget(t *testing.T) {
 	err := &service.UpstreamFailoverError{
 		RetryableOnSameAccount:   true,
 		SameAccountRetryDeadline: time.Now().Add(time.Minute),
 	}
-	require.True(t, sameAccountRetryAllowed(err, 100, 0))
-	require.True(t, sameAccountRetryAllowed(err, 100, maxSameAccountRetries))
+	require.False(t, sameAccountRetryAllowed(err, 0, 0))
+	require.False(t, sameAccountRetryAllowed(err, 100, maxSameAccountRetries))
+	require.True(t, sameAccountRetryAllowed(err, 0, maxSameAccountRetries))
 	err.SameAccountRetryDeadline = time.Now().Add(-time.Second)
 	require.False(t, sameAccountRetryAllowed(err, 0, 100))
+}
+
+func TestOAuth429RetryWaitHonorsServerAndRemainingBudget(t *testing.T) {
+	err := &service.UpstreamFailoverError{
+		StatusCode: http.StatusTooManyRequests, RetryableOnSameAccount: true,
+		SameAccountRetryDelay: 90 * time.Second, SameAccountRetryMax: 3,
+		SameAccountRetryDeadline: time.Now().Add(2 * time.Minute),
+	}
+	require.True(t, sameAccountRetryAllowed(err, 0, 10))
+	for i := 0; i < 20; i++ {
+		delay := sameAccountRetryDelayFor(err, 1)
+		require.GreaterOrEqual(t, delay, 90*time.Second)
+		require.LessOrEqual(t, delay, 108*time.Second)
+	}
+	err.SameAccountRetryDeadline = time.Now().Add(20 * time.Second)
+	require.False(t, sameAccountRetryAllowed(err, 0, 10), "不能把上游九十秒等待压缩到二十秒预算")
+	err.SameAccountRetryDelay = 0
+	err.SameAccountRetryDeadline = time.Now().Add(time.Minute)
+	for attempt := 1; attempt <= 3; attempt++ {
+		base := time.Second * time.Duration(1<<(attempt-1))
+		delay := sameAccountRetryDelayFor(err, attempt)
+		require.GreaterOrEqual(t, delay, base)
+		require.LessOrEqual(t, delay, base+base/5)
+		require.True(t, sameAccountRetryAllowed(err, attempt-1, 10))
+	}
+	require.False(t, sameAccountRetryAllowed(err, 3, 10), "三次重试后不能因截止时间尚未到达而继续")
+	err.SameAccountRetryDelay = time.Duration(1<<63 - 1)
+	require.False(t, sameAccountRetryAllowed(err, 0, 3), "异常长等待不能溢出后绕过预算")
+}
+
+func TestSameAccountRetryDeadlineIncludesFallbackBackoff(t *testing.T) {
+	err := &service.UpstreamFailoverError{
+		RetryableOnSameAccount: true, RequestScopedTransient: true,
+		SameAccountRetryDeadline: time.Now().Add(100 * time.Millisecond),
+	}
+	require.False(t, sameAccountRetryAllowed(err, 0, 3), "未显式配置等待也必须容纳默认退避")
+}
+
+func TestHandleFailoverErrorSkipsWaitThatCannotFitBudget(t *testing.T) {
+	state := NewFailoverState(1, false)
+	unscheduler := &mockTempUnscheduler{}
+	err := &service.UpstreamFailoverError{
+		StatusCode: http.StatusTooManyRequests, RetryableOnSameAccount: true,
+		SameAccountRetryDelay: 90 * time.Second, SameAccountRetryMax: 3,
+		SameAccountRetryDeadline: time.Now().Add(20 * time.Second),
+	}
+	started := time.Now()
+	action := state.HandleFailoverError(context.Background(), unscheduler, 42, service.PlatformOpenAI, 3, err)
+	require.Equal(t, FailoverContinue, action)
+	require.Less(t, time.Since(started), time.Second, "预算不足应立即进入切换决策，不等待压缩后的时间")
+	require.Zero(t, state.SameAccountRetryCount[42])
+	require.Equal(t, 1, state.SwitchCount)
+	require.Contains(t, state.FailedAccountIDs, int64(42))
+	require.Len(t, unscheduler.calls, 1)
 }
 
 func TestSameAccountRetryAllowedRequiresOptInAndDefaultsToCountLimit(t *testing.T) {
@@ -374,7 +429,7 @@ func TestHandleFailoverError_CacheBilling(t *testing.T) {
 		require.Zero(t, fs.SwitchCount)
 	})
 
-	t.Run("OAuth deadline存在时不按普通计数切换", func(t *testing.T) {
+	t.Run("OAuth次数耗尽后即使截止时间未到也必须切换", func(t *testing.T) {
 		mock := &mockTempUnscheduler{}
 		fs := NewFailoverState(3, true)
 		fs.SameAccountRetryCount[100] = maxSameAccountRetries
@@ -384,10 +439,10 @@ func TestHandleFailoverError_CacheBilling(t *testing.T) {
 
 		fs.HandleFailoverError(context.Background(), mock, 100, "openai", maxSameAccountRetries, err)
 
-		require.False(t, fs.ForceCacheBilling)
-		require.Zero(t, fs.SwitchCount)
-		require.Equal(t, maxSameAccountRetries+1, fs.SameAccountRetryCount[100])
-		require.Empty(t, mock.calls)
+		require.True(t, fs.ForceCacheBilling)
+		require.Equal(t, 1, fs.SwitchCount)
+		require.Equal(t, maxSameAccountRetries, fs.SameAccountRetryCount[100])
+		require.Len(t, mock.calls, 1)
 	})
 
 	t.Run("同账号重试耗尽并实际切换时设置ForceCacheBilling", func(t *testing.T) {

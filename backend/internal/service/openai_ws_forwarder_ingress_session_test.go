@@ -3768,6 +3768,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeD
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponseNotFoundRecoversByDroppingPrevID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	integrityContext := make(chan *gin.Context, 1)
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -3846,6 +3847,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponse
 		req.Header = req.Header.Clone()
 		req.Header.Set("User-Agent", "unit-test-agent/1.0")
 		ginCtx.Request = req
+		integrityContext <- ginCtx
 
 		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		msgType, firstMessage, readErr := conn.Read(readCtx)
@@ -3915,6 +3917,14 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponse
 	secondConn.mu.Unlock()
 	require.Len(t, secondWrites, 1, "恢复重试应在第二个连接发送一次请求")
 	require.False(t, gjson.Get(requestToJSONString(secondWrites[0]), "previous_response_id").Exists(), "恢复重试应移除 previous_response_id")
+	observed := <-integrityContext
+	value, exists := observed.Get(openAIRequestIntegrityReportKey)
+	require.True(t, exists)
+	report, ok := value.(openAIRequestIntegrityReport)
+	require.True(t, ok)
+	require.Equal(t, "responses_ws_ingress_final", report.Path)
+	require.Equal(t, "changed", report.Status)
+	require.Contains(t, report.Fields, "previous_response_id", "同轮重试删除续链必须相对原始入站快照报告")
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledStrictAffinityPreviousResponseNotFoundLayer2Recovery(t *testing.T) {

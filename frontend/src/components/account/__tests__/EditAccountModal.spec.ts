@@ -325,6 +325,30 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('完整性观察默认开启，关闭并重开后与指纹设置独立保存', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { codex_fingerprint_mode: 'full' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    let wrapper = mountModal(account)
+    const selector = '[data-testid="edit-request-integrity-mode-select"]'
+    expect((wrapper.get(selector).element as HTMLSelectElement).value).toBe('observe')
+    await wrapper.get(selector).setValue('off')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(saved).toMatchObject({ request_integrity_mode: 'off', codex_fingerprint_mode: 'full' })
+    wrapper.unmount()
+    wrapper = mountModal({ ...account, extra: saved })
+    expect((wrapper.get(selector).element as HTMLSelectElement).value).toBe('off')
+    await wrapper.get(selector).setValue('observe')
+    updateAccountMock.mockClear()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      request_integrity_mode: 'observe', codex_fingerprint_mode: 'full'
+    })
+    wrapper.unmount()
+  })
+
   it('读取并保存已有 ZYCA 协议，切回自动时移除覆盖配置', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset().mockResolvedValue(account)

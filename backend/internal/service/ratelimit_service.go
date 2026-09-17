@@ -2138,10 +2138,19 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	return result, nil
 }
 
-// RecoverAccountAfterSuccessfulTest 将一次成功测试视为正常请求，
-// 按需恢复 error / rate-limit / overload / temp-unsched / model-rate-limit 等运行时状态。
-func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error) {
-	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+// RecoverAccountAfterSuccessfulTest 只恢复测试开始时观察到、且之后未被修改的状态。
+func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64, observation *AccountTestObservation) (*SuccessfulTestRecoveryResult, error) {
+	if observation == nil || observation.AccountID != accountID || !observation.Succeeded || observation.UpdatedAt.IsZero() {
+		return &SuccessfulTestRecoveryResult{}, nil
+	}
+	repo, ok := s.accountRepo.(SuccessfulTestRecoveryRepository)
+	if !ok {
+		return nil, fmt.Errorf("账号仓储不支持按测试快照原子恢复")
+	}
+	// 仓储同步最新调度快照；不删除 Redis 或本地阻断，避免误清并发写入的新状态。
+	// 到期临停由读取端忽略；本地账号阻断由调度端根据最新持久状态按代次清理。
+	observation.extraHandled = true
+	return repo.RecoverAccountTestIfUnchanged(ctx, observation)
 }
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {

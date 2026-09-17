@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"math/rand/v2"
 	"net/http"
 	"time"
 
@@ -59,6 +60,11 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 	if failoverErr == nil {
 		return sameAccountRetryDelay
 	}
+	if failoverErr.StatusCode == http.StatusTooManyRequests && !failoverErr.SameAccountRetryDeadline.IsZero() {
+		delay := oauth429RetryBaseDelay(failoverErr, retryCount)
+		// 只增加抖动，避免提前于上游 Retry-After 重试；异常大延迟也不能溢出。
+		return delay + time.Duration(rand.Int64N(int64(oauth429RetryMaxJitter(delay))+1))
+	}
 	if failoverErr.SameAccountRetryDelay > 0 {
 		return failoverErr.SameAccountRetryDelay
 	}
@@ -76,30 +82,48 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 	return delay
 }
 
+func oauth429RetryBaseDelay(failoverErr *service.UpstreamFailoverError, retryCount int) time.Duration {
+	delay := time.Second
+	for i := 1; i < retryCount && delay < maxRequestScopedRetryDelay; i++ {
+		delay *= 2
+	}
+	return max(min(delay, maxRequestScopedRetryDelay), failoverErr.SameAccountRetryDelay)
+}
+
+func oauth429RetryMaxJitter(delay time.Duration) time.Duration {
+	return min(delay/5, time.Duration(1<<63-1)-delay)
+}
+
 func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCount, retryLimit int) bool {
-	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
+	if failoverErr == nil || !failoverErr.RetryableOnSameAccount || retryLimit <= 0 {
 		return false
 	}
 	if !sameAccountRetryDeadlineAllows(failoverErr) {
 		return false
 	}
-	// Error-specific caps (Grok capacity/stream-idle) remain hard limits even
-	// when the error also carries a freshly reconstructed deadline.
+	// 次数与截止时间分别约束重试，任何一项耗尽都不能用另一项绕过。
 	if failoverErr.SameAccountRetryMax > 0 {
-		if retryLimit <= 0 {
-			return false
-		}
 		if failoverErr.SameAccountRetryMax < retryLimit {
 			retryLimit = failoverErr.SameAccountRetryMax
 		}
-		return retryCount < retryLimit
 	}
-	// OAuth 429 explicitly opts into a deadline window. It is intentionally not
-	// bounded by the ordinary/default pool retry count.
+	if retryCount >= retryLimit {
+		return false
+	}
 	if !failoverErr.SameAccountRetryDeadline.IsZero() {
-		return true
+		var wait time.Duration
+		if failoverErr.StatusCode == http.StatusTooManyRequests {
+			base := oauth429RetryBaseDelay(failoverErr, retryCount+1)
+			wait = base + oauth429RetryMaxJitter(base)
+		} else {
+			wait = sameAccountRetryDelayFor(failoverErr, retryCount+1)
+		}
+		// 等待不足时直接停止本轮重试，不能把 Retry-After 压入剩余预算。
+		if !time.Now().Add(wait).Before(failoverErr.SameAccountRetryDeadline) {
+			return false
+		}
 	}
-	return retryLimit > 0 && retryCount < retryLimit
+	return true
 }
 
 // sameAccountRetryDeadlineAllows prevents a retry from starting after the

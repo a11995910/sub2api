@@ -91,6 +91,7 @@ type openAIWSHandshakeCompatibilityKey struct {
 	threadID            string
 	clientRequestID     string
 	codexWindowID       string
+	conversationID      string
 }
 
 type openAIWSConnLease struct {
@@ -2370,14 +2371,13 @@ func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Head
 		return key
 	}
 	key.codexInstallationID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-installation-id")
-	if mode == codexFingerprintDevice {
-		return key
-	}
+	// device 只收敛设备，但会话头仍属于连接握手，不能跨会话复用旧握手。
 	key.sessionIDHyphen = normalizeOpenAIWSStableIdentityHeader(headers, "session-id")
 	key.sessionIDUnderscore = normalizeOpenAIWSStableIdentityHeader(headers, "session_id")
 	key.threadID = normalizeOpenAIWSStableIdentityHeader(headers, "thread-id")
 	key.clientRequestID = normalizeOpenAIWSStableIdentityHeader(headers, "x-client-request-id")
 	key.codexWindowID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-window-id")
+	key.conversationID = normalizeOpenAIWSStableIdentityHeader(headers, "conversation_id")
 	return key
 }
 

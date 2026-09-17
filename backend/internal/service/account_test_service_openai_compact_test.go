@@ -2,11 +2,13 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -20,6 +22,29 @@ import (
 const compactProbeSSESuccessBody = "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"compaction\",\"id\":\"cmp_probe\",\"encrypted_content\":\"blob\"}}\n\n" +
 	"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_probe\",\"output\":[]}}\n\n"
 
+// 测试桩遵守正式仓储的快照接口，不能依赖无条件观测写入。
+func (r *snapshotUpdateAccountRepo) SaveAccountTestExtraIfUnchanged(ctx context.Context, observation *AccountTestObservation) error {
+	account, err := r.GetByID(ctx, observation.AccountID)
+	if err != nil {
+		return err
+	}
+	if observation.UpdatedAt.IsZero() || !account.UpdatedAt.Equal(observation.UpdatedAt) {
+		return nil
+	}
+	return r.UpdateExtra(ctx, observation.AccountID, observation.PendingExtra)
+}
+
+func receiveCompactProbeUpdates(t *testing.T, calls <-chan map[string]any) map[string]any {
+	t.Helper()
+	select {
+	case updates := <-calls:
+		return updates
+	case <-time.After(time.Second):
+		t.Fatal("等待测试观测写入超时")
+		return nil
+	}
+}
+
 func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersistsSupport(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -32,6 +57,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		UpdatedAt:   time.Now().Add(-time.Minute),
 		Credentials: map[string]any{
 			"access_token":               "oauth-token",
 			"chatgpt_account_id":         "chatgpt-acc",
@@ -76,7 +102,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 	require.NotEmpty(t, inputItems)
 	require.Equal(t, "compaction_trigger", inputItems[len(inputItems)-1].Get("type").String())
 
-	updates := <-updateCalls
+	updates := receiveCompactProbeUpdates(t, updateCalls)
 	require.Equal(t, true, updates["openai_compact_supported"])
 	require.Equal(t, http.StatusOK, updates["openai_compact_last_status"])
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
@@ -94,6 +120,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsu
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		UpdatedAt:   time.Now().Add(-time.Minute),
 		Credentials: map[string]any{
 			"access_token":       "oauth-token",
 			"chatgpt_account_id": "chatgpt-acc",
@@ -120,7 +147,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsu
 	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
 	require.Error(t, err)
 
-	updates := <-updateCalls
+	updates := receiveCompactProbeUpdates(t, updateCalls)
 	require.Equal(t, false, updates["openai_compact_supported"])
 	require.Equal(t, http.StatusNotFound, updates["openai_compact_last_status"])
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
@@ -138,6 +165,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		UpdatedAt:   time.Now().Add(-time.Minute),
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://example.com/v1",
@@ -173,7 +201,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 	require.Contains(t, upstream.lastReq.Header.Get("x-codex-beta-features"), "remote_compaction_v2")
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String(),
 		"原生 v2 探测不应用 compact_model_mapping")
-	updates := <-updateCalls
+	updates := receiveCompactProbeUpdates(t, updateCalls)
 	require.Equal(t, true, updates["openai_compact_supported"])
 }
 
@@ -189,6 +217,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBase
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		UpdatedAt:   time.Now().Add(-time.Minute),
 		Credentials: map[string]any{
 			"api_key": "sk-test",
 		},
@@ -215,7 +244,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBase
 	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
 	require.NoError(t, err)
 	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
-	<-updateCalls
+	receiveCompactProbeUpdates(t, updateCalls)
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompact2xxWithoutItemMarksUnsupported(t *testing.T) {
@@ -230,6 +259,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompact2xxWithoutItemMar
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		UpdatedAt:   time.Now().Add(-time.Minute),
 		Credentials: map[string]any{
 			"access_token":       "oauth-token",
 			"chatgpt_account_id": "chatgpt-acc",
@@ -260,7 +290,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompact2xxWithoutItemMar
 	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
 	require.Error(t, err)
 
-	updates := <-updateCalls
+	updates := receiveCompactProbeUpdates(t, updateCalls)
 	require.Equal(t, false, updates["openai_compact_supported"])
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
 }
@@ -279,6 +309,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactProbeIdentityMatc
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
+		UpdatedAt:   time.Now().Add(-time.Minute),
 		Credentials: map[string]any{
 			"access_token":       "oauth-token",
 			"chatgpt_account_id": "chatgpt-acc",
@@ -316,7 +347,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactProbeIdentityMatc
 		"真实 Codex 每个请求必带 installation-id，探测不得缺失")
 	require.NotContains(t, upstream.lastReq.Header.Get("session-id"), "probe_compact",
 		"探测标识不得是可被上游一眼识别的字面量")
-	<-updateCalls
+	receiveCompactProbeUpdates(t, updateCalls)
 }
 
 func TestCompactProbeSessionID_IsUUIDShaped(t *testing.T) {

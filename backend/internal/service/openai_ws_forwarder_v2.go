@@ -342,6 +342,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return nil, err
 	}
 
+	// 预热与重试策略可能继续调整载荷，只观察实际即将发送的最终正文。
+	if c != nil && account.OpenAIRequestIntegrityMode() != "off" {
+		observeStagedOpenAIRequestIntegrity(c, account, payloadAsJSONBytes(payload), "responses_http_to_ws_final")
+	}
 	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(

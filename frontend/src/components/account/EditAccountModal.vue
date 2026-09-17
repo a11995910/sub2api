@@ -2252,6 +2252,31 @@
         </div>
       </div>
 
+      <!-- 请求完整性观察独立于指纹收敛设置。 -->
+      <div
+        v-if="account?.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div class="min-w-0">
+            <label for="edit-request-integrity-mode" class="input-label mb-0">{{ t('admin.accounts.openai.requestIntegrityMode') }}</label>
+            <p id="edit-request-integrity-hint" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.requestIntegrityModeDesc') }}
+            </p>
+          </div>
+          <div class="w-full flex-shrink-0 sm:w-52">
+            <Select
+              id="edit-request-integrity-mode"
+              v-model="requestIntegrityMode"
+              data-testid="edit-request-integrity-mode-select"
+              :options="requestIntegrityModeOptions"
+              aria-describedby="edit-request-integrity-hint"
+              :disabled="submitting"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3532,6 +3557,7 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const requestIntegrityMode = ref<'observe' | 'off'>('observe')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3563,6 +3589,10 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
+const requestIntegrityModeOptions = computed(() => [
+  { value: 'observe', label: t('admin.accounts.openai.requestIntegrityObserve') },
+  { value: 'off', label: t('admin.accounts.openai.requestIntegrityOff') },
+])
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -4014,6 +4044,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  requestIntegrityMode.value = newAccount.platform === 'openai' && extra?.request_integrity_mode === 'off' ? 'off' : 'observe'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -5605,6 +5636,8 @@ const handleSubmit = async () => {
           delete newExtra.codex_cli_only_allow_app_server
         }
       }
+
+      newExtra.request_integrity_mode = requestIntegrityMode.value
 
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。

@@ -1325,18 +1325,19 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	opts := service.AccountTestOptions{
 		ImageDataURL: req.ImageDataURL,
 		AudioDataURL: req.AudioDataURL,
+		OnSuccess: func(ctx context.Context, observation *service.AccountTestObservation) {
+			if h.rateLimitService != nil {
+				if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(ctx, accountID, observation); err != nil {
+					_ = c.Error(err)
+				}
+			}
+		},
 	}
 
 	// Use AccountTestService to test the account with SSE streaming
 	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode, opts); err != nil {
 		// Error already sent via SSE, just log
 		return
-	}
-
-	if h.rateLimitService != nil {
-		if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(c.Request.Context(), accountID); err != nil {
-			_ = c.Error(err)
-		}
 	}
 }
 

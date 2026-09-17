@@ -361,10 +361,30 @@ func TestOpenAIHTTP429StillUsesQuotaResetHeaders(t *testing.T) {
 	require.Greater(t, time.Until(blockedUntil), 6*24*time.Hour, "real HTTP 429 must retain the upstream quota reset")
 }
 
-func TestOpenAI429RetryDelayHonorsBoundedRetryAfter(t *testing.T) {
-	deadline := time.Now().Add(openAIOAuth429RetryWindow)
-	require.Equal(t, openAIOAuth429RetryDelay, openAIOAuth429SameAccountRetryDelay(nil, deadline))
-	require.Equal(t, openAIOAuth429MaxRetryDelay, openAIOAuth429SameAccountRetryDelay(http.Header{"Retry-After": []string{"90"}}, deadline))
+func TestOpenAI429RetryDelayHonorsFullRetryAfter(t *testing.T) {
+	require.Equal(t, openAIOAuth429RetryDelay, openAIOAuth429SameAccountRetryDelay(nil))
+	require.Equal(t, 90*time.Second, openAIOAuth429SameAccountRetryDelay(http.Header{"Retry-After": []string{"90"}}))
+	resetAt := time.Now().Add(90 * time.Second).UTC().Truncate(time.Second)
+	delay := openAIOAuth429SameAccountRetryDelay(http.Header{"Retry-After": []string{resetAt.Format(http.TimeFormat)}})
+	require.InDelta(t, 90*time.Second, delay, float64(time.Second))
+	for _, invalid := range []string{"", "invalid", "-1", "0"} {
+		require.Equal(t, openAIOAuth429RetryDelay, openAIOAuth429SameAccountRetryDelay(http.Header{"Retry-After": []string{invalid}}))
+	}
+}
+
+func TestOpenAI429RetryErrorKeepsDelayAndSeparateBudgets(t *testing.T) {
+	for _, kind := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		t.Run(kind, func(t *testing.T) {
+			svc := &OpenAIGatewayService{}
+			account := &Account{ID: 42, Platform: PlatformOpenAI, Type: kind}
+			svc.openaiOAuth429RetryStartedAt.Store(account.ID, time.Now().Add(-openAIOAuth429RetryWindow+20*time.Second))
+			err := svc.newOpenAIAccountFailoverError(account, http.StatusTooManyRequests, http.Header{"Retry-After": []string{"90"}}, nil, "slow down", false, false)
+			require.True(t, err.RetryableOnSameAccount)
+			require.Equal(t, 90*time.Second, err.SameAccountRetryDelay)
+			require.Equal(t, 3, err.SameAccountRetryMax, "首次发送之外最多重试三次")
+			require.WithinDuration(t, time.Now().Add(20*time.Second), err.SameAccountRetryDeadline, time.Second)
+		})
+	}
 }
 
 func TestOpenAI429FastPath_OpenCodeGoUsageLimitUsesMessageResetDuration(t *testing.T) {

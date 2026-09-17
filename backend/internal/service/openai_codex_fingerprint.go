@@ -57,6 +57,28 @@ func applyStagedCodexFingerprintClientMetadata(c *gin.Context, account *Account,
 	return applyCodexFingerprintClientMetadata(reqBody, stagedCodexFingerprintIDs(c, account))
 }
 
+// applyCodexAccountAndFingerprintIdentityRaw 让原生 WS 复用 HTTP 的身份处理顺序：
+// 先按凭据隔离，再应用管理员已选的收敛模式；同一轮的头和体共享 IDs。
+// 会话派生继续使用原始请求头，缺省行为与 HTTP 一致，不另建种子或默认模式。
+func applyCodexAccountAndFingerprintIdentityRaw(c *gin.Context, account *Account, body []byte) ([]byte, bool, error) {
+	stageCodexFingerprintIDs(c, nil)
+	next, changed, err := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+	if err != nil {
+		return body, false, err
+	}
+	var clientHeaders http.Header
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+	}
+	ids := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+	projected, fingerprintChanged, err := applyCodexFingerprintClientMetadataRaw(next, ids)
+	if err != nil {
+		return body, false, err
+	}
+	stageCodexFingerprintIDs(c, ids)
+	return projected, changed || fingerprintChanged, nil
+}
+
 // codexFingerprintMode 控制 OAuth 账号出站请求的设备指纹收敛强度。
 // 多人共享同一 OAuth 账号时，每个用户的 Codex 客户端会携带各自不同的
 // installation_id / session_id / thread_id，上游据此判定设备数和会话数。
@@ -399,9 +421,7 @@ func rewriteCodexTurnMetadataFields(h http.Header, fields map[string]any) {
 	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
 		metadata = make(map[string]any, len(fields))
 	}
-	for k, v := range fields {
-		metadata[k] = v
-	}
+	applyCodexFingerprintMetadataValues(metadata, fields)
 	rebuilt, err := json.Marshal(metadata)
 	if err != nil {
 		return
@@ -445,6 +465,9 @@ func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *code
 
 	if ids.installationID != "" {
 		existing["x-codex-installation-id"] = ids.installationID
+		if _, ok := existing["installation_id"]; ok {
+			existing["installation_id"] = ids.installationID
+		}
 		modified = true
 	}
 
@@ -460,6 +483,16 @@ func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *code
 	existing["thread_id"] = ids.threadID
 	existing["turn_id"] = ids.turnID
 	existing["x-codex-window-id"] = ids.windowID
+	// 已有别名必须同步，避免同一请求体中保留另一套身份；不补造缺省别名。
+	for key, value := range map[string]string{
+		"session-id": ids.sessionID, "thread-id": ids.threadID,
+		"turn-id": ids.turnID, "window_id": ids.windowID,
+		"x-client-request-id": ids.threadID,
+	} {
+		if _, ok := existing[key]; ok {
+			existing[key] = value
+		}
+	}
 
 	rewriteClientMetadataEmbeddedTurnMetadata(existing, map[string]any{
 		"installation_id":         ids.installationID,
@@ -592,10 +625,25 @@ func rewriteClientMetadataEmbeddedTurnMetadata(clientMetadata map[string]any, fi
 	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
 		metadata = make(map[string]any, len(fields))
 	}
-	for k, v := range fields {
-		metadata[k] = v
-	}
+	applyCodexFingerprintMetadataValues(metadata, fields)
 	if rebuilt, err := json.Marshal(metadata); err == nil {
 		clientMetadata["x-codex-turn-metadata"] = string(rebuilt)
+	}
+}
+
+// 内嵌元数据也可能使用连字符别名；仅同步已存在的别名，不扩大改写范围。
+func applyCodexFingerprintMetadataValues(metadata, fields map[string]any) {
+	for key, value := range fields {
+		metadata[key] = value
+	}
+	for alias, canonical := range map[string]string{
+		"x-codex-installation-id": "installation_id", "session-id": "session_id",
+		"thread-id": "thread_id", "turn-id": "turn_id", "x-codex-window-id": "window_id",
+	} {
+		if value, changed := fields[canonical]; changed {
+			if _, exists := metadata[alias]; exists {
+				metadata[alias] = value
+			}
+		}
 	}
 }

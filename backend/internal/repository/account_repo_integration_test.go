@@ -951,6 +951,38 @@ func (s *AccountRepoSuite) TestSetRateLimitedIfLaterDoesNotShortenReset() {
 	s.Require().WithinDuration(later, *cacheRecorder.setAccounts[1].RateLimitResetAt, time.Second)
 }
 
+func (s *AccountRepoSuite) TestSetRateLimitedOnlyExtendsCooldown() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-rl-generic-monotonic"})
+	resetAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, resetAt))
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	for _, staleReset := range []time.Time{resetAt.Add(-55 * time.Minute), resetAt} {
+		s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, staleReset))
+		current, err := s.repo.GetByID(s.ctx, account.ID)
+		s.Require().NoError(err)
+		s.Require().True(resetAt.Equal(*current.RateLimitResetAt), "迟到的较短冷却不能覆盖现有恢复时间")
+		s.Require().True(observed.RateLimitedAt.Equal(*current.RateLimitedAt), "未延长的写入不应制造新的限流代次")
+	}
+	s.Require().Len(cacheRecorder.setAccounts, 2)
+	s.Require().True(resetAt.Equal(*cacheRecorder.setAccounts[1].RateLimitResetAt), "本地调度快照必须保留数据库中的更晚时间")
+
+	later := resetAt.Add(time.Hour)
+	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, later))
+	current, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().True(later.Equal(*current.RateLimitResetAt))
+
+	s.Require().NoError(s.repo.ClearRateLimit(s.ctx, account.ID))
+	current, err = s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(current.RateLimitedAt)
+	s.Require().Nil(current.RateLimitResetAt, "显式清除仍可恢复调度")
+}
+
 func (s *AccountRepoSuite) TestClearRateLimitIfObservedProtectsRearmed429Generation() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:     "acc-rl-conditional-clear",

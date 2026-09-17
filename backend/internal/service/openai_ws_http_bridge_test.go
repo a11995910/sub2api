@@ -895,7 +895,8 @@ func TestProxyOpenAIWSHTTPBridgeTurnRetriesRejectedFieldBeforeClientOutput(t *te
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
-	payload := []byte(`{"type":"response.create","model":"gpt-5","input":"hi","truncation":"auto"}`)
+	payload := []byte(`{"type":"response.create","model":"gpt-5","input":"hi","truncation":"auto","previous_response_id":"resp_original"}`)
+	stageOpenAIRequestIntegrity(c, account, payload)
 	var writes [][]byte
 
 	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
@@ -915,6 +916,13 @@ func TestProxyOpenAIWSHTTPBridgeTurnRetriesRejectedFieldBeforeClientOutput(t *te
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "truncation").Exists())
 	require.Len(t, writes, 1)
 	require.Equal(t, "response.completed", gjson.GetBytes(writes[0], "type").String())
+	value, exists := c.Get(openAIRequestIntegrityReportKey)
+	require.True(t, exists)
+	report, ok := value.(openAIRequestIntegrityReport)
+	require.True(t, ok)
+	require.Equal(t, "responses_ws_http_bridge_final", report.Path)
+	require.Equal(t, "changed", report.Status)
+	require.ElementsMatch(t, []string{"previous_response_id", "truncation"}, report.Fields, "桥接删除续链及重试删除截断策略均应在最终发送边界观察")
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnSSEErrorFailoverSafety(t *testing.T) {
