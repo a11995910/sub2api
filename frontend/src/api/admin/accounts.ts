@@ -49,6 +49,26 @@ interface AccountListOptions {
   timeout?: number
 }
 
+export interface HealthyTurnStateTestResult {
+  status: 'recorded' | 'already_recorded' | 'no_header' | 'unhealthy' | 'not_recorded' | 'blocked' | 'failed'
+  model: string
+  transport: 'http' | 'websocket'
+  http_status?: number
+  message?: string
+  expires_at?: string
+}
+
+export async function testHealthyTurnState(
+  id: number,
+  input: { model: string; transport: 'http' | 'websocket'; proxy_id: number | null },
+  signal?: AbortSignal
+): Promise<HealthyTurnStateTestResult> {
+  const { data } = await apiClient.post<HealthyTurnStateTestResult>(
+    `/admin/accounts/${id}/healthy-turn-state/test`, input, { signal, timeout: 65000 }
+  )
+  return data
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -1105,6 +1125,7 @@ export const accountsAPI = {
   delete: deleteAccount,
   toggleStatus,
   testAccount,
+  testHealthyTurnState,
   refreshCredentials,
   applyOAuthCredentials,
   getStats,

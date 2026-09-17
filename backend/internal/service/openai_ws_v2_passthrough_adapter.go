@@ -877,13 +877,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	var upstreamConn openAIWSClientConn
 	statusCode := 0
 	var handshakeHeaders http.Header
+	var healthyTurnStateObserver *openAIHealthyTurnStateObserver
 	for {
 		headers, err = s.refreshOpenAIAgentIdentityHeaders(ctx, account, headers)
 		if err != nil {
 			return fmt.Errorf("refresh ws authentication headers: %w", err)
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
-		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+		upstreamConn, statusCode, handshakeHeaders, healthyTurnStateObserver, err = s.dialOpenAIWSWithHealthyTurnState(dialCtx, c, account, capturedSessionModel, wsURL, headers, proxyURL, dialer)
 		cancelDial()
 		if err == nil {
 			break
@@ -926,7 +927,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 
 	upstreamFrameConn, ok := upstreamConn.(openaiwsv2.FrameConn)
 	if !ok {
+		healthyTurnStateObserver.finish()
 		return errors.New("openai ws passthrough upstream connection does not support frame relay")
+	}
+	if healthyTurnStateObserver != nil {
+		observedFrameConn := &openAIHealthyTurnStateFrameConn{FrameConn: upstreamFrameConn, observer: healthyTurnStateObserver}
+		upstreamFrameConn = observedFrameConn
+		defer observedFrameConn.finishObservation()
 	}
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,

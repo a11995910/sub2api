@@ -325,6 +325,42 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('健康状态默认仅记录，两个开关独立保存且重新打开不丢失', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    let wrapper = mountModal(account)
+    const record = '[data-testid="edit-healthy-turn-state-record"]'
+    const replace = '[data-testid="edit-healthy-turn-state-replace"]'
+    expect(wrapper.get(record).attributes('aria-checked')).toBe('true')
+    expect(wrapper.get(replace).attributes('aria-checked')).toBe('false')
+    await wrapper.get(record).trigger('click')
+    await wrapper.get(replace).trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(saved).toMatchObject({ openai_healthy_turn_state_record: false, openai_healthy_turn_state_replace: true })
+    wrapper.unmount()
+    wrapper = mountModal({ ...account, extra: saved })
+    expect(wrapper.get(record).attributes('aria-checked')).toBe('false')
+    expect(wrapper.get(replace).attributes('aria-checked')).toBe('true')
+    await wrapper.get(replace).trigger('click')
+    updateAccountMock.mockClear()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      openai_healthy_turn_state_record: false, openai_healthy_turn_state_replace: false
+    })
+    wrapper.unmount()
+  })
+
+  it('其他平台不显示健康状态头开关', () => {
+    const account = buildAccount()
+    account.platform = 'grok'
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-healthy-turn-state-record"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="edit-healthy-turn-state-replace"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('完整性观察默认开启，关闭并重开后与指纹设置独立保存', async () => {
     const account = buildOpenAIOAuthParentAccount()
     account.extra = { codex_fingerprint_mode: 'full' }

@@ -418,6 +418,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if err := ValidateOpenAIRequestIntegrityExtra(accountExtra); err != nil {
 		return nil, err
 	}
+	if err := ValidateOpenAIHealthyTurnStateExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -584,6 +587,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
+			return nil, err
+		}
+		if err := ValidateOpenAIHealthyTurnStateExtra(input.Extra); err != nil {
 			return nil, err
 		}
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -915,6 +921,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	if err := ValidateOpenAIRequestIntegrityExtra(updates); err != nil {
 		return err
 	}
+	if err := ValidateOpenAIHealthyTurnStateExtra(updates); err != nil {
+		return err
+	}
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -942,6 +951,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
+		return nil, err
+	}
+	if err := ValidateOpenAIHealthyTurnStateExtra(input.Extra); err != nil {
 		return nil, err
 	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.

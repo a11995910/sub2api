@@ -2277,6 +2277,53 @@
         </div>
       </div>
 
+      <!-- 健康状态头的记录和替换独立设置。 -->
+      <div
+        v-if="account?.platform === 'openai'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label for="edit-healthy-turn-state-record" class="input-label mb-0">{{ t('admin.accounts.openai.healthyTurnStateRecord') }}</label>
+            <p id="edit-healthy-turn-state-record-hint" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.healthyTurnStateRecordDesc') }}
+            </p>
+          </div>
+          <Toggle
+            id="edit-healthy-turn-state-record"
+            v-model="healthyTurnStateRecord"
+            data-testid="edit-healthy-turn-state-record"
+            :aria-label="t('admin.accounts.openai.healthyTurnStateRecord')"
+            aria-describedby="edit-healthy-turn-state-record-hint"
+            :disabled="submitting"
+          />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label for="edit-healthy-turn-state-replace" class="input-label mb-0">{{ t('admin.accounts.openai.healthyTurnStateReplace') }}</label>
+            <p id="edit-healthy-turn-state-replace-hint" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.healthyTurnStateReplaceDesc') }}
+            </p>
+          </div>
+          <Toggle
+            id="edit-healthy-turn-state-replace"
+            v-model="healthyTurnStateReplace"
+            data-testid="edit-healthy-turn-state-replace"
+            :aria-label="t('admin.accounts.openai.healthyTurnStateReplace')"
+            aria-describedby="edit-healthy-turn-state-replace-hint"
+            :disabled="submitting"
+          />
+        </div>
+      </div>
+
+      <OpenAIHealthyTurnStateTest
+        v-if="account?.platform === 'openai'"
+        :account-id="account.id"
+        :proxies="proxies"
+        :active="show"
+        :disabled="submitting"
+      />
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3068,6 +3115,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import VideoRequestProfileSelect from './VideoRequestProfileSelect.vue'
+import OpenAIHealthyTurnStateTest from './OpenAIHealthyTurnStateTest.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -3558,6 +3606,8 @@ const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const requestIntegrityMode = ref<'observe' | 'off'>('observe')
+const healthyTurnStateRecord = ref(true)
+const healthyTurnStateReplace = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -4045,6 +4095,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
   requestIntegrityMode.value = newAccount.platform === 'openai' && extra?.request_integrity_mode === 'off' ? 'off' : 'observe'
+  healthyTurnStateRecord.value = extra?.openai_healthy_turn_state_record !== false
+  healthyTurnStateReplace.value = extra?.openai_healthy_turn_state_replace === true
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -5638,6 +5690,8 @@ const handleSubmit = async () => {
       }
 
       newExtra.request_integrity_mode = requestIntegrityMode.value
+      newExtra.openai_healthy_turn_state_record = healthyTurnStateRecord.value
+      newExtra.openai_healthy_turn_state_replace = healthyTurnStateReplace.value
 
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。

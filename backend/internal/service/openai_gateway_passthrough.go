@@ -733,7 +733,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http_passthrough", req.Header, body, "not_applicable")
 
-	return req, nil
+	return s.prepareOpenAIHealthyTurnStateRequest(c, account, req, gjson.GetBytes(body, "model").String()), nil
 }
 
 func stripOpenAILegacyResponsesBeta(headers http.Header) {
