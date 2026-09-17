@@ -65,6 +65,34 @@ type healthyTurnStateCheckingBody struct {
 	beforeRead func()
 }
 
+func TestOpenAIHealthyTurnStateProbeHTTPMissingContentType(t *testing.T) {
+	for _, tc := range []struct {
+		name, state, body, want string
+	}{
+		{"完整 SSE", "测试状态头", healthyTurnStateSSE(), "recorded"},
+		{"完整 SSE 无头", "", healthyTurnStateSSE(), "no_header"},
+		{"首字后断流", "测试状态头", "data: " + healthyTurnStateDelta + "\n\n", "unhealthy"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := healthyTurnStateResponse(200, tc.state, tc.body)
+			response.Header.Del("Content-Type")
+			upstream := &healthyTurnStateUpstream{responses: []*http.Response{response}}
+			gateway := &OpenAIGatewayService{httpUpstream: upstream}
+			svc := &AccountTestService{openaiGatewayService: gateway}
+			result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), healthyTurnStateProbeAccount(), "", "http")
+			require.NoError(t, err)
+			require.Equal(t, tc.want, result.Status)
+			require.Equal(t, 200, result.HTTPStatus)
+			require.Len(t, upstream.requests, 1)
+			if tc.want == "recorded" {
+				require.Len(t, gateway.openaiHealthyTurnStates.entries, 1)
+			} else {
+				require.Empty(t, gateway.openaiHealthyTurnStates.entries)
+			}
+		})
+	}
+}
+
 func (b *healthyTurnStateCheckingBody) Read(p []byte) (int, error) {
 	b.beforeRead()
 	return b.Reader.Read(p)

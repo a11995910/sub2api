@@ -164,7 +164,7 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateHTTP(ctx context.Context, c 
 		return nil
 	}
 	observer := newOpenAIHealthyTurnStateProbeObserver(openAIHealthyTurnStateAttemptFromRequest(req), resp.Header)
-	observedBody := &openAIHealthyTurnStateBody{ReadCloser: resp.Body, observer: observer, sse: isEventStreamResponse(resp.Header)}
+	observedBody := newOpenAIHealthyTurnStateBody(resp, observer)
 	// hi 测试限制响应总量，异常长流不消耗无界内存或流量。
 	const maxProbeBytes = 8 << 20
 	n, readErr := io.Copy(io.Discard, io.LimitReader(observedBody, maxProbeBytes+1))

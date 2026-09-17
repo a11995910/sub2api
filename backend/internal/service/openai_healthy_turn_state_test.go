@@ -220,6 +220,59 @@ func TestOpenAIHealthyTurnStateBodyPreservesChunksAndRejectsEmptySuccess(t *test
 	}
 }
 
+func TestOpenAIHealthyTurnStateHTTPMissingContentType(t *testing.T) {
+	jsonBody := `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"data: 文本内容\\nevent: 普通文本"}]}]}`
+	for _, tc := range []struct {
+		name, payload string
+		healthy       bool
+	}{
+		{"正常 SSE", healthyTurnStateSSE(), true},
+		{"事件字段开头", "event: response.output_text.delta\n" + healthyTurnStateSSE(), true},
+		{"心跳与空行开头", "\r\n: 心跳\r\n\r\n" + healthyTurnStateSSE(), true},
+		{"事件编号开头", "id: 1\n" + healthyTurnStateSSE(), true},
+		{"重连字段开头", "retry: 1000\n" + healthyTurnStateSSE(), true},
+		{"完整 JSON", " \n" + jsonBody, true},
+		{"首字后断流", "data: " + healthyTurnStateDelta + "\n\n", false},
+		{"流内失败", "data: " + healthyTurnStateDelta + "\n\ndata: {\"type\":\"response.failed\"}\n\n", false},
+		{"仅终止事件", "data: " + healthyTurnStateDone + "\n\n", false},
+		{"空 JSON 输出", `{"status":"completed","output":[],"note":"data: 普通文本"}`, false},
+		{"空响应", "", false},
+		{"不完整格式前缀", "dat", false},
+		{"超大前导空白", strings.Repeat("\n", openAIHealthyTurnStateEventMaxBytes+1) + healthyTurnStateSSE(), true},
+	} {
+		for _, oneByte := range []bool{false, true} {
+			name := tc.name + "/整块"
+			if oneByte {
+				name = tc.name + "/逐字节"
+			}
+			t.Run(name, func(t *testing.T) {
+				response := healthyTurnStateResponse(200, "测试状态头", tc.payload)
+				response.Header.Del("Content-Type")
+				if oneByte {
+					response.Body = io.NopCloser(iotest.OneByteReader(strings.NewReader(tc.payload)))
+				}
+				store := &healthyStateStoreStub{}
+				upstream := &healthyTurnStateUpstream{responses: []*http.Response{response}}
+				svc := &OpenAIGatewayService{httpUpstream: upstream, openaiHealthyTurnStates: openAIHealthyTurnStateCache{repo: store}}
+				account := &Account{ID: 7, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
+				_, request := healthyTurnStateRequest(t, svc, account, "测试会话")
+				resp, err := svc.doOpenAIUpstream(request, "", account)
+				require.NoError(t, err)
+				payload, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, tc.payload, string(payload), "采集不能改变客户端响应")
+				require.NoError(t, resp.Body.Close())
+				require.Empty(t, resp.Header.Get("Content-Type"), "格式识别不修改上游响应头")
+				if tc.healthy {
+					require.Equal(t, 1, store.saves, "完整健康响应只保存一次")
+				} else {
+					require.Zero(t, store.saves, "失败和空响应不得入库")
+				}
+			})
+		}
+	}
+}
+
 func TestOpenAIHealthyTurnStateCacheIsolationExpiryAndConcurrency(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	a := &Account{ID: 4, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}

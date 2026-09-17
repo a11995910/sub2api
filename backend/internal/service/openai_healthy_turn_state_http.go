@@ -57,7 +57,7 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 	if response.Body != nil && response.StatusCode >= 200 && response.StatusCode < 300 {
 		observer := newOpenAIHealthyTurnStateObserver(attempt, response.Header)
 		if observer != nil {
-			response.Body = &openAIHealthyTurnStateBody{ReadCloser: response.Body, observer: observer, sse: isEventStreamResponse(response.Header)}
+			response.Body = newOpenAIHealthyTurnStateBody(response, observer)
 		}
 	} else if response.Body == nil {
 		attempt.failed()
@@ -71,6 +71,8 @@ type openAIHealthyTurnStateBody struct {
 	mu           sync.Mutex
 	observer     *openAIHealthyTurnStateObserver
 	sse          bool
+	sniffSSE     bool
+	formatPrefix []byte
 	line, data   []byte
 	event        string
 	discard      bool
@@ -80,6 +82,15 @@ type openAIHealthyTurnStateBody struct {
 
 const openAIHealthyTurnStateEventMaxBytes = 1 << 20
 
+func newOpenAIHealthyTurnStateBody(response *http.Response, observer *openAIHealthyTurnStateObserver) *openAIHealthyTurnStateBody {
+	return &openAIHealthyTurnStateBody{
+		ReadCloser: response.Body,
+		observer:   observer,
+		sse:        isEventStreamResponse(response.Header),
+		sniffSSE:   strings.TrimSpace(response.Header.Get("Content-Type")) == "",
+	}
+}
+
 func (b *openAIHealthyTurnStateBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
 	b.mu.Lock()
@@ -87,27 +98,7 @@ func (b *openAIHealthyTurnStateBody) Read(p []byte) (int, error) {
 	if b.closed {
 		return n, err
 	}
-	if b.sse {
-		for _, value := range p[:n] {
-			if value == '\n' {
-				b.consumeLine()
-				continue
-			}
-			if len(b.line) >= openAIHealthyTurnStateEventMaxBytes {
-				b.lineOverflow = true
-			}
-			if !b.lineOverflow {
-				b.line = append(b.line, value)
-			}
-		}
-	} else if !b.discard {
-		if len(b.data)+n > openAIHealthyTurnStateEventMaxBytes {
-			b.discard = true
-			b.data = nil
-		} else {
-			b.data = append(b.data, p[:n]...)
-		}
-	}
+	b.observeBytes(p[:n])
 	if err != nil {
 		if err == io.EOF {
 			if b.sse {
@@ -120,6 +111,52 @@ func (b *openAIHealthyTurnStateBody) Read(p []byte) (int, error) {
 		b.observer.finish()
 	}
 	return n, err
+}
+
+func (b *openAIHealthyTurnStateBody) observeBytes(chunk []byte) {
+	// OAuth 上游可能省略 Content-Type。仅用已读到的短前缀识别格式，
+	// 不额外读取上游，也不把 JSON 文本中的 data:/event: 当作 SSE。
+	if b.sniffSSE {
+		for i, value := range chunk {
+			if len(b.formatPrefix) == 0 && (value == ' ' || value == '\t' || value == '\r' || value == '\n') {
+				continue
+			}
+			b.formatPrefix = append(b.formatPrefix, value)
+			prefix := b.formatPrefix
+			if bodyHasSSEFraming(prefix) || prefix[0] == ':' || bytes.HasPrefix(prefix, []byte("id:")) || bytes.HasPrefix(prefix, []byte("retry:")) {
+				b.sse = true
+			} else if bytes.HasPrefix([]byte("data:"), prefix) || bytes.HasPrefix([]byte("event:"), prefix) || bytes.HasPrefix([]byte("id:"), prefix) || bytes.HasPrefix([]byte("retry:"), prefix) {
+				continue
+			}
+			b.sniffSSE = false
+			b.observeBytes(b.formatPrefix)
+			b.formatPrefix = nil
+			b.observeBytes(chunk[i+1:])
+			return
+		}
+		return
+	}
+	if b.sse {
+		for _, value := range chunk {
+			if value == '\n' {
+				b.consumeLine()
+				continue
+			}
+			if len(b.line) >= openAIHealthyTurnStateEventMaxBytes {
+				b.lineOverflow = true
+			}
+			if !b.lineOverflow {
+				b.line = append(b.line, value)
+			}
+		}
+	} else if !b.discard {
+		if len(b.data)+len(chunk) > openAIHealthyTurnStateEventMaxBytes {
+			b.discard = true
+			b.data = nil
+		} else {
+			b.data = append(b.data, chunk...)
+		}
+	}
 }
 
 func (b *openAIHealthyTurnStateBody) consumeLine() {
