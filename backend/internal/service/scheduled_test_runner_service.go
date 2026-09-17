@@ -120,13 +120,7 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
-	opts := AccountTestOptions{}
-	if plan.AutoRecover {
-		opts.OnSuccess = func(testCtx context.Context, observation *AccountTestObservation) {
-			s.tryRecoverAccount(testCtx, plan.AccountID, plan.ID, observation)
-		}
-	}
-	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID, opts)
+	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
 		return
@@ -134,6 +128,11 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 
 	if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
+	}
+
+	// Auto-recover account if test succeeded and auto_recover is enabled.
+	if result.Status == "success" && plan.AutoRecover {
+		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
@@ -148,12 +147,12 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.
-func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, accountID int64, planID int64, observation *AccountTestObservation) {
+func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, accountID int64, planID int64) {
 	if s.rateLimitSvc == nil {
 		return
 	}
 
-	recovery, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, accountID, observation)
+	recovery, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, accountID)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover failed: %v", planID, err)
 		return

@@ -776,7 +776,6 @@ export default {
           no_header: '响应正常，未返回状态头',
           unhealthy: '响应不完整或无有效输出，未记录',
           not_recorded: '记录不可用或缓存已满，未保存',
-          blocked: '冷却或并发保护，未发送',
           failed: '测试失败，未记录',
           cancelled: '已取消'
         },

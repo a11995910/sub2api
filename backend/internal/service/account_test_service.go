@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -69,8 +70,6 @@ type TestEvent struct {
 type AccountTestOptions struct {
 	ImageDataURL string
 	AudioDataURL string
-	// OnSuccess 仅供内部调用方在完整测试成功后按观测快照恢复状态。
-	OnSuccess func(context.Context, *AccountTestObservation)
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -153,7 +152,6 @@ type AccountTestService struct {
 	modelMetadataRegistryAt   time.Time
 	pluginManager             *PluginManager
 	openaiGatewayService      *OpenAIGatewayService
-	concurrencyService        *ConcurrencyService
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
@@ -333,7 +331,7 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
 // opts is optional media (image/audio data URLs for real generation / STT).
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) (testErr error) {
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
 
@@ -356,25 +354,6 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 		return nil
 	}
-	model := accountTestRequestedModel(account, modelID, mode)
-	if err := accountTestCooldown(ctx, account, model, time.Now()); err != nil {
-		return s.sendErrorAndEnd(c, err.Error())
-	}
-	release, err := s.acquireTestAccountSlot(ctx, account)
-	if err != nil {
-		return s.sendErrorAndEnd(c, err.Error())
-	}
-	defer release()
-	observation := newAccountTestObservation(ctx, account, model, time.Now())
-	ctx = context.WithValue(ctx, accountTestObservationKey{}, observation)
-	c.Request = c.Request.WithContext(ctx)
-	defer func() {
-		// 回调将恢复与用量合并为一次原子更新；未恢复时仍按行版本保存观测。
-		defer s.flushAccountTestExtra(ctx, observation)
-		if testErr == nil && observation.Succeeded && testOpts.OnSuccess != nil {
-			testOpts.OnSuccess(ctx, observation)
-		}
-	}()
 
 	// Route to platform-specific test method
 	if account.IsCNProvider() {
@@ -936,7 +915,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	if isOAuth && s.accountRepo != nil {
 		if updates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(updates) > 0 {
-			s.persistAccountTestExtra(ctx, account.ID, updates)
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
 		}
 	}
@@ -1152,12 +1131,16 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 		}
-		s.persistAccountTestExtra(ctx, account.ID, map[string]any{
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 			grokQuotaSnapshotExtraKey: snapshot,
 		})
 		if limited {
 			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
+			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 		}
+	} else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCode}) {
+		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 	}
 	if s.accountRepo == nil || len(responseBody) == 0 {
 		if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
@@ -2266,7 +2249,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	if err != nil {
 		if s.accountRepo != nil {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, false, time.Now())
-			s.persistAccountTestExtra(ctx, account.ID, updates)
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
@@ -2291,7 +2274,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			updates = mergeExtraUpdates(updates, codexUpdates)
 		}
 		if len(updates) > 0 {
-			s.persistAccountTestExtra(ctx, account.ID, updates)
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
 		}
 		// 探测如返回 429,主动同步限流状态,避免后续短时间内继续选中。
@@ -2343,7 +2326,13 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 	account.RateLimitedAt = &now
 	account.RateLimitResetAt = resetAt
 
-	// 429 不能证明测试成功，不据此清除账号错误，避免覆盖并发写入的新错误。
+	if account.Status == StatusError {
+		if err := s.accountRepo.ClearError(ctx, account.ID); err != nil {
+			return
+		}
+		account.Status = StatusActive
+		account.ErrorMessage = ""
+	}
 }
 
 // testGeminiAccountConnection tests a Gemini account's connection
@@ -3238,11 +3227,6 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 			}
 		}
 	}
-	if event.Type == "test_complete" && c != nil && c.Request != nil {
-		if observation, ok := c.Request.Context().Value(accountTestObservationKey{}).(*AccountTestObservation); ok {
-			observation.Succeeded = event.Success
-		}
-	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)
@@ -3260,14 +3244,14 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
-func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string, opts ...AccountTestOptions) (*ScheduledTestResult, error) {
+func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
 
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
 
-	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault, opts...)
+	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
 
 	finishedAt := time.Now()
 	body := w.Body.String()

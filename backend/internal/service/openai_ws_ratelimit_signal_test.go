@@ -565,8 +565,9 @@ func TestOpenAIWSRateLimitFailoverError_OAuthKeepsSameAccountDeadline(t *testing
 	}, headers, body, "limited")
 	require.True(t, oauthErr.RetryableOnSameAccount)
 	require.False(t, oauthErr.SameAccountRetryDeadline.IsZero())
-	require.Equal(t, 30*time.Second, oauthErr.SameAccountRetryDelay)
-	require.Equal(t, 3, oauthErr.SameAccountRetryMax)
+	require.Positive(t, oauthErr.SameAccountRetryDelay)
+	require.LessOrEqual(t, oauthErr.SameAccountRetryDelay, openAIOAuth429MaxRetryDelay)
+	require.Zero(t, oauthErr.SameAccountRetryMax, "WS 实际调用也不再附加固定三次上限")
 	require.Equal(t, body, oauthErr.ResponseBody)
 	require.Equal(t, "30", oauthErr.ResponseHeaders.Get("Retry-After"))
 

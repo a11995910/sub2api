@@ -50,7 +50,7 @@ interface AccountListOptions {
 }
 
 export interface HealthyTurnStateTestResult {
-  status: 'recorded' | 'already_recorded' | 'no_header' | 'unhealthy' | 'not_recorded' | 'blocked' | 'failed'
+  status: 'recorded' | 'already_recorded' | 'no_header' | 'unhealthy' | 'not_recorded' | 'failed'
   model: string
   transport: 'http' | 'websocket'
   http_status?: number

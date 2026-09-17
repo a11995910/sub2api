@@ -11,6 +11,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -34,7 +35,10 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 	if s.openaiGatewayService == nil {
 		return nil, infraerrors.ServiceUnavailable("HEALTHY_TURN_STATE_UNAVAILABLE", "状态头测试服务暂不可用")
 	}
-	model = accountTestRequestedModel(account, model, "")
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = openai.DefaultTestModel
+	}
 	if !account.IsModelSupported(model) || isOpenAIImageModel(model) {
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_MODEL", "请选择账号支持的文本模型")
 	}
@@ -45,16 +49,6 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_TRANSPORT", "测试方式仅支持 HTTP 或 WebSocket")
 	}
 	result := &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: model, Transport: transport}
-	if err := accountTestCooldown(ctx, account, model, time.Now()); err != nil {
-		result.Status, result.Message = "blocked", err.Error()
-		return result, nil
-	}
-	release, err := s.acquireTestAccountSlot(ctx, account)
-	if err != nil {
-		result.Status, result.Message = "blocked", "账号测试并发不可用或已满，请稍后重试"
-		return result, nil
-	}
-	defer release()
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 

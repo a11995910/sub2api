@@ -268,7 +268,6 @@ func ProvideAccountUsageService(
 
 func ProvideAccountTestService(
 	accountRepo AccountRepository,
-	concurrencyService *ConcurrencyService,
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
@@ -294,7 +293,6 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
-	service.SetConcurrencyService(concurrencyService)
 	return service
 }
 

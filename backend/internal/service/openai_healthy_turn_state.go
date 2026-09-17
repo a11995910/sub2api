@@ -223,7 +223,14 @@ func (a *openAIHealthyTurnStateAttempt) claimRetry(ctx context.Context, status i
 	if a == nil || !a.replace || (status != http.StatusTooManyRequests && status != http.StatusServiceUnavailable) {
 		return false, nil
 	}
-	delay := openAIOAuth429SameAccountRetryDelay(responseHeaders)
+	// 状态头替换仍独立遵守上游等待时间，不复用普通重试的截断策略。
+	delay := time.Second
+	now := time.Now()
+	if resetAt := parseRetryAfterResetTime(responseHeaders, now); resetAt != nil {
+		if wait := resetAt.Sub(now); wait > delay {
+			delay = wait
+		}
+	}
 	if delay >= openAIOAuth429RetryWindow {
 		return false, nil
 	}

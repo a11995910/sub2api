@@ -104,25 +104,44 @@ func TestOpenAIHealthyTurnStateProbeDeferredCommitAndProxyIsolation(t *testing.T
 	require.True(t, claimed, "正式转发必须能使用同一出口的手动记录")
 }
 
-func TestOpenAIHealthyTurnStateProbeCooldownAndCancellation(t *testing.T) {
+func TestOpenAIHealthyTurnStateProbeIgnoresCooldown(t *testing.T) {
+	for _, transport := range []string{"http", "websocket"} {
+		t.Run(transport, func(t *testing.T) {
+			upstream := &healthyTurnStateUpstream{responses: []*http.Response{healthyTurnStateResponse(200, "健康状态", healthyTurnStateSSE())}}
+			dialer := &healthyTurnStateProbeWSDialer{status: 101, conn: &healthyTurnStateProbeWSConn{events: [][]byte{[]byte(healthyTurnStateDelta), []byte(healthyTurnStateDone)}}}
+			gateway := &OpenAIGatewayService{httpUpstream: upstream, openaiWSPassthroughDialer: dialer}
+			svc := &AccountTestService{openaiGatewayService: gateway}
+			account := healthyTurnStateProbeAccount()
+			until := time.Now().Add(time.Hour)
+			account.RateLimitResetAt = &until
+			account.OverloadUntil = &until
+			account.TempUnschedulableUntil = &until
+			setAccountModelRateLimitSnapshot(account, "gpt-5.4", until, "429", time.Now())
+			result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), account, "gpt-5.4", transport)
+			require.NoError(t, err)
+			require.Equal(t, "recorded", result.Status)
+			if transport == "http" {
+				require.Len(t, upstream.requests, 1)
+			} else {
+				require.Equal(t, 1, dialer.calls)
+			}
+			require.Len(t, gateway.openaiHealthyTurnStates.entries, 1)
+			require.Equal(t, &until, account.RateLimitResetAt, "状态头采集只记录结果，不修改账号状态")
+		})
+	}
+}
+
+func TestOpenAIHealthyTurnStateProbeCancellation(t *testing.T) {
 	upstream := &healthyTurnStateUpstream{}
 	gateway := &OpenAIGatewayService{httpUpstream: upstream}
 	svc := &AccountTestService{openaiGatewayService: gateway}
 	account := healthyTurnStateProbeAccount()
-	until := time.Now().Add(time.Minute)
-	account.RateLimitResetAt = &until
-	result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), account, "gpt-5.4", "http")
-	require.NoError(t, err)
-	require.Equal(t, "blocked", result.Status)
-	require.Empty(t, upstream.requests)
-
-	account.RateLimitResetAt = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	resp := healthyTurnStateResponse(200, "健康状态", "")
 	resp.Body = &healthyTurnStateCheckingBody{Reader: strings.NewReader(healthyTurnStateSSE()), beforeRead: cancel}
 	upstream.responses = []*http.Response{resp}
-	result, err = svc.ProbeOpenAIHealthyTurnState(ctx, account, "gpt-5.4", "http")
+	result, err := svc.ProbeOpenAIHealthyTurnState(ctx, account, "gpt-5.4", "http")
 	require.NoError(t, err)
 	require.Equal(t, "unhealthy", result.Status)
 	require.Empty(t, gateway.openaiHealthyTurnStates.entries)

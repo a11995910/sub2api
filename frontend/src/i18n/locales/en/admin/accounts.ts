@@ -725,7 +725,6 @@ export default {
           no_header: 'Healthy response, no state header',
           unhealthy: 'Incomplete or empty response; not recorded',
           not_recorded: 'Record unavailable or cache full; not saved',
-          blocked: 'Cooldown or concurrency protection; not sent',
           failed: 'Test failed; not recorded',
           cancelled: 'Cancelled'
         },

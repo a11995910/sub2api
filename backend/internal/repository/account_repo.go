@@ -2294,8 +2294,20 @@ func (r *accountRepository) ListModelAvailabilityCandidates(
 }
 
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
-	// 并发返回的旧响应只能延长冷却，不能覆盖其他请求已记录的更晚恢复时间。
-	return r.SetRateLimitedIfLater(ctx, id, resetAt)
+	now := time.Now()
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetRateLimitedAt(now).
+		SetRateLimitResetAt(resetAt).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
 }
 
 // SetRateLimitedIfLater atomically extends an account-level rate limit. Grok
