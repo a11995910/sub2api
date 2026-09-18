@@ -29,7 +29,7 @@ func TestOpenAIHealthyTurnStateModelMismatchHTTP(t *testing.T) {
 	}{
 		{name: "模型降级后替换成功", replace: true, available: true, wantStatus: 200, wantCalls: 2},
 		{name: "替换仍降级只试一次", replace: true, available: true, mismatchAgain: true, wantStatus: 502, wantCalls: 2},
-		{name: "共享池为空", replace: true, wantStatus: 502, wantCalls: 1},
+		{name: "本账号模型无记录", replace: true, wantStatus: 502, wantCalls: 1},
 		{name: "只记录也拒绝错误模型", available: true, wantStatus: 502, wantCalls: 1},
 		{name: "JSON 降级", replace: true, available: true, json: true, wantStatus: 200, wantCalls: 2},
 		{name: "无类型分片 SSE", replace: true, available: true, missingType: true, wantStatus: 200, wantCalls: 2},
@@ -56,7 +56,7 @@ func TestOpenAIHealthyTurnStateModelMismatchHTTP(t *testing.T) {
 			req.Header.Set(openAICodexTurnStateHeader, "客户端旧头")
 			entry := openAIHealthyTurnStateEntry{value: "可替换头", expiresAt: time.Now().Add(time.Minute)}
 			if tc.available {
-				require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{}, entry))
+				require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-6-astra"}, entry))
 			}
 			resp, err := svc.doOpenAIUpstreamWithHealthyTurnState(req, "", account)
 			require.NoError(t, err)
@@ -74,9 +74,9 @@ func TestOpenAIHealthyTurnStateModelMismatchHTTP(t *testing.T) {
 			}
 			if tc.mismatchAgain {
 				require.Empty(t, svc.openaiHealthyTurnStates.entries)
-				require.False(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{}, entry))
+				require.False(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-6-astra"}, entry))
 			}
-			require.False(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{}, openAIHealthyTurnStateEntry{value: "降级状态", expiresAt: time.Now().Add(time.Minute)}))
+			require.False(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-6-astra"}, openAIHealthyTurnStateEntry{value: "降级状态", expiresAt: time.Now().Add(time.Minute)}))
 			require.Empty(t, svc.openaiHealthyTurnStates.held)
 		})
 	}
@@ -157,7 +157,7 @@ func TestOpenAIHealthyTurnStateModelMismatchWS(t *testing.T) {
 				account := &Account{ID: 3, Platform: PlatformOpenAI, Concurrency: 2, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true, openAIHealthyTurnStateReplaceKey: scenario != "关闭替换"}}
 				c, _ := healthyTurnStateRequest(t, svc, account, "")
 				entry := openAIHealthyTurnStateEntry{value: "可替换状态", expiresAt: time.Now().Add(time.Minute)}
-				require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{}, entry))
+				require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-6-astra"}, entry))
 				request := []byte(`{"type":"response.create","model":"gpt-6-astra","input":"原请求"}`)
 				if scenario == "严格续链" {
 					request = []byte(`{"type":"response.create","model":"gpt-6-astra","previous_response_id":"resp_original"}`)
@@ -203,7 +203,7 @@ func TestOpenAIHealthyTurnStateModelMismatchWS(t *testing.T) {
 					} else {
 						require.Equal(t, string(request), string(<-secondFrame.writes))
 					}
-					require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[openAIHealthyTurnStateScope{}])
+					require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-6-astra"}])
 				} else {
 					require.ErrorIs(t, err, errOpenAIUpstreamModelMismatch)
 					require.Empty(t, payload)

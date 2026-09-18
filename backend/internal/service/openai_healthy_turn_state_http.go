@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -14,12 +15,14 @@ import (
 // doOpenAIUpstreamWithHealthyTurnState 不改变请求体或客户端请求头，只补试尚未返回响应的请求。
 func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
-	if attempt != nil {
-		attempt.markStarted()
+	// 图片请求复用 Responses 构造器后会切换端点，以最终 URL 确认观察范围。
+	if attempt == nil || req.URL == nil || !strings.HasSuffix(strings.TrimRight(req.URL.Path, "/"), "/responses") {
+		return s.doOpenAIUpstreamOnce(req, proxyURL, account)
 	}
-	response, err := s.doOpenAIUpstreamOnce(req, proxyURL, account)
+	attempt.markStarted()
+	response, err := s.doOpenAIHealthyTurnStateUpstreamAttempt(req, proxyURL, account)
 	headersReceivedAt := time.Now()
-	if attempt == nil || err != nil || response == nil {
+	if err != nil || response == nil {
 		return response, err
 	}
 	for {
@@ -77,7 +80,7 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 		retryReq.Body = body
 		retryReq.Header.Set(openAICodexTurnStateHeader, attempt.borrowed.value)
 		req = retryReq
-		response, err = s.doOpenAIUpstreamOnce(retryReq, proxyURL, account)
+		response, err = s.doOpenAIHealthyTurnStateUpstreamAttempt(retryReq, proxyURL, account)
 		headersReceivedAt = time.Now()
 		attempt.httpStatus = 0
 		if response != nil {
@@ -99,6 +102,28 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 		attempt.failed()
 	}
 	return response, err
+}
+
+func (s *OpenAIGatewayService) doOpenAIHealthyTurnStateUpstreamAttempt(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+	// 每次尝试独立取消，丢弃错误响应时先中止其读取，随后仍可使用原请求上下文补试。
+	ctx, cancel := context.WithCancel(req.Context())
+	response, err := s.doOpenAIUpstreamOnce(req.Clone(ctx), proxyURL, account)
+	if err != nil || response == nil || response.Body == nil {
+		cancel()
+		return response, err
+	}
+	response.Body = &openAIHealthyCancelableBody{ReadCloser: response.Body, cancel: cancel}
+	return response, nil
+}
+
+type openAIHealthyCancelableBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *openAIHealthyCancelableBody) Close() error {
+	b.cancel()
+	return b.ReadCloser.Close()
 }
 
 // 仅观察原始响应字节，不预读、不缓冲整个响应、不修改 SSE 或 JSON 内容。

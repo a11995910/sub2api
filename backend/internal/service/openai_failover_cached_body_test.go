@@ -85,7 +85,7 @@ func TestOpenAIGatewayService_Forward_FailoverReparsesCachedBodyForNextAccount(t
 				{
 					StatusCode: http.StatusOK,
 					Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-ok-b"}},
-					Body:       io.NopCloser(strings.NewReader(`{"id":"resp_123","status":"completed","model":"ok","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+					Body:       io.NopCloser(strings.NewReader(`{"id":"resp_123","status":"completed","model":"` + tt.wantSecond + `","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
 				},
 			}}
 			svc := &OpenAIGatewayService{httpUpstream: upstream}

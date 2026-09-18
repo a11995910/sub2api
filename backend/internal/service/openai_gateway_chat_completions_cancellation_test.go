@@ -76,6 +76,15 @@ func (u *contextBoundHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string,
 }
 
 func TestForwardAsChatCompletions_CancelsUpstreamBeforeClosingBody(t *testing.T) {
+	testForwardChatCompletionsCancellation(t, "gpt-5.1", false)
+}
+
+func TestForwardAsChatCompletions_ModelMismatchCancelsBeforeClosingBody(t *testing.T) {
+	testForwardChatCompletionsCancellation(t, "gpt-5.4", true)
+}
+
+func testForwardChatCompletionsCancellation(t *testing.T, responseModel string, wantError bool) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -85,6 +94,8 @@ func TestForwardAsChatCompletions_CancelsUpstreamBeforeClosingBody(t *testing.T)
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	upstreamBody := []byte("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"msg_1\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":17,\"output_tokens\":8,\"total_tokens\":25}}}\n\n")
+	// 实际上游模型为映射后的 gpt-5.1；另一个用例专门验证模型不一致的关闭路径。
+	upstreamBody = []byte(strings.ReplaceAll(string(upstreamBody), "gpt-5.4", responseModel))
 	stream := newContextBoundBlockingReadCloser(upstreamBody)
 	t.Cleanup(stream.forceUnblock)
 
@@ -107,9 +118,15 @@ func TestForwardAsChatCompletions_CancelsUpstreamBeforeClosingBody(t *testing.T)
 
 	select {
 	case got := <-resultCh:
-		require.NoError(t, got.err)
-		require.NotNil(t, got.result)
-		require.Equal(t, 17, got.result.Usage.InputTokens)
+		if wantError {
+			require.Error(t, got.err)
+			require.Nil(t, got.result)
+		} else {
+			require.NoError(t, got.err)
+			require.NotNil(t, got.result)
+			require.Equal(t, 17, got.result.Usage.InputTokens)
+		}
+		require.ErrorIs(t, stream.ctx.Err(), context.Canceled)
 	case <-time.After(time.Second):
 		t.Fatal("ForwardAsChatCompletions did not cancel upstream before closing the body")
 	}

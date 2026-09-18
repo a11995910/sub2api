@@ -15,7 +15,7 @@
 - 不允许只执行 `go build -tags embed` 就覆盖线上；必须确认前端资源、后端二进制、资源文件和源码 commit 属于同一次构建。
 - 内嵌前端由后端直接提供时，`/assets/*` 会返回长期缓存头，HTML/JS/CSS/JSON 会按浏览器 `Accept-Encoding` 返回 gzip 压缩；外层 Nginx 或 Caddy 仍可继续做 HTTPS、HTTP/2 和代理层优化。
 - 构建产物必须包含 Git commit 和提交时间；必须核对镜像内 `/app/sub2api --version`，输出 commit 必须与待上线 commit 一致。
-- prod 切换前必须记录当前镜像 tag，备份 prod 数据库和 `.env`，并保留至少一个可直接切回的旧镜像。
+- prod 切换前必须记录当前镜像 tag，核实数据库兼容性，并保留旧镜像及必要的定向配置恢复材料；发布不创建 prod 全库 dump，不执行异机备份。
 - 替换后必须验证容器状态、健康接口、管理端账号页面和日志。
 - 验证通过后按保留策略清理 Docker 构建缓存和无回滚价值的旧镜像，不得删除当前镜像、最近回滚镜像或业务数据卷。
 - 服务器密码、Token、数据库密码、OAuth 密钥等敏感信息不得写入仓库文档或提交记录。
@@ -77,7 +77,11 @@
 - `audit_logs` 是管理面操作审计表，包含按创建时间、操作者和操作类型查询的索引；该表只追加记录，清理行为受审计日志保留设置和二次验证保护。
 - `groups.duplicate_operation_id VARCHAR(64)` 配合仅针对未删除分组的唯一索引，用于在网络响应不确定时恢复同一次分组复制操作。
 
-这些迁移是前向迁移，不执行自动降级。staging 和 prod 切换前都必须备份各自数据库并记录 `schema_migrations`；迁移失败时不得手工伪造成功记录。回滚应用镜像时保留新增列、索引、触发器和约束，旧程序会忽略新增列，而数据库默认值和触发器继续保证旧写入可兼容；如确需删除结构，必须另建经过 staging 验证的反向迁移，并先评估 `accounts` 回填、`scheduler_outbox` 事件和历史用量解释能力的影响。
+这些迁移通常只前向执行。切换前必须核实结构、影响范围、`schema_migrations` 和回滚方式；迁移失败时不得手工伪造成功记录。发布不要求全库或异机备份。兼容性追加的列、索引、触发器和约束在应用回滚时保留；破坏性变更必须有经过 staging 验证的定向恢复方案，不能仅切回旧镜像。
+
+迁移 `241_remove_group_fallback_and_image_enhancement.sql` 移除自动分组承接与图片增强的八个配置列。旧镜像的查询仍依赖这些列，因此 `release-prod` 先调用仓库受控 `deploy/release-schema-compat snapshot`，将旧列定义、约束、索引和对应配置值写入 `/opt/sub2api/state/prod-schema-241-*.json`，权限为 `0600`，路径写入发布记录的 `schema_241_snapshot`。失败回滚时停止新应用，使用同一 helper 恢复旧结构和值，仅失效 `apikey:auth:*` 认证快照，再启动旧镜像。恢复会删除且仅删除经校验的迁移 241 账本记录，确保下次升级重新执行该迁移；其他迁移记录保持不变。不存在旧列时快照为空操作，部分缺列或定义不符时拒绝继续。快照不包含完整业务库或凭据。
+
+迁移 242 新建按账号与模型隔离的健康头池和拒绝摘要表，旧池原样保留；迁移 243 仅追加手动探测的临时代理来源标记。应用回滚可以保留这两个迁移创建的结构。
 
 ## 源码仓库
 
@@ -121,7 +125,7 @@ git log -1 --oneline
 | Git 分支 | `/opt/sub2api/repo`、staging、prod 都只使用 `main` |
 | 源码目录 | `/opt/sub2api/repo` |
 | 构建策略 | VPS 拉取已推送源码并使用 `deploy/Dockerfile` 本机构建镜像 |
-| 异机备份目录 | 备份机 `/opt/sub2api-prod-backup/archives` |
+| 发布恢复材料 | 本机 `/opt/sub2api/state` 中的原镜像记录与必要的定向配置快照 |
 
 项目不存在独立测试 VPS。所有预发布验证均在正式 VPS 的隔离 staging 中完成；staging 与 prod 不得共享 compose project、环境文件、数据库、Redis、数据目录或宿主机端口。完整运行拓扑见 `docs/VPS_MIGRATION_CN.md`。
 
@@ -130,8 +134,8 @@ git log -1 --oneline
 仓库中的 `deploy/release-staging` 和 `deploy/release-prod` 是人工发布的受版本控制入口。它们必须以
 `root:root`、`0700` 分别安装在正式 VPS 的 `/opt/sub2api/scripts/release-staging` 和
 `/opt/sub2api/scripts/release-prod`，只能由用户登录后手工执行。生产脚本只接受已通过 staging 的完整 commit、
-目标镜像 tag 和人工 staging run ID。它先通过 `deploy/release-gates` 校验异机全库备份
-凭证，再在正式 VPS 保存定价与策略的小型快照、创建旧镜像回滚 tag，并原子更新 `.env`。
+目标镜像 tag 和人工 staging run ID。它检查资源与版本能力，保存迁移兼容所需的小型快照、
+创建旧镜像回滚 tag，并原子更新 `.env`。
 它不得在正式 VPS 创建 prod 全库 dump；任何失败都必须把 `.env` 恢复为原正式镜像 tag，
 并确认恢复后的容器与 HTTP 均健康后，才能删除未记录的临时回滚 tag。
 
@@ -150,11 +154,11 @@ sha256sum deploy/release-staging /opt/sub2api/scripts/release-staging
 sha256sum deploy/release-prod /opt/sub2api/scripts/release-prod
 ```
 
-`release-gates` 不复制到独立目录，始终从已锁定 commit 的
-`/opt/sub2api/repo/deploy/release-gates` 执行，避免发布脚本与门禁版本漂移。
+`release-gates` 和 `release-schema-compat` 不复制到独立目录，始终从已锁定 commit 的
+`/opt/sub2api/repo/deploy/` 执行，避免发布脚本与门禁版本漂移。
 
 安装后应由 root 做一次只读门禁检查，确认依赖脚本、staging/prod compose、`.env` 和 Docker 权限均
-存在；不要用占位参数执行发布脚本，也不得把脚本内部的资源、备份、定价或回滚门禁复制成另一套命令。
+存在；不要用占位参数执行发布脚本，也不得把脚本内部的资源、定价或回滚门禁复制成另一套命令。
 
 ## 正式 VPS 镜像化部署流程
 
@@ -571,7 +575,7 @@ commit="$(git rev-parse --short=12 HEAD)"
   "$staging_run_id"
 ```
 
-目标容器启动后，脚本先等待 Docker health 变为 `healthy`，再重试宿主机 `http://127.0.0.1:8080/health`，不会用刚执行 `compose up -d` 后的一次 `curl` 判定发布结果。切换失败时，脚本恢复发布前记录的 `previous_original_image`，确认恢复容器和 HTTP 均健康后才删除未记录的临时回滚 tag；恢复未完全成功时保留 tag 和现场，且不得让 `.env` 指向已删除的 tag。发布记录仍包含异机归档摘要、定价快照、策略快照和后续人工回滚所需信息。
+目标容器启动后，脚本先等待 Docker health 变为 `healthy`，再重试宿主机 `http://127.0.0.1:8080/health`，不会用刚执行 `compose up -d` 后的一次 `curl` 判定发布结果。切换失败时，脚本先停止新应用，恢复迁移 241 的兼容结构和配置并清理对应认证缓存，再启动发布前记录的 `previous_original_image`。确认恢复容器和 HTTP 均健康后才删除未记录的临时回滚 tag；恢复未完全成功时保留 tag、快照和现场，且不得让 `.env` 指向已删除的 tag。发布记录包含原镜像、目标提交、staging run ID 和定向快照路径。
 
 prod 更新完成后进入观察窗口。回滚时必须先保持账号统计定价表无 `video`；如果发布记录证明 `previous_image` 支持显式视频每秒计费，主渠道表中的合法 `video` 记录可以原样保留，否则主渠道表也必须通过零计数门禁。满足对应能力门禁后，才可以把发布前记录的 `previous_image` 原子写回 `.env`：
 
@@ -606,13 +610,19 @@ version_has_capability() {
     sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -Fqx "$capability"
 }
 
-# 以下值必须填写同一份 prod-release-before-*.txt 的记录值。
-rollback_image='填写发布前记录的旧镜像 tag'
-rollback_image_id='填写 previous_image_id'
-rollback_version='填写 previous_version'
-rollback_commit='填写 previous_commit'
-# fast_policy_backup 必须填写同一发布记录中的快照路径。
-fast_policy_backup='填写发布前记录的 prod-fast-policy-before-*.txt 绝对路径'
+# 镜像与结构快照必须来自本次发布的同一份记录，禁止混用其他发布快照。
+release_record='填写本次 prod-release-before-*.txt 的绝对路径'
+test -s "$release_record"
+rollback_image="$(sed -n 's/^previous_image=//p' "$release_record")"
+rollback_image_id="$(sed -n 's/^previous_image_id=//p' "$release_record")"
+rollback_version="$(sed -n 's/^previous_version=//p' "$release_record")"
+rollback_commit="$(sed -n 's/^previous_commit=//p' "$release_record")"
+schema_241_snapshot="$(sed -n 's/^schema_241_snapshot=//p' "$release_record")"
+test -s "$schema_241_snapshot"
+test -x /opt/sub2api/repo/deploy/release-schema-compat
+# 当前发布不生成旧版 fast-policy 快照；仅兼容门禁确需恢复时才要求它。
+# 如回退到不支持 user_ids 的历史镜像，应填写经核实的对应发布前快照。
+fast_policy_backup=''
 actual_rollback_image_id="$(docker image inspect --format '{{.Id}}' "$rollback_image")"
 test "$actual_rollback_image_id" = "$rollback_image_id"
 rollback_version_output="$(docker run --rm "$rollback_image" --version)"
@@ -640,9 +650,6 @@ case "$actual_rollback_commit" in
     fi
     ;;
 esac
-test -s "$fast_policy_backup"
-test "$(wc -l < "$fast_policy_backup")" -eq 1
-
 current_container_id="$(compose_prod ps -q sub2api)"
 test -n "$current_container_id"
 current_image="$(docker inspect --format '{{.Config.Image}}' "$current_container_id")"
@@ -656,10 +663,13 @@ restore_current_release_state() {
 	trap - ERR
 	set +e
 	recovery_failed=0
+	compose_prod stop sub2api || recovery_failed=1
 	if [ "$rollback_policy_snapshot_ready" -eq 1 ]; then
 		/opt/sub2api/scripts/restore-openai-fast-policy "$env_file" "$rollback_policy_backup" || recovery_failed=1
 	fi
 	/opt/sub2api/scripts/update-sub2api-image "$env_file" "$current_image" prod-rollback-abort || recovery_failed=1
+	# 若已恢复迁移 241 的旧列，helper 已移除该迁移账本记录；
+	# 当前新镜像会重新执行原迁移，其他追加迁移及业务写入不回退。
 	compose_prod up -d --no-deps sub2api || recovery_failed=1
 	recovery_container_id="$(compose_prod ps -q sub2api)"
 	test -n "$recovery_container_id" || recovery_failed=1
@@ -698,6 +708,8 @@ if [ "$rollback_supports_fast_policy_user_ids" -eq 0 ]; then
   case "$fast_policy_rc" in
     0) ;;
     10)
+      test -s "$fast_policy_backup"
+      test "$(wc -l < "$fast_policy_backup")" -eq 1
       /opt/sub2api/scripts/restore-openai-fast-policy "$env_file" "$fast_policy_backup"
       /opt/sub2api/scripts/assert-no-user-scoped-openai-fast-policy "$env_file"
       ;;
@@ -705,6 +717,9 @@ if [ "$rollback_supports_fast_policy_user_ids" -eq 0 ]; then
   esac
 fi
 
+# 应用仍处于停止状态；先恢复旧镜像所需的列及配置并定向失效认证缓存。
+# 空快照会安全跳过，已有列或已恢复的快照不会覆盖后续配置更新。
+/opt/sub2api/repo/deploy/release-schema-compat restore "$env_file" "$schema_241_snapshot"
 /opt/sub2api/scripts/update-sub2api-image "$env_file" "$rollback_image" prod-rollback
 compose_prod config -q
 resolved_images="$(compose_prod config --images)"

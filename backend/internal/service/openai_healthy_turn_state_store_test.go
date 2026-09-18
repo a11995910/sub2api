@@ -17,30 +17,53 @@ type healthyStateStoreStub struct {
 	results                 []bool
 	statuses                []int
 	startErr, saveErr       error
+	scopes                  []HealthyTurnStateScope
 }
 
-func (s *healthyStateStoreStub) Claim(context.Context, HealthyTurnStateScope, string) (*HealthyTurnStateValue, error) {
+func (s *healthyStateStoreStub) Claim(_ context.Context, scope HealthyTurnStateScope, _ string) (*HealthyTurnStateValue, error) {
+	s.scopes = append(s.scopes, scope)
 	return &HealthyTurnStateValue{Value: "持久测试头", LeaseToken: "测试租约", ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
-func (s *healthyStateStoreStub) Save(context.Context, HealthyTurnStateScope, HealthyTurnStateValue) (bool, error) {
+func (s *healthyStateStoreStub) Save(_ context.Context, scope HealthyTurnStateScope, _ HealthyTurnStateValue) (bool, error) {
+	s.scopes = append(s.scopes, scope)
 	s.saves++
 	return s.saveErr == nil, s.saveErr
 }
-func (s *healthyStateStoreStub) Reject(context.Context, HealthyTurnStateScope, string) error {
+func (s *healthyStateStoreStub) Reject(_ context.Context, scope HealthyTurnStateScope, _ string) error {
+	s.scopes = append(s.scopes, scope)
 	return nil
 }
-func (s *healthyStateStoreStub) Start(context.Context, HealthyTurnStateScope, HealthyTurnStateValue, int) error {
+func (s *healthyStateStoreStub) Start(_ context.Context, scope HealthyTurnStateScope, _ HealthyTurnStateValue, _ int) error {
+	s.scopes = append(s.scopes, scope)
 	s.starts++
 	return s.startErr
 }
-func (s *healthyStateStoreStub) Complete(_ context.Context, _ HealthyTurnStateScope, _ HealthyTurnStateValue, success bool, status int) error {
+func (s *healthyStateStoreStub) Complete(_ context.Context, scope HealthyTurnStateScope, _ HealthyTurnStateValue, success bool, status int) error {
+	s.scopes = append(s.scopes, scope)
 	s.results = append(s.results, success)
 	s.statuses = append(s.statuses, status)
 	return nil
 }
-func (s *healthyStateStoreStub) Release(context.Context, HealthyTurnStateScope, HealthyTurnStateValue) error {
+func (s *healthyStateStoreStub) Release(_ context.Context, scope HealthyTurnStateScope, _ HealthyTurnStateValue) error {
+	s.scopes = append(s.scopes, scope)
 	s.releases++
 	return nil
+}
+
+func TestHealthyTurnStateDefaultCapturePreservesAccountModel(t *testing.T) {
+	store := &healthyStateStoreStub{}
+	upstream := &healthyTurnStateUpstream{responses: []*http.Response{healthyTurnStateResponse(200, "默认采集头", healthyTurnStateSSE())}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream, openaiHealthyTurnStates: openAIHealthyTurnStateCache{repo: store}}
+	proxyID := int64(12)
+	account := &Account{ID: 7, Platform: PlatformOpenAI, ProxyID: &proxyID}
+	_, req := healthyTurnStateRequest(t, svc, account, "默认记录会话")
+	resp, err := svc.doOpenAIUpstreamWithHealthyTurnState(req, "", account)
+	require.NoError(t, err)
+	_, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, 1, store.saves, "没有配置记录开关也应持久化健康头")
+	require.Equal(t, []HealthyTurnStateScope{{AccountID: 7, Key: "gpt-test", Model: "gpt-test", Transport: "http", ProxyID: 12}}, store.scopes)
 }
 
 func TestHealthyTurnStatePersistentHTTPResults(t *testing.T) {
@@ -83,6 +106,10 @@ func TestHealthyTurnStatePersistentHTTPResults(t *testing.T) {
 				require.Equal(t, []int{tc.response.StatusCode}, store.statuses)
 			}
 			require.Equal(t, 1, store.starts)
+			for _, scope := range store.scopes {
+				require.EqualValues(t, account.ID, scope.AccountID, "租约及结果必须保留当前账号")
+				require.Equal(t, "gpt-test", scope.Model, "租约及结果必须保留当前实际模型")
+			}
 		})
 	}
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -232,10 +233,11 @@ func runOpenAIWSCodexThreadPair(t *testing.T, threadA, threadB string) (serverEr
 	gin.SetMode(gin.TestMode)
 	cfg := newOpenAIWSExecutionScopeTestConfig()
 
-	gatedConn := newOpenAIWSGatedConn(`{"type":"response.completed","response":{"id":"resp_thread_a","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+	responseModel := normalizeCodexModel("gpt-5.1")
+	gatedConn := newOpenAIWSGatedConn(fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_thread_a","model":%q,"usage":{"input_tokens":1,"output_tokens":1}}}`, responseModel))
 	fastConn := &openAIWSCaptureConn{
 		events: [][]byte{
-			[]byte(`{"type":"response.completed","response":{"id":"resp_thread_b","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
+			[]byte(fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_thread_b","model":%q,"usage":{"input_tokens":1,"output_tokens":1}}}`, responseModel)),
 		},
 	}
 	pool := newOpenAIWSConnPool(cfg)

@@ -83,6 +83,64 @@ export interface HealthyTurnStateProbeLog {
   status: HealthyTurnStateTestResult['status']
   http_status: number
   created_at: string
+  temporary_proxy?: boolean
+}
+
+export interface HealthyTurnStateDynamicConfig {
+  configured: boolean
+  api_url_masked: string
+  protocol: 'http' | 'https' | 'socks5h'
+  target_count: number
+  max_attempts: number
+}
+
+export interface HealthyTurnStateDynamicRun {
+  id: string
+  status: 'running' | 'completed' | 'stopped' | 'failed'
+  model: string
+  transport: 'http' | 'websocket'
+  attempts: number
+  recorded: number
+  target_count: number
+  max_attempts: number
+  fetched_batches: number
+  last_result?: HealthyTurnStateTestResult | null
+  message?: string
+}
+
+export async function getHealthyTurnStateDynamicConfig(id: number, signal?: AbortSignal): Promise<HealthyTurnStateDynamicConfig> {
+  const { data } = await apiClient.get<HealthyTurnStateDynamicConfig>(`/admin/accounts/${id}/healthy-turn-state/dynamic/config`, { signal })
+  return data
+}
+
+export async function updateHealthyTurnStateDynamicConfig(id: number, input: Omit<HealthyTurnStateDynamicConfig, 'configured' | 'api_url_masked'> & { api_url: string }, signal?: AbortSignal): Promise<HealthyTurnStateDynamicConfig> {
+  const { data } = await apiClient.put<HealthyTurnStateDynamicConfig>(`/admin/accounts/${id}/healthy-turn-state/dynamic/config`, input, { signal })
+  return data
+}
+
+export async function startHealthyTurnStateDynamicRun(id: number, input: { model: string; transport: 'http' | 'websocket' }): Promise<HealthyTurnStateDynamicRun> {
+  const { data } = await apiClient.post<HealthyTurnStateDynamicRun>(`/admin/accounts/${id}/healthy-turn-state/dynamic/runs`, input, { timeout: 20000 })
+  return data
+}
+
+export async function stepHealthyTurnStateDynamicRun(id: number, runId: string, signal?: AbortSignal): Promise<HealthyTurnStateDynamicRun> {
+  const { data } = await apiClient.post<HealthyTurnStateDynamicRun>(`/admin/accounts/${id}/healthy-turn-state/dynamic/runs/${encodeURIComponent(runId)}/step`, {}, { signal, timeout: 90000 })
+  return data
+}
+
+export async function stopHealthyTurnStateDynamicRun(id: number, runId: string): Promise<HealthyTurnStateDynamicRun> {
+  const { data } = await apiClient.post<HealthyTurnStateDynamicRun>(`/admin/accounts/${id}/healthy-turn-state/dynamic/runs/${encodeURIComponent(runId)}/stop`, {}, { timeout: 20000 })
+  return data
+}
+
+export interface HealthyTurnStateModelStats {
+  model: string
+  captures: number
+  available: number
+  in_use: number
+  attempts: number
+  successes: number
+  failures: number
 }
 
 export interface HealthyTurnStateStats {
@@ -92,6 +150,7 @@ export interface HealthyTurnStateStats {
   attempts: number
   successes: number
   failures: number
+  models: HealthyTurnStateModelStats[]
   records: HealthyTurnStateRecord[]
   probes: HealthyTurnStateProbeLog[]
 }
@@ -1170,6 +1229,11 @@ export const accountsAPI = {
   testAccount,
   testHealthyTurnState,
   getHealthyTurnStateStats,
+  getHealthyTurnStateDynamicConfig,
+  updateHealthyTurnStateDynamicConfig,
+  startHealthyTurnStateDynamicRun,
+  stepHealthyTurnStateDynamicRun,
+  stopHealthyTurnStateDynamicRun,
   refreshCredentials,
   applyOAuthCredentials,
   getStats,

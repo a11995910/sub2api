@@ -87,6 +87,7 @@
 - 取消异机备份要求不取消其他门禁：必须保留同一完整 commit 和 staging run 的验证、资源检查、版本与能力检查、定价策略检查、容器与 HTTP 健康检查、原镜像记录和失败回滚。prod 仍须用户明确授权。
 - staging 与 prod 切换应用容器后必须先使用 `deploy/release-gates wait-container-healthy` 等待 Docker health 为 `healthy`，再使用 `wait-http` 检查宿主机健康接口；禁止在 `compose up -d` 后立即以单次 `curl` 判定失败。
 - prod 发布失败时必须把 `.env` 恢复为发布前记录的原正式镜像 tag，并确认恢复后的容器与 HTTP 均健康；临时 `sub2api:rollback-*` tag 只能在恢复成功后删除，不得让 `.env` 指向已删除的临时 tag。
+- 迁移 241 会删除旧镜像依赖的分组承接与图片增强配置列。`release-prod` 必须先通过仓库 `deploy/release-schema-compat` 保存这些列及配置值的 root-only 定向快照；失败回滚时先停止新应用、恢复对应结构和值并失效 API Key 认证快照，再启动旧镜像。该保护不创建全库 dump，也不改变迁移 241 的功能移除意图。成功发布后保留快照路径供人工回滚。
 - staging 和 prod 必须使用独立 compose project、独立 `.env`、独立数据目录和独立端口；不得让测试数据污染正式数据。
 - `.env`、数据库密码、JWT、TOTP、OAuth、支付密钥和 Cookie 只允许保存在正式 VPS 的运行时配置目录或凭据管理工具中，不得写入 Git、文档、镜像 tag 或日志。
 - 发布前必须记录当前运行镜像 tag，发布后保留至少一个可回滚镜像；回滚优先通过 compose 切回旧镜像 tag 完成。

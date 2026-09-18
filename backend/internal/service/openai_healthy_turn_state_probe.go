@@ -28,6 +28,19 @@ type OpenAIHealthyTurnStateProbeResult struct {
 // ProbeOpenAIHealthyTurnState 每次调用只发送一次 hi；显式手动采集不依赖自动记录开关。
 // 所有出口覆盖仅作用于账号副本，且复用正常转发的认证、身份、插件和缓存实例。
 func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, account *Account, model, transport string) (*OpenAIHealthyTurnStateProbeResult, error) {
+	return s.probeOpenAIHealthyTurnState(ctx, account, model, transport, "", false)
+}
+
+// ProbeOpenAIHealthyTurnStateWithProxy 只覆盖本次探测的出口；无效入口失败，不回退直连。
+func (s *AccountTestService) ProbeOpenAIHealthyTurnStateWithProxy(ctx context.Context, account *Account, model, transport, proxyURL string) (*OpenAIHealthyTurnStateProbeResult, error) {
+	validated, err := normalizeHealthyDynamicProxy(proxyURL, "http")
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_HEALTHY_DYNAMIC_PROXY", "临时代理入口无效，必须是公网 IP 与有效端口")
+	}
+	return s.probeOpenAIHealthyTurnState(ctx, account, model, transport, validated, true)
+}
+
+func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, account *Account, model, transport, temporaryProxyURL string, temporaryProxy bool) (*OpenAIHealthyTurnStateProbeResult, error) {
 	if account == nil || account.ID <= 0 || account.Platform != PlatformOpenAI {
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_ACCOUNT", "仅支持 OpenAI 账号")
 	}
@@ -53,10 +66,10 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 			storeCtx, cancel := healthyTurnStateStoreContext()
 			defer cancel()
 			proxyID := int64(0)
-			if account.ProxyID != nil {
+			if account.ProxyID != nil && !temporaryProxy {
 				proxyID = *account.ProxyID
 			}
-			probe := HealthyTurnStateProbeLog{Model: result.Model, Transport: transport, ProxyID: proxyID, Status: result.Status, HTTPStatus: result.HTTPStatus}
+			probe := HealthyTurnStateProbeLog{Model: result.Model, Transport: transport, ProxyID: proxyID, TemporaryProxy: temporaryProxy, Status: result.Status, HTTPStatus: result.HTTPStatus}
 			if err := repo.RecordProbe(storeCtx, account.ID, probe); err != nil {
 				healthyTurnStateStoreError("probe", account.ID, err)
 				result.Message = strings.TrimSpace(result.Message + " 测试结果历史保存失败，请稍后刷新统计核实")
@@ -80,6 +93,11 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 		result.Message = "无法取得账号认证凭据，请检查账号状态"
 		return result, nil
 	}
+	if temporaryProxy {
+		// 认证刷新仍使用账号原有配置，取得令牌后才隔离临时探测出口和来源统计。
+		copyAccount.ProxyID, copyAccount.Proxy = nil, nil
+		ctx = WithHealthyTurnStateTemporaryProxy(ctx)
+	}
 	model = account.GetMappedModel(model)
 	if account.UsesOpenAICodexProtocol() {
 		model = normalizeOpenAIModelForUpstream(account, model)
@@ -101,6 +119,9 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
+	}
+	if temporaryProxy {
+		proxyURL = temporaryProxyURL
 	}
 	var observer *openAIHealthyTurnStateObserver
 	if transport == "websocket" {
@@ -164,7 +185,7 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateHTTP(ctx context.Context, c 
 		attempt.markStarted()
 	}
 	// 直接发送一次，任何错误均不触发状态替换、重试或账号切换。
-	resp, err := s.doOpenAIUpstreamOnce(req, proxyURL, account)
+	resp, err := s.doOpenAIHealthyTurnStateUpstreamAttempt(req, proxyURL, account)
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
 	}
@@ -211,6 +232,10 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateWS(ctx context.Context, c *g
 	conn, status, responseHeaders, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, wsURL, headers, proxyURL)
 	if conn != nil {
 		defer conn.Close()
+	}
+	// 默认拨号器成功时状态码为 0；已建立连接即证明 101 握手成功。
+	if err == nil && conn != nil && status == 0 {
+		status = http.StatusSwitchingProtocols
 	}
 	result.HTTPStatus = status
 	if err != nil || conn == nil || status != http.StatusSwitchingProtocols {

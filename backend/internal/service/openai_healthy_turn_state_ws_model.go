@@ -30,6 +30,43 @@ type openAIHealthyWSModelGate struct {
 	retry     func(context.Context, []byte, *openAIHealthyTurnStateAttempt) (http.Header, error)
 }
 
+// 观察与转发层相同的完整 JSON 文档，但保留原帧交由原有修复和异常处理逻辑转发。
+func (o *openAIHealthyTurnStateObserver) observeWSFrame(payload []byte) {
+	if o == nil || o.finished || o.failed {
+		return
+	}
+	if gjson.ValidBytes(payload) {
+		o.observe(payload, "")
+		return
+	}
+	documents, repaired := splitOpenAIConcatenatedJSONDocuments(payload)
+	if !repaired {
+		// 非法帧不能继续等待模型声明，否则会吞掉原帧并阻塞下游异常处理。
+		o.failed = true
+		o.finish()
+		return
+	}
+	terminalHasTail := false
+	for i, document := range documents {
+		if o.observeModel(document) {
+			return
+		}
+		if i < len(documents)-1 && isUpstreamResponseModelTerminalEvent(gjson.GetBytes(document, "type").String()) {
+			terminalHasTail = true
+			break
+		}
+	}
+	if terminalHasTail {
+		// 终止事件后仍有文档时，下游会丢弃尾部并销毁连接；不能提前记为健康。
+		o.failed = true
+		o.finish()
+		return
+	}
+	for _, document := range documents {
+		o.observe(document, "")
+	}
+}
+
 func (g *openAIHealthyWSModelGate) begin(payload []byte) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -62,7 +99,7 @@ func (g *openAIHealthyWSModelGate) read(ctx context.Context, read func() (coderw
 		if g.ready && len(g.pending) > 0 {
 			frame := g.pending[0]
 			g.pending = g.pending[1:]
-			g.observer.observe(frame.payload, "")
+			g.observer.observeWSFrame(frame.payload)
 			mismatch := g.observer.modelMismatch
 			g.mu.Unlock()
 			if mismatch {
@@ -79,7 +116,7 @@ func (g *openAIHealthyWSModelGate) read(ctx context.Context, read func() (coderw
 			return kind, payload, err
 		}
 		if g.preview == nil || g.ready {
-			g.observer.observe(payload, "")
+			g.observer.observeWSFrame(payload)
 			mismatch := g.observer.modelMismatch
 			g.mu.Unlock()
 			if mismatch {
@@ -87,7 +124,7 @@ func (g *openAIHealthyWSModelGate) read(ctx context.Context, read func() (coderw
 			}
 			return kind, payload, nil
 		}
-		g.preview.observe(payload, "")
+		g.preview.observeWSFrame(payload)
 		if g.preview.modelMismatch {
 			g.observer.modelMismatch, g.observer.failed = true, true
 			g.observer.finish()

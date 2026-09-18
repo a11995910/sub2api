@@ -48,6 +48,77 @@ assert_contains deploy/release-prod '"$scripts_dir/update-sub2api-image" "$env_f
 assert_contains deploy/release-prod 'if [[ "$recovery_failed" -eq 0 ]]; then'
 assert_not_contains deploy/release-prod 'database_backup='
 assert_not_contains deploy/release-prod "'pg_dump -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Fc'"
+assert_contains deploy/release-prod 'schema_compat="$repo_dir/deploy/release-schema-compat"'
+assert_contains deploy/release-prod '"$schema_compat" snapshot "$env_file" "$schema_snapshot"'
+assert_contains deploy/release-prod '[[ "$schema_snapshot_ready" -eq 0 ]] || "$schema_compat" restore "$env_file" "$schema_snapshot"'
+assert_contains deploy/release-prod "printf 'schema_241_snapshot=%s\\n'"
+
+# 运行真实回滚函数，确认恢复列和清理缓存完成后才重启旧镜像。
+compat_test_dir="$(mktemp -d)"
+trap 'rm -rf -- "$compat_test_dir"' EXIT
+mkdir "$compat_test_dir/scripts"
+cat > "$compat_test_dir/action" <<'SH'
+#!/usr/bin/env bash
+printf '%s %s\n' "$(basename "$0")" "$1" >> "$COMPAT_TEST_LOG"
+if [[ "$(basename "$0")" = schema-compat && "${COMPAT_TEST_RESTORE_FAIL:-0}" = 1 ]]; then
+  exit 1
+fi
+SH
+chmod +x "$compat_test_dir/action"
+cp "$compat_test_dir/action" "$compat_test_dir/scripts/update-sub2api-image"
+cp "$compat_test_dir/action" "$compat_test_dir/schema-compat"
+cp "$compat_test_dir/action" "$compat_test_dir/release-gates"
+
+test_restore_sequence() (
+  export COMPAT_TEST_LOG="$compat_test_dir/events-$1"
+  export COMPAT_TEST_RESTORE_FAIL="$2"
+  schema_snapshot_ready="$3"
+  release_started=1
+  rollback_tag_created=1
+  previous_original_image=original-image
+  previous_image_id=image-id
+  previous_image=rollback-image
+  env_file=prod.env
+  schema_snapshot=private-snapshot.json
+  scripts_dir="$compat_test_dir/scripts"
+  schema_compat="$compat_test_dir/schema-compat"
+  release_gates="$compat_test_dir/release-gates"
+  release_record="$compat_test_dir/record-$1"
+  touch "$release_record"
+  docker() { if [[ "$1 $2" = 'image inspect' ]]; then printf 'image-id\n'; fi; }
+  compose_prod() {
+    printf 'compose %s\n' "$1" >> "$COMPAT_TEST_LOG"
+    if [[ "$1" = ps ]]; then printf 'old-container\n'; fi
+  }
+  eval "$(sed -n '/^restore_previous_release() {/,/^}/p' deploy/release-prod)"
+  restore_previous_release 7
+)
+for scenario in normal failed no-snapshot; do
+  restore_fail=0
+  snapshot_ready=1
+  [[ "$scenario" != failed ]] || restore_fail=1
+  [[ "$scenario" != no-snapshot ]] || snapshot_ready=0
+  if test_restore_sequence "$scenario" "$restore_fail" "$snapshot_ready"; then
+    fail '回滚函数必须保留原始失败退出码'
+  else
+    test "$?" -eq 7 || fail '回滚函数丢失原始退出码'
+  fi
+done
+python3 - "$compat_test_dir" <<'PY'
+from pathlib import Path
+import sys
+
+directory = Path(sys.argv[1])
+events = (directory / 'events-normal').read_text().splitlines()
+assert events.index('compose stop') < events.index('schema-compat restore') < events.index('compose up')
+assert events.index('compose up') < events.index('release-gates wait-container-healthy') < events.index('release-gates wait-http')
+failed = (directory / 'events-failed').read_text().splitlines()
+assert 'schema-compat restore' in failed and 'compose up' not in failed
+assert (directory / 'record-failed').exists()
+without_snapshot = (directory / 'events-no-snapshot').read_text().splitlines()
+assert 'schema-compat restore' not in without_snapshot and 'compose up' in without_snapshot
+assert not (directory / 'record-normal').exists()
+PY
 
 if [[ "${RELEASE_PROD_CONTRACT_SCOPE:-all}" == script ]]; then
   printf 'release prod script contract test passed\n'

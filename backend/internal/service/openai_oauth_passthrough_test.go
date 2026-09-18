@@ -33,6 +33,8 @@ type httpUpstreamRecorder struct {
 	lastProxyURL string
 	requests     []*http.Request
 	bodies       [][]byte
+	// 在发送时观察上下文，响应关闭后允许独立尝试释放其上下文。
+	requestContextErr error
 
 	resp      *http.Response
 	responses []*http.Response
@@ -66,6 +68,9 @@ func (r passthroughErrReadCloser) Close() error {
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	u.lastReq = req
+	if req != nil {
+		u.requestContextErr = req.Context().Err()
+	}
 	u.lastProxyURL = proxyURL
 	if req != nil && req.Body != nil {
 		b, _ := io.ReadAll(req.Body)
@@ -884,7 +889,8 @@ func TestOpenAIGatewayService_OAuthPassthrough_UpstreamRequestIgnoresClientCance
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.NoError(t, upstream.requestContextErr, "客户端取消不能中止已脱钩的上游请求")
+	require.ErrorIs(t, upstream.lastReq.Context().Err(), context.Canceled, "响应关闭后释放本次上游上下文")
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsGetsDefault(t *testing.T) {
@@ -1129,7 +1135,8 @@ func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestIgnoresClientCancel(t *
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.NoError(t, upstream.requestContextErr, "客户端取消不能中止已脱钩的上游请求")
+	require.ErrorIs(t, upstream.lastReq.Context().Err(), context.Canceled, "响应关闭后释放本次上游上下文")
 }
 
 func TestOpenAIGatewayService_OAuthLegacy_CompositeCodexUAUsesCodexOriginator(t *testing.T) {

@@ -2269,7 +2269,8 @@ func TestForwardAsAnthropic_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.NoError(t, upstream.requestContextErr, "客户端取消不能中止已脱钩的上游请求")
+	require.ErrorIs(t, upstream.lastReq.Context().Err(), context.Canceled, "响应关闭后释放本次上游上下文")
 }
 
 func TestForwardAsAnthropic_AstraContinuationRestoresHistoryAndDisablesUnsupportedSession(t *testing.T) {

@@ -7,7 +7,7 @@ import OpenAIHealthyTurnStateStatus from '../OpenAIHealthyTurnStateStatus.vue'
 const { getStats } = vi.hoisted(() => ({ getStats: vi.fn() }))
 vi.mock('@/api/admin', () => ({ adminAPI: { accounts: { getHealthyTurnStateStats: getStats } } }))
 
-const empty: HealthyTurnStateStats = { available: 0, in_use: 0, captures: 0, attempts: 0, successes: 0, failures: 0, records: [], probes: [] }
+const empty: HealthyTurnStateStats = { available: 0, in_use: 0, captures: 0, attempts: 0, successes: 0, failures: 0, models: [], records: [], probes: [] }
 vi.mock('vue-i18n', () => ({ useI18n: () => ({
   t: (key: string, params: Record<string, string | number> = {}) => {
     let value: unknown = zh
@@ -18,7 +18,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({
 const mounted: ReturnType<typeof mount>[] = []
 function panel() {
   const wrapper = mount(OpenAIHealthyTurnStateStatus, {
-    props: { accountId: 7, active: true, proxies: [], revision: 0 }
+    props: { accountId: 7, active: true, revision: 0 }
   })
   mounted.push(wrapper)
   return wrapper
@@ -27,23 +27,33 @@ beforeEach(() => getStats.mockReset())
 afterEach(() => mounted.splice(0).forEach(wrapper => wrapper.unmount()))
 
 describe('健康状态头统计', () => {
-  it('无记录时提供采集指引，零次替换不显示虚假成功率', async () => {
+  it('无记录时显示当前账号零累计与默认自动记录指引', async () => {
     getStats.mockResolvedValue(empty)
     const wrapper = panel()
     await flushPromises()
     expect(wrapper.text()).toContain('暂无记录')
-    expect(wrapper.findAll('dd').map(item => item.text())).toEqual(['0', '0', '0 / 0', '—'])
+    expect(wrapper.text()).toContain('自动记录默认开启')
+    expect(wrapper.findAll('dd').map(item => item.text())).toEqual(['0'])
+    expect(wrapper.find('table').exists()).toBe(false)
   })
 
-  it('成功率只使用已完成的替换，失败采集历史也显示', async () => {
-    getStats.mockResolvedValue({ ...empty, captures: 8, attempts: 10, successes: 3, failures: 1, in_use: 2,
+  it('显示账号全量累计与各模型累计，不依赖详情记录数或替换结果', async () => {
+    getStats.mockResolvedValue({ ...empty, captures: 1474, attempts: 10, successes: 3, failures: 1, in_use: 2,
+      models: [
+        { model: 'gpt-6-astra', captures: 1400, available: 0, in_use: 0, attempts: 0, successes: 0, failures: 0 },
+        { model: 'gpt-5.6-sol', captures: 74, available: 1, in_use: 0, attempts: 10, successes: 3, failures: 1 }
+      ],
       probes: [{ model: 'gpt-test', transport: 'http', proxy_id: 0, status: 'failed', http_status: 429, created_at: '2026-09-17T10:00:00Z' }] })
     const wrapper = panel()
     await flushPromises()
-    expect(wrapper.findAll('dd').at(-1)?.text()).toBe('75.0%')
-    expect(wrapper.text()).toContain('累计发送 10 次替换')
-    expect(wrapper.text()).toContain('测试失败，未记录')
-    expect(wrapper.text()).toContain('HTTP 429')
+    expect(wrapper.get('dd').text()).toBe('1474')
+    expect(wrapper.findAll('tbody tr').map(row => row.findAll('th, td').map(cell => cell.text()))).toEqual([
+      ['gpt-6-astra', '1400'], ['gpt-5.6-sol', '74']
+    ])
+    expect(wrapper.text()).not.toContain('暂无记录')
+    expect(wrapper.text()).not.toContain('替换成功率')
+    expect(wrapper.text()).not.toContain('gpt-test')
+    expect(wrapper.find('details').exists()).toBe(false)
   })
 
   it('读取失败明确报错，刷新后显示真实统计', async () => {
@@ -67,11 +77,25 @@ describe('健康状态头统计', () => {
     await flushPromises()
     finish({ ...empty, captures: 999 })
     await flushPromises()
-    expect(wrapper.findAll('dd')[1]?.text()).toBe('0')
+    expect(wrapper.get('dd').text()).toBe('0')
     await wrapper.setProps({ revision: 1 })
     await flushPromises()
     expect(getStats).toHaveBeenCalledTimes(3)
     await wrapper.setProps({ active: false })
     expect(getStats.mock.calls[2]?.[1]?.aborted).toBe(true)
+    expect(wrapper.find('dl').exists()).toBe(false)
+  })
+
+  it('切换账号立即清除前一个账号已显示的模型和累计数', async () => {
+    getStats.mockResolvedValueOnce({ ...empty, captures: 1474,
+      models: [{ model: 'previous-account-model', captures: 1474, available: 0, in_use: 0, attempts: 0, successes: 0, failures: 0 }] })
+      .mockReturnValueOnce(new Promise(() => {}))
+    const wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain('previous-account-model')
+    await wrapper.setProps({ accountId: 8 })
+    expect(wrapper.text()).not.toContain('previous-account-model')
+    expect(wrapper.text()).not.toContain('1474')
+    expect(getStats.mock.calls[1]?.[0]).toBe(8)
   })
 })

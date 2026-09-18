@@ -325,16 +325,15 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
-  it('健康状态默认均关闭，两个开关独立保存且重新打开不丢失', async () => {
+  it('健康状态默认记录开启且替换关闭，两个开关独立保存且重新打开不丢失', async () => {
     const account = buildOpenAIOAuthParentAccount()
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     let wrapper = mountModal(account)
     const record = '[data-testid="edit-healthy-turn-state-record"]'
     const replace = '[data-testid="edit-healthy-turn-state-replace"]'
-    expect(wrapper.get(record).attributes('aria-checked')).toBe('false')
+    expect(wrapper.get(record).attributes('aria-checked')).toBe('true')
     expect(wrapper.get(replace).attributes('aria-checked')).toBe('false')
-    await wrapper.get(record).trigger('click')
     await wrapper.get(replace).trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
@@ -349,6 +348,22 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
       openai_healthy_turn_state_record: true, openai_healthy_turn_state_replace: false
     })
+    wrapper.unmount()
+  })
+
+  it('显式关闭健康状态记录后重新打开仍关闭，不被默认值覆盖', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    let wrapper = mountModal(account)
+    const record = '[data-testid="edit-healthy-turn-state-record"]'
+    await wrapper.get(record).trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(saved).toMatchObject({ openai_healthy_turn_state_record: false, openai_healthy_turn_state_replace: false })
+    wrapper.unmount()
+    wrapper = mountModal({ ...account, extra: saved })
+    expect(wrapper.get(record).attributes('aria-checked')).toBe('false')
     wrapper.unmount()
   })
 

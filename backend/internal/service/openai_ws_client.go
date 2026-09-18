@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -132,12 +133,17 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			return true
 		},
 	}
-	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
-		proxyClient, err := d.proxyHTTPClient(proxy)
+	temporaryProxy := IsHealthyTurnStateTemporaryProxy(ctx)
+	if proxy := strings.TrimSpace(proxyURL); proxy != "" || temporaryProxy {
+		proxyClient, err := d.proxyHTTPClientForRequest(proxy, temporaryProxy)
 		if err != nil {
 			return nil, 0, nil, err
 		}
 		opts.HTTPClient = proxyClient
+		if temporaryProxy {
+			// 升级成功后的 WS 连接由调用方关闭；握手失败也必须释放 HTTP 空闲连接。
+			defer closeOpenAIWSProxyClient(proxyClient)
+		}
 	}
 
 	conn, resp, err := coderws.Dial(ctx, targetURL, opts)
@@ -167,16 +173,22 @@ func (d *coderOpenAIWSClientDialer) Dial(
 }
 
 func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client, error) {
+	return d.proxyHTTPClientForRequest(proxy, false)
+}
+
+func (d *coderOpenAIWSClientDialer) proxyHTTPClientForRequest(proxy string, temporary bool) (*http.Client, error) {
 	if d == nil {
 		return nil, errors.New("openai ws dialer is nil")
 	}
-	normalizedProxy := strings.TrimSpace(proxy)
-	if normalizedProxy == "" {
+	normalizedProxy, parsedProxyURL, err := proxyurl.Parse(proxy)
+	if err != nil {
+		return nil, err
+	}
+	if parsedProxyURL == nil {
 		return nil, errors.New("proxy url is empty")
 	}
-	parsedProxyURL, err := url.Parse(normalizedProxy)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy url: %w", err)
+	if temporary {
+		return buildOpenAIWSProxyHTTPClient(parsedProxyURL, true)
 	}
 	now := time.Now().UnixNano()
 
@@ -188,15 +200,10 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 		return entry.client, nil
 	}
 	d.cleanupProxyClientsLocked(now)
-	transport := &http.Transport{
-		Proxy:               http.ProxyURL(parsedProxyURL),
-		MaxIdleConns:        openAIWSProxyTransportMaxIdleConns,
-		MaxIdleConnsPerHost: openAIWSProxyTransportMaxIdleConnsPerHost,
-		IdleConnTimeout:     openAIWSProxyTransportIdleConnTimeout,
-		TLSHandshakeTimeout: 10 * time.Second,
-		ForceAttemptHTTP2:   true,
+	client, err := buildOpenAIWSProxyHTTPClient(parsedProxyURL, false)
+	if err != nil {
+		return nil, err
 	}
-	client := &http.Client{Transport: transport}
 	d.proxyClients[normalizedProxy] = &openAIWSProxyClientEntry{
 		client:           client,
 		lastUsedUnixNano: now,
@@ -204,6 +211,22 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 	d.ensureProxyClientCapacityLocked()
 	d.proxyMisses.Add(1)
 	return client, nil
+}
+
+// buildOpenAIWSProxyHTTPClient 统一配置代理协议，临时采集不保留握手连接。
+func buildOpenAIWSProxyHTTPClient(proxyURL *url.URL, temporary bool) (*http.Client, error) {
+	transport := &http.Transport{
+		MaxIdleConns:        openAIWSProxyTransportMaxIdleConns,
+		MaxIdleConnsPerHost: openAIWSProxyTransportMaxIdleConnsPerHost,
+		IdleConnTimeout:     openAIWSProxyTransportIdleConnTimeout,
+		TLSHandshakeTimeout: 10 * time.Second,
+		ForceAttemptHTTP2:   true,
+		DisableKeepAlives:   temporary,
+	}
+	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+		return nil, err
+	}
+	return &http.Client{Transport: transport}, nil
 }
 
 func (d *coderOpenAIWSClientDialer) cleanupProxyClientsLocked(nowUnixNano int64) {

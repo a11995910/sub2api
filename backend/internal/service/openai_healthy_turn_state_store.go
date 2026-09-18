@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -39,23 +40,35 @@ type HealthyTurnStateRecord struct {
 }
 
 type HealthyTurnStateProbeLog struct {
-	Model      string    `json:"model"`
-	Transport  string    `json:"transport"`
-	ProxyID    int64     `json:"proxy_id"`
-	Status     string    `json:"status"`
-	HTTPStatus int       `json:"http_status"`
-	CreatedAt  time.Time `json:"created_at"`
+	Model          string    `json:"model"`
+	Transport      string    `json:"transport"`
+	ProxyID        int64     `json:"proxy_id"`
+	TemporaryProxy bool      `json:"temporary_proxy"`
+	Status         string    `json:"status"`
+	HTTPStatus     int       `json:"http_status"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type HealthyTurnStateModelStats struct {
+	Model     string `json:"model"`
+	Available int64  `json:"available"`
+	InUse     int64  `json:"in_use"`
+	Captures  int64  `json:"captures"`
+	Attempts  int64  `json:"attempts"`
+	Successes int64  `json:"successes"`
+	Failures  int64  `json:"failures"`
 }
 
 type HealthyTurnStateStats struct {
-	Available int64                      `json:"available"`
-	InUse     int64                      `json:"in_use"`
-	Captures  int64                      `json:"captures"`
-	Attempts  int64                      `json:"attempts"`
-	Successes int64                      `json:"successes"`
-	Failures  int64                      `json:"failures"`
-	Records   []HealthyTurnStateRecord   `json:"records"`
-	Probes    []HealthyTurnStateProbeLog `json:"probes"`
+	Available int64                        `json:"available"`
+	InUse     int64                        `json:"in_use"`
+	Captures  int64                        `json:"captures"`
+	Attempts  int64                        `json:"attempts"`
+	Successes int64                        `json:"successes"`
+	Failures  int64                        `json:"failures"`
+	Models    []HealthyTurnStateModelStats `json:"models"`
+	Records   []HealthyTurnStateRecord     `json:"records"`
+	Probes    []HealthyTurnStateProbeLog   `json:"probes"`
 }
 
 type HealthyTurnStateRepository interface {
@@ -71,8 +84,9 @@ type HealthyTurnStateRepository interface {
 }
 
 func (s openAIHealthyTurnStateScope) persistent() HealthyTurnStateScope {
-	// 状态头属于 OpenAI 全局共享池，账号、模型、传输方式和代理不参与领取范围。
-	return HealthyTurnStateScope{Key: "openai_global"}
+	// 保留实际发送模型和所属账号，传输方式与代理只记录来源。
+	model := strings.TrimSpace(s.model)
+	return HealthyTurnStateScope{AccountID: s.accountID, Key: model, Model: model, Transport: s.transport, ProxyID: s.proxyID}
 }
 
 func (e openAIHealthyTurnStateEntry) persistent() HealthyTurnStateValue {

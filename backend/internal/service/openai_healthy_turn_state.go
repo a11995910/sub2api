@@ -29,7 +29,7 @@ func (a *Account) OpenAIHealthyTurnStateRecordEnabled() bool {
 	}
 	value, exists := a.Extra[openAIHealthyTurnStateRecordKey]
 	if !exists {
-		return false
+		return true
 	}
 	enabled, _ := value.(bool)
 	return enabled
@@ -58,14 +58,14 @@ func ValidateOpenAIHealthyTurnStateExtra(extra map[string]any) error {
 type openAIHealthyTurnStateScope struct {
 	accountID int64
 	model     string
-	// 凭据、出口、地址和传输方式只作为来源信息，不参与共享池领取范围。
+	// 同账号、同模型共用记录；凭据、出口和传输方式不参与领取范围。
 	identity  [32]byte
 	transport string
 	proxyID   int64
 }
 
 func (s openAIHealthyTurnStateScope) shared() openAIHealthyTurnStateScope {
-	return openAIHealthyTurnStateScope{}
+	return openAIHealthyTurnStateScope{accountID: s.accountID, model: strings.TrimSpace(s.model)}
 }
 
 type openAIHealthyTurnStateEntry struct {

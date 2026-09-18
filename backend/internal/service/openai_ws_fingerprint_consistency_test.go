@@ -53,7 +53,7 @@ func TestNativeWSFingerprintMatchesHTTPAcrossTurns(t *testing.T) {
 							return
 						}
 						framesSeen <- body
-						completed := fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_identity_%d","status":"completed","model":"gpt-5.1","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`, turn)
+						completed := fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_identity_%d","status":"completed","model":%q,"output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`, turn, gjson.GetBytes(body, "model").String())
 						if err := conn.Write(ctx, coderws.MessageText, []byte(completed)); err != nil {
 							return
 						}
@@ -252,7 +252,7 @@ func TestNativeWSFingerprintReconnectUsesCurrentTurnWithoutCacheKey(t *testing.T
 			if connection > 1 {
 				responseID = "resp_reconnect_second"
 			}
-			completed := fmt.Sprintf(`{"type":"response.completed","response":{"id":"%s","status":"completed","model":"gpt-5.1","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`, responseID)
+			completed := fmt.Sprintf(`{"type":"response.completed","response":{"id":"%s","status":"completed","model":%q,"output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`, responseID, gjson.GetBytes(body, "model").String())
 			if err := conn.Write(ctx, coderws.MessageText, []byte(completed)); err != nil {
 				return
 			}

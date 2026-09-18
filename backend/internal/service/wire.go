@@ -278,6 +278,8 @@ func ProvideAccountTestService(
 	openAIGatewayService *OpenAIGatewayService,
 	settingService *SettingService,
 	pluginManager *PluginManager,
+	settingRepo SettingRepository,
+	encryptor SecretEncryptor,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -293,6 +295,7 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
+	service.SetHealthyTurnStateDynamicStorage(settingRepo, encryptor)
 	return service
 }
 

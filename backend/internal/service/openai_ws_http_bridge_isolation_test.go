@@ -109,7 +109,8 @@ func (u *httpBridgeIsolationUpstream) Do(req *http.Request, _ string, _ int64, _
 		turn = 2
 	}
 	responseID := fmt.Sprintf("resp_%s_%d", id, turn)
-	prefix := fmt.Sprintf("data: {\"type\":\"response.created\",\"response\":{\"id\":%q,\"status\":\"in_progress\"}}\n\n", responseID)
+	// 模拟真实上游的首个响应声明，使用实际出站模型避免被模型校验误判。
+	prefix := fmt.Sprintf("data: {\"type\":\"response.created\",\"response\":{\"id\":%q,\"model\":%q,\"status\":\"in_progress\"}}\n\n", responseID, gjson.GetBytes(body, "model").String())
 	if turn == 1 {
 		prefix += "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_test\",\"type\":\"reasoning\",\"encrypted_content\":\"opaque\"}}\n\n"
 	}

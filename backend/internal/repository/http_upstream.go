@@ -206,6 +206,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	if req != nil {
 		profile = service.HTTPUpstreamProfileFromContext(req.Context())
 	}
+	if req != nil && service.IsHealthyTurnStateTemporaryProxy(req.Context()) {
+		return s.doTemporaryProxy(req, proxyURL, accountConcurrency, profile, nil)
+	}
 
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
@@ -257,6 +260,12 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if req != nil {
 		upstreamProfile = service.HTTPUpstreamProfileFromContext(req.Context())
 	}
+	if req != nil && service.IsHealthyTurnStateTemporaryProxy(req.Context()) {
+		if err := s.validateRequestHost(req); err != nil {
+			return nil, err
+		}
+		return s.doTemporaryProxy(req, proxyURL, accountConcurrency, upstreamProfile, profile)
+	}
 
 	targetHost := ""
 	if req != nil && req.URL != nil {
@@ -295,6 +304,49 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 	})
 
+	return resp, nil
+}
+
+// doTemporaryProxy 为动态代理探测单独创建传输层，避免大量短期入口挤占正式连接池。
+// 复用现有协议、指纹、重定向和解压策略，但不读写客户端缓存或记录 HTTP/2 回退状态。
+func (s *httpUpstreamService) doTemporaryProxy(req *http.Request, proxyURL string, accountConcurrency int, upstreamProfile service.HTTPUpstreamProfile, fingerprint *tlsfingerprint.Profile) (*http.Response, error) {
+	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if parsedProxy == nil {
+		return nil, errors.New("临时代理不能为空，已拒绝直连")
+	}
+	settings := s.resolvePoolSettings(s.getIsolationMode(), accountConcurrency)
+	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
+	var transport *http.Transport
+	if fingerprint != nil {
+		transport, err = buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, fingerprint)
+	} else {
+		transport, err = buildUpstreamTransport(settings, parsedProxy, s.resolveProtocolMode(upstreamProfile, proxyKey, parsedProxy))
+	}
+	if err != nil {
+		return nil, err
+	}
+	// 每个入口只服务本次请求，响应读完后不留待复用连接。
+	transport.DisableKeepAlives = true
+	client := &http.Client{Transport: transport}
+	if s.shouldValidateResolvedIP() {
+		client.CheckRedirect = s.redirectChecker
+	}
+	client = s.httpClientForUpstreamRequest(client, req)
+	client = httpClientWithGrokAccessDeniedFallback(client)
+	resp, err := servertiming.Do(client, req)
+	if err != nil {
+		transport.CloseIdleConnections()
+		return nil, err
+	}
+	decompressResponseBody(resp)
+	if resp.Body == nil {
+		transport.CloseIdleConnections()
+	} else {
+		resp.Body = wrapTrackedBody(resp.Body, transport.CloseIdleConnections)
+	}
 	return resp, nil
 }
 

@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""为迁移 241 保留定向回滚配置；不导出业务表或运行时凭据。"""
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+
+
+MIGRATION = "241_remove_group_fallback_and_image_enhancement.sql"
+REPO = Path(__file__).resolve().parent.parent
+COLUMNS = {
+    "groups": {
+        "auto_fallback_group_id": ("bigint", False, None),
+        "image_super_resolution_enabled": ("boolean", True, "false"),
+        "image_2k_enhancement_enabled": ("boolean", True, "false"),
+        "image_2k_enhancement_group_id": ("bigint", False, None),
+        "image_4k_enhancement_enabled": ("boolean", True, "false"),
+        "image_4k_enhancement_group_id": ("bigint", False, None),
+        "image_4k_enhancement_model": ("character varying(100)", False, None),
+    },
+    "api_keys": {"auto_group_fallback_enabled": ("boolean", True, "true")},
+}
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def literal(value):
+    return "NULL" if value is None else "'" + str(value).replace("'", "''") + "'"
+
+
+def identifier(value):
+    return '"' + value.replace('"', '""') + '"'
+
+
+def command(args, data=None):
+    result = subprocess.run(args, input=data, text=True, capture_output=True, check=False)
+    # psql 错误可能包含配置原值；只输出操作状态，不转发 stdout/stderr。
+    require(result.returncode == 0, "运行时命令失败，已隐藏可能包含配置值的诊断输出")
+    return result.stdout.strip()
+
+
+class Runtime:
+    def __init__(self, env_file, environment):
+        require(environment in ("prod", "staging"), "环境必须为 prod 或 staging")
+        self.environment = environment
+        self.compose = ["docker", "compose", "-p", "sub2api-" + environment,
+                        "--env-file", str(Path(env_file).resolve()),
+                        "-f", str(REPO / "deploy/docker-compose.yml"),
+                        "-f", "/opt/sub2api/compose/" + environment + "/docker-compose.yml"]
+        self.postgres = command(self.compose + ["ps", "-q", "postgres"])
+        self.redis = command(self.compose + ["ps", "-q", "redis"])
+        require(self.postgres and self.redis, "未找到运行中的数据库容器")
+
+    def sql(self, sql):
+        return command(["docker", "exec", "-i", self.postgres, "sh", "-c",
+                        'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -X -qAt '
+                        '--set=ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'], sql)
+
+    def stopped_app_environment(self):
+        app = command(self.compose + ["ps", "-aq", "sub2api"])
+        require(app, "未找到应用容器，无法核实 Redis 数据库")
+        info = json.loads(command(["docker", "inspect", app]))[0]
+        require(not info["State"]["Running"], "恢复前必须停止应用容器，防止并发写入")
+        return dict(item.split("=", 1) for item in info["Config"]["Env"] if "=" in item)
+
+    def redis_command(self, args, data=None):
+        return command(["docker", "exec", "-i", self.redis, "redis-cli"] + args, data)
+
+
+def read_state(runtime):
+    wanted = ",".join("(" + literal(table) + "," + literal(name) + ")"
+                      for table, columns in COLUMNS.items() for name in columns)
+    rows = []
+    for table, columns in COLUMNS.items():
+        fields = ["'id'", "t.id"]
+        for name in columns:
+            fields.extend([literal(name), "to_jsonb(t)->" + literal(name)])
+        rows.extend([literal(table), "CASE WHEN (SELECT count(*) FROM cols) = 8 THEN "
+                     "(SELECT coalesce(jsonb_agg(jsonb_build_object(" + ",".join(fields) +
+                     ") ORDER BY t.id),'[]'::jsonb) FROM public." + identifier(table) +
+                     " t) ELSE '[]'::jsonb END"])
+    sql = """
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL lock_timeout = '10s';
+SET LOCAL statement_timeout = '60s';
+SET LOCAL search_path = public, pg_catalog;
+SET LOCAL standard_conforming_strings = on;
+WITH wanted(tbl, col) AS (VALUES %s), cols AS (
+  SELECT c.oid AS relid, a.attnum, c.relname AS tbl, a.attname AS name,
+         format_type(a.atttypid,a.atttypmod) AS type, a.attnotnull AS not_null,
+         pg_get_expr(d.adbin,d.adrelid) AS default_value,
+         col_description(c.oid,a.attnum) AS comment,
+         a.attidentity AS identity, a.attgenerated AS generated,
+         a.attcollation=(SELECT typcollation FROM pg_type WHERE oid=a.atttypid) AS default_collation
+  FROM wanted w JOIN pg_class c ON c.relname=w.tbl
+  JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname='public'
+  JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname=w.col AND NOT a.attisdropped
+  LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+), constraints AS (
+  SELECT DISTINCT c.conrelid::regclass::text AS tbl, c.conname AS name,
+         pg_get_constraintdef(c.oid) AS definition
+  FROM pg_constraint c JOIN cols a ON c.conrelid=a.relid AND a.attnum=ANY(c.conkey)
+), indexes AS (
+  SELECT DISTINCT ci.relname AS name, pg_get_indexdef(i.indexrelid) AS definition
+  FROM pg_index i JOIN pg_class ci ON ci.oid=i.indexrelid
+  JOIN pg_depend d ON d.classid='pg_class'::regclass AND d.objid=i.indexrelid
+  JOIN cols a ON d.refobjid=a.relid AND d.refobjsubid=a.attnum
+  WHERE NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid=i.indexrelid)
+)
+SELECT jsonb_build_object(
+ 'database',current_database(),
+ 'columns',coalesce((SELECT jsonb_agg(to_jsonb(a)-'relid'-'attnum' ORDER BY tbl,name) FROM cols a),'[]'),
+ 'constraints',coalesce((SELECT jsonb_agg(to_jsonb(c) ORDER BY tbl,name) FROM constraints c),'[]'),
+ 'indexes',coalesce((SELECT jsonb_agg(to_jsonb(i) ORDER BY name) FROM indexes i),'[]'),
+ 'migration_checksum',(SELECT checksum FROM public.schema_migrations WHERE filename=%s),
+ 'rows',jsonb_build_object(%s));
+COMMIT;
+""" % (wanted, literal(MIGRATION), ",".join(rows))
+    state = json.loads(runtime.sql(sql))
+    require(len(state["columns"]) in (0, 8), "迁移 241 相关列仅部分存在，拒绝猜测恢复结构")
+    seen = set()
+    for column in state["columns"]:
+        key = (column["tbl"], column["name"])
+        expected = COLUMNS.get(key[0], {}).get(key[1])
+        require(expected == (column["type"], column["not_null"], column["default_value"])
+                and not column["identity"] and not column["generated"] and column["default_collation"],
+                "迁移 241 相关列定义与历史迁移不一致")
+        seen.add(key)
+    require(len(seen) == len(state["columns"]), "迁移 241 列定义重复")
+    return state
+
+
+def snapshot(runtime, path):
+    # 停止应用后再取快照，避免快照与迁移之间丢失管理员的最后一次配置更改。
+    environment = runtime.stopped_app_environment()
+    state = read_state(runtime)
+    check_database(environment, state)
+    require(not state["columns"] or state["migration_checksum"] is None,
+            "迁移 241 账本与现存列不一致")
+    if state["columns"]:
+        check_auth_cache(runtime, environment)
+    payload = {"format": 1, "environment": runtime.environment,
+               "migration_sha256": hashlib.sha256((REPO / "backend/migrations" / MIGRATION).read_text().strip().encode()).hexdigest(),
+               "state": state}
+    # 独占创建，拒绝覆盖和符号链接，内容只包含这 8 列及行 ID。
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return bool(state["columns"])
+
+
+def check_database(environment, state):
+    require(environment.get("DATABASE_HOST", "postgres") == "postgres"
+            and environment.get("DATABASE_PORT", "5432") == "5432"
+            and environment.get("DATABASE_DBNAME", state["database"]) == state["database"],
+            "应用未使用当前 compose PostgreSQL，拒绝操作未知数据库")
+
+
+def redis_args(environment):
+    require(environment.get("REDIS_HOST", "redis") == "redis"
+            and environment.get("REDIS_PORT", "6379") == "6379",
+            "应用未使用当前 compose Redis，拒绝清理未知缓存")
+    require(environment.get("REDIS_ENABLE_TLS", "false").lower() == "false",
+            "恢复缓存不支持未核实的 Redis TLS 配置")
+    database = environment.get("REDIS_DB", "0")
+    require(database.isdigit(), "Redis 数据库编号无效")
+    args = ["-n", database]
+    if environment.get("REDIS_USERNAME"):
+        args += ["--user", environment["REDIS_USERNAME"]]
+    return args
+
+
+def check_auth_cache(runtime, environment):
+    args = redis_args(environment)
+    require(runtime.redis_command(args + ["PING"]) == "PONG", "Redis 认证检查失败")
+    result = json.loads(runtime.redis_command(args + ["--json", "SCAN", "0",
+                                                     "MATCH", "apikey:auth:*", "COUNT", "1"]))
+    require(isinstance(result, list) and len(result) == 2 and isinstance(result[1], list),
+            "Redis 认证缓存扫描检查失败")
+
+
+def clear_auth_cache(runtime, environment):
+    args = redis_args(environment)
+    cursor = "0"
+    while True:
+        result = json.loads(runtime.redis_command(args + ["--json", "SCAN", cursor,
+                                                         "MATCH", "apikey:auth:*", "COUNT", "500"]))
+        cursor, keys = str(result[0]), result[1]
+        require(all(key.startswith("apikey:auth:") for key in keys), "Redis 返回非认证缓存键")
+        if keys:
+            # 键名可能含 API Key，只通过 stdin 传递，不进入命令行和日志。
+            parts = ["UNLINK"] + keys
+            protocol = "*" + str(len(parts)) + "\r\n"
+            protocol += "".join("$" + str(len(part.encode())) + "\r\n" + part + "\r\n" for part in parts)
+            output = runtime.redis_command(args + ["--pipe"], protocol)
+            require("errors: 0," in output, "定向清理认证缓存失败")
+        if cursor == "0":
+            break
+
+
+def restore(runtime, path):
+    info = os.lstat(path)
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
+            and stat.S_IMODE(info.st_mode) == 0o600, "快照必须为当前用户持有的 0600 普通文件")
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    require(payload["format"] == 1 and payload["environment"] == runtime.environment,
+            "快照格式或环境不匹配")
+    before = payload["state"]
+    if not before["columns"]:
+        return False
+    environment = runtime.stopped_app_environment()
+    check_auth_cache(runtime, environment)
+    current = read_state(runtime)
+    check_database(environment, current)
+    require(current["database"] == before["database"], "快照数据库不匹配")
+    if current["columns"]:
+        # 迁移尚未执行或已恢复时不覆盖现有配置，重复恢复不会改写后续数据。
+        require(all(current[key] == before[key] for key in ("columns", "constraints", "indexes"))
+                and current["migration_checksum"] is None, "现存列或迁移账本与快照不一致")
+    else:
+        require(current["migration_checksum"] == payload["migration_sha256"],
+                "缺列但迁移 241 校验和不匹配，拒绝恢复未知结构")
+        sql = ["BEGIN; SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='60s';",
+               "SET LOCAL search_path=public,pg_catalog; SET LOCAL standard_conforming_strings=on;",
+               "LOCK TABLE public.groups, public.api_keys IN ACCESS EXCLUSIVE MODE;"]
+        for column in before["columns"]:
+            target = "public." + identifier(column["tbl"])
+            definition = identifier(column["name"]) + " " + column["type"]
+            if column["default_value"] is not None:
+                definition += " DEFAULT " + column["default_value"]
+            if column["not_null"]:
+                definition += " NOT NULL"
+            sql.append("ALTER TABLE " + target + " ADD COLUMN " + definition + ";")
+            sql.append("COMMENT ON COLUMN " + target + "." + identifier(column["name"]) +
+                       " IS " + literal(column["comment"]) + ";")
+        for table, columns in COLUMNS.items():
+            records = literal(json.dumps(before["rows"][table], ensure_ascii=False))
+            types = 'id bigint,' + ','.join(identifier(name) + " " + spec[0] for name, spec in columns.items())
+            assignments = []
+            for name in columns:
+                value = "s." + identifier(name)
+                if name == "auto_fallback_group_id":
+                    # 保留原外键 ON DELETE SET NULL 的语义，不复活已删除分组。
+                    value = "(SELECT id FROM public.groups WHERE id=" + value + ")"
+                assignments.append(identifier(name) + "=" + value)
+            sql.append("UPDATE public." + identifier(table) + " t SET " + ",".join(assignments) +
+                       " FROM jsonb_to_recordset(" + records + "::jsonb) AS s(" + types + ") WHERE t.id=s.id;")
+        for constraint in before["constraints"]:
+            sql.append("ALTER TABLE public." + identifier(constraint["tbl"]) + " ADD CONSTRAINT " +
+                       identifier(constraint["name"]) + " " + constraint["definition"] + ";")
+        sql.extend(index["definition"] + ";" for index in before["indexes"])
+        sql.append("DELETE FROM public.schema_migrations WHERE filename=" + literal(MIGRATION) + "; COMMIT;")
+        runtime.sql("\n".join(sql))
+    clear_auth_cache(runtime, environment)
+    return True
+
+
+def main():
+    require(len(sys.argv) in (4, 5) and sys.argv[1] in ("snapshot", "restore"),
+            "用法：release-schema-compat <snapshot|restore> <env文件> <快照路径> [prod|staging]")
+    runtime = Runtime(sys.argv[2], sys.argv[4] if len(sys.argv) == 5 else "prod")
+    changed = (snapshot if sys.argv[1] == "snapshot" else restore)(runtime, sys.argv[3])
+    print("迁移 241 定向回滚保护：" + ("已完成" if changed else "无需处理"))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, OSError, ValueError, KeyError) as exc:
+        # 异常可能来自含配置值的 JSON，禁止直接转发非预期异常详情。
+        print(str(exc) if isinstance(exc, RuntimeError) else "迁移 241 定向回滚保护失败", file=sys.stderr)
+        sys.exit(1)

@@ -72,8 +72,10 @@ func (u *healthyTurnStateUpstream) DoWithTLS(req *http.Request, proxy string, id
 
 func TestOpenAIHealthyTurnStateFlags(t *testing.T) {
 	a := &Account{ID: 1, Platform: PlatformOpenAI}
-	require.False(t, a.OpenAIHealthyTurnStateRecordEnabled())
+	require.True(t, a.OpenAIHealthyTurnStateRecordEnabled(), "未配置的现有及新建账号自动记录")
 	require.False(t, a.OpenAIHealthyTurnStateReplaceEnabled())
+	a.Extra = map[string]any{"unrelated": true}
+	require.True(t, a.OpenAIHealthyTurnStateRecordEnabled())
 	a.Extra = map[string]any{openAIHealthyTurnStateRecordKey: false, openAIHealthyTurnStateReplaceKey: true}
 	require.False(t, a.OpenAIHealthyTurnStateRecordEnabled())
 	require.True(t, a.OpenAIHealthyTurnStateReplaceEnabled())
@@ -273,18 +275,26 @@ func TestOpenAIHealthyTurnStateHTTPMissingContentType(t *testing.T) {
 	}
 }
 
-func TestOpenAIHealthyTurnStateCacheSharedExpiryAndConcurrency(t *testing.T) {
+func TestOpenAIHealthyTurnStateCacheIsolationExpiryAndConcurrency(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	a := &Account{ID: 4, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 	_, req := healthyTurnStateRequest(t, svc, a, "会话")
 	scope := openAIHealthyTurnStateAttemptFromRequest(req).scope
 	entry := openAIHealthyTurnStateEntry{value: "健康状态", expiresAt: time.Now().Add(time.Minute)}
 	require.True(t, svc.openaiHealthyTurnStates.store(scope, entry))
-	foreign := openAIHealthyTurnStateScope{accountID: 5, model: "不同模型", identity: [32]byte{1}, transport: "websocket", proxyID: 99}
-	claimed, ok := svc.openaiHealthyTurnStates.claim(foreign, "")
-	require.True(t, ok, "共享池允许其他账号、模型和代理领取")
+	for _, foreign := range []openAIHealthyTurnStateScope{
+		{accountID: 5, model: scope.model},
+		{accountID: scope.accountID, model: "不同模型"},
+	} {
+		_, ok := svc.openaiHealthyTurnStates.claim(foreign, "")
+		require.False(t, ok, "其他账号或模型不能领取")
+		svc.openaiHealthyTurnStates.reject(foreign, entry)
+	}
+	sameModel := openAIHealthyTurnStateScope{accountID: scope.accountID, model: " " + scope.model + " ", identity: [32]byte{1}, transport: "websocket", proxyID: 99}
+	claimed, ok := svc.openaiHealthyTurnStates.claim(sameModel, "")
+	require.True(t, ok, "其他账号或模型的拒绝不影响本范围，同模型跨代理和传输可领取")
 	require.Equal(t, entry.value, claimed.value)
-	svc.openaiHealthyTurnStates.release(foreign, claimed)
+	svc.openaiHealthyTurnStates.release(sameModel, claimed)
 	require.True(t, svc.openaiHealthyTurnStates.store(scope, entry))
 	var claims atomic.Int32
 	var wg sync.WaitGroup

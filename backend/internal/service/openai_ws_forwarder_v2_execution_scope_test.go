@@ -123,7 +123,7 @@ func TestOpenAIGatewayService_Forward_WSv2_ExecutionScopeUsesOriginalIdentity(t 
 	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
 
 	completed := func(id string) []byte {
-		return []byte(`{"type":"response.completed","response":{"id":"` + id + `","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+		return []byte(`{"type":"response.completed","response":{"id":"` + id + `","model":"` + normalizeCodexModel("gpt-5.1") + `","usage":{"input_tokens":1,"output_tokens":1}}}`)
 	}
 	captureConn := &openAIWSCaptureConn{events: [][]byte{completed("resp_a"), completed("resp_b"), completed("resp_c")}}
 	handshake := http.Header{}
