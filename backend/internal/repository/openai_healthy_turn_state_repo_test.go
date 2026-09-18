@@ -52,6 +52,10 @@ func healthyStateTestDB(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	_, err = db.Exec(string(migration))
 	require.NoError(t, err)
+	sharedMigration, err := migrations.FS.ReadFile("240_openai_healthy_turn_state_shared_pool.sql")
+	require.NoError(t, err)
+	_, err = db.Exec(string(sharedMigration))
+	require.NoError(t, err)
 	return db
 }
 
@@ -66,7 +70,7 @@ func TestHealthyTurnStateRepositoryPersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, stored)
 	var encrypted string
-	require.NoError(t, db.QueryRow("SELECT value_encrypted FROM openai_healthy_turn_states").Scan(&encrypted))
+	require.NoError(t, db.QueryRow("SELECT value_encrypted FROM openai_healthy_turn_state_pool").Scan(&encrypted))
 	require.NotEqual(t, value.Value, encrypted)
 
 	// 重建仓储后依然能读取，没有依赖进程缓存。
@@ -75,16 +79,14 @@ func TestHealthyTurnStateRepositoryPersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, value.Value, got.Value)
 	require.True(t, value.ExpiresAt.Equal(got.ExpiresAt))
+	foreign, err := repo.Get(ctx, service.HealthyTurnStateScope{AccountID: 2, Key: "另一个范围", Model: "另一个模型", Transport: "websocket", ProxyID: 88})
+	require.NoError(t, err)
+	require.Equal(t, value.Value, foreign.Value, "共享池不按账号、模型、传输方式或代理隔离")
 	duplicate := value
 	duplicate.ExpiresAt = value.ExpiresAt.Add(time.Minute)
 	stored, err = repo.Save(ctx, scope, duplicate)
 	require.NoError(t, err)
 	require.False(t, stored, "同值不续期")
-	older := service.HealthyTurnStateValue{Value: "旧响应", ExpiresAt: value.ExpiresAt.Add(-time.Minute)}
-	stored, err = repo.Save(ctx, scope, older)
-	require.NoError(t, err)
-	require.False(t, stored, "旧响应不覆盖新记录")
-
 	// 多个仓储、连接并发领取，只允许一个请求持有状态头。
 	type result struct {
 		value *service.HealthyTurnStateValue
@@ -155,7 +157,7 @@ func TestHealthyTurnStateRepositoryPersistence(t *testing.T) {
 	require.EqualValues(t, 1, stats.Failures)
 	require.Equal(t, "invalid", stats.Records[0].Status)
 	var isNull bool
-	require.NoError(t, db.QueryRow("SELECT value_encrypted IS NULL FROM openai_healthy_turn_states").Scan(&isNull))
+	require.NoError(t, db.QueryRow("SELECT value_encrypted IS NULL FROM openai_healthy_turn_state_pool WHERE value_hash=$1", healthyStateHash(value.Value)).Scan(&isNull))
 	require.True(t, isNull, "失败清除密文")
 
 	newValue := service.HealthyTurnStateValue{Value: "测试状态头二", ExpiresAt: value.ExpiresAt.Add(2 * time.Minute)}
@@ -168,7 +170,7 @@ func TestHealthyTurnStateRepositoryPersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, newValue.Value, got.Value, "迟到结果不影响新头")
 
-	_, err = db.Exec("UPDATE openai_healthy_turn_states SET expires_at=NOW()-INTERVAL '1 second'")
+	_, err = db.Exec("UPDATE openai_healthy_turn_state_pool SET expires_at=NOW()-INTERVAL '1 second'")
 	require.NoError(t, err)
 	got, err = repo.Claim(ctx, scope, "")
 	require.NoError(t, err)
@@ -210,15 +212,38 @@ func TestHealthyTurnStateRepositoryIsolationAndProbes(t *testing.T) {
 	require.NoError(t, repo.RecordProbe(ctx, 1, service.HealthyTurnStateProbeLog{Model: "末次模型", Transport: "http", Status: "no_header", HTTPStatus: 200}))
 	stats, err := repo.Stats(ctx, 1)
 	require.NoError(t, err)
-	require.Len(t, stats.Records, 3)
+	require.Len(t, stats.Records, 4)
 	require.Len(t, stats.Probes, 50)
 	require.Equal(t, "no_header", stats.Probes[0].Status)
 	require.Equal(t, "failed", stats.Probes[1].Status)
 	_, err = db.Exec("DELETE FROM accounts WHERE id=1")
 	require.NoError(t, err)
-	for _, table := range []string{"openai_healthy_turn_states", "openai_healthy_turn_state_rejections", "openai_healthy_turn_state_probes"} {
-		var count int
-		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM "+table+" WHERE account_id=1").Scan(&count))
-		require.Zero(t, count)
-	}
+	var count int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM openai_healthy_turn_state_pool").Scan(&count))
+	require.Equal(t, 4, count, "共享池不随账号删除")
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM openai_healthy_turn_state_probes WHERE account_id=1").Scan(&count))
+	require.Zero(t, count)
+}
+
+func TestHealthyTurnStateSharedMigrationImportsLegacyRecords(t *testing.T) {
+	db := healthyStateTestDB(t)
+	ctx := context.Background()
+	cipher := &AESEncryptor{key: []byte(strings.Repeat("a", 32))}
+	value := "迁移后的共享状态头"
+	encrypted, err := cipher.Encrypt(value)
+	require.NoError(t, err)
+	expires := time.Now().Add(time.Minute)
+	_, err = db.Exec(`INSERT INTO openai_healthy_turn_states(account_id,scope_key,model,transport,proxy_id,value_encrypted,value_hash,expires_at,captures,last_captured_at)
+		VALUES(1,'legacy-scope','legacy-model','websocket',77,$1,$2,$3,3,NOW())`, encrypted, healthyStateHash(value), expires)
+	require.NoError(t, err)
+	migration, err := migrations.FS.ReadFile("240_openai_healthy_turn_state_shared_pool.sql")
+	require.NoError(t, err)
+	_, err = db.Exec(string(migration))
+	require.NoError(t, err)
+	repo := NewHealthyTurnStateRepository(db, cipher)
+	claimed, err := repo.Claim(ctx, service.HealthyTurnStateScope{AccountID: 2, Model: "other-model", Transport: "http", ProxyID: 2}, "")
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	require.Equal(t, value, claimed.Value, "旧账号记录应进入账号无关的共享池")
+	require.NoError(t, repo.Release(ctx, service.HealthyTurnStateScope{AccountID: 2}, *claimed))
 }

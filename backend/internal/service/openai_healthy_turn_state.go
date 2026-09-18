@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -59,10 +58,14 @@ func ValidateOpenAIHealthyTurnStateExtra(extra map[string]any) error {
 type openAIHealthyTurnStateScope struct {
 	accountID int64
 	model     string
-	// 凭据、出口、地址和传输方式仅以组合散列隔离记录，不能进入日志。
+	// 凭据、出口、地址和传输方式只作为来源信息，不参与共享池领取范围。
 	identity  [32]byte
 	transport string
 	proxyID   int64
+}
+
+func (s openAIHealthyTurnStateScope) shared() openAIHealthyTurnStateScope {
+	return openAIHealthyTurnStateScope{}
 }
 
 type openAIHealthyTurnStateEntry struct {
@@ -116,6 +119,7 @@ func (c *openAIHealthyTurnStateCache) store(scope openAIHealthyTurnStateScope, e
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	scope = scope.shared()
 	now := time.Now()
 	c.sweepLocked(now)
 	if !now.Before(entry.expiresAt) {
@@ -159,6 +163,7 @@ func (c *openAIHealthyTurnStateCache) claim(scope openAIHealthyTurnStateScope, c
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	scope = scope.shared()
 	c.sweepLocked(time.Now())
 	entry, ok := c.entries[scope]
 	if !ok || entry.value == strings.TrimSpace(current) {
@@ -180,6 +185,7 @@ func (c *openAIHealthyTurnStateCache) release(scope openAIHealthyTurnStateScope,
 		return
 	}
 	c.mu.Lock()
+	scope = scope.shared()
 	delete(c.held, openAIHealthyTurnStateRejected{scope, sha256.Sum256([]byte(entry.value))})
 	c.mu.Unlock()
 }
@@ -196,6 +202,7 @@ func (c *openAIHealthyTurnStateCache) reject(scope openAIHealthyTurnStateScope, 
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	scope = scope.shared()
 	c.sweepLocked(time.Now())
 	if old, ok := c.entries[scope]; ok && old.value == entry.value {
 		delete(c.entries, scope)
@@ -212,7 +219,7 @@ func (c *openAIHealthyTurnStateCache) reject(scope openAIHealthyTurnStateScope, 
 
 type openAIHealthyTurnStateBudget struct {
 	mu   sync.Mutex
-	used map[int64]bool
+	used bool
 }
 
 type openAIHealthyTurnStateAttempt struct {
@@ -224,27 +231,35 @@ type openAIHealthyTurnStateAttempt struct {
 	borrowed        openAIHealthyTurnStateEntry
 	sent            bool
 	httpStatus      int
+	startedAt       time.Time
+}
+
+const openAIHealthyTurnStateFirstOutputLimit = 5 * time.Second
+
+func (a *openAIHealthyTurnStateAttempt) markStarted() {
+	if a != nil && a.startedAt.IsZero() {
+		a.startedAt = time.Now()
+	}
 }
 
 func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, account *Account, model, endpoint, proxyURL string, headers http.Header) *openAIHealthyTurnStateAttempt {
 	if s == nil || account == nil || account.ID <= 0 || (!account.OpenAIHealthyTurnStateRecordEnabled() && !account.OpenAIHealthyTurnStateReplaceEnabled()) {
 		return nil
 	}
-	budget := &openAIHealthyTurnStateBudget{used: make(map[int64]bool)}
+	budget := &openAIHealthyTurnStateBudget{}
 	clientCtx := context.Background()
 	if c != nil {
 		if existing, ok := c.Get(openAIHealthyTurnStateBudgetKey); ok {
 			budget, _ = existing.(*openAIHealthyTurnStateBudget)
 		}
 		if budget == nil {
-			budget = &openAIHealthyTurnStateBudget{used: make(map[int64]bool)}
+			budget = &openAIHealthyTurnStateBudget{}
 		}
 		c.Set(openAIHealthyTurnStateBudgetKey, budget)
 		if c.Request != nil {
 			clientCtx = c.Request.Context()
 		}
 	}
-	identity := strings.Join([]string{endpoint, proxyURL, headers.Get("Authorization"), headers.Get("ChatGPT-Account-Id"), fmt.Sprint(account.Extra["codex_fingerprint_mode"])}, "\x00")
 	transport, proxyID := "http", int64(0)
 	if strings.HasPrefix(endpoint, "ws:") {
 		transport = "websocket"
@@ -254,13 +269,13 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 	}
 	return &openAIHealthyTurnStateAttempt{
 		cache:  &s.openaiHealthyTurnStates,
-		scope:  openAIHealthyTurnStateScope{account.ID, model, sha256.Sum256([]byte(identity)), transport, proxyID},
+		scope:  openAIHealthyTurnStateScope{account.ID, model, [32]byte{}, transport, proxyID},
 		budget: budget, clientContext: clientCtx,
 		record: account.OpenAIHealthyTurnStateRecordEnabled(), replace: account.OpenAIHealthyTurnStateReplaceEnabled(),
 	}
 }
 
-// claimRetry 只允许真实 HTTP／握手 429、503 在同账号补试一次，保留 Retry-After。
+// claimRetry 只允许真实 HTTP／握手 429、503 使用共享池补试一次，保留 Retry-After。
 func (a *openAIHealthyTurnStateAttempt) claimRetry(ctx context.Context, status int, responseHeaders http.Header, current string) (bool, error) {
 	if a == nil || !a.replace || (status != http.StatusTooManyRequests && status != http.StatusServiceUnavailable) {
 		return false, nil
@@ -285,7 +300,7 @@ func (a *openAIHealthyTurnStateAttempt) claimRetry(ctx context.Context, status i
 		}
 	}
 	a.budget.mu.Lock()
-	if a.budget.used[a.scope.accountID] {
+	if a.budget.used {
 		a.budget.mu.Unlock()
 		return false, nil
 	}
@@ -294,7 +309,7 @@ func (a *openAIHealthyTurnStateAttempt) claimRetry(ctx context.Context, status i
 		a.budget.mu.Unlock()
 		return false, nil
 	}
-	a.budget.used[a.scope.accountID] = true
+	a.budget.used = true
 	a.budget.mu.Unlock()
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

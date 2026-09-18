@@ -14,6 +14,9 @@ import (
 // doOpenAIUpstreamWithHealthyTurnState 不改变请求体或客户端请求头，只补试尚未返回响应的请求。
 func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
+	if attempt != nil {
+		attempt.markStarted()
+	}
 	response, err := s.doOpenAIUpstreamOnce(req, proxyURL, account)
 	if attempt == nil || err != nil || response == nil {
 		return response, err
@@ -213,12 +216,14 @@ type openAIHealthyTurnStateObserver struct {
 	attempt                             *openAIHealthyTurnStateAttempt
 	candidate                           openAIHealthyTurnStateEntry
 	healthy, terminal, failed, finished bool
+	firstOutputTooLate                  bool
 }
 
 func newOpenAIHealthyTurnStateObserver(attempt *openAIHealthyTurnStateAttempt, headers http.Header) *openAIHealthyTurnStateObserver {
 	if attempt == nil {
 		return nil
 	}
+	attempt.markStarted()
 	value := extractOpenAICodexTurnState(headers)
 	if len(value) > openAIHealthyTurnStateMaxBytes {
 		value = ""
@@ -251,6 +256,7 @@ func (o *openAIHealthyTurnStateObserver) observe(payload []byte, event string) {
 	}
 	if !o.healthy && openAIStreamDataStartsVisibleOutput(string(payload), event) {
 		o.healthy = true
+		o.firstOutputTooLate = !o.attempt.startedAt.IsZero() && time.Since(o.attempt.startedAt) > openAIHealthyTurnStateFirstOutputLimit
 		// 等完整响应成功后再持久化，首字不代表调用完成。
 	}
 	if event == "response.completed" || event == "response.done" {
@@ -269,6 +275,7 @@ func (o *openAIHealthyTurnStateObserver) observeJSON(payload []byte) {
 	for _, item := range gjson.GetBytes(payload, "output").Array() {
 		if openAIStreamItemHasVisibleOutput(item) {
 			o.healthy = true
+			o.firstOutputTooLate = !o.attempt.startedAt.IsZero() && time.Since(o.attempt.startedAt) > openAIHealthyTurnStateFirstOutputLimit
 			break
 		}
 	}
@@ -282,7 +289,7 @@ func (o *openAIHealthyTurnStateObserver) finish() {
 	o.finished = true
 	if o.healthy && o.terminal && !o.failed {
 		o.attempt.completed(true)
-		if o.attempt.record {
+		if o.attempt.record && !o.firstOutputTooLate {
 			o.attempt.cache.store(o.attempt.scope, o.candidate)
 		}
 		return

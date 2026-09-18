@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"time"
@@ -72,8 +71,8 @@ type HealthyTurnStateRepository interface {
 }
 
 func (s openAIHealthyTurnStateScope) persistent() HealthyTurnStateScope {
-	key := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%x", s.model, s.identity)))
-	return HealthyTurnStateScope{s.accountID, fmt.Sprintf("%x", key), s.model, s.transport, s.proxyID}
+	// 状态头属于 OpenAI 全局共享池，账号、模型、传输方式和代理不参与领取范围。
+	return HealthyTurnStateScope{Key: "openai_global"}
 }
 
 func (e openAIHealthyTurnStateEntry) persistent() HealthyTurnStateValue {
@@ -106,7 +105,7 @@ func (c *openAIHealthyTurnStateCache) get(scope openAIHealthyTurnStateScope) (op
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sweepLocked(time.Now())
-	value, ok := c.entries[scope]
+	value, ok := c.entries[scope.shared()]
 	return value, ok
 }
 
@@ -117,6 +116,8 @@ func (a *openAIHealthyTurnStateAttempt) started(status int) bool {
 	if a.sent {
 		return true
 	}
+	// 替换请求在等待 429／503 后重新开始计时。
+	a.startedAt = time.Now()
 	a.httpStatus = status
 	if a.cache.repo != nil {
 		ctx, cancel := healthyTurnStateStoreContext()

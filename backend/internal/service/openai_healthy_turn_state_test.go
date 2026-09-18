@@ -156,7 +156,7 @@ func TestOpenAIHealthyTurnStateHTTPSuccessKeepsIndependentSwitches(t *testing.T)
 	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[attempt.scope], "关闭记录仍可使用旧记录，且不能延长寿命或新增值")
+	require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[attempt.scope.shared()], "关闭记录仍可使用旧记录，且不能延长寿命或新增值")
 	req.Body, _ = req.GetBody()
 	req = svc.prepareOpenAIHealthyTurnStateRequest(c, a, req, "gpt-test")
 	_, err = svc.doOpenAIUpstream(req, "", a)
@@ -211,7 +211,7 @@ func TestOpenAIHealthyTurnStateBodyPreservesChunksAndRejectsEmptySuccess(t *test
 			require.NoError(t, body.Close())
 			require.Empty(t, svc.openaiHealthyTurnStates.held)
 			if tc.healthy {
-				require.Equal(t, "新健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope].value)
+				require.Equal(t, "新健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope.shared()].value)
 			} else {
 				require.Empty(t, svc.openaiHealthyTurnStates.entries)
 				require.False(t, svc.openaiHealthyTurnStates.store(attempt.scope, entry), "未成功输出的试验不能回填旧记录")
@@ -273,17 +273,19 @@ func TestOpenAIHealthyTurnStateHTTPMissingContentType(t *testing.T) {
 	}
 }
 
-func TestOpenAIHealthyTurnStateCacheIsolationExpiryAndConcurrency(t *testing.T) {
+func TestOpenAIHealthyTurnStateCacheSharedExpiryAndConcurrency(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	a := &Account{ID: 4, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 	_, req := healthyTurnStateRequest(t, svc, a, "会话")
 	scope := openAIHealthyTurnStateAttemptFromRequest(req).scope
 	entry := openAIHealthyTurnStateEntry{value: "健康状态", expiresAt: time.Now().Add(time.Minute)}
 	require.True(t, svc.openaiHealthyTurnStates.store(scope, entry))
-	for _, foreign := range []openAIHealthyTurnStateScope{{accountID: 5, model: scope.model, identity: scope.identity}, {accountID: 4, model: "不同模型", identity: scope.identity}, {accountID: 4, model: scope.model, identity: [32]byte{1}}} {
-		_, ok := svc.openaiHealthyTurnStates.claim(foreign, "")
-		require.False(t, ok)
-	}
+	foreign := openAIHealthyTurnStateScope{accountID: 5, model: "不同模型", identity: [32]byte{1}, transport: "websocket", proxyID: 99}
+	claimed, ok := svc.openaiHealthyTurnStates.claim(foreign, "")
+	require.True(t, ok, "共享池允许其他账号、模型和代理领取")
+	require.Equal(t, entry.value, claimed.value)
+	svc.openaiHealthyTurnStates.release(foreign, claimed)
+	require.True(t, svc.openaiHealthyTurnStates.store(scope, entry))
 	var claims atomic.Int32
 	var wg sync.WaitGroup
 	for range 20 {
@@ -303,6 +305,19 @@ func TestOpenAIHealthyTurnStateCacheIsolationExpiryAndConcurrency(t *testing.T) 
 	entry.value = "过期记录"
 	entry.expiresAt = time.Now().Add(-time.Second)
 	require.False(t, svc.openaiHealthyTurnStates.store(scope, entry))
+}
+
+func TestOpenAIHealthyTurnStateLateFirstOutputIsNotRecorded(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	a := &Account{ID: 10, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
+	_, req := healthyTurnStateRequest(t, svc, a, "会话")
+	attempt := openAIHealthyTurnStateAttemptFromRequest(req)
+	attempt.startedAt = time.Now().Add(-openAIHealthyTurnStateFirstOutputLimit - time.Millisecond)
+	observer := newOpenAIHealthyTurnStateObserver(attempt, healthyTurnStateResponse(200, "慢首字状态", "").Header)
+	observer.observe([]byte(healthyTurnStateDelta), "")
+	observer.observe([]byte(healthyTurnStateDone), "")
+	observer.finish()
+	require.Empty(t, svc.openaiHealthyTurnStates.entries, "首字超过 5 秒的状态头不得进入共享池")
 }
 
 func TestOpenAIHealthyTurnStateRetryAfterAndCancellation(t *testing.T) {
@@ -370,7 +385,7 @@ func TestOpenAIHealthyTurnStateWSHandshakeRetriesOnFreshConnection(t *testing.T)
 	lease.observeHealthyTurnState([]byte(healthyTurnStateDelta), nil)
 	lease.observeHealthyTurnState([]byte(healthyTurnStateDone), nil)
 	lease.Release()
-	require.Equal(t, "WS健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope].value)
+	require.Equal(t, "WS健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope.shared()].value)
 }
 
 func TestOpenAIHealthyTurnStateWSFailedReplacementEvicts(t *testing.T) {

@@ -13,6 +13,9 @@ import (
 
 func (s *OpenAIGatewayService) acquireOpenAIWSWithHealthyTurnState(ctx context.Context, c *gin.Context, req openAIWSAcquireRequest, model string) (*openAIWSConnLease, error) {
 	attempt := s.newOpenAIHealthyTurnStateAttempt(c, req.Account, model, "ws:"+req.WSURL, req.ProxyURL, req.Headers)
+	if attempt != nil {
+		attempt.markStarted()
+	}
 	lease, err := s.getOpenAIWSConnPool().Acquire(ctx, req)
 	var dialErr *openAIWSDialError
 	// 严格续链依赖原连接，不能为了替换请求头破坏 previous_response_id 的归属。
@@ -49,6 +52,9 @@ func (s *OpenAIGatewayService) acquireOpenAIWSWithHealthyTurnState(ctx context.C
 
 func (s *OpenAIGatewayService) dialOpenAIWSWithHealthyTurnState(ctx context.Context, c *gin.Context, account *Account, model, wsURL string, headers http.Header, proxyURL string, dialer openAIWSClientDialer) (openAIWSClientConn, int, http.Header, *openAIHealthyTurnStateObserver, error) {
 	attempt := s.newOpenAIHealthyTurnStateAttempt(c, account, model, "ws:"+wsURL, proxyURL, headers)
+	if attempt != nil {
+		attempt.markStarted()
+	}
 	conn, status, responseHeaders, err := dialer.Dial(ctx, wsURL, headers, proxyURL)
 	if err != nil && attempt != nil {
 		retry, retryErr := attempt.claimRetry(ctx, status, responseHeaders, headers.Get(openAICodexTurnStateHeader))

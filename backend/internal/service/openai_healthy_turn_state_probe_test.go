@@ -127,10 +127,10 @@ func TestOpenAIHealthyTurnStateProbeDeferredCommitAndProxyIsolation(t *testing.T
 	request := upstream.requests[0]
 	foreign := gateway.newOpenAIHealthyTurnStateAttempt(nil, account, "gpt-5.4", "http:"+request.URL.String(), "", request.Header)
 	_, claimed := gateway.openaiHealthyTurnStates.claim(foreign.scope, "")
-	require.False(t, claimed, "不同出口不能使用此记录")
+	require.True(t, claimed, "共享池不按代理出口隔离")
 	matching := gateway.newOpenAIHealthyTurnStateAttempt(nil, account, "gpt-5.4", "http:"+request.URL.String(), account.Proxy.URL(), request.Header)
 	_, claimed = gateway.openaiHealthyTurnStates.claim(matching.scope, "")
-	require.True(t, claimed, "正式转发必须能使用同一出口的手动记录")
+	require.False(t, claimed, "同一条共享记录只能被领取一次")
 }
 
 func TestOpenAIHealthyTurnStateProbeIgnoresCooldown(t *testing.T) {

@@ -115,6 +115,11 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 		result.Status = "unhealthy"
 		return result, nil
 	}
+	if observer.firstOutputTooLate {
+		result.Status = "unhealthy"
+		result.Message = "首字超过 5 秒，未记录状态头"
+		return result, nil
+	}
 	if observer.candidate.value == "" {
 		result.Status = "no_header"
 		return result, nil
@@ -150,6 +155,9 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateHTTP(ctx context.Context, c 
 		return nil
 	}
 	req.Header.Del(openAICodexTurnStateHeader)
+	if attempt := openAIHealthyTurnStateAttemptFromRequest(req); attempt != nil {
+		attempt.markStarted()
+	}
 	// 直接发送一次，任何错误均不触发状态替换、重试或账号切换。
 	resp, err := s.doOpenAIUpstreamOnce(req, proxyURL, account)
 	if resp != nil && resp.Body != nil {
@@ -191,6 +199,10 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateWS(ctx context.Context, c *g
 		return nil
 	}
 	headers.Del(openAICodexTurnStateHeader)
+	attempt := s.newOpenAIHealthyTurnStateAttempt(c, account, result.Model, "ws:"+wsURL, proxyURL, headers)
+	if attempt != nil {
+		attempt.markStarted()
+	}
 	conn, status, responseHeaders, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, wsURL, headers, proxyURL)
 	if conn != nil {
 		defer conn.Close()
@@ -200,7 +212,6 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateWS(ctx context.Context, c *g
 		result.Message = "WebSocket 握手失败或超时"
 		return nil
 	}
-	attempt := s.newOpenAIHealthyTurnStateAttempt(c, account, result.Model, "ws:"+wsURL, proxyURL, headers)
 	observer := newOpenAIHealthyTurnStateProbeObserver(attempt, responseHeaders)
 	var payload map[string]any
 	if json.Unmarshal(body, &payload) != nil || conn.WriteJSON(ctx, s.buildOpenAIWSCreatePayload(payload, account)) != nil {
