@@ -116,7 +116,7 @@ func (a *openAIHealthyTurnStateAttempt) started(status int) bool {
 	if a.sent {
 		return true
 	}
-	// 替换请求在等待 429／503 后重新开始计时。
+	// 替换请求在等待后重新开始计时。
 	a.startedAt = time.Now()
 	a.httpStatus = status
 	if a.cache.repo != nil {
@@ -129,6 +129,7 @@ func (a *openAIHealthyTurnStateAttempt) started(status int) bool {
 			return false
 		}
 	}
+	a.currentState = a.borrowed.value
 	a.sent = true
 	return true
 }

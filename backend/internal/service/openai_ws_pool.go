@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	coderws "github.com/coder/websocket"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -95,6 +96,7 @@ type openAIWSHandshakeCompatibilityKey struct {
 }
 
 type openAIWSConnLease struct {
+	healthyModelGate   *openAIHealthyWSModelGate
 	healthyTurnStateMu sync.Mutex
 	healthyTurnState   *openAIHealthyTurnStateObserver
 	pool               *openAIWSConnPool
@@ -202,6 +204,7 @@ func (l *openAIWSConnLease) WriteJSON(value any, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
+	l.prepareHealthyModelRequest(value)
 	return conn.writeJSONWithTimeout(context.Background(), value, timeout)
 }
 
@@ -210,6 +213,7 @@ func (l *openAIWSConnLease) WriteJSONWithContextTimeout(ctx context.Context, val
 	if err != nil {
 		return err
 	}
+	l.prepareHealthyModelRequest(value)
 	return conn.writeJSONWithTimeout(ctx, value, timeout)
 }
 
@@ -218,37 +222,68 @@ func (l *openAIWSConnLease) WriteJSONContext(ctx context.Context, value any) err
 	if err != nil {
 		return err
 	}
+	l.prepareHealthyModelRequest(value)
 	return conn.writeJSON(value, ctx)
 }
 
 func (l *openAIWSConnLease) ReadMessage(timeout time.Duration) ([]byte, error) {
-	conn, err := l.activeConn()
-	if err != nil {
-		return nil, err
+	read := func() (coderws.MessageType, []byte, error) {
+		conn, err := l.activeConn()
+		if err != nil {
+			return 0, nil, err
+		}
+		payload, err := conn.readMessageWithTimeout(timeout)
+		return coderws.MessageText, payload, err
 	}
-	payload, readErr := conn.readMessageWithTimeout(timeout)
-	l.observeHealthyTurnState(payload, readErr)
-	return payload, readErr
+	if l != nil && l.healthyModelGate != nil {
+		_, payload, err := l.healthyModelGate.read(context.Background(), read)
+		return payload, err
+	}
+	_, payload, err := read()
+	if l != nil {
+		l.observeHealthyTurnState(payload, err)
+	}
+	return payload, err
 }
 
 func (l *openAIWSConnLease) ReadMessageContext(ctx context.Context) ([]byte, error) {
-	conn, err := l.activeConn()
-	if err != nil {
-		return nil, err
+	read := func() (coderws.MessageType, []byte, error) {
+		conn, err := l.activeConn()
+		if err != nil {
+			return 0, nil, err
+		}
+		payload, err := conn.readMessage(ctx)
+		return coderws.MessageText, payload, err
 	}
-	payload, readErr := conn.readMessage(ctx)
-	l.observeHealthyTurnState(payload, readErr)
-	return payload, readErr
+	if l != nil && l.healthyModelGate != nil {
+		_, payload, err := l.healthyModelGate.read(ctx, read)
+		return payload, err
+	}
+	_, payload, err := read()
+	if l != nil {
+		l.observeHealthyTurnState(payload, err)
+	}
+	return payload, err
 }
 
 func (l *openAIWSConnLease) ReadMessageWithContextTimeout(ctx context.Context, timeout time.Duration) ([]byte, error) {
-	conn, err := l.activeConn()
-	if err != nil {
-		return nil, err
+	read := func() (coderws.MessageType, []byte, error) {
+		conn, err := l.activeConn()
+		if err != nil {
+			return 0, nil, err
+		}
+		payload, err := conn.readMessageWithContextTimeout(ctx, timeout)
+		return coderws.MessageText, payload, err
 	}
-	payload, readErr := conn.readMessageWithContextTimeout(ctx, timeout)
-	l.observeHealthyTurnState(payload, readErr)
-	return payload, readErr
+	if l != nil && l.healthyModelGate != nil {
+		_, payload, err := l.healthyModelGate.read(ctx, read)
+		return payload, err
+	}
+	_, payload, err := read()
+	if l != nil {
+		l.observeHealthyTurnState(payload, err)
+	}
+	return payload, err
 }
 
 func (l *openAIWSConnLease) PingWithTimeout(timeout time.Duration) error {
@@ -280,6 +315,9 @@ func (l *openAIWSConnLease) Release() {
 	}
 	if !l.released.CompareAndSwap(false, true) {
 		return
+	}
+	if l.healthyModelGate != nil {
+		l.healthyModelGate.finish()
 	}
 	l.healthyTurnStateMu.Lock()
 	l.healthyTurnState.finish()

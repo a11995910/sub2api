@@ -232,6 +232,7 @@ type openAIHealthyTurnStateAttempt struct {
 	sent            bool
 	httpStatus      int
 	startedAt       time.Time
+	currentState    string
 }
 
 const openAIHealthyTurnStateFirstOutputLimit = 5 * time.Second
@@ -270,16 +271,27 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 	return &openAIHealthyTurnStateAttempt{
 		cache:  &s.openaiHealthyTurnStates,
 		scope:  openAIHealthyTurnStateScope{account.ID, model, [32]byte{}, transport, proxyID},
-		budget: budget, clientContext: clientCtx,
+		budget: budget, clientContext: clientCtx, currentState: headers.Get(openAICodexTurnStateHeader),
 		record: account.OpenAIHealthyTurnStateRecordEnabled(), replace: account.OpenAIHealthyTurnStateReplaceEnabled(),
 	}
 }
 
-// claimRetry 只允许真实 HTTP／握手 429、503 使用共享池补试一次，保留 Retry-After。
+// claimRetry 仅处理真实 HTTP／握手 429、503；模型不一致走独立入口。
 func (a *openAIHealthyTurnStateAttempt) claimRetry(ctx context.Context, status int, responseHeaders http.Header, current string) (bool, error) {
 	if a == nil || !a.replace || (status != http.StatusTooManyRequests && status != http.StatusServiceUnavailable) {
 		return false, nil
 	}
+	return a.claimReplacement(ctx, status, responseHeaders, current)
+}
+
+func (a *openAIHealthyTurnStateAttempt) claimModelMismatchRetry(ctx context.Context, headers http.Header, current string) (bool, error) {
+	if a == nil || !a.replace {
+		return false, nil
+	}
+	return a.claimReplacement(ctx, http.StatusBadGateway, headers, current)
+}
+
+func (a *openAIHealthyTurnStateAttempt) claimReplacement(ctx context.Context, status int, responseHeaders http.Header, current string) (bool, error) {
 	// 状态头替换仍独立遵守上游等待时间，不复用普通重试的截断策略。
 	delay := time.Second
 	now := time.Now()

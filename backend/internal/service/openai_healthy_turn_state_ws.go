@@ -46,6 +46,7 @@ func (s *OpenAIGatewayService) acquireOpenAIWSWithHealthyTurnState(ctx context.C
 	}
 	if err == nil && lease != nil {
 		lease.healthyTurnState = newOpenAIHealthyTurnStateObserver(attempt, lease.HandshakeHeaders())
+		s.prepareHealthyWSLeaseGate(lease, req)
 	}
 	return lease, err
 }
@@ -102,9 +103,18 @@ type openAIHealthyTurnStateFrameConn struct {
 	openaiwsv2.FrameConn
 	mu       sync.Mutex
 	observer *openAIHealthyTurnStateObserver
+	gate     *openAIHealthyWSModelGate
 }
 
 func (c *openAIHealthyTurnStateFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	if c.gate != nil {
+		return c.gate.read(ctx, func() (coderws.MessageType, []byte, error) {
+			c.mu.Lock()
+			conn := c.FrameConn
+			c.mu.Unlock()
+			return conn.ReadFrame(ctx)
+		})
+	}
 	kind, payload, err := c.FrameConn.ReadFrame(ctx)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -119,13 +129,28 @@ func (c *openAIHealthyTurnStateFrameConn) ReadFrame(ctx context.Context) (coderw
 	return kind, payload, err
 }
 
+func (c *openAIHealthyTurnStateFrameConn) WriteFrame(ctx context.Context, kind coderws.MessageType, payload []byte) error {
+	if c.gate != nil {
+		c.gate.begin(payload)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.FrameConn.WriteFrame(ctx, kind, payload)
+}
+
 func (c *openAIHealthyTurnStateFrameConn) Close() error {
+	c.mu.Lock()
 	err := c.FrameConn.Close()
+	c.mu.Unlock()
 	c.finishObservation()
 	return err
 }
 
 func (c *openAIHealthyTurnStateFrameConn) finishObservation() {
+	if c.gate != nil {
+		c.gate.finish()
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.observer.finish()

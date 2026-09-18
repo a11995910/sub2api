@@ -85,7 +85,7 @@ describe('OpenAIHealthyTurnStateTest', () => {
     await button(wrapper, 'testStart').trigger('click')
     await flushPromises()
     expect(testHealthyTurnState.mock.calls[0]?.[1]?.proxy_id).toBe(0)
-    expect(testHealthyTurnState.mock.calls[0]?.[1]?.model).toBe('gpt-5.6-sol')
+    expect(testHealthyTurnState.mock.calls[0]?.[1]?.model).toBe('gpt-6-astra')
     expect(wrapper.text()).toContain('testStatus.no_header')
   })
 })

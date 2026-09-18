@@ -1792,6 +1792,19 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 
 		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize, currentRequestedReasoningEffort, currentIntegrity)
+		// 健康头替换可能重建上游连接，续链绑定必须使用最终连接。
+		if currentConnID := strings.TrimSpace(sessionLease.ConnID()); currentConnID != connID {
+			connID, sessionConnID = currentConnID, currentConnID
+			turnState = strings.TrimSpace(sessionLease.HandshakeHeader(openAIWSTurnStateHeader))
+			if stateStore != nil && sessionHash != "" {
+				stateStore.DeleteSessionTurnState(groupID, sessionHash)
+				stateStore.BindSessionTurnState(groupID, sessionHash, turnState, s.openAIWSSessionStickyTTL())
+			}
+			if storeDisabled {
+				pinSessionConn(currentConnID)
+			}
+		}
+
 		if relayErr != nil {
 			lastTurnClean = false
 			if isOpenAIWSSessionPreempted(ctx) {

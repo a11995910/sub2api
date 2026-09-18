@@ -932,8 +932,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	if healthyTurnStateObserver != nil {
 		observedFrameConn := &openAIHealthyTurnStateFrameConn{FrameConn: upstreamFrameConn, observer: healthyTurnStateObserver}
+		s.prepareHealthyWSFrameGate(observedFrameConn, account, wsURL, headers, proxyURL, dialer)
 		upstreamFrameConn = observedFrameConn
-		defer observedFrameConn.finishObservation()
+		defer observedFrameConn.Close()
 	}
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,

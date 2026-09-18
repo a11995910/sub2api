@@ -544,6 +544,21 @@ readLoop:
 				}
 			}
 			message, readErr = lease.ReadMessageWithContextTimeout(upstreamReadCtx, currentReadTimeout)
+			if currentConnID := strings.TrimSpace(lease.ConnID()); currentConnID != connID {
+				connID = currentConnID
+				if c != nil {
+					c.Set(OpsOpenAIWSConnIDKey, connID)
+					c.Set(OpsOpenAIWSConnReusedKey, false)
+				}
+				handshakeTurnState = strings.TrimSpace(lease.HandshakeHeader(openAIWSTurnStateHeader))
+				if stateStore != nil && sessionHash != "" {
+					stateStore.DeleteSessionTurnState(groupID, sessionHash)
+					stateStore.BindSessionTurnState(groupID, sessionHash, handshakeTurnState, s.openAIWSSessionStickyTTL())
+				}
+				if c != nil {
+					s.relayOpenAICodexTurnState(c, account, lease.HandshakeHeaders())
+				}
+			}
 			if readErr == nil {
 				if documents, repaired := splitOpenAIConcatenatedJSONDocuments(message); repaired {
 					logOpenAIWSModeInfo(

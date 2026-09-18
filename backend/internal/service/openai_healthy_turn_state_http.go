@@ -18,48 +18,81 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 		attempt.markStarted()
 	}
 	response, err := s.doOpenAIUpstreamOnce(req, proxyURL, account)
+	headersReceivedAt := time.Now()
 	if attempt == nil || err != nil || response == nil {
 		return response, err
 	}
-	if req.GetBody != nil && (response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusServiceUnavailable) {
-		retry, retryErr := attempt.claimRetry(req.Context(), response.StatusCode, response.Header, req.Header.Get(openAICodexTurnStateHeader))
+	for {
+		mismatch := false
+		if response.StatusCode >= 200 && response.StatusCode < 300 && response.Body != nil {
+			mismatch, err = inspectOpenAIHealthyTurnStateHTTP(response, attempt.scope.model)
+			if err != nil {
+				_ = response.Body.Close()
+				attempt.failed()
+				return nil, err
+			}
+		}
+		if mismatch {
+			attempt.rejectModelMismatch(response.Header, req.Header.Get(openAICodexTurnStateHeader))
+		}
+		retry, retryErr := false, error(nil)
+		if req.GetBody != nil {
+			if mismatch {
+				retry, retryErr = attempt.claimModelMismatchRetry(req.Context(), response.Header, req.Header.Get(openAICodexTurnStateHeader))
+			} else {
+				retry, retryErr = attempt.claimRetry(req.Context(), response.StatusCode, response.Header, req.Header.Get(openAICodexTurnStateHeader))
+			}
+		}
 		if retryErr != nil {
 			if response.Body != nil {
 				_ = response.Body.Close()
 			}
 			return nil, retryErr
 		}
-		if retry {
-			body, bodyErr := req.GetBody()
-			if bodyErr != nil {
-				attempt.restore()
-				return response, nil
+		if !retry {
+			if mismatch {
+				return openAIModelMismatchHTTPResponse(response), nil
 			}
-			if !attempt.started(response.StatusCode) {
-				_ = body.Close()
-				return response, nil
+			break
+		}
+		body, bodyErr := req.GetBody()
+		if bodyErr != nil {
+			attempt.restore()
+			if mismatch {
+				return openAIModelMismatchHTTPResponse(response), nil
 			}
-			if response.Body != nil {
-				_ = response.Body.Close()
+			return response, nil
+		}
+		if !attempt.started(response.StatusCode) {
+			_ = body.Close()
+			if mismatch {
+				return openAIModelMismatchHTTPResponse(response), nil
 			}
-			retryReq := req.Clone(req.Context())
-			retryReq.Body = body
-			retryReq.Header.Set(openAICodexTurnStateHeader, attempt.borrowed.value)
-			response, err = s.doOpenAIUpstreamOnce(retryReq, proxyURL, account)
-			attempt.httpStatus = 0
-			if response != nil {
-				attempt.httpStatus = response.StatusCode
-			}
-			if err != nil || response == nil || response.StatusCode < 200 || response.StatusCode >= 300 {
-				// 交给传输层后无法确认是否已发送，取消也不能当作健康成功归还。
-				attempt.failed()
-				return response, err
-			}
+			return response, nil
+		}
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+		retryReq := req.Clone(req.Context())
+		retryReq.Body = body
+		retryReq.Header.Set(openAICodexTurnStateHeader, attempt.borrowed.value)
+		req = retryReq
+		response, err = s.doOpenAIUpstreamOnce(retryReq, proxyURL, account)
+		headersReceivedAt = time.Now()
+		attempt.httpStatus = 0
+		if response != nil {
+			attempt.httpStatus = response.StatusCode
+		}
+		if err != nil || response == nil || response.StatusCode < 200 || response.StatusCode >= 300 {
+			attempt.failed()
+			return response, err
 		}
 	}
+
 	if response.Body != nil && response.StatusCode >= 200 && response.StatusCode < 300 {
 		observer := newOpenAIHealthyTurnStateObserver(attempt, response.Header)
 		if observer != nil {
+			observer.candidate.expiresAt = headersReceivedAt.Add(openAIHealthyTurnStateTTL)
 			response.Body = newOpenAIHealthyTurnStateBody(response, observer)
 		}
 	} else if response.Body == nil {
@@ -102,6 +135,9 @@ func (b *openAIHealthyTurnStateBody) Read(p []byte) (int, error) {
 		return n, err
 	}
 	b.observeBytes(p[:n])
+	if b.observer.modelMismatch && !b.observer.preview {
+		return 0, errOpenAIUpstreamModelMismatch
+	}
 	if err != nil {
 		if err == io.EOF {
 			if b.sse {
@@ -112,6 +148,9 @@ func (b *openAIHealthyTurnStateBody) Read(p []byte) (int, error) {
 			}
 		}
 		b.observer.finish()
+	}
+	if b.observer.modelMismatch && !b.observer.preview {
+		return 0, errOpenAIUpstreamModelMismatch
 	}
 	return n, err
 }
@@ -213,10 +252,11 @@ func (b *openAIHealthyTurnStateBody) Close() error {
 }
 
 type openAIHealthyTurnStateObserver struct {
-	attempt                             *openAIHealthyTurnStateAttempt
-	candidate                           openAIHealthyTurnStateEntry
-	healthy, terminal, failed, finished bool
-	firstOutputTooLate                  bool
+	attempt                               *openAIHealthyTurnStateAttempt
+	candidate                             openAIHealthyTurnStateEntry
+	healthy, terminal, failed, finished   bool
+	firstOutputTooLate                    bool
+	modelObserved, modelMismatch, preview bool
 }
 
 func newOpenAIHealthyTurnStateObserver(attempt *openAIHealthyTurnStateAttempt, headers http.Header) *openAIHealthyTurnStateObserver {
@@ -227,9 +267,6 @@ func newOpenAIHealthyTurnStateObserver(attempt *openAIHealthyTurnStateAttempt, h
 	value := extractOpenAICodexTurnState(headers)
 	if len(value) > openAIHealthyTurnStateMaxBytes {
 		value = ""
-	}
-	if (!attempt.record || value == "") && attempt.borrowed.value == "" {
-		return nil
 	}
 	return &openAIHealthyTurnStateObserver{attempt: attempt, candidate: openAIHealthyTurnStateEntry{value: value, expiresAt: time.Now().Add(openAIHealthyTurnStateTTL)}}
 }
@@ -247,6 +284,9 @@ func (o *openAIHealthyTurnStateObserver) observe(payload []byte, event string) {
 	}
 	if event == "" {
 		event = gjson.GetBytes(payload, "type").String()
+	}
+	if o.observeModel(payload) {
+		return
 	}
 	status := gjson.GetBytes(payload, "response.status").String()
 	if event == "error" || event == "response.failed" || event == "response.incomplete" || status == "failed" || status == "incomplete" || gjson.GetBytes(payload, "response.error").IsObject() {
@@ -269,6 +309,9 @@ func (o *openAIHealthyTurnStateObserver) observeJSON(payload []byte) {
 	if o == nil || !gjson.ValidBytes(payload) {
 		return
 	}
+	if o.observeModel(payload) {
+		return
+	}
 	if gjson.GetBytes(payload, "error").IsObject() || gjson.GetBytes(payload, "status").String() != "completed" {
 		return
 	}
@@ -287,6 +330,9 @@ func (o *openAIHealthyTurnStateObserver) finish() {
 		return
 	}
 	o.finished = true
+	if o.preview {
+		return
+	}
 	if o.healthy && o.terminal && !o.failed {
 		o.attempt.completed(true)
 		if o.attempt.record && !o.firstOutputTooLate {
@@ -296,7 +342,10 @@ func (o *openAIHealthyTurnStateObserver) finish() {
 	}
 	// 首字后的错误、异常 EOF、超时和空成功响应也会淘汰已尝试的记录。
 	o.attempt.failed()
-	if o.attempt.record && o.healthy {
+	if o.modelMismatch {
+		o.attempt.cache.reject(o.attempt.scope, openAIHealthyTurnStateEntry{value: o.attempt.currentState})
+	}
+	if o.modelMismatch || (o.attempt.record && o.healthy) {
 		o.attempt.cache.reject(o.attempt.scope, o.candidate)
 	}
 }

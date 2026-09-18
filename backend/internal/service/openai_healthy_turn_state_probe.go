@@ -36,7 +36,7 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
-		model = "gpt-5.6-sol"
+		model = "gpt-6-astra"
 	}
 	if !account.IsModelSupported(model) || isOpenAIImageModel(model) {
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_MODEL", "请选择账号支持的文本模型")
@@ -109,6 +109,11 @@ func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, ac
 		observer = gateway.probeHealthyTurnStateHTTP(ctx, probeContext, account, token, session, proxyURL, body, result)
 	}
 	if observer == nil {
+		return result, nil
+	}
+	if observer.modelMismatch {
+		result.Status = "unhealthy"
+		result.Message = "上游响应模型与请求模型不一致，未记录状态头"
 		return result, nil
 	}
 	if ctx.Err() != nil || !observer.healthy || !observer.terminal || observer.failed {
