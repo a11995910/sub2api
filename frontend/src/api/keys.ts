@@ -56,7 +56,6 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
  * @param rateLimitData - Optional rate limit fields
  * @param openaiFastModeEnabled - When true, OpenAI requests without service_tier use priority by default
- * @param autoGroupFallbackEnabled - Whether this key may use the configured group fallback chain
  * @returns Created API key
  */
 export async function create(
@@ -68,8 +67,7 @@ export async function create(
   quota?: number,
   expiresInDays?: number,
   rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
-  openaiFastModeEnabled?: boolean,
-  autoGroupFallbackEnabled?: boolean
+  openaiFastModeEnabled?: boolean
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -80,9 +78,6 @@ export async function create(
   }
   if (openaiFastModeEnabled !== undefined) {
     payload.openai_fast_mode_enabled = openaiFastModeEnabled
-  }
-  if (autoGroupFallbackEnabled !== undefined) {
-    payload.auto_group_fallback_enabled = autoGroupFallbackEnabled
   }
   if (ipWhitelist && ipWhitelist.length > 0) {
     payload.ip_whitelist = ipWhitelist

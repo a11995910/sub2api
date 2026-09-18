@@ -1037,7 +1037,6 @@ function availableGroupFromKey(key: ApiKey): UserAvailableGroup | null {
     promo_active: group.promo_active,
     is_exclusive: group.is_exclusive,
     allow_image_generation: group.allow_image_generation,
-    image_super_resolution_enabled: group.image_super_resolution_enabled,
     image_rate_independent: group.image_rate_independent,
     cache_hit_quarter_to_input_enabled: group.cache_hit_quarter_to_input_enabled,
     cache_hit_target_percent: group.cache_hit_target_percent ?? 90,

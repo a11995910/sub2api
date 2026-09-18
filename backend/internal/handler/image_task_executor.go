@@ -63,7 +63,6 @@ func (h *AsyncImageHandler) Execute(ctx context.Context, task *service.ImageTask
 	}
 	requestContext := context.WithValue(request.Context(), ctxkey.UserID, apiKey.User.ID)
 	requestContext = context.WithValue(requestContext, ctxkey.Group, apiKey.Group)
-	requestContext = service.WithAutoGroupFallbackState(requestContext, apiKey)
 	taskContext.Request = request.WithContext(requestContext)
 	taskContext.Set(securityAuditCompletedContextKey, true)
 

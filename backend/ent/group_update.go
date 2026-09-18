@@ -456,122 +456,6 @@ func (_u *GroupUpdate) SetNillableImageResponseFormat(v *string) *GroupUpdate {
 	return _u
 }
 
-// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
-func (_u *GroupUpdate) SetImageSuperResolutionEnabled(v bool) *GroupUpdate {
-	_u.mutation.SetImageSuperResolutionEnabled(v)
-	return _u
-}
-
-// SetNillableImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpdate {
-	if v != nil {
-		_u.SetImageSuperResolutionEnabled(*v)
-	}
-	return _u
-}
-
-// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
-func (_u *GroupUpdate) SetImage2kEnhancementEnabled(v bool) *GroupUpdate {
-	_u.mutation.SetImage2kEnhancementEnabled(v)
-	return _u
-}
-
-// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableImage2kEnhancementEnabled(v *bool) *GroupUpdate {
-	if v != nil {
-		_u.SetImage2kEnhancementEnabled(*v)
-	}
-	return _u
-}
-
-// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
-func (_u *GroupUpdate) SetImage2kEnhancementGroupID(v int64) *GroupUpdate {
-	_u.mutation.ResetImage2kEnhancementGroupID()
-	_u.mutation.SetImage2kEnhancementGroupID(v)
-	return _u
-}
-
-// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableImage2kEnhancementGroupID(v *int64) *GroupUpdate {
-	if v != nil {
-		_u.SetImage2kEnhancementGroupID(*v)
-	}
-	return _u
-}
-
-// AddImage2kEnhancementGroupID adds value to the "image_2k_enhancement_group_id" field.
-func (_u *GroupUpdate) AddImage2kEnhancementGroupID(v int64) *GroupUpdate {
-	_u.mutation.AddImage2kEnhancementGroupID(v)
-	return _u
-}
-
-// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
-func (_u *GroupUpdate) ClearImage2kEnhancementGroupID() *GroupUpdate {
-	_u.mutation.ClearImage2kEnhancementGroupID()
-	return _u
-}
-
-// SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
-func (_u *GroupUpdate) SetImage4kEnhancementEnabled(v bool) *GroupUpdate {
-	_u.mutation.SetImage4kEnhancementEnabled(v)
-	return _u
-}
-
-// SetNillableImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableImage4kEnhancementEnabled(v *bool) *GroupUpdate {
-	if v != nil {
-		_u.SetImage4kEnhancementEnabled(*v)
-	}
-	return _u
-}
-
-// SetImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field.
-func (_u *GroupUpdate) SetImage4kEnhancementGroupID(v int64) *GroupUpdate {
-	_u.mutation.ResetImage4kEnhancementGroupID()
-	_u.mutation.SetImage4kEnhancementGroupID(v)
-	return _u
-}
-
-// SetNillableImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableImage4kEnhancementGroupID(v *int64) *GroupUpdate {
-	if v != nil {
-		_u.SetImage4kEnhancementGroupID(*v)
-	}
-	return _u
-}
-
-// AddImage4kEnhancementGroupID adds value to the "image_4k_enhancement_group_id" field.
-func (_u *GroupUpdate) AddImage4kEnhancementGroupID(v int64) *GroupUpdate {
-	_u.mutation.AddImage4kEnhancementGroupID(v)
-	return _u
-}
-
-// ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
-func (_u *GroupUpdate) ClearImage4kEnhancementGroupID() *GroupUpdate {
-	_u.mutation.ClearImage4kEnhancementGroupID()
-	return _u
-}
-
-// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
-func (_u *GroupUpdate) SetImage4kEnhancementModel(v string) *GroupUpdate {
-	_u.mutation.SetImage4kEnhancementModel(v)
-	return _u
-}
-
-// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableImage4kEnhancementModel(v *string) *GroupUpdate {
-	if v != nil {
-		_u.SetImage4kEnhancementModel(*v)
-	}
-	return _u
-}
-
-// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
-func (_u *GroupUpdate) ClearImage4kEnhancementModel() *GroupUpdate {
-	_u.mutation.ClearImage4kEnhancementModel()
-	return _u
-}
-
 // SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
 func (_u *GroupUpdate) SetAllowBatchImageGeneration(v bool) *GroupUpdate {
 	_u.mutation.SetAllowBatchImageGeneration(v)
@@ -1181,33 +1065,6 @@ func (_u *GroupUpdate) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdate 
 // ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
 func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 	_u.mutation.ClearFallbackGroupIDOnInvalidRequest()
-	return _u
-}
-
-// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
-func (_u *GroupUpdate) SetAutoFallbackGroupID(v int64) *GroupUpdate {
-	_u.mutation.ResetAutoFallbackGroupID()
-	_u.mutation.SetAutoFallbackGroupID(v)
-	return _u
-}
-
-// SetNillableAutoFallbackGroupID sets the "auto_fallback_group_id" field if the given value is not nil.
-func (_u *GroupUpdate) SetNillableAutoFallbackGroupID(v *int64) *GroupUpdate {
-	if v != nil {
-		_u.SetAutoFallbackGroupID(*v)
-	}
-	return _u
-}
-
-// AddAutoFallbackGroupID adds value to the "auto_fallback_group_id" field.
-func (_u *GroupUpdate) AddAutoFallbackGroupID(v int64) *GroupUpdate {
-	_u.mutation.AddAutoFallbackGroupID(v)
-	return _u
-}
-
-// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
-func (_u *GroupUpdate) ClearAutoFallbackGroupID() *GroupUpdate {
-	_u.mutation.ClearAutoFallbackGroupID()
 	return _u
 }
 
@@ -1877,11 +1734,6 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "image_response_format", err: fmt.Errorf(`ent: validator failed for field "Group.image_response_format": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
-		if err := group.Image4kEnhancementModelValidator(v); err != nil {
-			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.CacheHitHalfLifeDays(); ok {
 		if err := group.CacheHitHalfLifeDaysValidator(v); err != nil {
 			return &ValidationError{Name: "cache_hit_half_life_days", err: fmt.Errorf(`ent: validator failed for field "Group.cache_hit_half_life_days": %w`, err)}
@@ -2053,39 +1905,6 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ImageResponseFormat(); ok {
 		_spec.SetField(group.FieldImageResponseFormat, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
-		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.Image2kEnhancementEnabled(); ok {
-		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.Image2kEnhancementGroupID(); ok {
-		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedImage2kEnhancementGroupID(); ok {
-		_spec.AddField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if _u.mutation.Image2kEnhancementGroupIDCleared() {
-		_spec.ClearField(group.FieldImage2kEnhancementGroupID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
-		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.Image4kEnhancementGroupID(); ok {
-		_spec.SetField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedImage4kEnhancementGroupID(); ok {
-		_spec.AddField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if _u.mutation.Image4kEnhancementGroupIDCleared() {
-		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.Image4kEnhancementModel(); ok {
-		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
-	}
-	if _u.mutation.Image4kEnhancementModelCleared() {
-		_spec.ClearField(group.FieldImage4kEnhancementModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
@@ -2280,15 +2099,6 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.AutoFallbackGroupID(); ok {
-		_spec.SetField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedAutoFallbackGroupID(); ok {
-		_spec.AddField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
-	}
-	if _u.mutation.AutoFallbackGroupIDCleared() {
-		_spec.ClearField(group.FieldAutoFallbackGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -3171,122 +2981,6 @@ func (_u *GroupUpdateOne) SetNillableImageResponseFormat(v *string) *GroupUpdate
 	return _u
 }
 
-// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
-func (_u *GroupUpdateOne) SetImageSuperResolutionEnabled(v bool) *GroupUpdateOne {
-	_u.mutation.SetImageSuperResolutionEnabled(v)
-	return _u
-}
-
-// SetNillableImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableImageSuperResolutionEnabled(v *bool) *GroupUpdateOne {
-	if v != nil {
-		_u.SetImageSuperResolutionEnabled(*v)
-	}
-	return _u
-}
-
-// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
-func (_u *GroupUpdateOne) SetImage2kEnhancementEnabled(v bool) *GroupUpdateOne {
-	_u.mutation.SetImage2kEnhancementEnabled(v)
-	return _u
-}
-
-// SetNillableImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableImage2kEnhancementEnabled(v *bool) *GroupUpdateOne {
-	if v != nil {
-		_u.SetImage2kEnhancementEnabled(*v)
-	}
-	return _u
-}
-
-// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
-func (_u *GroupUpdateOne) SetImage2kEnhancementGroupID(v int64) *GroupUpdateOne {
-	_u.mutation.ResetImage2kEnhancementGroupID()
-	_u.mutation.SetImage2kEnhancementGroupID(v)
-	return _u
-}
-
-// SetNillableImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableImage2kEnhancementGroupID(v *int64) *GroupUpdateOne {
-	if v != nil {
-		_u.SetImage2kEnhancementGroupID(*v)
-	}
-	return _u
-}
-
-// AddImage2kEnhancementGroupID adds value to the "image_2k_enhancement_group_id" field.
-func (_u *GroupUpdateOne) AddImage2kEnhancementGroupID(v int64) *GroupUpdateOne {
-	_u.mutation.AddImage2kEnhancementGroupID(v)
-	return _u
-}
-
-// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
-func (_u *GroupUpdateOne) ClearImage2kEnhancementGroupID() *GroupUpdateOne {
-	_u.mutation.ClearImage2kEnhancementGroupID()
-	return _u
-}
-
-// SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
-func (_u *GroupUpdateOne) SetImage4kEnhancementEnabled(v bool) *GroupUpdateOne {
-	_u.mutation.SetImage4kEnhancementEnabled(v)
-	return _u
-}
-
-// SetNillableImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableImage4kEnhancementEnabled(v *bool) *GroupUpdateOne {
-	if v != nil {
-		_u.SetImage4kEnhancementEnabled(*v)
-	}
-	return _u
-}
-
-// SetImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field.
-func (_u *GroupUpdateOne) SetImage4kEnhancementGroupID(v int64) *GroupUpdateOne {
-	_u.mutation.ResetImage4kEnhancementGroupID()
-	_u.mutation.SetImage4kEnhancementGroupID(v)
-	return _u
-}
-
-// SetNillableImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableImage4kEnhancementGroupID(v *int64) *GroupUpdateOne {
-	if v != nil {
-		_u.SetImage4kEnhancementGroupID(*v)
-	}
-	return _u
-}
-
-// AddImage4kEnhancementGroupID adds value to the "image_4k_enhancement_group_id" field.
-func (_u *GroupUpdateOne) AddImage4kEnhancementGroupID(v int64) *GroupUpdateOne {
-	_u.mutation.AddImage4kEnhancementGroupID(v)
-	return _u
-}
-
-// ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
-func (_u *GroupUpdateOne) ClearImage4kEnhancementGroupID() *GroupUpdateOne {
-	_u.mutation.ClearImage4kEnhancementGroupID()
-	return _u
-}
-
-// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
-func (_u *GroupUpdateOne) SetImage4kEnhancementModel(v string) *GroupUpdateOne {
-	_u.mutation.SetImage4kEnhancementModel(v)
-	return _u
-}
-
-// SetNillableImage4kEnhancementModel sets the "image_4k_enhancement_model" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableImage4kEnhancementModel(v *string) *GroupUpdateOne {
-	if v != nil {
-		_u.SetImage4kEnhancementModel(*v)
-	}
-	return _u
-}
-
-// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
-func (_u *GroupUpdateOne) ClearImage4kEnhancementModel() *GroupUpdateOne {
-	_u.mutation.ClearImage4kEnhancementModel()
-	return _u
-}
-
 // SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
 func (_u *GroupUpdateOne) SetAllowBatchImageGeneration(v bool) *GroupUpdateOne {
 	_u.mutation.SetAllowBatchImageGeneration(v)
@@ -3896,33 +3590,6 @@ func (_u *GroupUpdateOne) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpda
 // ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
 func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne {
 	_u.mutation.ClearFallbackGroupIDOnInvalidRequest()
-	return _u
-}
-
-// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
-func (_u *GroupUpdateOne) SetAutoFallbackGroupID(v int64) *GroupUpdateOne {
-	_u.mutation.ResetAutoFallbackGroupID()
-	_u.mutation.SetAutoFallbackGroupID(v)
-	return _u
-}
-
-// SetNillableAutoFallbackGroupID sets the "auto_fallback_group_id" field if the given value is not nil.
-func (_u *GroupUpdateOne) SetNillableAutoFallbackGroupID(v *int64) *GroupUpdateOne {
-	if v != nil {
-		_u.SetAutoFallbackGroupID(*v)
-	}
-	return _u
-}
-
-// AddAutoFallbackGroupID adds value to the "auto_fallback_group_id" field.
-func (_u *GroupUpdateOne) AddAutoFallbackGroupID(v int64) *GroupUpdateOne {
-	_u.mutation.AddAutoFallbackGroupID(v)
-	return _u
-}
-
-// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
-func (_u *GroupUpdateOne) ClearAutoFallbackGroupID() *GroupUpdateOne {
-	_u.mutation.ClearAutoFallbackGroupID()
 	return _u
 }
 
@@ -4605,11 +4272,6 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "image_response_format", err: fmt.Errorf(`ent: validator failed for field "Group.image_response_format": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.Image4kEnhancementModel(); ok {
-		if err := group.Image4kEnhancementModelValidator(v); err != nil {
-			return &ValidationError{Name: "image_4k_enhancement_model", err: fmt.Errorf(`ent: validator failed for field "Group.image_4k_enhancement_model": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.CacheHitHalfLifeDays(); ok {
 		if err := group.CacheHitHalfLifeDaysValidator(v); err != nil {
 			return &ValidationError{Name: "cache_hit_half_life_days", err: fmt.Errorf(`ent: validator failed for field "Group.cache_hit_half_life_days": %w`, err)}
@@ -4798,39 +4460,6 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ImageResponseFormat(); ok {
 		_spec.SetField(group.FieldImageResponseFormat, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.ImageSuperResolutionEnabled(); ok {
-		_spec.SetField(group.FieldImageSuperResolutionEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.Image2kEnhancementEnabled(); ok {
-		_spec.SetField(group.FieldImage2kEnhancementEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.Image2kEnhancementGroupID(); ok {
-		_spec.SetField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedImage2kEnhancementGroupID(); ok {
-		_spec.AddField(group.FieldImage2kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if _u.mutation.Image2kEnhancementGroupIDCleared() {
-		_spec.ClearField(group.FieldImage2kEnhancementGroupID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.Image4kEnhancementEnabled(); ok {
-		_spec.SetField(group.FieldImage4kEnhancementEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.Image4kEnhancementGroupID(); ok {
-		_spec.SetField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedImage4kEnhancementGroupID(); ok {
-		_spec.AddField(group.FieldImage4kEnhancementGroupID, field.TypeInt64, value)
-	}
-	if _u.mutation.Image4kEnhancementGroupIDCleared() {
-		_spec.ClearField(group.FieldImage4kEnhancementGroupID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.Image4kEnhancementModel(); ok {
-		_spec.SetField(group.FieldImage4kEnhancementModel, field.TypeString, value)
-	}
-	if _u.mutation.Image4kEnhancementModelCleared() {
-		_spec.ClearField(group.FieldImage4kEnhancementModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
@@ -5025,15 +4654,6 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.AutoFallbackGroupID(); ok {
-		_spec.SetField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedAutoFallbackGroupID(); ok {
-		_spec.AddField(group.FieldAutoFallbackGroupID, field.TypeInt64, value)
-	}
-	if _u.mutation.AutoFallbackGroupIDCleared() {
-		_spec.ClearField(group.FieldAutoFallbackGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)

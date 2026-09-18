@@ -124,28 +124,6 @@ func (Group) Fields() []ent.Field {
 			Default("b64_json").
 			MaxLen(16).
 			Comment("图片响应默认传输方式：b64_json 或 url；客户显式 response_format 优先"),
-		field.Bool("image_super_resolution_enabled").
-			Default(false).
-			Comment("是否对图片生成结果自动执行 4K 超分"),
-		field.Bool("image_2k_enhancement_enabled").
-			Default(false).
-			Comment("是否在 2K 生图命中后调用指定图片分组做二段提升"),
-		field.Int64("image_2k_enhancement_group_id").
-			Optional().
-			Nillable().
-			Comment("2K 生图二段提升使用的目标图片分组 ID"),
-		field.Bool("image_4k_enhancement_enabled").
-			Default(false).
-			Comment("是否在 4K 生图命中后调用指定图片分组做二段提升"),
-		field.Int64("image_4k_enhancement_group_id").
-			Optional().
-			Nillable().
-			Comment("4K 生图二段提升使用的目标图片分组 ID"),
-		field.String("image_4k_enhancement_model").
-			MaxLen(100).
-			Optional().
-			Nillable().
-			Comment("4K 生图二段提升使用的目标图片模型；为空时沿用目标分组自动模型解析"),
 		field.Bool("allow_batch_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用批量图片生成能力"),
@@ -269,11 +247,6 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("无效请求兜底使用的分组 ID"),
-		field.Int64("auto_fallback_group_id").
-			Optional().
-			Nillable().
-			Comment("当前分组支持的模型无可用账号时自动承接的分组 ID"),
-
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{}).
 			Optional().

@@ -32,18 +32,7 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	currentGroupID := groupID
-	for {
-		account, err := s.selectAccountForModelWithExclusionsInGroup(ctx, currentGroupID, sessionHash, requestedModel, excludedIDs)
-		if err == nil || !isAutoGroupFallbackSelectionError(err) {
-			return account, err
-		}
-		nextGroupID, ok := advanceAutoGroupFallback(ctx, s.groupRepo, currentGroupID, requestedModel, s.DiagnoseModelAvailabilityForPlatform)
-		if !ok {
-			return nil, err
-		}
-		currentGroupID = nextGroupID
-	}
+	return s.selectAccountForModelWithExclusionsInGroup(ctx, groupID, sessionHash, requestedModel, excludedIDs)
 }
 
 func (s *GatewayService) selectAccountForModelWithExclusionsInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
@@ -113,18 +102,7 @@ func (s *GatewayService) selectAccountForModelWithExclusionsInGroup(ctx context.
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
 // sub2apiUserID: 系统用户 ID，用于二维亲和调度
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
-	currentGroupID := groupID
-	for {
-		selection, err := s.selectAccountWithLoadAwarenessInGroup(ctx, currentGroupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
-		if err == nil || !isAutoGroupFallbackSelectionError(err) {
-			return selection, err
-		}
-		nextGroupID, ok := advanceAutoGroupFallback(ctx, s.groupRepo, currentGroupID, requestedModel, s.DiagnoseModelAvailabilityForPlatform)
-		if !ok {
-			return nil, err
-		}
-		currentGroupID = nextGroupID
-	}
+	return s.selectAccountWithLoadAwarenessInGroup(ctx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
 }
 
 func (s *GatewayService) selectAccountWithLoadAwarenessInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {

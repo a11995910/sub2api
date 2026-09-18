@@ -112,53 +112,52 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	key                         *string
-	name                        *string
-	status                      *string
-	openai_fast_mode_enabled    *bool
-	auto_group_fallback_enabled *bool
-	last_used_at                *time.Time
-	ip_whitelist                *[]string
-	appendip_whitelist          []string
-	ip_blacklist                *[]string
-	appendip_blacklist          []string
-	quota                       *float64
-	addquota                    *float64
-	quota_used                  *float64
-	addquota_used               *float64
-	expires_at                  *time.Time
-	rate_limit_5h               *float64
-	addrate_limit_5h            *float64
-	rate_limit_1d               *float64
-	addrate_limit_1d            *float64
-	rate_limit_7d               *float64
-	addrate_limit_7d            *float64
-	usage_5h                    *float64
-	addusage_5h                 *float64
-	usage_1d                    *float64
-	addusage_1d                 *float64
-	usage_7d                    *float64
-	addusage_7d                 *float64
-	window_5h_start             *time.Time
-	window_1d_start             *time.Time
-	window_7d_start             *time.Time
-	clearedFields               map[string]struct{}
-	user                        *int64
-	cleareduser                 bool
-	group                       *int64
-	clearedgroup                bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*APIKey, error)
-	predicates                  []predicate.APIKey
+	op                       Op
+	typ                      string
+	id                       *int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	deleted_at               *time.Time
+	key                      *string
+	name                     *string
+	status                   *string
+	openai_fast_mode_enabled *bool
+	last_used_at             *time.Time
+	ip_whitelist             *[]string
+	appendip_whitelist       []string
+	ip_blacklist             *[]string
+	appendip_blacklist       []string
+	quota                    *float64
+	addquota                 *float64
+	quota_used               *float64
+	addquota_used            *float64
+	expires_at               *time.Time
+	rate_limit_5h            *float64
+	addrate_limit_5h         *float64
+	rate_limit_1d            *float64
+	addrate_limit_1d         *float64
+	rate_limit_7d            *float64
+	addrate_limit_7d         *float64
+	usage_5h                 *float64
+	addusage_5h              *float64
+	usage_1d                 *float64
+	addusage_1d              *float64
+	usage_7d                 *float64
+	addusage_7d              *float64
+	window_5h_start          *time.Time
+	window_1d_start          *time.Time
+	window_7d_start          *time.Time
+	clearedFields            map[string]struct{}
+	user                     *int64
+	cleareduser              bool
+	group                    *int64
+	clearedgroup             bool
+	usage_logs               map[int64]struct{}
+	removedusage_logs        map[int64]struct{}
+	clearedusage_logs        bool
+	done                     bool
+	oldValue                 func(context.Context) (*APIKey, error)
+	predicates               []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -607,42 +606,6 @@ func (m *APIKeyMutation) OldOpenaiFastModeEnabled(ctx context.Context) (v bool, 
 // ResetOpenaiFastModeEnabled resets all changes to the "openai_fast_mode_enabled" field.
 func (m *APIKeyMutation) ResetOpenaiFastModeEnabled() {
 	m.openai_fast_mode_enabled = nil
-}
-
-// SetAutoGroupFallbackEnabled sets the "auto_group_fallback_enabled" field.
-func (m *APIKeyMutation) SetAutoGroupFallbackEnabled(b bool) {
-	m.auto_group_fallback_enabled = &b
-}
-
-// AutoGroupFallbackEnabled returns the value of the "auto_group_fallback_enabled" field in the mutation.
-func (m *APIKeyMutation) AutoGroupFallbackEnabled() (r bool, exists bool) {
-	v := m.auto_group_fallback_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAutoGroupFallbackEnabled returns the old "auto_group_fallback_enabled" field's value of the APIKey entity.
-// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *APIKeyMutation) OldAutoGroupFallbackEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAutoGroupFallbackEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAutoGroupFallbackEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAutoGroupFallbackEnabled: %w", err)
-	}
-	return oldValue.AutoGroupFallbackEnabled, nil
-}
-
-// ResetAutoGroupFallbackEnabled resets all changes to the "auto_group_fallback_enabled" field.
-func (m *APIKeyMutation) ResetAutoGroupFallbackEnabled() {
-	m.auto_group_fallback_enabled = nil
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1610,7 +1573,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1637,9 +1600,6 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.openai_fast_mode_enabled != nil {
 		fields = append(fields, apikey.FieldOpenaiFastModeEnabled)
-	}
-	if m.auto_group_fallback_enabled != nil {
-		fields = append(fields, apikey.FieldAutoGroupFallbackEnabled)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1712,8 +1672,6 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case apikey.FieldOpenaiFastModeEnabled:
 		return m.OpenaiFastModeEnabled()
-	case apikey.FieldAutoGroupFallbackEnabled:
-		return m.AutoGroupFallbackEnabled()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1771,8 +1729,6 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStatus(ctx)
 	case apikey.FieldOpenaiFastModeEnabled:
 		return m.OldOpenaiFastModeEnabled(ctx)
-	case apikey.FieldAutoGroupFallbackEnabled:
-		return m.OldAutoGroupFallbackEnabled(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1874,13 +1830,6 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOpenaiFastModeEnabled(v)
-		return nil
-	case apikey.FieldAutoGroupFallbackEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAutoGroupFallbackEnabled(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2218,9 +2167,6 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldOpenaiFastModeEnabled:
 		m.ResetOpenaiFastModeEnabled()
-		return nil
-	case apikey.FieldAutoGroupFallbackEnabled:
-		m.ResetAutoGroupFallbackEnabled()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
@@ -23266,14 +23212,6 @@ type GroupMutation struct {
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
 	image_response_format                   *string
-	image_super_resolution_enabled          *bool
-	image_2k_enhancement_enabled            *bool
-	image_2k_enhancement_group_id           *int64
-	addimage_2k_enhancement_group_id        *int64
-	image_4k_enhancement_enabled            *bool
-	image_4k_enhancement_group_id           *int64
-	addimage_4k_enhancement_group_id        *int64
-	image_4k_enhancement_model              *string
 	allow_batch_image_generation            *bool
 	image_rate_independent                  *bool
 	cache_hit_quarter_to_input_enabled      *bool
@@ -23323,8 +23261,6 @@ type GroupMutation struct {
 	addfallback_group_id                    *int64
 	fallback_group_id_on_invalid_request    *int64
 	addfallback_group_id_on_invalid_request *int64
-	auto_fallback_group_id                  *int64
-	addauto_fallback_group_id               *int64
 	model_routing                           *map[string][]int64
 	model_routing_enabled                   *bool
 	mcp_xml_inject                          *bool
@@ -24659,303 +24595,6 @@ func (m *GroupMutation) OldImageResponseFormat(ctx context.Context) (v string, e
 // ResetImageResponseFormat resets all changes to the "image_response_format" field.
 func (m *GroupMutation) ResetImageResponseFormat() {
 	m.image_response_format = nil
-}
-
-// SetImageSuperResolutionEnabled sets the "image_super_resolution_enabled" field.
-func (m *GroupMutation) SetImageSuperResolutionEnabled(b bool) {
-	m.image_super_resolution_enabled = &b
-}
-
-// ImageSuperResolutionEnabled returns the value of the "image_super_resolution_enabled" field in the mutation.
-func (m *GroupMutation) ImageSuperResolutionEnabled() (r bool, exists bool) {
-	v := m.image_super_resolution_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldImageSuperResolutionEnabled returns the old "image_super_resolution_enabled" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldImageSuperResolutionEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldImageSuperResolutionEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldImageSuperResolutionEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldImageSuperResolutionEnabled: %w", err)
-	}
-	return oldValue.ImageSuperResolutionEnabled, nil
-}
-
-// ResetImageSuperResolutionEnabled resets all changes to the "image_super_resolution_enabled" field.
-func (m *GroupMutation) ResetImageSuperResolutionEnabled() {
-	m.image_super_resolution_enabled = nil
-}
-
-// SetImage2kEnhancementEnabled sets the "image_2k_enhancement_enabled" field.
-func (m *GroupMutation) SetImage2kEnhancementEnabled(b bool) {
-	m.image_2k_enhancement_enabled = &b
-}
-
-// Image2kEnhancementEnabled returns the value of the "image_2k_enhancement_enabled" field in the mutation.
-func (m *GroupMutation) Image2kEnhancementEnabled() (r bool, exists bool) {
-	v := m.image_2k_enhancement_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldImage2kEnhancementEnabled returns the old "image_2k_enhancement_enabled" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldImage2kEnhancementEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldImage2kEnhancementEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldImage2kEnhancementEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldImage2kEnhancementEnabled: %w", err)
-	}
-	return oldValue.Image2kEnhancementEnabled, nil
-}
-
-// ResetImage2kEnhancementEnabled resets all changes to the "image_2k_enhancement_enabled" field.
-func (m *GroupMutation) ResetImage2kEnhancementEnabled() {
-	m.image_2k_enhancement_enabled = nil
-}
-
-// SetImage2kEnhancementGroupID sets the "image_2k_enhancement_group_id" field.
-func (m *GroupMutation) SetImage2kEnhancementGroupID(i int64) {
-	m.image_2k_enhancement_group_id = &i
-	m.addimage_2k_enhancement_group_id = nil
-}
-
-// Image2kEnhancementGroupID returns the value of the "image_2k_enhancement_group_id" field in the mutation.
-func (m *GroupMutation) Image2kEnhancementGroupID() (r int64, exists bool) {
-	v := m.image_2k_enhancement_group_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldImage2kEnhancementGroupID returns the old "image_2k_enhancement_group_id" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldImage2kEnhancementGroupID(ctx context.Context) (v *int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldImage2kEnhancementGroupID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldImage2kEnhancementGroupID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldImage2kEnhancementGroupID: %w", err)
-	}
-	return oldValue.Image2kEnhancementGroupID, nil
-}
-
-// AddImage2kEnhancementGroupID adds i to the "image_2k_enhancement_group_id" field.
-func (m *GroupMutation) AddImage2kEnhancementGroupID(i int64) {
-	if m.addimage_2k_enhancement_group_id != nil {
-		*m.addimage_2k_enhancement_group_id += i
-	} else {
-		m.addimage_2k_enhancement_group_id = &i
-	}
-}
-
-// AddedImage2kEnhancementGroupID returns the value that was added to the "image_2k_enhancement_group_id" field in this mutation.
-func (m *GroupMutation) AddedImage2kEnhancementGroupID() (r int64, exists bool) {
-	v := m.addimage_2k_enhancement_group_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearImage2kEnhancementGroupID clears the value of the "image_2k_enhancement_group_id" field.
-func (m *GroupMutation) ClearImage2kEnhancementGroupID() {
-	m.image_2k_enhancement_group_id = nil
-	m.addimage_2k_enhancement_group_id = nil
-	m.clearedFields[group.FieldImage2kEnhancementGroupID] = struct{}{}
-}
-
-// Image2kEnhancementGroupIDCleared returns if the "image_2k_enhancement_group_id" field was cleared in this mutation.
-func (m *GroupMutation) Image2kEnhancementGroupIDCleared() bool {
-	_, ok := m.clearedFields[group.FieldImage2kEnhancementGroupID]
-	return ok
-}
-
-// ResetImage2kEnhancementGroupID resets all changes to the "image_2k_enhancement_group_id" field.
-func (m *GroupMutation) ResetImage2kEnhancementGroupID() {
-	m.image_2k_enhancement_group_id = nil
-	m.addimage_2k_enhancement_group_id = nil
-	delete(m.clearedFields, group.FieldImage2kEnhancementGroupID)
-}
-
-// SetImage4kEnhancementEnabled sets the "image_4k_enhancement_enabled" field.
-func (m *GroupMutation) SetImage4kEnhancementEnabled(b bool) {
-	m.image_4k_enhancement_enabled = &b
-}
-
-// Image4kEnhancementEnabled returns the value of the "image_4k_enhancement_enabled" field in the mutation.
-func (m *GroupMutation) Image4kEnhancementEnabled() (r bool, exists bool) {
-	v := m.image_4k_enhancement_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldImage4kEnhancementEnabled returns the old "image_4k_enhancement_enabled" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldImage4kEnhancementEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldImage4kEnhancementEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldImage4kEnhancementEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldImage4kEnhancementEnabled: %w", err)
-	}
-	return oldValue.Image4kEnhancementEnabled, nil
-}
-
-// ResetImage4kEnhancementEnabled resets all changes to the "image_4k_enhancement_enabled" field.
-func (m *GroupMutation) ResetImage4kEnhancementEnabled() {
-	m.image_4k_enhancement_enabled = nil
-}
-
-// SetImage4kEnhancementGroupID sets the "image_4k_enhancement_group_id" field.
-func (m *GroupMutation) SetImage4kEnhancementGroupID(i int64) {
-	m.image_4k_enhancement_group_id = &i
-	m.addimage_4k_enhancement_group_id = nil
-}
-
-// Image4kEnhancementGroupID returns the value of the "image_4k_enhancement_group_id" field in the mutation.
-func (m *GroupMutation) Image4kEnhancementGroupID() (r int64, exists bool) {
-	v := m.image_4k_enhancement_group_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldImage4kEnhancementGroupID returns the old "image_4k_enhancement_group_id" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldImage4kEnhancementGroupID(ctx context.Context) (v *int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldImage4kEnhancementGroupID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldImage4kEnhancementGroupID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldImage4kEnhancementGroupID: %w", err)
-	}
-	return oldValue.Image4kEnhancementGroupID, nil
-}
-
-// AddImage4kEnhancementGroupID adds i to the "image_4k_enhancement_group_id" field.
-func (m *GroupMutation) AddImage4kEnhancementGroupID(i int64) {
-	if m.addimage_4k_enhancement_group_id != nil {
-		*m.addimage_4k_enhancement_group_id += i
-	} else {
-		m.addimage_4k_enhancement_group_id = &i
-	}
-}
-
-// AddedImage4kEnhancementGroupID returns the value that was added to the "image_4k_enhancement_group_id" field in this mutation.
-func (m *GroupMutation) AddedImage4kEnhancementGroupID() (r int64, exists bool) {
-	v := m.addimage_4k_enhancement_group_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearImage4kEnhancementGroupID clears the value of the "image_4k_enhancement_group_id" field.
-func (m *GroupMutation) ClearImage4kEnhancementGroupID() {
-	m.image_4k_enhancement_group_id = nil
-	m.addimage_4k_enhancement_group_id = nil
-	m.clearedFields[group.FieldImage4kEnhancementGroupID] = struct{}{}
-}
-
-// Image4kEnhancementGroupIDCleared returns if the "image_4k_enhancement_group_id" field was cleared in this mutation.
-func (m *GroupMutation) Image4kEnhancementGroupIDCleared() bool {
-	_, ok := m.clearedFields[group.FieldImage4kEnhancementGroupID]
-	return ok
-}
-
-// ResetImage4kEnhancementGroupID resets all changes to the "image_4k_enhancement_group_id" field.
-func (m *GroupMutation) ResetImage4kEnhancementGroupID() {
-	m.image_4k_enhancement_group_id = nil
-	m.addimage_4k_enhancement_group_id = nil
-	delete(m.clearedFields, group.FieldImage4kEnhancementGroupID)
-}
-
-// SetImage4kEnhancementModel sets the "image_4k_enhancement_model" field.
-func (m *GroupMutation) SetImage4kEnhancementModel(s string) {
-	m.image_4k_enhancement_model = &s
-}
-
-// Image4kEnhancementModel returns the value of the "image_4k_enhancement_model" field in the mutation.
-func (m *GroupMutation) Image4kEnhancementModel() (r string, exists bool) {
-	v := m.image_4k_enhancement_model
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldImage4kEnhancementModel returns the old "image_4k_enhancement_model" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldImage4kEnhancementModel(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldImage4kEnhancementModel is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldImage4kEnhancementModel requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldImage4kEnhancementModel: %w", err)
-	}
-	return oldValue.Image4kEnhancementModel, nil
-}
-
-// ClearImage4kEnhancementModel clears the value of the "image_4k_enhancement_model" field.
-func (m *GroupMutation) ClearImage4kEnhancementModel() {
-	m.image_4k_enhancement_model = nil
-	m.clearedFields[group.FieldImage4kEnhancementModel] = struct{}{}
-}
-
-// Image4kEnhancementModelCleared returns if the "image_4k_enhancement_model" field was cleared in this mutation.
-func (m *GroupMutation) Image4kEnhancementModelCleared() bool {
-	_, ok := m.clearedFields[group.FieldImage4kEnhancementModel]
-	return ok
-}
-
-// ResetImage4kEnhancementModel resets all changes to the "image_4k_enhancement_model" field.
-func (m *GroupMutation) ResetImage4kEnhancementModel() {
-	m.image_4k_enhancement_model = nil
-	delete(m.clearedFields, group.FieldImage4kEnhancementModel)
 }
 
 // SetAllowBatchImageGeneration sets the "allow_batch_image_generation" field.
@@ -26590,76 +26229,6 @@ func (m *GroupMutation) ResetFallbackGroupIDOnInvalidRequest() {
 	delete(m.clearedFields, group.FieldFallbackGroupIDOnInvalidRequest)
 }
 
-// SetAutoFallbackGroupID sets the "auto_fallback_group_id" field.
-func (m *GroupMutation) SetAutoFallbackGroupID(i int64) {
-	m.auto_fallback_group_id = &i
-	m.addauto_fallback_group_id = nil
-}
-
-// AutoFallbackGroupID returns the value of the "auto_fallback_group_id" field in the mutation.
-func (m *GroupMutation) AutoFallbackGroupID() (r int64, exists bool) {
-	v := m.auto_fallback_group_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAutoFallbackGroupID returns the old "auto_fallback_group_id" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldAutoFallbackGroupID(ctx context.Context) (v *int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAutoFallbackGroupID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAutoFallbackGroupID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAutoFallbackGroupID: %w", err)
-	}
-	return oldValue.AutoFallbackGroupID, nil
-}
-
-// AddAutoFallbackGroupID adds i to the "auto_fallback_group_id" field.
-func (m *GroupMutation) AddAutoFallbackGroupID(i int64) {
-	if m.addauto_fallback_group_id != nil {
-		*m.addauto_fallback_group_id += i
-	} else {
-		m.addauto_fallback_group_id = &i
-	}
-}
-
-// AddedAutoFallbackGroupID returns the value that was added to the "auto_fallback_group_id" field in this mutation.
-func (m *GroupMutation) AddedAutoFallbackGroupID() (r int64, exists bool) {
-	v := m.addauto_fallback_group_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearAutoFallbackGroupID clears the value of the "auto_fallback_group_id" field.
-func (m *GroupMutation) ClearAutoFallbackGroupID() {
-	m.auto_fallback_group_id = nil
-	m.addauto_fallback_group_id = nil
-	m.clearedFields[group.FieldAutoFallbackGroupID] = struct{}{}
-}
-
-// AutoFallbackGroupIDCleared returns if the "auto_fallback_group_id" field was cleared in this mutation.
-func (m *GroupMutation) AutoFallbackGroupIDCleared() bool {
-	_, ok := m.clearedFields[group.FieldAutoFallbackGroupID]
-	return ok
-}
-
-// ResetAutoFallbackGroupID resets all changes to the "auto_fallback_group_id" field.
-func (m *GroupMutation) ResetAutoFallbackGroupID() {
-	m.auto_fallback_group_id = nil
-	m.addauto_fallback_group_id = nil
-	delete(m.clearedFields, group.FieldAutoFallbackGroupID)
-}
-
 // SetModelRouting sets the "model_routing" field.
 func (m *GroupMutation) SetModelRouting(value map[string][]int64) {
 	m.model_routing = &value
@@ -27987,7 +27556,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 83)
+	fields := make([]string, 0, 76)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -28065,24 +27634,6 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.image_response_format != nil {
 		fields = append(fields, group.FieldImageResponseFormat)
-	}
-	if m.image_super_resolution_enabled != nil {
-		fields = append(fields, group.FieldImageSuperResolutionEnabled)
-	}
-	if m.image_2k_enhancement_enabled != nil {
-		fields = append(fields, group.FieldImage2kEnhancementEnabled)
-	}
-	if m.image_2k_enhancement_group_id != nil {
-		fields = append(fields, group.FieldImage2kEnhancementGroupID)
-	}
-	if m.image_4k_enhancement_enabled != nil {
-		fields = append(fields, group.FieldImage4kEnhancementEnabled)
-	}
-	if m.image_4k_enhancement_group_id != nil {
-		fields = append(fields, group.FieldImage4kEnhancementGroupID)
-	}
-	if m.image_4k_enhancement_model != nil {
-		fields = append(fields, group.FieldImage4kEnhancementModel)
 	}
 	if m.allow_batch_image_generation != nil {
 		fields = append(fields, group.FieldAllowBatchImageGeneration)
@@ -28167,9 +27718,6 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.fallback_group_id_on_invalid_request != nil {
 		fields = append(fields, group.FieldFallbackGroupIDOnInvalidRequest)
-	}
-	if m.auto_fallback_group_id != nil {
-		fields = append(fields, group.FieldAutoFallbackGroupID)
 	}
 	if m.model_routing != nil {
 		fields = append(fields, group.FieldModelRouting)
@@ -28297,18 +27845,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowImageGeneration()
 	case group.FieldImageResponseFormat:
 		return m.ImageResponseFormat()
-	case group.FieldImageSuperResolutionEnabled:
-		return m.ImageSuperResolutionEnabled()
-	case group.FieldImage2kEnhancementEnabled:
-		return m.Image2kEnhancementEnabled()
-	case group.FieldImage2kEnhancementGroupID:
-		return m.Image2kEnhancementGroupID()
-	case group.FieldImage4kEnhancementEnabled:
-		return m.Image4kEnhancementEnabled()
-	case group.FieldImage4kEnhancementGroupID:
-		return m.Image4kEnhancementGroupID()
-	case group.FieldImage4kEnhancementModel:
-		return m.Image4kEnhancementModel()
 	case group.FieldAllowBatchImageGeneration:
 		return m.AllowBatchImageGeneration()
 	case group.FieldImageRateIndependent:
@@ -28365,8 +27901,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.FallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
 		return m.FallbackGroupIDOnInvalidRequest()
-	case group.FieldAutoFallbackGroupID:
-		return m.AutoFallbackGroupID()
 	case group.FieldModelRouting:
 		return m.ModelRouting()
 	case group.FieldModelRoutingEnabled:
@@ -28472,18 +28006,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowImageGeneration(ctx)
 	case group.FieldImageResponseFormat:
 		return m.OldImageResponseFormat(ctx)
-	case group.FieldImageSuperResolutionEnabled:
-		return m.OldImageSuperResolutionEnabled(ctx)
-	case group.FieldImage2kEnhancementEnabled:
-		return m.OldImage2kEnhancementEnabled(ctx)
-	case group.FieldImage2kEnhancementGroupID:
-		return m.OldImage2kEnhancementGroupID(ctx)
-	case group.FieldImage4kEnhancementEnabled:
-		return m.OldImage4kEnhancementEnabled(ctx)
-	case group.FieldImage4kEnhancementGroupID:
-		return m.OldImage4kEnhancementGroupID(ctx)
-	case group.FieldImage4kEnhancementModel:
-		return m.OldImage4kEnhancementModel(ctx)
 	case group.FieldAllowBatchImageGeneration:
 		return m.OldAllowBatchImageGeneration(ctx)
 	case group.FieldImageRateIndependent:
@@ -28540,8 +28062,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldFallbackGroupID(ctx)
 	case group.FieldFallbackGroupIDOnInvalidRequest:
 		return m.OldFallbackGroupIDOnInvalidRequest(ctx)
-	case group.FieldAutoFallbackGroupID:
-		return m.OldAutoFallbackGroupID(ctx)
 	case group.FieldModelRouting:
 		return m.OldModelRouting(ctx)
 	case group.FieldModelRoutingEnabled:
@@ -28777,48 +28297,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetImageResponseFormat(v)
 		return nil
-	case group.FieldImageSuperResolutionEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetImageSuperResolutionEnabled(v)
-		return nil
-	case group.FieldImage2kEnhancementEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetImage2kEnhancementEnabled(v)
-		return nil
-	case group.FieldImage2kEnhancementGroupID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetImage2kEnhancementGroupID(v)
-		return nil
-	case group.FieldImage4kEnhancementEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetImage4kEnhancementEnabled(v)
-		return nil
-	case group.FieldImage4kEnhancementGroupID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetImage4kEnhancementGroupID(v)
-		return nil
-	case group.FieldImage4kEnhancementModel:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetImage4kEnhancementModel(v)
-		return nil
 	case group.FieldAllowBatchImageGeneration:
 		v, ok := value.(bool)
 		if !ok {
@@ -29015,13 +28493,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFallbackGroupIDOnInvalidRequest(v)
 		return nil
-	case group.FieldAutoFallbackGroupID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAutoFallbackGroupID(v)
-		return nil
 	case group.FieldModelRouting:
 		v, ok := value.(map[string][]int64)
 		if !ok {
@@ -29205,12 +28676,6 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.adddefault_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
 	}
-	if m.addimage_2k_enhancement_group_id != nil {
-		fields = append(fields, group.FieldImage2kEnhancementGroupID)
-	}
-	if m.addimage_4k_enhancement_group_id != nil {
-		fields = append(fields, group.FieldImage4kEnhancementGroupID)
-	}
 	if m.addcache_hit_target_percent != nil {
 		fields = append(fields, group.FieldCacheHitTargetPercent)
 	}
@@ -29271,9 +28736,6 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addfallback_group_id_on_invalid_request != nil {
 		fields = append(fields, group.FieldFallbackGroupIDOnInvalidRequest)
 	}
-	if m.addauto_fallback_group_id != nil {
-		fields = append(fields, group.FieldAutoFallbackGroupID)
-	}
 	if m.addsort_order != nil {
 		fields = append(fields, group.FieldSortOrder)
 	}
@@ -29308,10 +28770,6 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedMonthlyLimitUsd()
 	case group.FieldDefaultValidityDays:
 		return m.AddedDefaultValidityDays()
-	case group.FieldImage2kEnhancementGroupID:
-		return m.AddedImage2kEnhancementGroupID()
-	case group.FieldImage4kEnhancementGroupID:
-		return m.AddedImage4kEnhancementGroupID()
 	case group.FieldCacheHitTargetPercent:
 		return m.AddedCacheHitTargetPercent()
 	case group.FieldCacheHitTargetTolerancePercent:
@@ -29352,8 +28810,6 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
 		return m.AddedFallbackGroupIDOnInvalidRequest()
-	case group.FieldAutoFallbackGroupID:
-		return m.AddedAutoFallbackGroupID()
 	case group.FieldSortOrder:
 		return m.AddedSortOrder()
 	case group.FieldRpmLimit:
@@ -29419,20 +28875,6 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddDefaultValidityDays(v)
-		return nil
-	case group.FieldImage2kEnhancementGroupID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddImage2kEnhancementGroupID(v)
-		return nil
-	case group.FieldImage4kEnhancementGroupID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddImage4kEnhancementGroupID(v)
 		return nil
 	case group.FieldCacheHitTargetPercent:
 		v, ok := value.(float64)
@@ -29574,13 +29016,6 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFallbackGroupIDOnInvalidRequest(v)
 		return nil
-	case group.FieldAutoFallbackGroupID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddAutoFallbackGroupID(v)
-		return nil
 	case group.FieldSortOrder:
 		v, ok := value.(int)
 		if !ok {
@@ -29641,15 +29076,6 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldMonthlyLimitUsd) {
 		fields = append(fields, group.FieldMonthlyLimitUsd)
 	}
-	if m.FieldCleared(group.FieldImage2kEnhancementGroupID) {
-		fields = append(fields, group.FieldImage2kEnhancementGroupID)
-	}
-	if m.FieldCleared(group.FieldImage4kEnhancementGroupID) {
-		fields = append(fields, group.FieldImage4kEnhancementGroupID)
-	}
-	if m.FieldCleared(group.FieldImage4kEnhancementModel) {
-		fields = append(fields, group.FieldImage4kEnhancementModel)
-	}
 	if m.FieldCleared(group.FieldImagePrice1k) {
 		fields = append(fields, group.FieldImagePrice1k)
 	}
@@ -29695,9 +29121,6 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldFallbackGroupIDOnInvalidRequest) {
 		fields = append(fields, group.FieldFallbackGroupIDOnInvalidRequest)
 	}
-	if m.FieldCleared(group.FieldAutoFallbackGroupID) {
-		fields = append(fields, group.FieldAutoFallbackGroupID)
-	}
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
@@ -29738,15 +29161,6 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldMonthlyLimitUsd:
 		m.ClearMonthlyLimitUsd()
-		return nil
-	case group.FieldImage2kEnhancementGroupID:
-		m.ClearImage2kEnhancementGroupID()
-		return nil
-	case group.FieldImage4kEnhancementGroupID:
-		m.ClearImage4kEnhancementGroupID()
-		return nil
-	case group.FieldImage4kEnhancementModel:
-		m.ClearImage4kEnhancementModel()
 		return nil
 	case group.FieldImagePrice1k:
 		m.ClearImagePrice1k()
@@ -29792,9 +29206,6 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldFallbackGroupIDOnInvalidRequest:
 		m.ClearFallbackGroupIDOnInvalidRequest()
-		return nil
-	case group.FieldAutoFallbackGroupID:
-		m.ClearAutoFallbackGroupID()
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
@@ -29885,24 +29296,6 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldImageResponseFormat:
 		m.ResetImageResponseFormat()
 		return nil
-	case group.FieldImageSuperResolutionEnabled:
-		m.ResetImageSuperResolutionEnabled()
-		return nil
-	case group.FieldImage2kEnhancementEnabled:
-		m.ResetImage2kEnhancementEnabled()
-		return nil
-	case group.FieldImage2kEnhancementGroupID:
-		m.ResetImage2kEnhancementGroupID()
-		return nil
-	case group.FieldImage4kEnhancementEnabled:
-		m.ResetImage4kEnhancementEnabled()
-		return nil
-	case group.FieldImage4kEnhancementGroupID:
-		m.ResetImage4kEnhancementGroupID()
-		return nil
-	case group.FieldImage4kEnhancementModel:
-		m.ResetImage4kEnhancementModel()
-		return nil
 	case group.FieldAllowBatchImageGeneration:
 		m.ResetAllowBatchImageGeneration()
 		return nil
@@ -29986,9 +29379,6 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldFallbackGroupIDOnInvalidRequest:
 		m.ResetFallbackGroupIDOnInvalidRequest()
-		return nil
-	case group.FieldAutoFallbackGroupID:
-		m.ResetAutoFallbackGroupID()
 		return nil
 	case group.FieldModelRouting:
 		m.ResetModelRouting()

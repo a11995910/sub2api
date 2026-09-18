@@ -1650,21 +1650,6 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
-	enhancementParsed := parsed
-	if enhancementParsed == nil {
-		enhancementParsed = &OpenAIImagesRequest{
-			Model:          fallbackModel,
-			Size:           firstMeta.Size,
-			SizeTier:       requestSizeTier,
-			ResponseFormat: responseFormat,
-			N:              1,
-		}
-	}
-	if s.shouldApplyImage4KEnhancement(c, enhancementParsed) {
-		results = s.applyOpenAIResponses4KEnhancement(ctx, c, results, enhancementParsed)
-	} else {
-		results = s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, results, requestSizeTier, enhancementParsed)
-	}
 	if len(results) > 0 {
 		mergeOpenAIResponsesImageMeta(&firstMeta, results[0])
 	}
@@ -1855,14 +1840,6 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
-			finalResults = s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, finalResults, requestSizeTier, &OpenAIImagesRequest{
-				Model:          fallbackModel,
-				Size:           streamMeta.Size,
-				SizeTier:       requestSizeTier,
-				ResponseFormat: responseFormat,
-				Stream:         true,
-				N:              1,
-			})
 			if format == ImageResponseFormatURL && !clientDisconnected {
 				finalResults, materializeErr = s.localizeOpenAIImageResults(ctx, c, finalResults)
 				if materializeErr != nil {
@@ -1929,14 +1906,6 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
 				return err
 			}
-			materializedResults = s.applyOpenAIResponsesSuperResolutionWithParsed(ctx, c, materializedResults, requestSizeTier, &OpenAIImagesRequest{
-				Model:          fallbackModel,
-				Size:           streamMeta.Size,
-				SizeTier:       requestSizeTier,
-				ResponseFormat: responseFormat,
-				Stream:         true,
-				N:              1,
-			})
 			if format == ImageResponseFormatURL && !clientDisconnected {
 				materializedResults, err = s.localizeOpenAIImageResults(ctx, c, materializedResults)
 				if err != nil {

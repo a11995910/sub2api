@@ -186,7 +186,6 @@ function groupFixture(overrides: Record<string, unknown>) {
     peak_rate_multiplier: 1,
     is_exclusive: false,
     allow_image_generation: false,
-    image_super_resolution_enabled: false,
     image_rate_independent: false,
     cache_hit_quarter_to_input_enabled: false,
     image_rate_multiplier: 1,

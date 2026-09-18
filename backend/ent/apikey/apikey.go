@@ -33,8 +33,6 @@ const (
 	FieldStatus = "status"
 	// FieldOpenaiFastModeEnabled holds the string denoting the openai_fast_mode_enabled field in the database.
 	FieldOpenaiFastModeEnabled = "openai_fast_mode_enabled"
-	// FieldAutoGroupFallbackEnabled holds the string denoting the auto_group_fallback_enabled field in the database.
-	FieldAutoGroupFallbackEnabled = "auto_group_fallback_enabled"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -108,7 +106,6 @@ var Columns = []string{
 	FieldGroupID,
 	FieldStatus,
 	FieldOpenaiFastModeEnabled,
-	FieldAutoGroupFallbackEnabled,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -160,8 +157,6 @@ var (
 	StatusValidator func(string) error
 	// DefaultOpenaiFastModeEnabled holds the default value on creation for the "openai_fast_mode_enabled" field.
 	DefaultOpenaiFastModeEnabled bool
-	// DefaultAutoGroupFallbackEnabled holds the default value on creation for the "auto_group_fallback_enabled" field.
-	DefaultAutoGroupFallbackEnabled bool
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -231,11 +226,6 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByOpenaiFastModeEnabled orders the results by the openai_fast_mode_enabled field.
 func ByOpenaiFastModeEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOpenaiFastModeEnabled, opts...).ToFunc()
-}
-
-// ByAutoGroupFallbackEnabled orders the results by the auto_group_fallback_enabled field.
-func ByAutoGroupFallbackEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAutoGroupFallbackEnabled, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.

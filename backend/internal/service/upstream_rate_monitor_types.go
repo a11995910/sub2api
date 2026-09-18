@@ -75,20 +75,19 @@ type UpstreamRateMonitor struct {
 }
 
 type UpstreamRateGroupSnapshot struct {
-	ID                          int64    `json:"id"`
-	Name                        string   `json:"name"`
-	Description                 string   `json:"description,omitempty"`
-	Platform                    string   `json:"platform,omitempty"`
-	RateMultiplier              float64  `json:"rate_multiplier"`
-	ImageRateMultiplier         *float64 `json:"image_rate_multiplier,omitempty"`
-	ImageRateIndependent        bool     `json:"image_rate_independent,omitempty"`
-	SubscriptionType            string   `json:"subscription_type,omitempty"`
-	IsExclusive                 bool     `json:"is_exclusive"`
-	Status                      string   `json:"status,omitempty"`
-	RPMLimit                    int      `json:"rpm_limit,omitempty"`
-	AllowImageGeneration        bool     `json:"allow_image_generation,omitempty"`
-	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled,omitempty"`
-	SortOrder                   int      `json:"sort_order,omitempty"`
+	ID                   int64    `json:"id"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description,omitempty"`
+	Platform             string   `json:"platform,omitempty"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	ImageRateMultiplier  *float64 `json:"image_rate_multiplier,omitempty"`
+	ImageRateIndependent bool     `json:"image_rate_independent,omitempty"`
+	SubscriptionType     string   `json:"subscription_type,omitempty"`
+	IsExclusive          bool     `json:"is_exclusive"`
+	Status               string   `json:"status,omitempty"`
+	RPMLimit             int      `json:"rpm_limit,omitempty"`
+	AllowImageGeneration bool     `json:"allow_image_generation,omitempty"`
+	SortOrder            int      `json:"sort_order,omitempty"`
 }
 
 type UpstreamRateSnapshot []UpstreamRateGroupSnapshot

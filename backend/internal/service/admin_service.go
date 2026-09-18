@@ -263,12 +263,6 @@ type CreateGroupInput struct {
 	AllowImageGeneration           bool
 	ImageResponseFormat            string
 	AllowBatchImageGeneration      bool
-	ImageSuperResolutionEnabled    bool
-	Image2KEnhancementEnabled      bool
-	Image2KEnhancementGroupID      *int64
-	Image4KEnhancementEnabled      bool
-	Image4KEnhancementGroupID      *int64
-	Image4KEnhancementModel        *string
 	ImageRateIndependent           bool
 	CacheHitQuarterToInput         bool
 	CacheHitTargetPercent          *float64
@@ -309,8 +303,6 @@ type CreateGroupInput struct {
 	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
-	// 同模型账号耗尽时使用的承接分组 ID；nil 表示关闭。
-	AutoFallbackGroupID *int64
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool // 是否启用模型路由
@@ -363,12 +355,6 @@ type UpdateGroupInput struct {
 	AllowImageGeneration           *bool
 	ImageResponseFormat            *string
 	AllowBatchImageGeneration      *bool
-	ImageSuperResolutionEnabled    *bool
-	Image2KEnhancementEnabled      *bool
-	Image2KEnhancementGroupID      *int64
-	Image4KEnhancementEnabled      *bool
-	Image4KEnhancementGroupID      *int64
-	Image4KEnhancementModel        *string
 	ImageRateIndependent           *bool
 	CacheHitQuarterToInput         *bool
 	CacheHitTargetPercent          *float64
@@ -409,8 +395,6 @@ type UpdateGroupInput struct {
 	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
-	// 同模型账号耗尽时使用的承接分组 ID；nil 表示不修改，非正数表示清空。
-	AutoFallbackGroupID *int64
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled *bool // 是否启用模型路由
@@ -920,65 +904,6 @@ func normalizePositiveInt64Ptr(value *int64) *int64 {
 		return nil
 	}
 	return value
-}
-
-func normalizeImageTierEnhancementGroupID(enabled bool, value *int64) *int64 {
-	if !enabled {
-		return nil
-	}
-	return normalizePositiveInt64Ptr(value)
-}
-
-func normalizeImageTierEnhancementModel(enabled bool, value *string) *string {
-	if !enabled || value == nil {
-		return nil
-	}
-	model := strings.TrimSpace(*value)
-	if model == "" {
-		return nil
-	}
-	return &model
-}
-
-func (s *adminServiceImpl) validateImageTierEnhancementConfig(ctx context.Context, currentGroupID int64, platform string, allowImageGeneration, enabled bool, targetGroupID *int64, tier string) error {
-	if !enabled {
-		return nil
-	}
-	tier = strings.ToUpper(strings.TrimSpace(tier))
-	if tier != ImageBillingSize2K && tier != ImageBillingSize4K {
-		return fmt.Errorf("unsupported image enhancement tier %q", tier)
-	}
-	fieldPrefix := strings.ToLower(tier)
-	if platform != PlatformOpenAI {
-		return fmt.Errorf("image_%s_enhancement_enabled is only supported for openai groups", fieldPrefix)
-	}
-	if !allowImageGeneration {
-		return fmt.Errorf("image_%s_enhancement_enabled requires allow_image_generation", fieldPrefix)
-	}
-	// 2K 超分为纯本地等比放大，不依赖目标分组，无需校验 target group。
-	if tier == ImageBillingSize2K {
-		return nil
-	}
-	if targetGroupID == nil || *targetGroupID <= 0 {
-		return fmt.Errorf("image_%s_enhancement_group_id is required when image %s enhancement is enabled", fieldPrefix, tier)
-	}
-	if currentGroupID > 0 && *targetGroupID == currentGroupID {
-		return fmt.Errorf("image_%s_enhancement_group_id cannot use self", fieldPrefix)
-	}
-	target, err := s.groupRepo.GetByIDLite(ctx, *targetGroupID)
-	if err != nil {
-		return fmt.Errorf("image_%s_enhancement_group_id %d not found: %w", fieldPrefix, *targetGroupID, err)
-	}
-	if target.Platform != PlatformOpenAI {
-		return fmt.Errorf("image_%s_enhancement_group_id %d must be an openai group", fieldPrefix, *targetGroupID)
-	}
-	if target.Status != StatusActive {
-		return fmt.Errorf("image_%s_enhancement_group_id %d must be active", fieldPrefix, *targetGroupID)
-	}
-	if !target.AllowImageGeneration {
-		return fmt.Errorf("image_%s_enhancement_group_id %d must allow image generation", fieldPrefix, *targetGroupID)
-	}
-	return nil
 }
 
 func (s *adminServiceImpl) reassignAPIKeysBeforeGroupDelete(ctx context.Context, groupID int64, replacementGroupID *int64) error {

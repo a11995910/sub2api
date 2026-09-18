@@ -177,7 +177,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesViaChatCompletions(
 		})
 		return nil, err
 	}
-	imageResults = s.applyOpenAIResponses4KEnhancement(upstreamCtx, c, imageResults, parsed)
 	if strings.EqualFold(strings.TrimSpace(parsed.ResponseFormat), ImageResponseFormatURL) {
 		imageResults, err = s.localizeOpenAIImageResults(upstreamCtx, c, imageResults)
 		if err != nil {

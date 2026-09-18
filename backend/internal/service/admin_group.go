@@ -529,13 +529,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, err
 		}
 	}
-	autoFallbackGroupID := normalizePositiveInt64Ptr(input.AutoFallbackGroupID)
-	if autoFallbackGroupID != nil {
-		if err := s.validateAutoFallbackGroup(ctx, 0, platform, subscriptionType, *autoFallbackGroupID); err != nil {
-			return nil, err
-		}
-	}
-
 	// MCPXMLInject：默认为 true，仅当显式传入 false 时关闭
 	mcpXMLInject := true
 	if input.MCPXMLInject != nil {
@@ -544,18 +537,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
-	var image2KEnhancementGroupID *int64
-	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, allowImageGeneration, input.Image2KEnhancementEnabled, image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
-		return nil, err
-	}
-	image4KEnhancementGroupID := normalizeImageTierEnhancementGroupID(input.Image4KEnhancementEnabled, input.Image4KEnhancementGroupID)
-	if err := s.validateImageTierEnhancementConfig(ctx, 0, platform, allowImageGeneration, input.Image4KEnhancementEnabled, image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
-		return nil, err
-	}
-	image4KEnhancementModel := normalizeImageTierEnhancementModel(input.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
-	if input.Image4KEnhancementEnabled && image4KEnhancementModel == nil {
-		return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
-	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -612,11 +593,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowImageGeneration:            allowImageGeneration,
 		ImageResponseFormat:             imageResponseFormat,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
-		Image2KEnhancementEnabled:       input.Image2KEnhancementEnabled,
-		Image2KEnhancementGroupID:       image2KEnhancementGroupID,
-		Image4KEnhancementEnabled:       input.Image4KEnhancementEnabled,
-		Image4KEnhancementGroupID:       image4KEnhancementGroupID,
-		Image4KEnhancementModel:         image4KEnhancementModel,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		CacheHitQuarterToInput:          input.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           cacheHitTargetPercent,
@@ -653,7 +629,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
-		AutoFallbackGroupID:             autoFallbackGroupID,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
@@ -801,46 +776,6 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	return nil
 }
 
-// validateAutoFallbackGroup 保证承接链只在同平台标准分组之间流转，并拒绝循环配置。
-func (s *adminServiceImpl) validateAutoFallbackGroup(ctx context.Context, currentGroupID int64, platform, subscriptionType string, fallbackGroupID int64) error {
-	if subscriptionType != SubscriptionTypeStandard {
-		return errors.New("only standard groups can configure auto fallback")
-	}
-	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
-		return errors.New("cannot set self as auto fallback group")
-	}
-
-	visited := make(map[int64]struct{})
-	for nextID := fallbackGroupID; nextID > 0; {
-		if currentGroupID > 0 && nextID == currentGroupID {
-			return errors.New("auto fallback group cycle detected")
-		}
-		if _, exists := visited[nextID]; exists {
-			return errors.New("auto fallback group cycle detected")
-		}
-		visited[nextID] = struct{}{}
-
-		target, err := s.groupRepo.GetByIDLite(ctx, nextID)
-		if err != nil {
-			return fmt.Errorf("auto fallback group not found: %w", err)
-		}
-		if target.Status != StatusActive {
-			return errors.New("auto fallback group must be active")
-		}
-		if target.Platform != platform {
-			return errors.New("auto fallback group must use the same platform")
-		}
-		if target.SubscriptionType != SubscriptionTypeStandard {
-			return errors.New("auto fallback group must be a standard group")
-		}
-		if target.AutoFallbackGroupID == nil {
-			return nil
-		}
-		nextID = *target.AutoFallbackGroupID
-	}
-	return nil
-}
-
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
@@ -924,19 +859,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false
-	}
-	if input.Image2KEnhancementEnabled != nil {
-		group.Image2KEnhancementEnabled = *input.Image2KEnhancementEnabled
-	}
-	group.Image2KEnhancementGroupID = nil
-	if input.Image4KEnhancementEnabled != nil {
-		group.Image4KEnhancementEnabled = *input.Image4KEnhancementEnabled
-	}
-	if input.Image4KEnhancementGroupID != nil {
-		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(input.Image4KEnhancementGroupID)
-	}
-	if input.Image4KEnhancementModel != nil {
-		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(group.Image4KEnhancementEnabled, input.Image4KEnhancementModel)
 	}
 	if input.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *input.ImageRateIndependent
@@ -1119,15 +1041,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
-	if input.AutoFallbackGroupID != nil {
-		group.AutoFallbackGroupID = normalizePositiveInt64Ptr(input.AutoFallbackGroupID)
-	}
-	if group.AutoFallbackGroupID != nil {
-		if err := s.validateAutoFallbackGroup(ctx, id, group.Platform, group.SubscriptionType, *group.AutoFallbackGroupID); err != nil {
-			return nil, err
-		}
-	}
-
 	// 模型路由配置
 	if input.ModelRouting != nil {
 		group.ModelRouting = input.ModelRouting
@@ -1207,22 +1120,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	sanitizeGroupOpenAIFast(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
-	}
-	if !group.Image4KEnhancementEnabled {
-		group.Image4KEnhancementGroupID = nil
-		group.Image4KEnhancementModel = nil
-	}
-	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image2KEnhancementEnabled, group.Image2KEnhancementGroupID, ImageBillingSize2K); err != nil {
-		return nil, err
-	}
-	if err := s.validateImageTierEnhancementConfig(ctx, id, group.Platform, group.AllowImageGeneration, group.Image4KEnhancementEnabled, group.Image4KEnhancementGroupID, ImageBillingSize4K); err != nil {
-		return nil, err
-	}
-	if group.Image4KEnhancementEnabled {
-		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(true, group.Image4KEnhancementModel)
-		if group.Image4KEnhancementModel == nil {
-			return nil, errors.New("image_4k_enhancement_model is required when image 4K enhancement is enabled")
-		}
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
 	// 固定账号 manifest 配置：按最终平台归一化（切出 openai 平台时静默归零，

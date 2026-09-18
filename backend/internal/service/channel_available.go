@@ -32,7 +32,6 @@ type AvailableGroupRef struct {
 	PromoActive                    bool
 	IsExclusive                    bool
 	AllowImageGeneration           bool
-	ImageSuperResolutionEnabled    bool
 	ImageRateIndependent           bool
 	CacheHitQuarterToInput         bool
 	CacheHitTargetPercent          float64
@@ -103,7 +102,6 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			PromoActive:                    g.PromoDiscountMultiplierAt(timezone.Now()) != 1.0,
 			IsExclusive:                    g.IsExclusive,
 			AllowImageGeneration:           g.AllowImageGeneration,
-			ImageSuperResolutionEnabled:    g.ImageSuperResolutionEnabled,
 			ImageRateIndependent:           g.ImageRateIndependent,
 			CacheHitQuarterToInput:         g.CacheHitQuarterToInput,
 			CacheHitTargetPercent:          g.CacheHitTargetPercent,

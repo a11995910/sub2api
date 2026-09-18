@@ -2102,7 +2102,7 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	requiredTransport OpenAIUpstreamTransport,
 	requireCompact bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	return s.selectAccountWithSchedulerAutoFallback(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
+	return s.selectAccountWithSchedulerResolvedModel(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
 }
 
 // SelectAccountWithSchedulerForCapability 按能力要求调度账号。
@@ -2126,7 +2126,7 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
-	return s.selectAccountWithSchedulerAutoFallback(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	return s.selectAccountWithSchedulerResolvedModel(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 }
 
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
@@ -2137,31 +2137,17 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	currentGroupID := groupID
-	for {
-		selection, decision, err := s.selectAccountWithScheduler(ctx, currentGroupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
-		if err == nil && selection != nil && selection.Account != nil {
-			return selection, decision, nil
-		}
-		// 当前分组先完整尝试 native 和 basic，避免 native 首次失败就过早跨组。
-		if requiredCapability == OpenAIImagesCapabilityNative {
-			selection, decision, err = s.selectAccountWithScheduler(ctx, currentGroupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
-			if err == nil && selection != nil && selection.Account != nil {
-				return selection, decision, nil
-			}
-		}
-		if !isAutoGroupFallbackSelectionError(err) {
-			return selection, decision, err
-		}
-		nextGroupID, ok := advanceAutoGroupFallback(ctx, s.groupRepo, currentGroupID, requestedModel, s.DiagnoseModelAvailabilityForPlatform)
-		if !ok {
-			return selection, decision, err
-		}
-		currentGroupID = nextGroupID
+	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
+	if err == nil && selection != nil && selection.Account != nil {
+		return selection, decision, nil
 	}
+	if requiredCapability == OpenAIImagesCapabilityNative {
+		return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
+	}
+	return selection, decision, err
 }
 
-func (s *OpenAIGatewayService) selectAccountWithSchedulerAutoFallback(
+func (s *OpenAIGatewayService) selectAccountWithSchedulerResolvedModel(
 	ctx context.Context,
 	groupID *int64,
 	previousResponseID string,
@@ -2176,40 +2162,27 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerAutoFallback(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	currentGroupID := groupID
-	for {
-		attemptModel := autoGroupFallbackRoutingModel(ctx, currentGroupID, requestedModel)
-		// 每个承接组使用自己的渠道映射，避免沿用前一个分组的上游模型。
-		mapping, _ := s.ResolveChannelMappingAndRestrict(ctx, currentGroupID, attemptModel)
-		scheduleModel := attemptModel
-		if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
-			scheduleModel = strings.TrimSpace(mapping.MappedModel)
-		}
-		attemptCtx := WithOpenAIForwardModel(ctx, scheduleModel, requireCompact)
-		selection, decision, err := s.selectAccountWithScheduler(
-			attemptCtx,
-			currentGroupID,
-			previousResponseID,
-			sessionHash,
-			scheduleModel,
-			excludedIDs,
-			requiredTransport,
-			requiredCapability,
-			requiredImageCapability,
-			requireCompact,
-			platform,
-			previousResponseCanMove,
-			useUpstreamTokenCost,
-		)
-		if err == nil || !isAutoGroupFallbackSelectionError(err) {
-			return selection, decision, err
-		}
-		nextGroupID, ok := advanceAutoGroupFallback(ctx, s.groupRepo, currentGroupID, attemptModel, s.DiagnoseModelAvailabilityForPlatform)
-		if !ok {
-			return nil, decision, err
-		}
-		currentGroupID = nextGroupID
+	mapping, _ := s.ResolveChannelMappingAndRestrict(ctx, groupID, requestedModel)
+	scheduleModel := requestedModel
+	if mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+		scheduleModel = strings.TrimSpace(mapping.MappedModel)
 	}
+	attemptCtx := WithOpenAIForwardModel(ctx, scheduleModel, requireCompact)
+	return s.selectAccountWithScheduler(
+		attemptCtx,
+		groupID,
+		previousResponseID,
+		sessionHash,
+		scheduleModel,
+		excludedIDs,
+		requiredTransport,
+		requiredCapability,
+		requiredImageCapability,
+		requireCompact,
+		platform,
+		previousResponseCanMove,
+		useUpstreamTokenCost,
+	)
 }
 
 // selectAccountWithScheduler wraps selectAccountWithSchedulerOnce with a

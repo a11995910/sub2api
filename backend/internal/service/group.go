@@ -123,10 +123,10 @@ type Group struct {
 	PromoDiscountStart   *time.Time
 	PromoDiscountEnd     *time.Time
 	PromoDiscountRate    float64
-	IsExclusive        bool
-	OAuthPoolVisible   bool
-	Status             string
-	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	IsExclusive          bool
+	OAuthPoolVisible     bool
+	Status               string
+	Hydrated             bool // indicates the group was loaded from a trusted repository source
 	// DuplicateOperationID is internal persistence metadata used only to recover
 	// an already committed one-click copy. It must never be mapped to API DTOs.
 	DuplicateOperationID string
@@ -138,16 +138,10 @@ type Group struct {
 	DefaultValidityDays int
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
-	AllowImageGeneration        bool
-	ImageResponseFormat         string
-	AllowBatchImageGeneration   bool
-	ImageSuperResolutionEnabled bool
-	Image2KEnhancementEnabled   bool
-	Image2KEnhancementGroupID   *int64
-	Image4KEnhancementEnabled   bool
-	Image4KEnhancementGroupID   *int64
-	Image4KEnhancementModel     *string
-	ImageRateIndependent        bool
+	AllowImageGeneration      bool
+	ImageResponseFormat       string
+	AllowBatchImageGeneration bool
+	ImageRateIndependent      bool
 	// CacheHitQuarterToInput 是为兼容既有数据库/API 保留的开关名称，实际语义为
 	// 按用户和分组累计控制缓存命中率。
 	CacheHitQuarterToInput         bool
@@ -190,8 +184,6 @@ type Group struct {
 	FallbackGroupID *int64
 	// 无效请求兜底分组（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
-	// AutoFallbackGroupID 是当前分组同模型账号耗尽后使用的承接分组。
-	AutoFallbackGroupID *int64
 
 	// 模型路由配置
 	// key: 模型匹配模式（支持 * 通配符，如 "claude-opus-*"）

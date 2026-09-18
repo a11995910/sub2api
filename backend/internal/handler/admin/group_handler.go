@@ -199,12 +199,6 @@ type CreateGroupRequest struct {
 	AllowImageGeneration            bool                          `json:"allow_image_generation"`
 	ImageResponseFormat             string                        `json:"image_response_format"`
 	AllowBatchImageGeneration       bool                          `json:"allow_batch_image_generation"`
-	ImageSuperResolutionEnabled     bool                          `json:"image_super_resolution_enabled"`
-	Image2KEnhancementEnabled       bool                          `json:"image_2k_enhancement_enabled"`
-	Image2KEnhancementGroupID       *int64                        `json:"image_2k_enhancement_group_id"`
-	Image4KEnhancementEnabled       bool                          `json:"image_4k_enhancement_enabled"`
-	Image4KEnhancementGroupID       *int64                        `json:"image_4k_enhancement_group_id"`
-	Image4KEnhancementModel         *string                       `json:"image_4k_enhancement_model"`
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
@@ -241,7 +235,6 @@ type CreateGroupRequest struct {
 	ClaudeCodeOnly                  bool                          `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
-	AutoFallbackGroupID             *int64                        `json:"auto_fallback_group_id"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
@@ -291,12 +284,6 @@ type UpdateGroupRequest struct {
 	AllowImageGeneration            *bool                         `json:"allow_image_generation"`
 	ImageResponseFormat             *string                       `json:"image_response_format"`
 	AllowBatchImageGeneration       *bool                         `json:"allow_batch_image_generation"`
-	ImageSuperResolutionEnabled     *bool                         `json:"image_super_resolution_enabled"`
-	Image2KEnhancementEnabled       *bool                         `json:"image_2k_enhancement_enabled"`
-	Image2KEnhancementGroupID       *int64                        `json:"image_2k_enhancement_group_id"`
-	Image4KEnhancementEnabled       *bool                         `json:"image_4k_enhancement_enabled"`
-	Image4KEnhancementGroupID       *int64                        `json:"image_4k_enhancement_group_id"`
-	Image4KEnhancementModel         *string                       `json:"image_4k_enhancement_model"`
 	ImageRateIndependent            *bool                         `json:"image_rate_independent"`
 	CacheHitQuarterToInput          *bool                         `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           *float64                      `json:"cache_hit_target_percent"`
@@ -333,7 +320,6 @@ type UpdateGroupRequest struct {
 	ClaudeCodeOnly                  *bool                         `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
-	AutoFallbackGroupID             *int64                        `json:"auto_fallback_group_id"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
@@ -740,12 +726,6 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageResponseFormat:             req.ImageResponseFormat,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
-		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
-		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
-		Image2KEnhancementGroupID:       req.Image2KEnhancementGroupID,
-		Image4KEnhancementEnabled:       req.Image4KEnhancementEnabled,
-		Image4KEnhancementGroupID:       req.Image4KEnhancementGroupID,
-		Image4KEnhancementModel:         req.Image4KEnhancementModel,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           req.CacheHitTargetPercent,
@@ -782,7 +762,6 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
-		AutoFallbackGroupID:             req.AutoFallbackGroupID,
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
@@ -937,12 +916,6 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageResponseFormat:             req.ImageResponseFormat,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
-		ImageSuperResolutionEnabled:     req.ImageSuperResolutionEnabled,
-		Image2KEnhancementEnabled:       req.Image2KEnhancementEnabled,
-		Image2KEnhancementGroupID:       req.Image2KEnhancementGroupID,
-		Image4KEnhancementEnabled:       req.Image4KEnhancementEnabled,
-		Image4KEnhancementGroupID:       req.Image4KEnhancementGroupID,
-		Image4KEnhancementModel:         req.Image4KEnhancementModel,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		CacheHitQuarterToInput:          req.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           req.CacheHitTargetPercent,
@@ -979,7 +952,6 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
-		AutoFallbackGroupID:             req.AutoFallbackGroupID,
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,

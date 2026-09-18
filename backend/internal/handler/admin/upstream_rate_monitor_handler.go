@@ -57,20 +57,19 @@ type upstreamRateMonitorResponse struct {
 }
 
 type upstreamRateGroupSnapshotResponse struct {
-	ID                          int64    `json:"id"`
-	Name                        string   `json:"name"`
-	Description                 string   `json:"description,omitempty"`
-	Platform                    string   `json:"platform,omitempty"`
-	RateMultiplier              float64  `json:"rate_multiplier"`
-	ImageRateMultiplier         *float64 `json:"image_rate_multiplier,omitempty"`
-	ImageRateIndependent        bool     `json:"image_rate_independent,omitempty"`
-	SubscriptionType            string   `json:"subscription_type,omitempty"`
-	IsExclusive                 bool     `json:"is_exclusive"`
-	Status                      string   `json:"status,omitempty"`
-	RPMLimit                    int      `json:"rpm_limit,omitempty"`
-	AllowImageGeneration        bool     `json:"allow_image_generation,omitempty"`
-	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled,omitempty"`
-	SortOrder                   int      `json:"sort_order,omitempty"`
+	ID                   int64    `json:"id"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description,omitempty"`
+	Platform             string   `json:"platform,omitempty"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	ImageRateMultiplier  *float64 `json:"image_rate_multiplier,omitempty"`
+	ImageRateIndependent bool     `json:"image_rate_independent,omitempty"`
+	SubscriptionType     string   `json:"subscription_type,omitempty"`
+	IsExclusive          bool     `json:"is_exclusive"`
+	Status               string   `json:"status,omitempty"`
+	RPMLimit             int      `json:"rpm_limit,omitempty"`
+	AllowImageGeneration bool     `json:"allow_image_generation,omitempty"`
+	SortOrder            int      `json:"sort_order,omitempty"`
 }
 
 func (h *UpstreamRateMonitorHandler) List(c *gin.Context) {
@@ -225,20 +224,19 @@ func upstreamRateSnapshotToResponse(snapshot service.UpstreamRateSnapshot) []ups
 	out := make([]upstreamRateGroupSnapshotResponse, 0, len(snapshot))
 	for _, g := range snapshot {
 		out = append(out, upstreamRateGroupSnapshotResponse{
-			ID:                          g.ID,
-			Name:                        g.Name,
-			Description:                 g.Description,
-			Platform:                    g.Platform,
-			RateMultiplier:              g.RateMultiplier,
-			ImageRateMultiplier:         g.ImageRateMultiplier,
-			ImageRateIndependent:        g.ImageRateIndependent,
-			SubscriptionType:            g.SubscriptionType,
-			IsExclusive:                 g.IsExclusive,
-			Status:                      g.Status,
-			RPMLimit:                    g.RPMLimit,
-			AllowImageGeneration:        g.AllowImageGeneration,
-			ImageSuperResolutionEnabled: g.ImageSuperResolutionEnabled,
-			SortOrder:                   g.SortOrder,
+			ID:                   g.ID,
+			Name:                 g.Name,
+			Description:          g.Description,
+			Platform:             g.Platform,
+			RateMultiplier:       g.RateMultiplier,
+			ImageRateMultiplier:  g.ImageRateMultiplier,
+			ImageRateIndependent: g.ImageRateIndependent,
+			SubscriptionType:     g.SubscriptionType,
+			IsExclusive:          g.IsExclusive,
+			Status:               g.Status,
+			RPMLimit:             g.RPMLimit,
+			AllowImageGeneration: g.AllowImageGeneration,
+			SortOrder:            g.SortOrder,
 		})
 	}
 	return out

@@ -68,37 +68,25 @@ type GroupSortOrderUpdate struct {
 
 // CreateGroupRequest 创建分组请求
 type CreateGroupRequest struct {
-	Name                        string   `json:"name"`
-	Description                 string   `json:"description"`
-	RateMultiplier              float64  `json:"rate_multiplier"`
-	IsExclusive                 bool     `json:"is_exclusive"`
-	AllowImageGeneration        bool     `json:"allow_image_generation"`
-	ImageSuperResolutionEnabled bool     `json:"image_super_resolution_enabled"`
-	Image2KEnhancementEnabled   bool     `json:"image_2k_enhancement_enabled"`
-	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
-	Image4KEnhancementEnabled   bool     `json:"image_4k_enhancement_enabled"`
-	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
-	Image4KEnhancementModel     *string  `json:"image_4k_enhancement_model"`
-	ImageRateIndependent        bool     `json:"image_rate_independent"`
-	ImageRateMultiplier         *float64 `json:"image_rate_multiplier"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	IsExclusive          bool     `json:"is_exclusive"`
+	AllowImageGeneration bool     `json:"allow_image_generation"`
+	ImageRateIndependent bool     `json:"image_rate_independent"`
+	ImageRateMultiplier  *float64 `json:"image_rate_multiplier"`
 }
 
 // UpdateGroupRequest 更新分组请求
 type UpdateGroupRequest struct {
-	Name                        *string  `json:"name"`
-	Description                 *string  `json:"description"`
-	RateMultiplier              *float64 `json:"rate_multiplier"`
-	IsExclusive                 *bool    `json:"is_exclusive"`
-	Status                      *string  `json:"status"`
-	AllowImageGeneration        *bool    `json:"allow_image_generation"`
-	ImageSuperResolutionEnabled *bool    `json:"image_super_resolution_enabled"`
-	Image2KEnhancementEnabled   *bool    `json:"image_2k_enhancement_enabled"`
-	Image2KEnhancementGroupID   *int64   `json:"image_2k_enhancement_group_id"`
-	Image4KEnhancementEnabled   *bool    `json:"image_4k_enhancement_enabled"`
-	Image4KEnhancementGroupID   *int64   `json:"image_4k_enhancement_group_id"`
-	Image4KEnhancementModel     *string  `json:"image_4k_enhancement_model"`
-	ImageRateIndependent        *bool    `json:"image_rate_independent"`
-	ImageRateMultiplier         *float64 `json:"image_rate_multiplier"`
+	Name                 *string  `json:"name"`
+	Description          *string  `json:"description"`
+	RateMultiplier       *float64 `json:"rate_multiplier"`
+	IsExclusive          *bool    `json:"is_exclusive"`
+	Status               *string  `json:"status"`
+	AllowImageGeneration *bool    `json:"allow_image_generation"`
+	ImageRateIndependent *bool    `json:"image_rate_independent"`
+	ImageRateMultiplier  *float64 `json:"image_rate_multiplier"`
 }
 
 // GroupService 分组管理服务
@@ -135,23 +123,16 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 
 	// 创建分组
 	group := &Group{
-		Name:                        req.Name,
-		Description:                 req.Description,
-		Platform:                    PlatformAnthropic,
-		RateMultiplier:              req.RateMultiplier,
-		IsExclusive:                 req.IsExclusive,
-		Status:                      StatusActive,
-		SubscriptionType:            SubscriptionTypeStandard,
-		AllowImageGeneration:        req.AllowImageGeneration,
-		ImageSuperResolutionEnabled: req.ImageSuperResolutionEnabled,
-		Image2KEnhancementEnabled:   req.Image2KEnhancementEnabled,
-		// 2K 超分为纯本地放大，不再使用目标分组（字段已废弃）。
-		Image2KEnhancementGroupID: nil,
-		Image4KEnhancementEnabled: req.Image4KEnhancementEnabled,
-		Image4KEnhancementGroupID: normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID),
-		Image4KEnhancementModel:   normalizeImageTierEnhancementModel(req.Image4KEnhancementEnabled, req.Image4KEnhancementModel),
-		ImageRateIndependent:      req.ImageRateIndependent,
-		ImageRateMultiplier:       imageRateMultiplier,
+		Name:                 req.Name,
+		Description:          req.Description,
+		Platform:             PlatformAnthropic,
+		RateMultiplier:       req.RateMultiplier,
+		IsExclusive:          req.IsExclusive,
+		Status:               StatusActive,
+		SubscriptionType:     SubscriptionTypeStandard,
+		AllowImageGeneration: req.AllowImageGeneration,
+		ImageRateIndependent: req.ImageRateIndependent,
+		ImageRateMultiplier:  imageRateMultiplier,
 	}
 
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -226,23 +207,6 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 	if req.AllowImageGeneration != nil {
 		group.AllowImageGeneration = *req.AllowImageGeneration
 	}
-	if req.ImageSuperResolutionEnabled != nil {
-		group.ImageSuperResolutionEnabled = *req.ImageSuperResolutionEnabled
-	}
-	if req.Image2KEnhancementEnabled != nil {
-		group.Image2KEnhancementEnabled = *req.Image2KEnhancementEnabled
-	}
-	// 2K 超分为纯本地放大，不再使用目标分组（字段已废弃，始终置空）。
-	group.Image2KEnhancementGroupID = nil
-	if req.Image4KEnhancementEnabled != nil {
-		group.Image4KEnhancementEnabled = *req.Image4KEnhancementEnabled
-	}
-	if req.Image4KEnhancementGroupID != nil {
-		group.Image4KEnhancementGroupID = normalizePositiveInt64Ptr(req.Image4KEnhancementGroupID)
-	}
-	if req.Image4KEnhancementModel != nil {
-		group.Image4KEnhancementModel = normalizeImageTierEnhancementModel(group.Image4KEnhancementEnabled, req.Image4KEnhancementModel)
-	}
 	if req.ImageRateIndependent != nil {
 		group.ImageRateIndependent = *req.ImageRateIndependent
 	}
@@ -252,10 +216,6 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 		}
 		group.ImageRateMultiplier = *req.ImageRateMultiplier
 	}
-	if !group.Image4KEnhancementEnabled {
-		group.Image4KEnhancementModel = nil
-	}
-
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, fmt.Errorf("update group: %w", err)
 	}

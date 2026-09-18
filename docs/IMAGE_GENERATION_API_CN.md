@@ -134,4 +134,4 @@ PUT /api/v1/admin/groups/:id
 
 OAuth 与 Setup Token 图片请求先应用渠道和账号模型映射；Image 1.5、Image 2、Image 2.5 flare/sunburst 及其已列出的 2026-09-08 快照使用 Codex `/images/generations` 或 `/images/edits` 端点。仅原生端点返回 404/405 时回退到 Responses；其他错误仍按原有重试和错误策略处理。其他图片模型使用独立的 Responses 主控模型，默认 `gpt-5.6-luna`，图片模型写入 `image_generation.model`。可在运行环境设置 `SUB2API_IMAGES_MAIN_MODEL` 并重建容器以覆盖主控模型，无需重新编译。主控模型被上游拒绝时返回对应错误，不将图片模型误标为冷却。
 
-Image 2.5 使用独立定价，显式定价配置优先；远端目录缺项时使用对应回退价，不套用旧版 Image 2 价格。图片输入 token 保留严格的非负整数校验，并限制为总输入 token 以内；异常用量不会覆盖已有有效用量。本地分组回传格式、图片输入下载、超分和渠道转发逻辑继续生效。
+Image 2.5 使用独立定价，显式定价配置优先；远端目录缺项时使用对应回退价，不套用旧版 Image 2 价格。图片输入 token 保留严格的非负整数校验，并限制为总输入 token 以内；异常用量不会覆盖已有有效用量。本地分组回传格式、图片输入下载和渠道转发逻辑继续生效。

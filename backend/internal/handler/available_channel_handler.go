@@ -97,7 +97,6 @@ type userAvailableGroup struct {
 	PromoActive                    bool     `json:"promo_active"`
 	IsExclusive                    bool     `json:"is_exclusive"`
 	AllowImageGeneration           bool     `json:"allow_image_generation"`
-	ImageSuperResolutionEnabled    bool     `json:"image_super_resolution_enabled"`
 	ImageRateIndependent           bool     `json:"image_rate_independent"`
 	CacheHitQuarterToInput         bool     `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent          float64  `json:"cache_hit_target_percent"`
@@ -381,7 +380,6 @@ func filterUserVisibleGroups(
 			PromoActive:                    g.PromoActive,
 			IsExclusive:                    g.IsExclusive,
 			AllowImageGeneration:           g.AllowImageGeneration,
-			ImageSuperResolutionEnabled:    g.ImageSuperResolutionEnabled,
 			ImageRateIndependent:           g.ImageRateIndependent,
 			CacheHitQuarterToInput:         g.CacheHitQuarterToInput,
 			CacheHitTargetPercent:          g.CacheHitTargetPercent,

@@ -118,7 +118,6 @@ const createApiKey = (): ApiKey => ({
   group_id: null,
   status: 'active',
   openai_fast_mode_enabled: false,
-  auto_group_fallback_enabled: true,
   ip_whitelist: [],
   ip_blacklist: [],
   last_used_at: null,
@@ -550,43 +549,6 @@ describe('user KeysView column settings', () => {
         sort_order: 'asc',
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
-    )
-  })
-
-  it('新建 Key 默认开启自动承接并提交该设置', async () => {
-    const wrapper = await mountView()
-    const vm = wrapper.vm as any
-
-    expect(vm.formData.auto_group_fallback_enabled).toBe(true)
-    vm.formData.name = 'quality-key'
-    vm.formData.group_id = 42
-    await vm.handleSubmit()
-
-    expect(createKey).toHaveBeenCalledWith(
-      'quality-key',
-      42,
-      undefined,
-      [],
-      [],
-      0,
-      undefined,
-      { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 },
-      false,
-      true,
-    )
-  })
-
-  it('编辑 Key 时可关闭自动承接并提交', async () => {
-    const wrapper = await mountView()
-    const vm = wrapper.vm as any
-
-    vm.editKey({ ...createApiKey(), group_id: 42, auto_group_fallback_enabled: false })
-    expect(vm.formData.auto_group_fallback_enabled).toBe(false)
-    await vm.handleSubmit()
-
-    expect(updateKey).toHaveBeenCalledWith(
-      1,
-      expect.objectContaining({ auto_group_fallback_enabled: false }),
     )
   })
 

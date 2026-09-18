@@ -38,8 +38,6 @@ type APIKey struct {
 	Status string `json:"status,omitempty"`
 	// When enabled, OpenAI requests without service_tier are sent with priority tier by default
 	OpenaiFastModeEnabled bool `json:"openai_fast_mode_enabled,omitempty"`
-	// 是否允许在当前分组支持的模型无可用账号时自动切换到承接分组
-	AutoGroupFallbackEnabled bool `json:"auto_group_fallback_enabled,omitempty"`
 	// Last usage time of this API key
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// Allowed IPs/CIDRs, e.g. ["192.168.1.100", "10.0.0.0/8"]
@@ -127,7 +125,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
-		case apikey.FieldOpenaiFastModeEnabled, apikey.FieldAutoGroupFallbackEnabled:
+		case apikey.FieldOpenaiFastModeEnabled:
 			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
@@ -213,12 +211,6 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field openai_fast_mode_enabled", values[i])
 			} else if value.Valid {
 				_m.OpenaiFastModeEnabled = value.Bool
-			}
-		case apikey.FieldAutoGroupFallbackEnabled:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field auto_group_fallback_enabled", values[i])
-			} else if value.Valid {
-				_m.AutoGroupFallbackEnabled = value.Bool
 			}
 		case apikey.FieldLastUsedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -400,9 +392,6 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("openai_fast_mode_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.OpenaiFastModeEnabled))
-	builder.WriteString(", ")
-	builder.WriteString("auto_group_fallback_enabled=")
-	builder.WriteString(fmt.Sprintf("%v", _m.AutoGroupFallbackEnabled))
 	builder.WriteString(", ")
 	if v := _m.LastUsedAt; v != nil {
 		builder.WriteString("last_used_at=")

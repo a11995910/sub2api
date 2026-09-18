@@ -119,12 +119,6 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageResponseFormat(groupIn.ImageResponseFormat).
-		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
-		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
-		SetNillableImage2kEnhancementGroupID(groupIn.Image2KEnhancementGroupID).
-		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
-		SetNillableImage4kEnhancementGroupID(groupIn.Image4KEnhancementGroupID).
-		SetNillableImage4kEnhancementModel(groupIn.Image4KEnhancementModel).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
@@ -154,7 +148,6 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
 		SetNillableFallbackGroupIDOnInvalidRequest(groupIn.FallbackGroupIDOnInvalidRequest).
-		SetNillableAutoFallbackGroupID(groupIn.AutoFallbackGroupID).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
 		SetMcpXMLInject(groupIn.MCPXMLInject).
 		SetAllowMessagesDispatch(groupIn.AllowMessagesDispatch).
@@ -327,9 +320,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageResponseFormat(groupIn.ImageResponseFormat).
-		SetImageSuperResolutionEnabled(groupIn.ImageSuperResolutionEnabled).
-		SetImage2kEnhancementEnabled(groupIn.Image2KEnhancementEnabled).
-		SetImage4kEnhancementEnabled(groupIn.Image4KEnhancementEnabled).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
@@ -411,21 +401,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	} else {
 		builder = builder.ClearImagePrice4k()
 	}
-	if groupIn.Image4KEnhancementGroupID != nil {
-		builder = builder.SetImage4kEnhancementGroupID(*groupIn.Image4KEnhancementGroupID)
-	} else {
-		builder = builder.ClearImage4kEnhancementGroupID()
-	}
-	if groupIn.Image4KEnhancementModel != nil {
-		builder = builder.SetImage4kEnhancementModel(*groupIn.Image4KEnhancementModel)
-	} else {
-		builder = builder.ClearImage4kEnhancementModel()
-	}
-	if groupIn.Image2KEnhancementGroupID != nil {
-		builder = builder.SetImage2kEnhancementGroupID(*groupIn.Image2KEnhancementGroupID)
-	} else {
-		builder = builder.ClearImage2kEnhancementGroupID()
-	}
 	if groupIn.VideoPrice480P != nil {
 		builder = builder.SetVideoPrice480p(*groupIn.VideoPrice480P)
 	} else {
@@ -479,12 +454,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	} else {
 		builder = builder.ClearFallbackGroupIDOnInvalidRequest()
 	}
-	if groupIn.AutoFallbackGroupID != nil {
-		builder = builder.SetAutoFallbackGroupID(*groupIn.AutoFallbackGroupID)
-	} else {
-		builder = builder.ClearAutoFallbackGroupID()
-	}
-
 	// 处理 ModelRouting：nil 时清除，否则设置
 	if groupIn.ModelRouting != nil {
 		builder = builder.SetModelRouting(groupIn.ModelRouting)

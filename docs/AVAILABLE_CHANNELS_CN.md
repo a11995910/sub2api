@@ -13,12 +13,6 @@
 - `rate_multiplier`：分组默认文本倍率。
 - `allow_image_generation`：该分组是否允许图片生成。
 - `image_response_format`：客户未显式传入 `response_format` 时采用的默认图片响应格式。`b64_json` 保持内联 Base64；`url` 将最终图片保存到本地并返回当前 API 域名下 24 小时有效的公开 URL。客户显式参数始终优先。
-- `image_super_resolution_enabled`：该分组的图片生成结果是否会在返回前自动执行 4K 超分。
-- `image_2k_enhancement_enabled`：该分组命中显式 2K 生图时，是否优先调用另一个图片分组做二段提升。
-- `image_2k_enhancement_group_id`：二段 2K 提升使用的目标图片分组 ID；仅管理端配置和内部调度使用，用户侧无需手动传参。
-- `image_4k_enhancement_enabled`：该分组命中 4K 生图时，是否优先调用另一个图片分组做二段提升。
-- `image_4k_enhancement_group_id`：二段 4K 提升使用的目标图片分组 ID；仅管理端配置和内部调度使用，用户侧无需手动传参。
-- `image_4k_enhancement_model`：二段 4K 提升使用的目标图片模型；管理端在选择目标分组后从目标分组候选模型中选择。为空时后端沿用目标分组自动模型解析。
 - `image_rate_independent`：图片生成是否使用独立倍率。
 - `cache_hit_quarter_to_input_enabled`：缓存命中率目标控制开关。字段名为兼容旧客户端保留，开启后不再固定移动四分之一，而是按用户和分组对时间衰减后的累计命中率进行控制。该控制只对 OpenAI 入站协议的 HTTP SSE 流式 Chat Completions 和 Responses 请求在成功终止且带有 usage 时生效。
 - `cache_hit_target_percent`：调整后缓存命中率的回调目标，范围为 `0.01` 至 `100.00`，默认 `90.00`。命中率按 `cache_read_tokens / (input_tokens + cache_creation_tokens + cache_read_tokens)` 计算。
@@ -42,12 +36,7 @@
 
 未开启 `allow_image_generation` 的 OpenAI 分组会继续拒绝专用图片端点、图片模型和显式选择 `tool_choice:image_generation` 的请求。对于新版 CC-Switch / Codex 官方客户端在普通文本请求中默认携带的 `image_generation` tool 能力声明，网关会在转发前移除该 tool，避免文本请求被误判为生图请求而返回 403。
 
-图片分组存在以下后处理方式：
-
-- `image_2k_enhancement_enabled=true` 时，非流式且显式声明 2K `size` 的图片请求会先生成基础图片，再调用 `image_2k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。网关会把原请求 `size` 原样传给二段请求，例如 `2048x2048` 或 `2048x1152`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。未传 `size` 的默认 2K 请求不会触发二段提升，避免默认生图流量被误放大。
-- `image_4k_enhancement_enabled=true` 时，非流式且请求明确落在 4K 档位的图片请求会先生成基础图片，再调用 `image_4k_enhancement_group_id` 指向的 OpenAI 图片分组做二段提升。配置 `image_4k_enhancement_model` 后，二段请求固定使用该目标模型；未配置时后端沿用目标分组模型映射或账号候选自动解析。网关会把原请求 `size` 原样传给二段请求，例如 `3840x2160`，并在目标分组返回 PNG/JPEG 内联图片时按该 `size` 校正最终图片像素，避免元数据与实际尺寸不一致；目标分组失败最多尝试 3 次，仍失败时保留基础图片返回。未传 `size` 的自适应请求按网关默认图片档位处理，不会因为分组开启 4K 提升而自动改写为 4K。
-- 未启用图片分组 4K 提升时，若 `image_super_resolution_enabled=true`，网关继续使用旧外部超分服务。同步图片响应会在完整 JSON 返回前改写最终图片；流式图片响应会继续透传上游进度事件和局部图片，待最终完成事件出现后对最终图片执行超分并返回超分后的完成事件。超分失败时保留原图返回并记录日志。
-- Gemini 原生上游在单次响应或流式累计分片中重复返回内容完全相同的 `inlineData` 图片时，网关按图片内容摘要去重后再返回，并按唯一最终图片数计费；真正不同的多张图片仍分别返回和计费。带 `thought: true` 的中间图片会保留在响应中，但不计入最终图片费用。
+图片生成结果直接按上游内容返回或依照 `response_format` 本地化，不执行额外的 4K 超分、2K 放大或跨分组二段提升。Gemini 原生上游在单次响应或流式累计分片中重复返回内容完全相同的 `inlineData` 图片时，网关按图片内容摘要去重后再返回，并按唯一最终图片数计费；真正不同的多张图片仍分别返回和计费。带 `thought: true` 的中间图片会保留在响应中，但不计入最终图片费用。
 
 ## API Key 默认分组
 

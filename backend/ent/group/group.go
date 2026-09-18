@@ -68,18 +68,6 @@ const (
 	FieldAllowImageGeneration = "allow_image_generation"
 	// FieldImageResponseFormat holds the string denoting the image_response_format field in the database.
 	FieldImageResponseFormat = "image_response_format"
-	// FieldImageSuperResolutionEnabled holds the string denoting the image_super_resolution_enabled field in the database.
-	FieldImageSuperResolutionEnabled = "image_super_resolution_enabled"
-	// FieldImage2kEnhancementEnabled holds the string denoting the image_2k_enhancement_enabled field in the database.
-	FieldImage2kEnhancementEnabled = "image_2k_enhancement_enabled"
-	// FieldImage2kEnhancementGroupID holds the string denoting the image_2k_enhancement_group_id field in the database.
-	FieldImage2kEnhancementGroupID = "image_2k_enhancement_group_id"
-	// FieldImage4kEnhancementEnabled holds the string denoting the image_4k_enhancement_enabled field in the database.
-	FieldImage4kEnhancementEnabled = "image_4k_enhancement_enabled"
-	// FieldImage4kEnhancementGroupID holds the string denoting the image_4k_enhancement_group_id field in the database.
-	FieldImage4kEnhancementGroupID = "image_4k_enhancement_group_id"
-	// FieldImage4kEnhancementModel holds the string denoting the image_4k_enhancement_model field in the database.
-	FieldImage4kEnhancementModel = "image_4k_enhancement_model"
 	// FieldAllowBatchImageGeneration holds the string denoting the allow_batch_image_generation field in the database.
 	FieldAllowBatchImageGeneration = "allow_batch_image_generation"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
@@ -136,8 +124,6 @@ const (
 	FieldFallbackGroupID = "fallback_group_id"
 	// FieldFallbackGroupIDOnInvalidRequest holds the string denoting the fallback_group_id_on_invalid_request field in the database.
 	FieldFallbackGroupIDOnInvalidRequest = "fallback_group_id_on_invalid_request"
-	// FieldAutoFallbackGroupID holds the string denoting the auto_fallback_group_id field in the database.
-	FieldAutoFallbackGroupID = "auto_fallback_group_id"
 	// FieldModelRouting holds the string denoting the model_routing field in the database.
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
@@ -299,12 +285,6 @@ var Columns = []string{
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldImageResponseFormat,
-	FieldImageSuperResolutionEnabled,
-	FieldImage2kEnhancementEnabled,
-	FieldImage2kEnhancementGroupID,
-	FieldImage4kEnhancementEnabled,
-	FieldImage4kEnhancementGroupID,
-	FieldImage4kEnhancementModel,
 	FieldAllowBatchImageGeneration,
 	FieldImageRateIndependent,
 	FieldCacheHitQuarterToInputEnabled,
@@ -333,7 +313,6 @@ var Columns = []string{
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
-	FieldAutoFallbackGroupID,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
 	FieldMcpXMLInject,
@@ -440,14 +419,6 @@ var (
 	DefaultImageResponseFormat string
 	// ImageResponseFormatValidator is a validator for the "image_response_format" field. It is called by the builders before save.
 	ImageResponseFormatValidator func(string) error
-	// DefaultImageSuperResolutionEnabled holds the default value on creation for the "image_super_resolution_enabled" field.
-	DefaultImageSuperResolutionEnabled bool
-	// DefaultImage2kEnhancementEnabled holds the default value on creation for the "image_2k_enhancement_enabled" field.
-	DefaultImage2kEnhancementEnabled bool
-	// DefaultImage4kEnhancementEnabled holds the default value on creation for the "image_4k_enhancement_enabled" field.
-	DefaultImage4kEnhancementEnabled bool
-	// Image4kEnhancementModelValidator is a validator for the "image_4k_enhancement_model" field. It is called by the builders before save.
-	Image4kEnhancementModelValidator func(string) error
 	// DefaultAllowBatchImageGeneration holds the default value on creation for the "allow_batch_image_generation" field.
 	DefaultAllowBatchImageGeneration bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
@@ -672,36 +643,6 @@ func ByImageResponseFormat(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageResponseFormat, opts...).ToFunc()
 }
 
-// ByImageSuperResolutionEnabled orders the results by the image_super_resolution_enabled field.
-func ByImageSuperResolutionEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImageSuperResolutionEnabled, opts...).ToFunc()
-}
-
-// ByImage2kEnhancementEnabled orders the results by the image_2k_enhancement_enabled field.
-func ByImage2kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImage2kEnhancementEnabled, opts...).ToFunc()
-}
-
-// ByImage2kEnhancementGroupID orders the results by the image_2k_enhancement_group_id field.
-func ByImage2kEnhancementGroupID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImage2kEnhancementGroupID, opts...).ToFunc()
-}
-
-// ByImage4kEnhancementEnabled orders the results by the image_4k_enhancement_enabled field.
-func ByImage4kEnhancementEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImage4kEnhancementEnabled, opts...).ToFunc()
-}
-
-// ByImage4kEnhancementGroupID orders the results by the image_4k_enhancement_group_id field.
-func ByImage4kEnhancementGroupID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImage4kEnhancementGroupID, opts...).ToFunc()
-}
-
-// ByImage4kEnhancementModel orders the results by the image_4k_enhancement_model field.
-func ByImage4kEnhancementModel(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldImage4kEnhancementModel, opts...).ToFunc()
-}
-
 // ByAllowBatchImageGeneration orders the results by the allow_batch_image_generation field.
 func ByAllowBatchImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowBatchImageGeneration, opts...).ToFunc()
@@ -830,11 +771,6 @@ func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByFallbackGroupIDOnInvalidRequest orders the results by the fallback_group_id_on_invalid_request field.
 func ByFallbackGroupIDOnInvalidRequest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFallbackGroupIDOnInvalidRequest, opts...).ToFunc()
-}
-
-// ByAutoFallbackGroupID orders the results by the auto_fallback_group_id field.
-func ByAutoFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAutoFallbackGroupID, opts...).ToFunc()
 }
 
 // ByModelRoutingEnabled orders the results by the model_routing_enabled field.

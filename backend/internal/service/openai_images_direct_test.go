@@ -6,13 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -22,60 +18,7 @@ func directImagesTestAccount() *Account {
 		Credentials: map[string]any{"access_token": "test-token", "chatgpt_account_id": "test-account"}}
 }
 
-// 原生端点的两种响应协议都必须保留定制超分、文件存储和原始用量。
-func TestCodexDirectImagesKeepsSuperResolutionAndUsage(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(fmt.Sprint(stream), func(t *testing.T) {
-			enhanced := generatedImageTestPNG(t)
-			calls := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				require.Equal(t, http.MethodPost, r.Method)
-				require.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
-				w.Header().Set("Content-Type", "image/png")
-				_, _ = w.Write(enhanced)
-			}))
-			defer server.Close()
-			body := []byte(fmt.Sprintf(`{"model":"gpt-image-2","prompt":"画一只猫","size":"3840x2160","response_format":"url","stream":%t}`, stream))
-			c, rec := newOpenAIImagesTestContext(t, body)
-			c.Set("api_key", &APIKey{ID: 42, Group: &Group{ID: 7, AllowImageGeneration: true, ImageSuperResolutionEnabled: true}})
-			usage := `"usage":{"input_tokens":10,"output_tokens":18,"output_tokens_details":{"image_tokens":8}}`
-			responseBody := `{"data":[{"b64_json":"b3JpZ2luYWw=","output_format":"webp","size":"3840x2160"}],` + usage + `}`
-			contentType := "application/json"
-			if stream {
-				contentType = "text/event-stream"
-				responseBody = "event: image_generation.completed\ndata: " + `{"type":"image_generation.completed","b64_json":"b3JpZ2luYWw=","output_format":"webp","size":"3840x2160",` + usage + "}\n\n"
-			}
-			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(responseBody))}}
-			svc := newOpenAIImagesTestService(upstream)
-			svc.cfg = &config.Config{Gateway: config.GatewayConfig{ImageSuperResolutionURL: server.URL}}
-			directory := t.TempDir()
-			svc.generatedImageStore = NewGeneratedImageStore(GeneratedImageStoreConfig{Directory: directory})
-			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
-			require.NoError(t, err)
-			result, err := svc.ForwardImages(context.Background(), c, directImagesTestAccount(), body, parsed, "")
-			require.NoError(t, err)
-			require.Equal(t, 1, calls)
-			require.Equal(t, 1, result.ImageCount)
-			require.Equal(t, 10, result.Usage.InputTokens)
-			require.Equal(t, 18, result.Usage.OutputTokens)
-			require.Equal(t, 8, result.Usage.ImageOutputTokens)
-			imageURL := gjson.GetBytes(rec.Body.Bytes(), "data.0.url").String()
-			if stream {
-				events := parseOpenAIImageTestSSEEvents(rec.Body.String())
-				completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
-				require.True(t, ok)
-				require.Len(t, events, 1, "完成事件不得重复输出")
-				imageURL = gjson.Get(completed.Data, "url").String()
-			}
-			require.Regexp(t, `^/generated-images/[a-f0-9]{32}\.png$`, imageURL)
-			stored, err := os.ReadFile(filepath.Join(directory, filepath.Base(imageURL)))
-			require.NoError(t, err)
-			require.Equal(t, enhanced, stored)
-		})
-	}
-}
-
+// 原生端点需保留图片模型路由、文件存储和原始用量。
 func TestCodexDirectImagesRouting(t *testing.T) {
 	for _, model := range []string{"gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08"} {
 		t.Run(model, func(t *testing.T) {

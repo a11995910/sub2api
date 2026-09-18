@@ -72,18 +72,6 @@ type Group struct {
 	AllowImageGeneration bool `json:"allow_image_generation,omitempty"`
 	// 图片响应默认传输方式：b64_json 或 url；客户显式 response_format 优先
 	ImageResponseFormat string `json:"image_response_format,omitempty"`
-	// 是否对图片生成结果自动执行 4K 超分
-	ImageSuperResolutionEnabled bool `json:"image_super_resolution_enabled,omitempty"`
-	// 是否在 2K 生图命中后调用指定图片分组做二段提升
-	Image2kEnhancementEnabled bool `json:"image_2k_enhancement_enabled,omitempty"`
-	// 2K 生图二段提升使用的目标图片分组 ID
-	Image2kEnhancementGroupID *int64 `json:"image_2k_enhancement_group_id,omitempty"`
-	// 是否在 4K 生图命中后调用指定图片分组做二段提升
-	Image4kEnhancementEnabled bool `json:"image_4k_enhancement_enabled,omitempty"`
-	// 4K 生图二段提升使用的目标图片分组 ID
-	Image4kEnhancementGroupID *int64 `json:"image_4k_enhancement_group_id,omitempty"`
-	// 4K 生图二段提升使用的目标图片模型；为空时沿用目标分组自动模型解析
-	Image4kEnhancementModel *string `json:"image_4k_enhancement_model,omitempty"`
 	// 是否允许该分组使用批量图片生成能力
 	AllowBatchImageGeneration bool `json:"allow_batch_image_generation,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
@@ -140,8 +128,6 @@ type Group struct {
 	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
 	// 无效请求兜底使用的分组 ID
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request,omitempty"`
-	// 当前分组支持的模型无可用账号时自动承接的分组 ID
-	AutoFallbackGroupID *int64 `json:"auto_fallback_group_id,omitempty"`
 	// 模型路由配置：模型模式 -> 优先账号ID列表
 	ModelRouting map[string][]int64 `json:"model_routing,omitempty"`
 	// 是否启用模型路由配置
@@ -316,13 +302,13 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldPromoDiscountEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldImageSuperResolutionEnabled, group.FieldImage2kEnhancementEnabled, group.FieldImage4kEnhancementEnabled, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldPromoDiscountEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldPromoDiscountRate, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldCacheHitTargetTolerancePercent, group.FieldCacheHitHalfLifeDays, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldImage2kEnhancementGroupID, group.FieldImage4kEnhancementGroupID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldAutoFallbackGroupID, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImageResponseFormat, group.FieldImage4kEnhancementModel, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort, group.FieldMaxReasoningEffortOverLimit:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImageResponseFormat, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort, group.FieldMaxReasoningEffortOverLimit:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt, group.FieldPromoDiscountStart, group.FieldPromoDiscountEnd:
 			values[i] = new(sql.NullTime)
@@ -511,45 +497,6 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ImageResponseFormat = value.String
 			}
-		case group.FieldImageSuperResolutionEnabled:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field image_super_resolution_enabled", values[i])
-			} else if value.Valid {
-				_m.ImageSuperResolutionEnabled = value.Bool
-			}
-		case group.FieldImage2kEnhancementEnabled:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field image_2k_enhancement_enabled", values[i])
-			} else if value.Valid {
-				_m.Image2kEnhancementEnabled = value.Bool
-			}
-		case group.FieldImage2kEnhancementGroupID:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field image_2k_enhancement_group_id", values[i])
-			} else if value.Valid {
-				_m.Image2kEnhancementGroupID = new(int64)
-				*_m.Image2kEnhancementGroupID = value.Int64
-			}
-		case group.FieldImage4kEnhancementEnabled:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field image_4k_enhancement_enabled", values[i])
-			} else if value.Valid {
-				_m.Image4kEnhancementEnabled = value.Bool
-			}
-		case group.FieldImage4kEnhancementGroupID:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field image_4k_enhancement_group_id", values[i])
-			} else if value.Valid {
-				_m.Image4kEnhancementGroupID = new(int64)
-				*_m.Image4kEnhancementGroupID = value.Int64
-			}
-		case group.FieldImage4kEnhancementModel:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field image_4k_enhancement_model", values[i])
-			} else if value.Valid {
-				_m.Image4kEnhancementModel = new(string)
-				*_m.Image4kEnhancementModel = value.String
-			}
 		case group.FieldAllowBatchImageGeneration:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field allow_batch_image_generation", values[i])
@@ -734,13 +681,6 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FallbackGroupIDOnInvalidRequest = new(int64)
 				*_m.FallbackGroupIDOnInvalidRequest = value.Int64
-			}
-		case group.FieldAutoFallbackGroupID:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field auto_fallback_group_id", values[i])
-			} else if value.Valid {
-				_m.AutoFallbackGroupID = new(int64)
-				*_m.AutoFallbackGroupID = value.Int64
 			}
 		case group.FieldModelRouting:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -1066,30 +1006,6 @@ func (_m *Group) String() string {
 	builder.WriteString("image_response_format=")
 	builder.WriteString(_m.ImageResponseFormat)
 	builder.WriteString(", ")
-	builder.WriteString("image_super_resolution_enabled=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ImageSuperResolutionEnabled))
-	builder.WriteString(", ")
-	builder.WriteString("image_2k_enhancement_enabled=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Image2kEnhancementEnabled))
-	builder.WriteString(", ")
-	if v := _m.Image2kEnhancementGroupID; v != nil {
-		builder.WriteString("image_2k_enhancement_group_id=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	builder.WriteString("image_4k_enhancement_enabled=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Image4kEnhancementEnabled))
-	builder.WriteString(", ")
-	if v := _m.Image4kEnhancementGroupID; v != nil {
-		builder.WriteString("image_4k_enhancement_group_id=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	if v := _m.Image4kEnhancementModel; v != nil {
-		builder.WriteString("image_4k_enhancement_model=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
 	builder.WriteString("allow_batch_image_generation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowBatchImageGeneration))
 	builder.WriteString(", ")
@@ -1197,11 +1113,6 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	if v := _m.FallbackGroupIDOnInvalidRequest; v != nil {
 		builder.WriteString("fallback_group_id_on_invalid_request=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	if v := _m.AutoFallbackGroupID; v != nil {
-		builder.WriteString("auto_fallback_group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

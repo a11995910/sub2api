@@ -622,12 +622,6 @@ export interface Group {
   allow_image_generation: boolean
 	image_response_format: 'b64_json' | 'url'
   allow_batch_image_generation: boolean
-  image_super_resolution_enabled: boolean
-  image_2k_enhancement_enabled: boolean
-  image_2k_enhancement_group_id: number | null
-  image_4k_enhancement_enabled: boolean
-  image_4k_enhancement_group_id: number | null
-  image_4k_enhancement_model: string | null
   image_rate_independent: boolean
   cache_hit_quarter_to_input_enabled: boolean
   cache_hit_target_percent?: number
@@ -669,7 +663,6 @@ export interface Group {
   claude_code_only: boolean
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
-  auto_fallback_group_id: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
   // OpenAI Live 接口开关
@@ -797,7 +790,6 @@ export interface ApiKey {
   group_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   openai_fast_mode_enabled: boolean
-  auto_group_fallback_enabled: boolean
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
@@ -828,7 +820,6 @@ export interface CreateApiKeyRequest {
   group_id?: number | null
   custom_key?: string // Optional custom API Key
   openai_fast_mode_enabled?: boolean
-  auto_group_fallback_enabled?: boolean
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (0 = unlimited)
@@ -843,7 +834,6 @@ export interface UpdateApiKeyRequest {
   group_id?: number | null
   status?: 'active' | 'inactive'
   openai_fast_mode_enabled?: boolean
-  auto_group_fallback_enabled?: boolean
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
@@ -873,12 +863,6 @@ export interface CreateGroupRequest {
   allow_image_generation?: boolean
 	image_response_format?: 'b64_json' | 'url'
   allow_batch_image_generation?: boolean
-  image_super_resolution_enabled?: boolean
-  image_2k_enhancement_enabled?: boolean
-  image_2k_enhancement_group_id?: number | null
-  image_4k_enhancement_enabled?: boolean
-  image_4k_enhancement_group_id?: number | null
-  image_4k_enhancement_model?: string | null
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
   cache_hit_target_percent?: number
@@ -917,7 +901,6 @@ export interface CreateGroupRequest {
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
-  auto_fallback_group_id?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
@@ -957,12 +940,6 @@ export interface UpdateGroupRequest {
   allow_image_generation?: boolean
 	image_response_format?: 'b64_json' | 'url'
   allow_batch_image_generation?: boolean
-  image_super_resolution_enabled?: boolean
-  image_2k_enhancement_enabled?: boolean
-  image_2k_enhancement_group_id?: number | null
-  image_4k_enhancement_enabled?: boolean
-  image_4k_enhancement_group_id?: number | null
-  image_4k_enhancement_model?: string | null
   image_rate_independent?: boolean
   cache_hit_quarter_to_input_enabled?: boolean
   cache_hit_target_percent?: number
@@ -1001,7 +978,6 @@ export interface UpdateGroupRequest {
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
-  auto_fallback_group_id?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist

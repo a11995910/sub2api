@@ -268,9 +268,8 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	if preferredMappedModel != "" {
 		currentRoutingModel = preferredMappedModel
 	}
-	selectionCtx := service.WithAutoGroupFallbackMessagesModel(c.Request.Context(), reqModel)
 	account, err := h.gatewayService.SelectAccountForTokenCount(
-		selectionCtx,
+		c.Request.Context(),
 		apiKey.GroupID,
 		sessionHash,
 		currentRoutingModel,
@@ -302,7 +301,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	}
 
 	setOpsSelectedAccount(c, account.ID, account.Platform)
-	// 自动承接后，Count Tokens 与实际请求必须使用同一目标分组配置。
+	// 账号选择后按当前分组配置解析实际转发模型。
 	channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)
 	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)

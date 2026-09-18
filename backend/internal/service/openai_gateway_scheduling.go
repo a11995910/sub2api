@@ -271,36 +271,18 @@ func (s *OpenAIGatewayService) SelectAccountForTokenCount(
 ) (*Account, error) {
 	ctx = WithOpenAIProfitControlSuppressed(ctx)
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
-	currentGroupID := groupID
-	for {
-		attemptModel := autoGroupFallbackRoutingModel(ctx, currentGroupID, requestedModel)
-		account, err := s.selectAccountForModelWithExclusions(
-			ctx,
-			currentGroupID,
-			platform,
-			sessionHash,
-			attemptModel,
-			nil,
-			false,
-			0,
-			requiredCapability,
-			false,
-		)
-		if err == nil || !isAutoGroupFallbackSelectionError(err) {
-			return account, err
-		}
-		nextGroupID, ok := advanceAutoGroupFallback(
-			ctx,
-			s.groupRepo,
-			currentGroupID,
-			attemptModel,
-			s.DiagnoseModelAvailabilityForPlatform,
-		)
-		if !ok {
-			return nil, err
-		}
-		currentGroupID = nextGroupID
-	}
+	return s.selectAccountForModelWithExclusions(
+		ctx,
+		groupID,
+		platform,
+		sessionHash,
+		requestedModel,
+		nil,
+		false,
+		0,
+		requiredCapability,
+		false,
+	)
 }
 
 // NormalizeOpenAICompatiblePlatform 保留 grok 与国产 OpenAI 兼容供应商（kimi/zhipu/
