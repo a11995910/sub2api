@@ -21,6 +21,30 @@ helper = importlib.util.module_from_spec(spec)
 loader.exec_module(helper)
 
 
+class CommandStdinTest(unittest.TestCase):
+    def test_commands_do_not_consume_remaining_script_input(self):
+        # 外层进程模拟 ssh bash -s 的共享 stdin，内层命令模拟 docker exec -i。
+        script = """
+import importlib.machinery
+import importlib.util
+import sys
+sys.dont_write_bytecode = True
+loader = importlib.machinery.SourceFileLoader('compat', sys.argv[1])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+loader.exec_module(module)
+reader = [sys.executable, '-c', 'import sys; print(sys.stdin.read())']
+assert module.command(reader) == ''
+assert module.command(reader, '显式 SQL 输入') == '显式 SQL 输入'
+print(sys.stdin.read(), end='')
+"""
+        remaining = "echo 后续验证命令必须继续执行\n"
+        result = subprocess.run([sys.executable, "-c", script, str(REPO / "deploy/release-schema-compat")],
+                                input=remaining, text=True, capture_output=True, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(remaining, result.stdout)
+
+
 class LocalRuntime:
     environment = "staging"
 

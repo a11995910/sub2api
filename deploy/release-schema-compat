@@ -40,7 +40,9 @@ def identifier(value):
 
 
 def command(args, data=None):
-    result = subprocess.run(args, input=data, text=True, capture_output=True, check=False)
+    # 无输入的 docker exec -i 也会读取 stdin；必须隔离 SSH heredoc 中尚未执行的命令。
+    result = subprocess.run(args, input=data, stdin=subprocess.DEVNULL if data is None else None,
+                            text=True, capture_output=True, check=False)
     # psql 错误可能包含配置原值；只输出操作状态，不转发 stdout/stderr。
     require(result.returncode == 0, "运行时命令失败，已隐藏可能包含配置值的诊断输出")
     return result.stdout.strip()
