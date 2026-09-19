@@ -296,6 +296,7 @@ func ProvideAccountTestService(
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
 	service.SetHealthyTurnStateDynamicStorage(settingRepo, encryptor)
+	service.StartHealthyTurnStateMaintenance()
 	return service
 }
 

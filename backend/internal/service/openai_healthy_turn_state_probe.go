@@ -25,7 +25,7 @@ type OpenAIHealthyTurnStateProbeResult struct {
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }
 
-// ProbeOpenAIHealthyTurnState 每次调用只发送一次 hi；显式手动采集不依赖自动记录开关。
+// ProbeOpenAIHealthyTurnState 每次调用只发送一次 hi；显式采集独立于普通请求的状态观察。
 // 所有出口覆盖仅作用于账号副本，且复用正常转发的认证、身份、插件和缓存实例。
 func (s *AccountTestService) ProbeOpenAIHealthyTurnState(ctx context.Context, account *Account, model, transport string) (*OpenAIHealthyTurnStateProbeResult, error) {
 	return s.probeOpenAIHealthyTurnState(ctx, account, model, transport, "", false)
@@ -51,7 +51,17 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 	if model == "" {
 		model = "gpt-6-astra"
 	}
-	if !account.IsModelSupported(model) || isOpenAIImageModel(model) {
+	if !account.IsModelSupported(model) || isHealthyTurnStateNonTextModel(model) {
+		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_MODEL", "请选择账号支持的文本模型")
+	}
+	model = account.GetMappedModel(model)
+	if isHealthyTurnStateNonTextModel(model) {
+		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_MODEL", "请选择账号支持的文本模型")
+	}
+	if account.UsesOpenAICodexProtocol() {
+		model = normalizeOpenAIModelForUpstream(account, model)
+	}
+	if isHealthyTurnStateNonTextModel(model) {
 		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_MODEL", "请选择账号支持的文本模型")
 	}
 	if transport == "" {
@@ -84,7 +94,6 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 	if copyAccount.Extra == nil {
 		copyAccount.Extra = make(map[string]any)
 	}
-	copyAccount.Extra[openAIHealthyTurnStateRecordKey] = true
 	copyAccount.Extra[openAIHealthyTurnStateReplaceKey] = false
 	account = &copyAccount
 	gateway := s.openaiGatewayService
@@ -97,10 +106,6 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 		// 认证刷新仍使用账号原有配置，取得令牌后才隔离临时探测出口和来源统计。
 		copyAccount.ProxyID, copyAccount.Proxy = nil, nil
 		ctx = WithHealthyTurnStateTemporaryProxy(ctx)
-	}
-	model = account.GetMappedModel(model)
-	if account.UsesOpenAICodexProtocol() {
-		model = normalizeOpenAIModelForUpstream(account, model)
 	}
 	result.Model = model
 	// 独立上下文避免将管理端的 Cookie、JWT 或客户端头透传给模型服务。
@@ -166,7 +171,7 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 }
 
 func newOpenAIHealthyTurnStateProbeObserver(attempt *openAIHealthyTurnStateAttempt, headers http.Header) *openAIHealthyTurnStateObserver {
-	attempt.record, attempt.replace = false, false
+	attempt.replace = false
 	value := extractOpenAICodexTurnState(headers)
 	if len(value) > openAIHealthyTurnStateMaxBytes || strings.ContainsAny(value, "\r\n") {
 		value = ""

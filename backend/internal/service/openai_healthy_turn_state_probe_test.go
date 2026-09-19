@@ -47,7 +47,7 @@ func TestOpenAIHealthyTurnStateProbeHTTPOnlyRecordsCompleteResponses(t *testing.
 			require.Equal(t, "hi", gjson.Get(upstream.bodies[0], "input.0.content.0.text").String())
 			require.Equal(t, "gpt-6-astra", gjson.Get(upstream.bodies[0], "model").String())
 			require.Empty(t, upstream.requests[0].Header.Get(openAICodexTurnStateHeader))
-			require.False(t, account.OpenAIHealthyTurnStateRecordEnabled(), "手动测试不能修改账号开关")
+			require.Equal(t, false, account.Extra[openAIHealthyTurnStateRecordKey], "手动测试不能修改账号旧配置")
 			if tc.want == "recorded" {
 				require.Len(t, gateway.openaiHealthyTurnStates.entries, 1)
 				require.NotNil(t, result.ExpiresAt)
@@ -230,6 +230,21 @@ func TestOpenAIHealthyTurnStateProbeWS(t *testing.T) {
 				require.Equal(t, status, result.HTTPStatus)
 				require.Empty(t, gateway.openaiHealthyTurnStates.entries)
 			}
+		})
+	}
+}
+
+func TestOpenAIHealthyTurnStateProbeRejectsMappedMediaBeforeRequest(t *testing.T) {
+	for _, target := range []string{"gpt-image-1", "sora-2"} {
+		t.Run(target, func(t *testing.T) {
+			upstream := &healthyTurnStateUpstream{}
+			svc := &AccountTestService{openaiGatewayService: &OpenAIGatewayService{httpUpstream: upstream}}
+			account := healthyTurnStateProbeAccount()
+			account.Credentials["model_mapping"] = map[string]any{"文本别名": target}
+			result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), account, "文本别名", "http")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.Empty(t, upstream.requests, "文本采集不能向映射后的图片或视频模型发请求")
 		})
 	}
 }

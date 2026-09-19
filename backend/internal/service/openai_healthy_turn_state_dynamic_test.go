@@ -39,6 +39,7 @@ func healthyDynamicTestService(t *testing.T, target, attempts int) (*AccountTest
 	account := healthyTurnStateProbeAccount()
 	_, err := svc.SaveHealthyTurnStateDynamicConfig(context.Background(), account.ID, HealthyTurnStateDynamicConfigInput{
 		APIURL: "https://supplier.example/secret-path?token=private-token", Protocol: "http", TargetCount: target, MaxAttempts: attempts,
+		Models: []string{"gpt-6-astra"},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -69,8 +70,8 @@ func TestHealthyDynamicConfigEncryptedAccountScopedAndRedacted(t *testing.T) {
 	other, err := svc.GetHealthyTurnStateDynamicConfig(ctx, account.ID+1)
 	require.NoError(t, err)
 	require.False(t, other.Configured)
-	require.Equal(t, 5, other.TargetCount)
-	_, err = svc.SaveHealthyTurnStateDynamicConfig(ctx, account.ID, HealthyTurnStateDynamicConfigInput{Protocol: "socks5h", TargetCount: 3, MaxAttempts: 5})
+	require.Equal(t, 3, other.TargetCount)
+	_, err = svc.SaveHealthyTurnStateDynamicConfig(ctx, account.ID, HealthyTurnStateDynamicConfigInput{Protocol: "socks5h", TargetCount: 3, MaxAttempts: 5, Models: []string{"gpt-6-astra"}})
 	require.NoError(t, err)
 	stored, err := svc.healthyTurnStateDynamic.loadConfig(ctx, account.ID)
 	require.NoError(t, err)
@@ -86,10 +87,27 @@ func TestHealthyDynamicConfigEncryptedAccountScopedAndRedacted(t *testing.T) {
 		{APIURL: "https://supplier.example/private-token", Protocol: "http", TargetCount: 2, MaxAttempts: 1},
 		{APIURL: "https://supplier.example/private-token", Protocol: "http", TargetCount: 1, MaxAttempts: 1001},
 	} {
+		input.Models = []string{"gpt-6-astra"}
 		_, err = svc.SaveHealthyTurnStateDynamicConfig(ctx, account.ID, input)
 		require.Error(t, err)
 		require.NotContains(t, err.Error(), "private-token")
 	}
+}
+
+func TestHealthyDynamicConfigRequiresExplicitModelsAndDeduplicatesSelection(t *testing.T) {
+	svc, _, account := healthyDynamicTestService(t, 3, 100)
+	for _, models := range [][]string{nil, {}, {""}, {"gpt-image-2"}, {"gpt-*"}} {
+		_, err := svc.SaveHealthyTurnStateDynamicConfig(context.Background(), account.ID, HealthyTurnStateDynamicConfigInput{
+			Protocol: "http", TargetCount: 3, MaxAttempts: 100, Models: models,
+		})
+		require.Error(t, err, "未勾选模型或无效选择不得自动开始采集")
+	}
+	view, err := svc.SaveHealthyTurnStateDynamicConfig(context.Background(), account.ID, HealthyTurnStateDynamicConfigInput{
+		Protocol: "http", TargetCount: 3, MaxAttempts: 100, Models: []string{"gpt-6-astra", " gpt-6-astra ", "gpt-5.6-sol"}, Transport: "websocket",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-6-astra", "gpt-5.6-sol"}, view.Models)
+	require.Equal(t, "websocket", view.Transport)
 }
 
 func TestHealthyDynamicRunSerialStepsCountOnlyNewRecords(t *testing.T) {

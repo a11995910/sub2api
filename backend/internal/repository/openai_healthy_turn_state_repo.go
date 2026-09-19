@@ -260,6 +260,16 @@ func (r *healthyTurnStateRepository) Stats(ctx context.Context, accountID int64)
 	result := &service.HealthyTurnStateStats{
 		Models: []service.HealthyTurnStateModelStats{}, Records: []service.HealthyTurnStateRecord{}, Probes: []service.HealthyTurnStateProbeLog{},
 	}
+	// 过期即删除可复用的密文与租约，保留历史计数供排障；维护器据此补齐缺口。
+	if _, err := r.db.ExecContext(ctx, `UPDATE openai_healthy_turn_state_account_model_pool
+		SET value_encrypted=NULL,lease_token='',lease_until=NULL
+		WHERE account_id=$1 AND expires_at<=NOW()
+		AND (value_encrypted IS NOT NULL OR lease_token<>'' OR lease_until IS NOT NULL)`, accountID); err != nil {
+		return nil, err
+	}
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM openai_healthy_turn_state_account_model_rejections WHERE account_id=$1 AND expires_at<=NOW()`, accountID); err != nil {
+		return nil, err
+	}
 	// 累计统计覆盖本账号的全部记录，详情列表的数量限制不影响每个模型的累计数。
 	rows, err := r.db.QueryContext(ctx, `SELECT model,
 		COUNT(*) FILTER (WHERE value_encrypted IS NOT NULL AND expires_at>NOW() AND (lease_until IS NULL OR lease_until<=NOW())),

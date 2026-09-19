@@ -72,21 +72,15 @@ func (u *healthyTurnStateUpstream) DoWithTLS(req *http.Request, proxy string, id
 
 func TestOpenAIHealthyTurnStateFlags(t *testing.T) {
 	a := &Account{ID: 1, Platform: PlatformOpenAI}
-	require.True(t, a.OpenAIHealthyTurnStateRecordEnabled(), "未配置的现有及新建账号自动记录")
 	require.False(t, a.OpenAIHealthyTurnStateReplaceEnabled())
-	a.Extra = map[string]any{"unrelated": true}
-	require.True(t, a.OpenAIHealthyTurnStateRecordEnabled())
-	a.Extra = map[string]any{openAIHealthyTurnStateRecordKey: false, openAIHealthyTurnStateReplaceKey: true}
-	require.False(t, a.OpenAIHealthyTurnStateRecordEnabled())
+	a.Extra = map[string]any{openAIHealthyTurnStateRecordKey: true, openAIHealthyTurnStateReplaceKey: true}
 	require.True(t, a.OpenAIHealthyTurnStateReplaceEnabled())
-	for _, key := range []string{openAIHealthyTurnStateRecordKey, openAIHealthyTurnStateReplaceKey} {
-		for _, value := range []any{nil, "true", 1} {
-			require.Error(t, ValidateOpenAIHealthyTurnStateExtra(map[string]any{key: value}))
-		}
+	for _, value := range []any{nil, "true", 1} {
+		require.Error(t, ValidateOpenAIHealthyTurnStateExtra(map[string]any{openAIHealthyTurnStateReplaceKey: value}))
 	}
 	require.NoError(t, ValidateOpenAIHealthyTurnStateExtra(a.Extra))
+	require.NotContains(t, a.Extra, openAIHealthyTurnStateRecordKey, "保存时清除旧记录开关")
 	a.Platform = PlatformGrok
-	require.False(t, a.OpenAIHealthyTurnStateRecordEnabled())
 	require.False(t, a.OpenAIHealthyTurnStateReplaceEnabled())
 }
 
@@ -124,6 +118,8 @@ func TestOpenAIHealthyTurnStateHTTPReplaceAndEvict(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, healthyTurnStateSSE(), string(payload))
 			require.NoError(t, resp.Body.Close())
+			require.Empty(t, svc.openaiHealthyTurnStates.entries, "普通请求不能自动采集健康头")
+			require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: a.ID, model: "gpt-test"}, openAIHealthyTurnStateEntry{value: "健康状态", expiresAt: time.Now().Add(time.Minute)}))
 			_, target := healthyTurnStateRequest(t, svc, a, "问题会话")
 			target.Header.Set(openAICodexTurnStateHeader, "原状态")
 			resp, err = svc.doOpenAIUpstream(target, "", a)
@@ -142,7 +138,7 @@ func TestOpenAIHealthyTurnStateHTTPReplaceAndEvict(t *testing.T) {
 	}
 }
 
-func TestOpenAIHealthyTurnStateHTTPSuccessKeepsIndependentSwitches(t *testing.T) {
+func TestOpenAIHealthyTurnStateHTTPSuccessReusesWithoutCollecting(t *testing.T) {
 	upstream := &healthyTurnStateUpstream{responses: []*http.Response{
 		healthyTurnStateResponse(429, "", "错误"), healthyTurnStateResponse(200, "新状态", healthyTurnStateSSE()),
 		healthyTurnStateResponse(503, "", "后续同请求错误"),
@@ -158,7 +154,7 @@ func TestOpenAIHealthyTurnStateHTTPSuccessKeepsIndependentSwitches(t *testing.T)
 	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[attempt.scope.shared()], "关闭记录仍可使用旧记录，且不能延长寿命或新增值")
+	require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[attempt.scope.shared()], "成功后继续复用已有记录，且不能延长寿命或新增值")
 	req.Body, _ = req.GetBody()
 	req = svc.prepareOpenAIHealthyTurnStateRequest(c, a, req, "gpt-test")
 	_, err = svc.doOpenAIUpstream(req, "", a)
@@ -213,7 +209,7 @@ func TestOpenAIHealthyTurnStateBodyPreservesChunksAndRejectsEmptySuccess(t *test
 			require.NoError(t, body.Close())
 			require.Empty(t, svc.openaiHealthyTurnStates.held)
 			if tc.healthy {
-				require.Equal(t, "新健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope.shared()].value)
+				require.Equal(t, entry, svc.openaiHealthyTurnStates.entries[attempt.scope.shared()], "成功后归还旧健康头，保留原过期时间")
 			} else {
 				require.Empty(t, svc.openaiHealthyTurnStates.entries)
 				require.False(t, svc.openaiHealthyTurnStates.store(attempt.scope, entry), "未成功输出的试验不能回填旧记录")
@@ -258,6 +254,9 @@ func TestOpenAIHealthyTurnStateHTTPMissingContentType(t *testing.T) {
 				svc := &OpenAIGatewayService{httpUpstream: upstream, openaiHealthyTurnStates: openAIHealthyTurnStateCache{repo: store}}
 				account := &Account{ID: 7, Platform: PlatformOpenAI, Extra: map[string]any{openAIHealthyTurnStateRecordKey: true}}
 				_, request := healthyTurnStateRequest(t, svc, account, "测试会话")
+				attempt := openAIHealthyTurnStateAttemptFromRequest(request)
+				attempt.borrowed = openAIHealthyTurnStateEntry{value: "已有健康头", leaseToken: "测试租约", expiresAt: time.Now().Add(time.Minute)}
+				require.True(t, attempt.started(200))
 				resp, err := svc.doOpenAIUpstream(request, "", account)
 				require.NoError(t, err)
 				payload, err := io.ReadAll(resp.Body)
@@ -265,11 +264,8 @@ func TestOpenAIHealthyTurnStateHTTPMissingContentType(t *testing.T) {
 				require.Equal(t, tc.payload, string(payload), "采集不能改变客户端响应")
 				require.NoError(t, resp.Body.Close())
 				require.Empty(t, resp.Header.Get("Content-Type"), "格式识别不修改上游响应头")
-				if tc.healthy {
-					require.Equal(t, 1, store.saves, "完整健康响应只保存一次")
-				} else {
-					require.Zero(t, store.saves, "失败和空响应不得入库")
-				}
+				require.Equal(t, []bool{tc.healthy}, store.results, "按完整响应判断已借用的健康头是否仍可用")
+				require.Zero(t, store.saves, "普通请求不得新增库存")
 			})
 		}
 	}
@@ -395,7 +391,7 @@ func TestOpenAIHealthyTurnStateWSHandshakeRetriesOnFreshConnection(t *testing.T)
 	lease.observeHealthyTurnState([]byte(healthyTurnStateDelta), nil)
 	lease.observeHealthyTurnState([]byte(healthyTurnStateDone), nil)
 	lease.Release()
-	require.Equal(t, "WS健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope.shared()].value)
+	require.Equal(t, "已有健康状态", svc.openaiHealthyTurnStates.entries[attempt.scope.shared()].value, "WebSocket 成功后保留原健康头")
 }
 
 func TestOpenAIHealthyTurnStateWSFailedReplacementEvicts(t *testing.T) {

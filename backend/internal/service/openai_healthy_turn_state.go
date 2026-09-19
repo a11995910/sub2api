@@ -23,18 +23,6 @@ const (
 	openAIHealthyTurnStateBudgetKey  = "openai_healthy_turn_state_budget"
 )
 
-func (a *Account) OpenAIHealthyTurnStateRecordEnabled() bool {
-	if a == nil || a.Platform != PlatformOpenAI {
-		return false
-	}
-	value, exists := a.Extra[openAIHealthyTurnStateRecordKey]
-	if !exists {
-		return true
-	}
-	enabled, _ := value.(bool)
-	return enabled
-}
-
 func (a *Account) OpenAIHealthyTurnStateReplaceEnabled() bool {
 	if a == nil || a.Platform != PlatformOpenAI {
 		return false
@@ -43,13 +31,12 @@ func (a *Account) OpenAIHealthyTurnStateReplaceEnabled() bool {
 	return enabled
 }
 
-// ValidateOpenAIHealthyTurnStateExtra 保证两个独立开关只接受布尔值。
+// ValidateOpenAIHealthyTurnStateExtra 校验替换开关，并移除已停用的普通请求记录配置。
 func ValidateOpenAIHealthyTurnStateExtra(extra map[string]any) error {
-	for _, key := range []string{openAIHealthyTurnStateRecordKey, openAIHealthyTurnStateReplaceKey} {
-		if value, exists := extra[key]; exists {
-			if _, ok := value.(bool); !ok {
-				return infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_SETTING", key+" 必须为布尔值")
-			}
+	delete(extra, openAIHealthyTurnStateRecordKey)
+	if value, exists := extra[openAIHealthyTurnStateReplaceKey]; exists {
+		if _, ok := value.(bool); !ok {
+			return infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_SETTING", openAIHealthyTurnStateReplaceKey+" 必须为布尔值")
 		}
 	}
 	return nil
@@ -223,16 +210,16 @@ type openAIHealthyTurnStateBudget struct {
 }
 
 type openAIHealthyTurnStateAttempt struct {
-	cache           *openAIHealthyTurnStateCache
-	scope           openAIHealthyTurnStateScope
-	budget          *openAIHealthyTurnStateBudget
-	clientContext   context.Context
-	record, replace bool
-	borrowed        openAIHealthyTurnStateEntry
-	sent            bool
-	httpStatus      int
-	startedAt       time.Time
-	currentState    string
+	cache         *openAIHealthyTurnStateCache
+	scope         openAIHealthyTurnStateScope
+	budget        *openAIHealthyTurnStateBudget
+	clientContext context.Context
+	replace       bool
+	borrowed      openAIHealthyTurnStateEntry
+	sent          bool
+	httpStatus    int
+	startedAt     time.Time
+	currentState  string
 }
 
 const openAIHealthyTurnStateFirstOutputLimit = 5 * time.Second
@@ -244,7 +231,7 @@ func (a *openAIHealthyTurnStateAttempt) markStarted() {
 }
 
 func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, account *Account, model, endpoint, proxyURL string, headers http.Header) *openAIHealthyTurnStateAttempt {
-	if s == nil || account == nil || account.ID <= 0 || (!account.OpenAIHealthyTurnStateRecordEnabled() && !account.OpenAIHealthyTurnStateReplaceEnabled()) {
+	if s == nil || account == nil || account.ID <= 0 || account.Platform != PlatformOpenAI {
 		return nil
 	}
 	budget := &openAIHealthyTurnStateBudget{}
@@ -272,7 +259,7 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 		cache:  &s.openaiHealthyTurnStates,
 		scope:  openAIHealthyTurnStateScope{account.ID, model, [32]byte{}, transport, proxyID},
 		budget: budget, clientContext: clientCtx, currentState: headers.Get(openAICodexTurnStateHeader),
-		record: account.OpenAIHealthyTurnStateRecordEnabled(), replace: account.OpenAIHealthyTurnStateReplaceEnabled(),
+		replace: account.OpenAIHealthyTurnStateReplaceEnabled(),
 	}
 }
 

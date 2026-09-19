@@ -360,9 +360,7 @@ func (o *openAIHealthyTurnStateObserver) finish() {
 	}
 	if o.healthy && o.terminal && !o.failed {
 		o.attempt.completed(true)
-		if o.attempt.record && !o.firstOutputTooLate {
-			o.attempt.cache.store(o.attempt.scope, o.candidate)
-		}
+		// 普通请求只归还已借用的健康头，响应中的新头不会增加库存或延长寿命。
 		return
 	}
 	// 首字后的错误、异常 EOF、超时和空成功响应也会淘汰已尝试的记录。
@@ -370,7 +368,7 @@ func (o *openAIHealthyTurnStateObserver) finish() {
 	if o.modelMismatch {
 		o.attempt.cache.reject(o.attempt.scope, openAIHealthyTurnStateEntry{value: o.attempt.currentState})
 	}
-	if o.modelMismatch || (o.attempt.record && o.healthy) {
+	if o.modelMismatch || o.healthy {
 		o.attempt.cache.reject(o.attempt.scope, o.candidate)
 	}
 }

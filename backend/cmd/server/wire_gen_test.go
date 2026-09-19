@@ -85,21 +85,22 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		openAIOAuthSvc,
 		geminiOAuthSvc,
 		antigravityOAuthSvc,
-		nil, // grokOAuth
-		nil, // openAIGateway
-		nil, // videoTaskReconciliation
-		nil, // scheduledTestRunner
-		nil, // backupSvc
-		nil, // paymentOrderExpiry
-		nil, // channelMonitorRunner
-		nil, // channelMonitorV2Aggregator
-		nil, // quotaFlusher
-		nil, // upstreamBillingProbe
-		nil, // ollamaCloudUsage
-		nil, // auditLog
-		nil, // openAIAutoReset
-		nil, // promptAudit
-		nil, // pluginManager
+		nil,                           // grokOAuth
+		nil,                           // openAIGateway
+		nil,                           // videoTaskReconciliation
+		nil,                           // scheduledTestRunner
+		nil,                           // backupSvc
+		nil,                           // paymentOrderExpiry
+		nil,                           // channelMonitorRunner
+		nil,                           // channelMonitorV2Aggregator
+		nil,                           // quotaFlusher
+		nil,                           // upstreamBillingProbe
+		nil,                           // ollamaCloudUsage
+		nil,                           // auditLog
+		nil,                           // openAIAutoReset
+		nil,                           // promptAudit
+		nil,                           // pluginManager
+		&service.AccountTestService{}, // 账号健康头维护服务
 	)
 
 	require.NotPanics(t, func() {

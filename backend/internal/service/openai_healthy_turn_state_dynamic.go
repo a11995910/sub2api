@@ -23,6 +23,7 @@ type HealthyTurnStateDynamicRun struct {
 	ID             string                             `json:"id"`
 	Status         string                             `json:"status"`
 	Model          string                             `json:"model"`
+	Models         []string                           `json:"models"`
 	Transport      string                             `json:"transport"`
 	Attempts       int                                `json:"attempts"`
 	Recorded       int                                `json:"recorded"`
@@ -39,9 +40,15 @@ type healthyTurnStateDynamicService struct {
 	mu       sync.Mutex
 	runs     map[string]*healthyTurnStateDynamicSession
 	// 仅用于离线测试；正式实例使用真实提取与单次探测方法。
-	fetch func(context.Context, HealthyTurnStateDynamicConfigInput) ([]string, error)
-	probe func(context.Context, *Account, string, string, string) (*OpenAIHealthyTurnStateProbeResult, error)
-	now   func() time.Time
+	fetch              func(context.Context, HealthyTurnStateDynamicConfigInput) ([]string, error)
+	probe              func(context.Context, *Account, string, string, string) (*OpenAIHealthyTurnStateProbeResult, error)
+	now                func() time.Time
+	inventory          func(context.Context, int64) (map[string]int64, error)
+	maintenanceCancel  context.CancelFunc
+	maintenanceDone    chan struct{}
+	maintenanceWorkers sync.WaitGroup
+	maintenanceActive  map[int64]bool
+	maintenanceRetry   map[int64]healthyDynamicRetry
 }
 
 type healthyTurnStateDynamicSession struct {
@@ -51,6 +58,8 @@ type healthyTurnStateDynamicSession struct {
 	accountID             int64
 	account               *Account
 	probeModel            string
+	models                []healthyDynamicModel
+	recordedByModel       map[string]int64
 	config                HealthyTurnStateDynamicConfigInput
 	pending               []string
 	seen                  map[string]struct{}
@@ -70,6 +79,7 @@ func (d *healthyTurnStateDynamicService) clock() time.Time {
 
 func (r *healthyTurnStateDynamicSession) snapshotLocked() *HealthyTurnStateDynamicRun {
 	view := r.view
+	view.Models = append([]string{}, view.Models...)
 	if view.LastResult != nil {
 		last := *view.LastResult
 		view.LastResult = &last
@@ -152,9 +162,8 @@ func (s *AccountTestService) StartHealthyTurnStateDynamic(ctx context.Context, a
 	if err != nil {
 		return nil, err
 	}
-	input, err = validateHealthyDynamicStart(account, input)
-	if err != nil {
-		return nil, err
+	if account == nil || account.ID <= 0 || account.Platform != PlatformOpenAI {
+		return nil, infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_ACCOUNT", "仅支持 OpenAI 账号")
 	}
 	if s.openaiGatewayService == nil {
 		return nil, infraerrors.ServiceUnavailable("HEALTHY_TURN_STATE_UNAVAILABLE", "状态头测试服务暂不可用")
@@ -165,6 +174,20 @@ func (s *AccountTestService) StartHealthyTurnStateDynamic(ctx context.Context, a
 	}
 	if config.APIURL == "" {
 		return nil, infraerrors.BadRequest("HEALTHY_DYNAMIC_NOT_CONFIGURED", "请先保存动态代理采集设置")
+	}
+	if input.Model == "" && len(config.Models) > 0 {
+		input.Model = config.Models[0]
+	}
+	if input.Transport == "" {
+		input.Transport = config.Transport
+	}
+	input, err = validateHealthyDynamicStart(account, input)
+	if err != nil {
+		return nil, err
+	}
+	models, err := healthyDynamicModels(account, config.Models, input.Model)
+	if err != nil {
+		return nil, err
 	}
 	if ctx.Err() != nil {
 		return nil, infraerrors.BadRequest("HEALTHY_DYNAMIC_REQUEST_CANCELED", "请求已取消")
@@ -189,14 +212,16 @@ func (s *AccountTestService) StartHealthyTurnStateDynamic(ctx context.Context, a
 	}
 	copyAccount := *account
 	copyAccount.Credentials, copyAccount.Extra = maps.Clone(account.Credentials), maps.Clone(account.Extra)
-	model := account.GetMappedModel(input.Model)
-	if account.UsesOpenAICodexProtocol() {
-		model = normalizeOpenAIModelForUpstream(account, model)
+	model := models[0].upstream
+	selectedModels := make([]string, 0, len(models))
+	for _, selected := range models {
+		selectedModels = append(selectedModels, selected.requested)
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	run := &healthyTurnStateDynamicSession{
-		view:      HealthyTurnStateDynamicRun{ID: uuid.NewString(), Status: "running", Model: model, Transport: input.Transport, TargetCount: config.TargetCount, MaxAttempts: config.MaxAttempts, Message: "采集已就绪"},
+		view:      HealthyTurnStateDynamicRun{ID: uuid.NewString(), Status: "running", Model: model, Models: selectedModels, Transport: input.Transport, TargetCount: config.TargetCount, MaxAttempts: config.MaxAttempts, Message: "采集已就绪"},
 		accountID: account.ID, account: &copyAccount, probeModel: input.Model, config: config, seen: make(map[string]struct{}), createdAt: now, lastUsed: now, ctx: runCtx, cancel: cancel,
+		models: models, recordedByModel: make(map[string]int64),
 	}
 	run.idleTimer = time.AfterFunc(healthyDynamicIdleLimit, func() { run.mu.Lock(); defer run.mu.Unlock(); run.expireLocked(d.clock()) })
 	run.limitTimer = time.AfterFunc(healthyDynamicRunLimit, func() {
@@ -262,7 +287,27 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 	stepCtx, cancel := context.WithCancel(run.ctx)
 	stopRequestCancellation := context.AfterFunc(ctx, cancel)
 	defer func() { stopRequestCancellation(); cancel() }()
-	account, config, probeModel, transport := run.account, run.config, run.probeModel, run.view.Transport
+	account, config, transport := run.account, run.config, run.view.Transport
+	run.mu.Unlock()
+	counts, inventoryErr := s.healthyDynamicInventory(stepCtx, accountID)
+	run.mu.Lock()
+	if inventoryErr != nil {
+		run.finishLocked("failed", "无法读取健康头库存，已暂停采集")
+	}
+	if counts == nil {
+		counts = maps.Clone(run.recordedByModel)
+	}
+	selected, missing := healthyDynamicMissingModel(run.models, counts, config.TargetCount)
+	if !missing {
+		run.finishLocked("completed", "所选模型的健康头库存已达到目标")
+	}
+	if run.view.Status != "running" {
+		view := run.snapshotLocked()
+		run.mu.Unlock()
+		return view, nil
+	}
+	probeModel := selected.requested
+	run.view.Model = selected.upstream
 	needsBatch := len(run.pending) == 0
 	if needsBatch {
 		run.view.FetchedBatches++
@@ -344,16 +389,18 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 	run.view.LastResult = result
 	if result.Status == "recorded" {
 		run.view.Recorded++
+		run.recordedByModel[selected.upstream]++
+		counts[selected.upstream]++
 	}
 	if stepCtx.Err() != nil {
 		run.finishLocked("stopped", "请求已取消，采集停止")
 	}
 	if run.view.Status == "running" {
 		run.view.Message = "本轮采集完成"
-		if run.view.Recorded >= run.view.TargetCount {
-			run.finishLocked("completed", "已达到目标新增记录数")
+		if _, missing := healthyDynamicMissingModel(run.models, counts, config.TargetCount); !missing {
+			run.finishLocked("completed", "所选模型的健康头库存已达到目标")
 		} else if run.view.Attempts >= run.view.MaxAttempts {
-			run.finishLocked("completed", fmt.Sprintf("已达到尝试上限，新增 %d / 目标 %d", run.view.Recorded, run.view.TargetCount))
+			run.finishLocked("completed", fmt.Sprintf("本轮已达到尝试上限，新增 %d 个健康头，剩余缺口稍后继续补齐", run.view.Recorded))
 		}
 	}
 	run.lastUsed = d.clock()

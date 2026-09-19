@@ -198,6 +198,9 @@ func TestHealthyTurnStateRepositoryPersistence(t *testing.T) {
 	require.Zero(t, stats.Available)
 	require.EqualValues(t, 2, stats.Captures)
 	require.Equal(t, "expired", stats.Records[0].Status)
+	var expiredSecrets int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM openai_healthy_turn_state_account_model_pool WHERE value_encrypted IS NOT NULL OR lease_token<>'' OR lease_until IS NOT NULL").Scan(&expiredSecrets))
+	require.Zero(t, expiredSecrets, "统计维护时彻底清除过期密文和租约，保留历史计数")
 	encoded, err := json.Marshal(stats)
 	require.NoError(t, err)
 	for _, secret := range []string{value.Value, newValue.Value, encrypted, healthyStateHash(value.Value), "lease_token", "value_encrypted", "value_hash"} {

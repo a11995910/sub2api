@@ -52,10 +52,12 @@ func (h *AccountHandler) SaveHealthyTurnStateDynamicConfig(c *gin.Context) {
 		return
 	}
 	var input struct {
-		APIURL      string `json:"api_url" binding:"max=4096"`
-		Protocol    string `json:"protocol" binding:"required,oneof=http https socks5h"`
-		TargetCount int    `json:"target_count" binding:"min=1,max=100"`
-		MaxAttempts int    `json:"max_attempts" binding:"min=1,max=1000,gtefield=TargetCount"`
+		APIURL      string   `json:"api_url" binding:"max=4096"`
+		Protocol    string   `json:"protocol" binding:"required,oneof=http https socks5h"`
+		TargetCount int      `json:"target_count" binding:"min=1,max=100"`
+		MaxAttempts int      `json:"max_attempts" binding:"min=1,max=1000,gtefield=TargetCount"`
+		Models      []string `json:"models" binding:"required,min=1,max=100,dive,required,max=200"`
+		Transport   string   `json:"transport" binding:"omitempty,oneof=http websocket"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		response.BadRequest(c, "提取设置无效：目标数量应为 1–100，尝试上限应为 1–1000 且不小于目标")
@@ -63,6 +65,7 @@ func (h *AccountHandler) SaveHealthyTurnStateDynamicConfig(c *gin.Context) {
 	}
 	settings, err := h.accountTestService.SaveHealthyTurnStateDynamicConfig(c.Request.Context(), account.ID, service.HealthyTurnStateDynamicConfigInput{
 		APIURL: input.APIURL, Protocol: input.Protocol, TargetCount: input.TargetCount, MaxAttempts: input.MaxAttempts,
+		Models: input.Models, Transport: input.Transport,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

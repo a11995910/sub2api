@@ -60,15 +60,16 @@ type HealthyTurnStateModelStats struct {
 }
 
 type HealthyTurnStateStats struct {
-	Available int64                        `json:"available"`
-	InUse     int64                        `json:"in_use"`
-	Captures  int64                        `json:"captures"`
-	Attempts  int64                        `json:"attempts"`
-	Successes int64                        `json:"successes"`
-	Failures  int64                        `json:"failures"`
-	Models    []HealthyTurnStateModelStats `json:"models"`
-	Records   []HealthyTurnStateRecord     `json:"records"`
-	Probes    []HealthyTurnStateProbeLog   `json:"probes"`
+	Maintenance *HealthyTurnStateMaintenanceStatus `json:"maintenance,omitempty"`
+	Available   int64                              `json:"available"`
+	InUse       int64                              `json:"in_use"`
+	Captures    int64                              `json:"captures"`
+	Attempts    int64                              `json:"attempts"`
+	Successes   int64                              `json:"successes"`
+	Failures    int64                              `json:"failures"`
+	Models      []HealthyTurnStateModelStats       `json:"models"`
+	Records     []HealthyTurnStateRecord           `json:"records"`
+	Probes      []HealthyTurnStateProbeLog         `json:"probes"`
 }
 
 type HealthyTurnStateRepository interface {
@@ -171,5 +172,10 @@ func (s *AccountTestService) HealthyTurnStateStats(ctx context.Context, accountI
 	if s.openaiGatewayService == nil || s.openaiGatewayService.openaiHealthyTurnStates.repo == nil {
 		return nil, fmt.Errorf("健康状态头持久化服务暂不可用")
 	}
-	return s.openaiGatewayService.openaiHealthyTurnStates.repo.Stats(ctx, accountID)
+	stats, err := s.openaiGatewayService.openaiHealthyTurnStates.repo.Stats(ctx, accountID)
+	if err != nil || stats == nil {
+		return stats, err
+	}
+	stats.Maintenance, err = s.HealthyTurnStateMaintenanceStatus(ctx, accountID)
+	return stats, err
 }

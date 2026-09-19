@@ -125,12 +125,14 @@ func TestOpenAIWSIngressHealthyTurnStateUsesMappedModelAcrossTurns(t *testing.T)
 			require.Equal(t, "映射后模型的健康头", headers[1].Get(openAICodexTurnStateHeader), "握手补试只领取最终发送模型的健康头")
 			for scope, want := range map[openAIHealthyTurnStateScope]string{
 				originalScope: "原始别名的健康头", foreignScope: "其他账号的健康头",
-				firstScope: "本账号握手健康头", secondScope: "本账号握手健康头",
+				firstScope: "映射后模型的健康头",
 			} {
 				entry, ok := svc.openaiHealthyTurnStates.get(scope)
 				require.True(t, ok)
-				require.Equal(t, want, entry.value, "各账号与各轮实际模型必须独立记录")
+				require.Equal(t, want, entry.value, "各账号与实际模型保持独立，成功归还原健康头")
 			}
+			_, secondRecorded := svc.openaiHealthyTurnStates.get(secondScope)
+			require.False(t, secondRecorded, "后续轮次不能自动记录握手状态头")
 			require.Empty(t, svc.openaiHealthyTurnStates.held, "替换完成必须在原领取范围释放占用")
 			upstream.mu.Lock()
 			writes := append([]map[string]any(nil), upstream.writes...)

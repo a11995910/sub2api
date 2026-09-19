@@ -50,7 +50,7 @@ func (s *healthyStateStoreStub) Release(_ context.Context, scope HealthyTurnStat
 	return nil
 }
 
-func TestHealthyTurnStateDefaultCapturePreservesAccountModel(t *testing.T) {
+func TestHealthyTurnStateOrdinaryRequestsNeverCapture(t *testing.T) {
 	store := &healthyStateStoreStub{}
 	upstream := &healthyTurnStateUpstream{responses: []*http.Response{healthyTurnStateResponse(200, "默认采集头", healthyTurnStateSSE())}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream, openaiHealthyTurnStates: openAIHealthyTurnStateCache{repo: store}}
@@ -62,8 +62,8 @@ func TestHealthyTurnStateDefaultCapturePreservesAccountModel(t *testing.T) {
 	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, 1, store.saves, "没有配置记录开关也应持久化健康头")
-	require.Equal(t, []HealthyTurnStateScope{{AccountID: 7, Key: "gpt-test", Model: "gpt-test", Transport: "http", ProxyID: 12}}, store.scopes)
+	require.Zero(t, store.saves, "普通请求不再自动记录健康头")
+	require.Empty(t, store.scopes)
 }
 
 func TestHealthyTurnStatePersistentHTTPResults(t *testing.T) {
@@ -114,18 +114,13 @@ func TestHealthyTurnStatePersistentHTTPResults(t *testing.T) {
 	}
 }
 
-func TestHealthyTurnStatePersistentCaptureAndFailure(t *testing.T) {
+func TestHealthyTurnStateExplicitCaptureStorageFailure(t *testing.T) {
 	store := &healthyStateStoreStub{saveErr: errors.New("测试存储不可用")}
 	cache := &openAIHealthyTurnStateCache{repo: store}
-	attempt := &openAIHealthyTurnStateAttempt{cache: cache, record: true}
-	observer := newOpenAIHealthyTurnStateObserver(attempt, healthyTurnStateResponse(200, "测试状态头", "").Header)
-	observer.observe([]byte(healthyTurnStateDelta), "")
-	require.Zero(t, store.saves, "首字后仍不保存")
-	observer.observe([]byte(healthyTurnStateDone), "")
+	stored := cache.store(openAIHealthyTurnStateScope{accountID: 7, model: "gpt-test"}, openAIHealthyTurnStateEntry{value: "测试状态头", expiresAt: time.Now().Add(time.Minute)})
+	require.False(t, stored)
 	require.Equal(t, 1, store.saves)
 	require.Empty(t, cache.entries, "持久化失败不能降级到内存")
-	observer.finish()
-	require.Equal(t, 1, store.saves)
 }
 
 func TestHealthyTurnStatePersistentWSResults(t *testing.T) {

@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, saveHealthyConfigMock, showErrorMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
+  saveHealthyConfigMock: vi.fn().mockResolvedValue(true),
+  showErrorMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: showErrorMock,
     showSuccess: vi.fn(),
     showInfo: vi.fn()
   })
@@ -303,6 +305,15 @@ function buildOpenAIOAuthParentAccount() {
   } as any
 }
 
+const HealthyTurnStateSettingsStub = defineComponent({
+  name: 'OpenAIHealthyTurnStateTest',
+  setup(_props, { expose }) {
+    expose({ saveConfig: saveHealthyConfigMock, dirty: false })
+    return {}
+  },
+  template: '<div data-testid="healthy-state-settings" />'
+})
+
 function mountModal(account = buildAccount(), renderGroupSelector = false) {
   return mount(EditAccountModal, {
     props: {
@@ -314,6 +325,7 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
+        OpenAIHealthyTurnStateTest: HealthyTurnStateSettingsStub,
         Select: SelectStub,
         Icon: true,
         ProxySelector: true,
@@ -325,45 +337,123 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
-  it('健康状态默认记录开启且替换关闭，两个开关独立保存且重新打开不丢失', async () => {
+  it('删除记录开关，开启替换时显示动态配置并先保存配置再启用账号', async () => {
     const account = buildOpenAIOAuthParentAccount()
+    account.extra = { openai_healthy_turn_state_record: true }
     updateAccountMock.mockReset().mockResolvedValue(account)
+    saveHealthyConfigMock.mockReset().mockResolvedValue(true)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     let wrapper = mountModal(account)
-    const record = '[data-testid="edit-healthy-turn-state-record"]'
     const replace = '[data-testid="edit-healthy-turn-state-replace"]'
-    expect(wrapper.get(record).attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-testid="edit-healthy-turn-state-record"]').exists()).toBe(false)
     expect(wrapper.get(replace).attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(false)
     await wrapper.get(replace).trigger('click')
+    expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(true)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(saveHealthyConfigMock).toHaveBeenCalledTimes(1)
+    expect(saveHealthyConfigMock.mock.invocationCallOrder[0]).toBeLessThan(updateAccountMock.mock.invocationCallOrder[0]!)
     const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(saved).toMatchObject({ openai_healthy_turn_state_record: true, openai_healthy_turn_state_replace: true })
+    expect(saved).toMatchObject({ openai_healthy_turn_state_replace: true })
+    expect(saved).not.toHaveProperty('openai_healthy_turn_state_record')
     wrapper.unmount()
     wrapper = mountModal({ ...account, extra: saved })
-    expect(wrapper.get(record).attributes('aria-checked')).toBe('true')
     expect(wrapper.get(replace).attributes('aria-checked')).toBe('true')
     await wrapper.get(replace).trigger('click')
     updateAccountMock.mockClear()
+    saveHealthyConfigMock.mockClear()
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
-      openai_healthy_turn_state_record: true, openai_healthy_turn_state_replace: false
-    })
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ openai_healthy_turn_state_replace: false })
+    expect(saveHealthyConfigMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
-  it('显式关闭健康状态记录后重新打开仍关闭，不被默认值覆盖', async () => {
+  it('采集配置保存失败时不能启用替换，保留弹窗供修正', async () => {
     const account = buildOpenAIOAuthParentAccount()
     updateAccountMock.mockReset().mockResolvedValue(account)
+    saveHealthyConfigMock.mockReset().mockResolvedValue(false)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    let wrapper = mountModal(account)
-    const record = '[data-testid="edit-healthy-turn-state-record"]'
-    await wrapper.get(record).trigger('click')
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-healthy-turn-state-replace"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(saved).toMatchObject({ openai_healthy_turn_state_record: false, openai_healthy_turn_state_replace: false })
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('close')).toBeUndefined()
+    saveHealthyConfigMock.mockResolvedValue(true)
     wrapper.unmount()
-    wrapper = mountModal({ ...account, extra: saved })
-    expect(wrapper.get(record).attributes('aria-checked')).toBe('false')
+  })
+
+  it('采集配置已保存而账号更新失败时明确提示部分成功，保留弹窗供重试', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockRejectedValue(new Error('账号更新失败'))
+    saveHealthyConfigMock.mockReset().mockResolvedValue(true)
+    showErrorMock.mockClear()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-healthy-turn-state-replace"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(saveHealthyConfigMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(showErrorMock).toHaveBeenLastCalledWith('admin.accounts.openai.dynamic.partialSave')
+    expect(wrapper.emitted('close')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('原已启用且健康配置未改时，保存名称允许跳过上游模型校验和动态配置写入', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { openai_healthy_turn_state_replace: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    saveHealthyConfigMock.mockReset().mockImplementation((allowUnchanged: boolean) => Promise.resolve(allowUnchanged))
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-tour="edit-account-form-name"]').setValue('修复后的账号名称')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(saveHealthyConfigMock).toHaveBeenCalledWith(true)
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1].name).toBe('修复后的账号名称')
+    wrapper.unmount()
+  })
+
+  it('未写入健康配置时账号更新失败保持原错误，不误报采集设置已保存', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { openai_healthy_turn_state_replace: true }
+    updateAccountMock.mockReset().mockRejectedValue(new Error('账号代理更新失败'))
+    saveHealthyConfigMock.mockReset().mockResolvedValue(true)
+    showErrorMock.mockClear()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(showErrorMock).toHaveBeenLastCalledWith('账号代理更新失败')
+    expect(wrapper.emitted('close')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('API Key账号隐藏健康头设置，历史替换字段不会触发动态配置保存', async () => {
+    const account = buildAccount()
+    account.extra = { openai_healthy_turn_state_replace: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    saveHealthyConfigMock.mockReset().mockResolvedValue(true)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-healthy-turn-state-replace"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(saveHealthyConfigMock).not.toHaveBeenCalled()
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('OpenAI setup-token账号可配置健康头维护', async () => {
+    const account = { ...buildOpenAIOAuthParentAccount(), type: 'setup-token' }
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-healthy-turn-state-replace"]').trigger('click')
+    expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(true)
     wrapper.unmount()
   })
 

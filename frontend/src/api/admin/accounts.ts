@@ -86,9 +86,21 @@ export interface HealthyTurnStateProbeLog {
   temporary_proxy?: boolean
 }
 
+export interface HealthyTurnStateSupportedModel {
+  id: string
+  display_name: string
+}
+
+export async function getHealthyTurnStateModels(id: number, signal?: AbortSignal): Promise<HealthyTurnStateSupportedModel[]> {
+  const { data } = await apiClient.get<HealthyTurnStateSupportedModel[]>(`/admin/accounts/${id}/healthy-turn-state/models`, { signal })
+  return data
+}
+
 export interface HealthyTurnStateDynamicConfig {
   configured: boolean
   api_url_masked: string
+  models: string[]
+  transport: 'http' | 'websocket'
   protocol: 'http' | 'https' | 'socks5h'
   target_count: number
   max_attempts: number
@@ -143,6 +155,12 @@ export interface HealthyTurnStateModelStats {
   failures: number
 }
 
+export interface HealthyTurnStateMaintenance {
+  status: 'disabled' | 'unconfigured' | 'idle' | 'running' | 'backoff'
+  message: string
+  next_retry_at?: string | null
+}
+
 export interface HealthyTurnStateStats {
   available: number
   in_use: number
@@ -153,21 +171,11 @@ export interface HealthyTurnStateStats {
   models: HealthyTurnStateModelStats[]
   records: HealthyTurnStateRecord[]
   probes: HealthyTurnStateProbeLog[]
+  maintenance?: HealthyTurnStateMaintenance
 }
 
 export async function getHealthyTurnStateStats(id: number, signal?: AbortSignal): Promise<HealthyTurnStateStats> {
   const { data } = await apiClient.get<HealthyTurnStateStats>(`/admin/accounts/${id}/healthy-turn-state`, { signal })
-  return data
-}
-
-export async function testHealthyTurnState(
-  id: number,
-  input: { model: string; transport: 'http' | 'websocket'; proxy_id: number | null },
-  signal?: AbortSignal
-): Promise<HealthyTurnStateTestResult> {
-  const { data } = await apiClient.post<HealthyTurnStateTestResult>(
-    `/admin/accounts/${id}/healthy-turn-state/test`, input, { signal, timeout: 65000 }
-  )
   return data
 }
 
@@ -1227,8 +1235,8 @@ export const accountsAPI = {
   delete: deleteAccount,
   toggleStatus,
   testAccount,
-  testHealthyTurnState,
   getHealthyTurnStateStats,
+  getHealthyTurnStateModels,
   getHealthyTurnStateDynamicConfig,
   updateHealthyTurnStateDynamicConfig,
   startHealthyTurnStateDynamicRun,
