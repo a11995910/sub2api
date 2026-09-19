@@ -23,13 +23,15 @@
       <fieldset class="min-w-0" aria-describedby="healthy-state-model-hint">
         <legend class="input-label">{{ t(`${prefix}.testModel`) }}</legend>
         <p id="healthy-state-model-hint" class="mb-2 text-xs leading-relaxed text-gray-600 dark:text-gray-400">{{ t(`${prefix}.dynamic.modelsHint`) }}</p>
+        <p v-if="dynamicConfig.models_inheritance_message" role="status" class="mb-2 text-xs leading-relaxed text-amber-700 dark:text-amber-400">{{ dynamicConfig.models_inheritance_message }}</p>
+        <p v-else-if="dynamicConfig.models_inherited && dynamicConfig.models.length" role="status" class="mb-2 text-xs leading-relaxed text-primary-700 dark:text-primary-300">{{ t(`${prefix}.dynamic.modelsInherited`) }}</p>
         <div class="grid max-h-64 gap-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-dark-600 sm:grid-cols-2">
           <label v-for="model in supportedModels" :key="model.id" class="flex min-h-11 cursor-pointer items-center gap-3 rounded px-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700">
-            <input v-model="dynamicConfig.models" type="checkbox" :value="model.id" class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <input v-model="dynamicConfig.models" type="checkbox" :value="model.id" class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="clearInheritanceNotice" />
             <span class="min-w-0 break-words">{{ model.display_name || model.id }}<span v-if="model.display_name && model.display_name !== model.id" class="block text-xs text-gray-500 dark:text-gray-400">{{ model.id }}</span></span>
           </label>
           <label v-for="model in unsupportedSelections" :key="model" class="flex min-h-11 cursor-pointer items-center gap-3 rounded px-2 text-sm text-amber-700 dark:text-amber-400">
-            <input v-model="dynamicConfig.models" type="checkbox" :value="model" class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <input v-model="dynamicConfig.models" type="checkbox" :value="model" class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="clearInheritanceNotice" />
             <span class="min-w-0 break-words">{{ t(`${prefix}.dynamic.unsupportedModel`, { model }) }}</span>
           </label>
           <p v-if="loaded && supportedModels.length === 0" class="p-2 text-sm text-gray-600 dark:text-gray-400 sm:col-span-2">{{ t(`${prefix}.dynamic.noModels`) }}</p>
@@ -80,6 +82,7 @@ const prefix = 'admin.accounts.openai'
 const defaultConfig = (): HealthyTurnStateDynamicConfig => ({ configured: false, api_url_masked: '', protocol: 'http', target_count: 3, max_attempts: 100, models: [], transport: 'http' })
 const dynamicConfig = ref(defaultConfig())
 const loadedProtocol = ref<HealthyTurnStateDynamicConfig['protocol']>('http')
+const loadedModels = ref<string[]>([])
 const supportedModels = ref<HealthyTurnStateSupportedModel[]>([])
 const apiUrl = ref('')
 // 仅界面输入事件标记变更，读取旧配置和刷新上游模型不会阻断账号其他字段的保存。
@@ -94,6 +97,7 @@ const errorElement = ref<HTMLElement | null>(null)
 let controller: AbortController | null = null
 let disposed = false
 const unsupportedSelections = computed(() => dynamicConfig.value.models.filter(model => !supportedModels.value.some(supported => supported.id === model)))
+const modelsChanged = computed(() => JSON.stringify([...dynamicConfig.value.models].sort()) !== JSON.stringify([...loadedModels.value].sort()))
 const validConfig = computed(() => {
   const { target_count: target, max_attempts: attempts, models } = dynamicConfig.value
   return (dynamicConfig.value.configured || apiUrl.value.trim() !== '') && models.length > 0 && unsupportedSelections.value.length === 0 && Number.isInteger(target) && target >= 1 && target <= 100 && Number.isInteger(attempts) && attempts >= target && attempts <= 1000
@@ -105,6 +109,11 @@ function apiErrorMessage(error: unknown, fallback: string) {
   return apiError && (typeof apiError.status === 'number' && apiError.status > 0 || apiError.response?.data)
     ? extractApiErrorMessage(error, fallback)
     : fallback
+}
+
+function clearInheritanceNotice() {
+  dynamicConfig.value.models_inherited = false
+  dynamicConfig.value.models_inheritance_message = ''
 }
 
 async function loadSettings() {
@@ -126,6 +135,7 @@ async function loadSettings() {
   if (configResult.status === 'fulfilled') {
     dynamicConfig.value = { ...defaultConfig(), ...configResult.value, models: [...(configResult.value.models || [])] }
     loadedProtocol.value = dynamicConfig.value.protocol
+    loadedModels.value = [...dynamicConfig.value.models]
   }
   if (modelsResult.status === 'fulfilled') supportedModels.value = modelsResult.value
   if (configResult.status === 'rejected') loadError.value = apiErrorMessage(configResult.reason, t(`${prefix}.dynamic.loadFailed`))
@@ -156,12 +166,15 @@ async function saveConfig(allowUnchanged = false): Promise<boolean> {
       api_url: apiUrl.value.trim(), protocol: dynamicConfig.value.protocol,
       // 仅显式修改全局配置时更新，避免旧弹窗保存账号设置时覆盖已更新的协议。
       update_shared_proxy: apiUrl.value.trim() !== '' || dynamicConfig.value.protocol !== loadedProtocol.value,
+      // 沿用支持交集时不缩减全局选择，只有用户实际修改模型才更新下次默认。
+      update_default_models: modelsChanged.value,
       target_count: dynamicConfig.value.target_count, max_attempts: dynamicConfig.value.max_attempts,
       models: [...dynamicConfig.value.models], transport: dynamicConfig.value.transport
     }, current.signal)
     if (controller !== current || current.signal.aborted || disposed || props.accountId !== accountId) return false
     dynamicConfig.value = { ...config, models: [...config.models] }
     loadedProtocol.value = config.protocol
+    loadedModels.value = [...config.models]
     apiUrl.value = ''
     dirty.value = false
     statsRevision.value++
@@ -179,6 +192,7 @@ watch(() => [props.accountId, props.active] as const, () => {
   controller = null
   dynamicConfig.value = defaultConfig()
   loadedProtocol.value = 'http'
+  loadedModels.value = []
   supportedModels.value = []
   apiUrl.value = ''
   dirty.value = false

@@ -66,12 +66,12 @@ describe('健康状态头自动采集配置', () => {
     await wrapper.get('#healthy-state-dynamic-target').setValue(5)
     expect(await save(wrapper)).toBe(true)
     expect(updateDynamicConfig.mock.calls[0]?.slice(0, 2)).toEqual([7, {
-      api_url: '', protocol: 'socks5h', update_shared_proxy: true, target_count: 5, max_attempts: 100,
+      api_url: '', protocol: 'socks5h', update_shared_proxy: true, update_default_models: true, target_count: 5, max_attempts: 100,
       models: ['gpt-5.4', 'gpt-5.5'], transport: 'websocket'
     }])
   })
 
-  it('新配置不自动勾选模型，缺少URL、模型或数量非法均阻止保存', async () => {
+  it('首次配置无默认选择时不自动全选，缺少URL、模型或数量非法均阻止保存', async () => {
     getDynamicConfig.mockResolvedValueOnce({ ...savedConfig, configured: false, api_url_masked: '', models: [] })
     const wrapper = panel()
     await flushPromises()
@@ -93,6 +93,37 @@ describe('健康状态头自动采集配置', () => {
     expect((wrapper.get('#healthy-state-dynamic-url').element as HTMLInputElement).value).toBe('')
   })
 
+  it('新账号预勾继承的支持模型，无需点击模型或填写共享URL即可保存', async () => {
+    getDynamicConfig.mockResolvedValueOnce({ ...savedConfig, models: ['gpt-5.5'], models_inherited: true })
+    const wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain('dynamic.modelsInherited')
+    expect((wrapper.get('input[value="gpt-5.5"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('input[value="gpt-5.4"]').element as HTMLInputElement).checked).toBe(false)
+    expect(await save(wrapper)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[0]?.[1]).toMatchObject({
+      api_url: '', update_shared_proxy: false, update_default_models: false, models: ['gpt-5.5'], target_count: 3
+    })
+    expect(updateDynamicConfig.mock.calls[0]?.[1]).not.toHaveProperty('models_inherited')
+    expect(wrapper.text()).not.toContain('dynamic.modelsInherited')
+  })
+
+  it('没有可继承的支持交集时显示原因，不自动全选，手动选择后可保存', async () => {
+    const message = '上次选择的模型均不受当前账号支持，请重新勾选。'
+    getDynamicConfig.mockResolvedValueOnce({ ...savedConfig, models: [], models_inherited: true, models_inheritance_message: message })
+    const wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain(message)
+    expect(wrapper.text()).not.toContain('dynamic.modelsInherited')
+    expect(wrapper.findAll('input[type="checkbox"]').every(input => !(input.element as HTMLInputElement).checked)).toBe(true)
+    expect(await save(wrapper)).toBe(false)
+    expect(updateDynamicConfig).not.toHaveBeenCalled()
+    await wrapper.get('input[value="gpt-5.4"]').setValue(true)
+    expect(wrapper.text()).not.toContain(message)
+    expect(await save(wrapper)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[0]?.[1].models).toEqual(['gpt-5.4'])
+  })
+
   it('其他账号复用全局接口，只需勾选自己的模型即可留空URL保存', async () => {
     getDynamicConfig.mockResolvedValueOnce({ ...savedConfig, models: [], protocol: 'socks5h' })
     const wrapper = panel()
@@ -106,7 +137,7 @@ describe('健康状态头自动采集配置', () => {
     await wrapper.get('input[value="gpt-5.5"]').setValue(true)
     expect(await save(wrapper, true)).toBe(true)
     expect(updateDynamicConfig.mock.calls[0]?.slice(0, 2)).toEqual([7, {
-      api_url: '', protocol: 'socks5h', update_shared_proxy: false, target_count: 3, max_attempts: 100,
+      api_url: '', protocol: 'socks5h', update_shared_proxy: false, update_default_models: true, target_count: 3, max_attempts: 100,
       models: ['gpt-5.5'], transport: 'http'
     }])
     expect(await save(wrapper, true)).toBe(true)
@@ -125,6 +156,22 @@ describe('健康状态头自动采集配置', () => {
     await wrapper.get('#healthy-state-dynamic-target').setValue(4)
     expect(await save(wrapper, true)).toBe(true)
     expect(updateDynamicConfig.mock.calls[1]?.[1]).toMatchObject({ protocol: 'socks5h', update_shared_proxy: false, target_count: 4 })
+  })
+
+  it('模型选择改回原集合不覆盖全局默认，实际修改保存后更新比较基准', async () => {
+    getDynamicConfig.mockResolvedValueOnce({ ...savedConfig, models: ['gpt-5.4'], models_inherited: true })
+    const wrapper = panel()
+    await flushPromises()
+    await wrapper.get('input[value="gpt-5.5"]').setValue(true)
+    await wrapper.get('input[value="gpt-5.5"]').setValue(false)
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[0]?.[1].update_default_models).toBe(false)
+    await wrapper.get('input[value="gpt-5.5"]').setValue(true)
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[1]?.[1]).toMatchObject({ models: ['gpt-5.4', 'gpt-5.5'], update_default_models: true })
+    await wrapper.get('#healthy-state-dynamic-target').setValue(4)
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[2]?.[1]).toMatchObject({ models: ['gpt-5.4', 'gpt-5.5'], update_default_models: false })
   })
 
   it('旧账号接口冲突时保留模型和数量，填写统一URL即可修复并保存', async () => {

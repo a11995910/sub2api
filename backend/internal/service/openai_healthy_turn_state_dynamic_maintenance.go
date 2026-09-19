@@ -21,6 +21,7 @@ type healthyDynamicRetry struct {
 	failures  int
 	after     time.Time
 	nextModel int
+	message   string
 }
 
 // HealthyTurnStateMaintenanceStatus 只提供脱敏维护状态，不暴露提取地址与代理入口。
@@ -51,10 +52,6 @@ func (s *AccountTestService) HealthyTurnStateMaintenanceStatus(ctx context.Conte
 	if config.APIURL == "" {
 		return status, nil
 	}
-	if len(config.Models) == 0 {
-		status.Message = "请勾选本账号的测试模型并保存"
-		return status, nil
-	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var latest *HealthyTurnStateDynamicRun
@@ -70,6 +67,9 @@ func (s *AccountTestService) HealthyTurnStateMaintenanceStatus(ctx context.Conte
 		run.mu.Unlock()
 	}
 	status.Status, status.Message = "idle", "定期检查库存，有缺口时自动补齐"
+	if len(config.Models) == 0 {
+		status.Status, status.Message = "unconfigured", "等待核实上游支持模型并继承上次选择"
+	}
 	if d.maintenanceActive[accountID] || (latest != nil && latest.Status == "running") {
 		status.Status, status.Message = "running", "正在通过动态 IP 代理补充健康头"
 	} else if retry := d.maintenanceRetry[accountID]; d.clock().Before(retry.after) {
@@ -77,6 +77,9 @@ func (s *AccountTestService) HealthyTurnStateMaintenanceStatus(ctx context.Conte
 		status.NextRetryAt = &retry.after
 		if latest != nil && latest.Message != "" {
 			status.Message = latest.Message
+		}
+		if retry.message != "" {
+			status.Message = retry.message
 		}
 	}
 	return status, nil
@@ -229,20 +232,21 @@ func (s *AccountTestService) scanHealthyDynamicMaintenance(ctx context.Context) 
 			continue
 		}
 		config, err := d.loadConfig(scanCtx, account.ID)
-		// 旧配置未选择模型时保持静默，避免升级后凭默认模型产生费用。
-		if err != nil || config.APIURL == "" || len(config.Models) == 0 {
+		if err != nil || config.APIURL == "" {
 			continue
 		}
-		models, err := healthyDynamicModels(account, config.Models, "")
-		if err != nil {
-			continue
-		}
-		counts, err := s.healthyDynamicInventory(scanCtx, account.ID)
-		if err != nil {
-			continue
-		}
-		if _, missing := healthyDynamicMissingModel(models, counts, config.TargetCount); !missing {
-			continue
+		if len(config.Models) != 0 {
+			models, err := healthyDynamicModels(account, config.Models, "")
+			if err != nil {
+				continue
+			}
+			counts, err := s.healthyDynamicInventory(scanCtx, account.ID)
+			if err != nil {
+				continue
+			}
+			if _, missing := healthyDynamicMissingModel(models, counts, config.TargetCount); !missing {
+				continue
+			}
 		}
 		d.mu.Lock()
 		if ctx.Err() != nil {
@@ -290,7 +294,7 @@ func (d *healthyTurnStateDynamicService) cancelHealthyDynamicMaintenanceAccount(
 func nextHealthyDynamicRetry(previous healthyDynamicRetry, now time.Time) healthyDynamicRetry {
 	failures := min(previous.failures+1, 6)
 	delay := min(30*time.Second*time.Duration(1<<(failures-1)), 10*time.Minute)
-	return healthyDynamicRetry{failures: failures, after: now.Add(delay), nextModel: (previous.nextModel + 1) % 100}
+	return healthyDynamicRetry{failures: failures, after: now.Add(delay), nextModel: (previous.nextModel + 1) % 100, message: previous.message}
 }
 
 func sameHealthyDynamicConfig(a, b HealthyTurnStateDynamicConfigInput) bool {
@@ -304,12 +308,35 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 	if err != nil || !healthyDynamicMaintenanceEnabled(account) {
 		return false, false
 	}
-	config, err := d.loadConfig(ctx, accountID)
-	if err != nil || config.APIURL == "" || len(config.Models) == 0 {
+	d.mu.Lock()
+	sharedRevision, accountRevision := d.sharedConfigRevision, d.accountConfigRevision[accountID]
+	d.mu.Unlock()
+	config, err := s.inheritHealthyDynamicConfig(ctx, account)
+	if err != nil {
+		d.mu.Lock()
+		if sharedRevision != d.sharedConfigRevision || accountRevision != d.accountConfigRevision[accountID] {
+			d.mu.Unlock()
+			return false, false
+		}
+		if d.maintenanceRetry == nil {
+			d.maintenanceRetry = make(map[int64]healthyDynamicRetry)
+		}
+		retry := d.maintenanceRetry[accountID]
+		retry.message = infraerrors.Message(err)
+		d.maintenanceRetry[accountID] = retry
+		d.mu.Unlock()
+		return false, true
+	}
+	if config.APIURL == "" || len(config.Models) == 0 {
 		return false, false
 	}
 	d.mu.Lock()
 	modelOffset := d.maintenanceRetry[accountID].nextModel
+	retry := d.maintenanceRetry[accountID]
+	retry.message = ""
+	if d.maintenanceRetry != nil {
+		d.maintenanceRetry[accountID] = retry
+	}
 	d.mu.Unlock()
 	run, err := s.StartHealthyTurnStateDynamic(ctx, account, HealthyTurnStateDynamicStartInput{})
 	if err != nil {

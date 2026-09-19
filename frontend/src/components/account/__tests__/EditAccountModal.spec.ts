@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, saveHealthyConfigMock, showErrorMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, saveHealthyConfigMock, showErrorMock, getHealthyConfigMock, getHealthyModelsMock, updateHealthyConfigMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   saveHealthyConfigMock: vi.fn().mockResolvedValue(true),
   showErrorMock: vi.fn(),
+  getHealthyConfigMock: vi.fn(),
+  getHealthyModelsMock: vi.fn(),
+  updateHealthyConfigMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
@@ -30,7 +33,10 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      getHealthyTurnStateDynamicConfig: getHealthyConfigMock,
+      getHealthyTurnStateModels: getHealthyModelsMock,
+      updateHealthyTurnStateDynamicConfig: updateHealthyConfigMock
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -314,7 +320,7 @@ const HealthyTurnStateSettingsStub = defineComponent({
   template: '<div data-testid="healthy-state-settings" />'
 })
 
-function mountModal(account = buildAccount(), renderGroupSelector = false) {
+function mountModal(account = buildAccount(), renderGroupSelector = false, renderHealthySettings = false) {
   return mount(EditAccountModal, {
     props: {
       show: true,
@@ -325,7 +331,8 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
-        OpenAIHealthyTurnStateTest: HealthyTurnStateSettingsStub,
+        OpenAIHealthyTurnStateTest: renderHealthySettings ? false : HealthyTurnStateSettingsStub,
+        OpenAIHealthyTurnStateStatus: true,
         Select: SelectStub,
         Icon: true,
         ProxySelector: true,
@@ -337,6 +344,37 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('新OAuth仅打开开关并提交即可保存继承模型，真实配置组件无需再次点击模型', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    const inheritedConfig = {
+      configured: true, api_url_masked: 'https://provider.example/extract?key=***',
+      protocol: 'http', target_count: 3, max_attempts: 100,
+      models: ['gpt-5.5'], transport: 'http', models_inherited: true
+    }
+    getHealthyConfigMock.mockReset().mockResolvedValue(inheritedConfig)
+    getHealthyModelsMock.mockReset().mockResolvedValue([
+      { id: 'gpt-5.4', display_name: 'GPT-5.4' },
+      { id: 'gpt-5.5', display_name: 'GPT-5.5' }
+    ])
+    updateHealthyConfigMock.mockReset().mockResolvedValue({ ...inheritedConfig, models_inherited: false })
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account, false, true)
+    await wrapper.get('[data-testid="edit-healthy-turn-state-replace"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('dynamic.modelsInherited')
+    expect((wrapper.get('input[value="gpt-5.5"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('input[value="gpt-5.4"]').element as HTMLInputElement).checked).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateHealthyConfigMock).toHaveBeenCalledTimes(1)
+    expect(updateHealthyConfigMock.mock.calls[0]?.[1]).toMatchObject({ models: ['gpt-5.5'], target_count: 3, api_url: '', update_default_models: false })
+    expect(updateHealthyConfigMock.mock.invocationCallOrder[0]).toBeLessThan(updateAccountMock.mock.invocationCallOrder[0]!)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ openai_healthy_turn_state_replace: true })
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('删除记录开关，开启替换时显示动态配置并先保存配置再启用账号', async () => {
     const account = buildOpenAIOAuthParentAccount()
     account.extra = { openai_healthy_turn_state_record: true }

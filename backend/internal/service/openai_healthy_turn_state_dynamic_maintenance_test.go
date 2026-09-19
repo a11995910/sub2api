@@ -227,13 +227,16 @@ func TestHealthyDynamicModelAliasesShareInventoryAndRetryIsBounded(t *testing.T)
 	}
 }
 
-func TestHealthyDynamicMaintenanceOldConfigDoesNotStartAutomatically(t *testing.T) {
+func TestHealthyDynamicMaintenanceOldConfigWithoutDefaultsDoesNotStartAutomatically(t *testing.T) {
 	svc, _, account, fetches, probes := healthyDynamicPoolService(t, []string{"gpt-6-astra"}, 1)
 	d := svc.healthyTurnStateDynamic
 	// 模拟升级前的已加密配置，其余设置继续可读但没有已授权的模型选择。
 	legacy, err := d.cipher.Encrypt(`{"api_url":"https://supplier.example/private","protocol":"http","target_count":3,"max_attempts":100}`)
 	require.NoError(t, err)
 	require.NoError(t, d.settings.Set(context.Background(), healthyDynamicConfigKey(account.ID), legacy))
+	empty, err := d.encryptHealthyDynamicConfig([]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.settings.Set(context.Background(), healthyDynamicLastModelsKey, empty))
 	view, err := svc.GetHealthyTurnStateDynamicConfig(context.Background(), account.ID)
 	require.NoError(t, err)
 	require.Empty(t, view.Models)

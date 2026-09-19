@@ -100,6 +100,8 @@ export interface HealthyTurnStateDynamicConfig {
   configured: boolean
   api_url_masked: string
   shared_proxy_conflict?: boolean
+  models_inherited?: boolean
+  models_inheritance_message?: string
   models: string[]
   transport: 'http' | 'websocket'
   protocol: 'http' | 'https' | 'socks5h'
@@ -126,7 +128,7 @@ export async function getHealthyTurnStateDynamicConfig(id: number, signal?: Abor
   return data
 }
 
-export async function updateHealthyTurnStateDynamicConfig(id: number, input: Omit<HealthyTurnStateDynamicConfig, 'configured' | 'api_url_masked' | 'shared_proxy_conflict'> & { api_url: string; update_shared_proxy?: boolean }, signal?: AbortSignal): Promise<HealthyTurnStateDynamicConfig> {
+export async function updateHealthyTurnStateDynamicConfig(id: number, input: Omit<HealthyTurnStateDynamicConfig, 'configured' | 'api_url_masked' | 'shared_proxy_conflict' | 'models_inherited' | 'models_inheritance_message'> & { api_url: string; update_shared_proxy?: boolean; update_default_models?: boolean }, signal?: AbortSignal): Promise<HealthyTurnStateDynamicConfig> {
   const { data } = await apiClient.put<HealthyTurnStateDynamicConfig>(`/admin/accounts/${id}/healthy-turn-state/dynamic/config`, input, { signal })
   return data
 }
