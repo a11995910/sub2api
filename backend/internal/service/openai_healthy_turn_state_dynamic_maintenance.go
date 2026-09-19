@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -10,7 +11,11 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-const healthyDynamicMaintenanceInterval = 15 * time.Second
+const (
+	healthyDynamicMaintenanceInterval = 15 * time.Second
+	healthyDynamicFailureLimit        = 5
+	healthyDynamicRetryDelay          = 15 * time.Second
+)
 
 type healthyDynamicModel struct {
 	requested string
@@ -18,7 +23,6 @@ type healthyDynamicModel struct {
 }
 
 type healthyDynamicRetry struct {
-	failures  int
 	after     time.Time
 	nextModel int
 	message   string
@@ -292,9 +296,7 @@ func (d *healthyTurnStateDynamicService) cancelHealthyDynamicMaintenanceAccount(
 }
 
 func nextHealthyDynamicRetry(previous healthyDynamicRetry, now time.Time) healthyDynamicRetry {
-	failures := min(previous.failures+1, 6)
-	delay := min(30*time.Second*time.Duration(1<<(failures-1)), 10*time.Minute)
-	return healthyDynamicRetry{failures: failures, after: now.Add(delay), nextModel: (previous.nextModel + 1) % 100, message: previous.message}
+	return healthyDynamicRetry{after: now.Add(healthyDynamicRetryDelay), nextModel: previous.nextModel, message: previous.message}
 }
 
 func sameHealthyDynamicConfig(a, b HealthyTurnStateDynamicConfigInput) bool {
@@ -338,16 +340,40 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 		d.maintenanceRetry[accountID] = retry
 	}
 	d.mu.Unlock()
+	defer func() {
+		if !attempted {
+			return
+		}
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if sharedRevision != d.sharedConfigRevision || accountRevision != d.accountConfigRevision[accountID] {
+			return
+		}
+		if d.maintenanceRetry == nil {
+			d.maintenanceRetry = make(map[int64]healthyDynamicRetry)
+		}
+		retry := d.maintenanceRetry[accountID]
+		retry.nextModel = modelOffset
+		d.maintenanceRetry[accountID] = retry
+	}()
 	run, err := s.StartHealthyTurnStateDynamic(ctx, account, HealthyTurnStateDynamicStartInput{})
 	if err != nil {
 		return false, false
 	}
 	defer s.StopHealthyTurnStateDynamic(context.Background(), accountID, run.ID)
+	session, err := d.findRun(accountID, run.ID)
+	if err != nil {
+		return false, false
+	}
+	session.mu.Lock()
+	session.backgroundMaintenance = true
+	session.mu.Unlock()
+	consecutiveFailures := 0
 	for ctx.Err() == nil {
 		// 每次网络请求前重读开关、模型与凭据，禁用或修改配置后不继续旧任务。
 		current, err := s.accountRepo.GetByID(ctx, accountID)
 		if err != nil || !healthyDynamicMaintenanceEnabled(current) {
-			return false, attempted
+			return false, false
 		}
 		currentConfig, err := d.loadConfig(ctx, accountID)
 		if err != nil || !sameHealthyDynamicConfig(config, currentConfig) {
@@ -357,22 +383,47 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 		if err != nil {
 			return false, false
 		}
-		// 某个模型持续失败时，下一轮先尝试其他模型，避免其余缺口永久饥饿。
+		// 某个模型失败后，下一次先尝试其他模型，避免其余缺口一直等待。
+		modelOffset %= len(currentModels)
 		if offset := modelOffset % len(currentModels); offset > 0 {
 			currentModels = append(currentModels[offset:], currentModels[:offset]...)
-		}
-		session, err := d.findRun(accountID, run.ID)
-		if err != nil {
-			return false, attempted
 		}
 		session.mu.Lock()
 		session.account, session.models = current, currentModels
 		session.mu.Unlock()
+		previousAttempts, previousBatches := run.Attempts, run.FetchedBatches
 		run, err = s.StepHealthyTurnStateDynamic(ctx, accountID, run.ID)
 		if err != nil {
 			return false, attempted
 		}
 		attempted = attempted || run.Attempts > 0 || run.FetchedBatches > 0
+		if run.Status == "stopped" {
+			return false, false
+		}
+		failed, failureMessage := false, ""
+		if run.Attempts > previousAttempts && run.LastResult != nil {
+			if run.LastResult.Status == "recorded" || run.LastResult.Status == "already_recorded" {
+				consecutiveFailures = 0
+			} else {
+				failed, failureMessage = true, run.LastResult.Message
+			}
+		} else if run.FetchedBatches > previousBatches && run.Status == "running" {
+			// 本次只有提取失败或无新入口，不能重复计算上一步残留的 LastResult。
+			failed, failureMessage = true, run.Message
+		}
+		if failed {
+			consecutiveFailures++
+			if failureMessage == "" {
+				failureMessage = "本次代理采集未获得有效健康头"
+			}
+			// 使用实际探测模型的位置推进游标，满库存模型跳过后也能正确轮换。
+			for index, model := range currentModels {
+				if model.upstream == run.Model {
+					modelOffset = (modelOffset + index + 1) % len(currentModels)
+					break
+				}
+			}
+		}
 		if run.Status != "running" {
 			latestConfig, configErr := d.loadConfig(ctx, accountID)
 			if configErr == nil && !sameHealthyDynamicConfig(config, latestConfig) {
@@ -382,22 +433,21 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 			_, missing := healthyDynamicMissingModel(currentModels, counts, config.TargetCount)
 			return err == nil && !missing, attempted
 		}
-		if run.LastResult != nil && run.LastResult.Status != "recorded" && run.LastResult.Status != "already_recorded" {
+		if failed && consecutiveFailures >= healthyDynamicFailureLimit {
 			session.mu.Lock()
-			message := "代理响应未通过健康检查，稍后自动重试"
-			if run.LastResult.Message != "" {
-				message = run.LastResult.Message
-			}
-			session.finishLocked("failed", message)
+			session.finishLocked("failed", fmt.Sprintf("连续 %d 次采集失败，暂停 15 秒后重试；%s", consecutiveFailures, failureMessage))
 			session.mu.Unlock()
 			return false, attempted
 		}
-		// 限制连续请求速度；供应商失败或无健康结果交给外层指数退避。
+		// 无论上次成功或失败都保留一秒间隔，未达到失败阈值时继续换入口补齐。
 		timer := time.NewTimer(time.Second)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return false, attempted
+			return false, false
+		case <-session.ctx.Done():
+			timer.Stop()
+			return false, false
 		case <-timer.C:
 		}
 	}

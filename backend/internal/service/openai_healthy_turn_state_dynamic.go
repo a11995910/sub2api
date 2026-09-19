@@ -58,17 +58,19 @@ type healthyTurnStateDynamicService struct {
 }
 
 type healthyTurnStateDynamicSession struct {
-	mu                    sync.Mutex
-	stepMu                sync.Mutex
-	view                  HealthyTurnStateDynamicRun
-	accountID             int64
-	account               *Account
-	probeModel            string
-	models                []healthyDynamicModel
-	recordedByModel       map[string]int64
-	config                HealthyTurnStateDynamicConfigInput
-	pending               []string
-	seen                  map[string]struct{}
+	mu              sync.Mutex
+	stepMu          sync.Mutex
+	view            HealthyTurnStateDynamicRun
+	accountID       int64
+	account         *Account
+	probeModel      string
+	models          []healthyDynamicModel
+	recordedByModel map[string]int64
+	config          HealthyTurnStateDynamicConfigInput
+	pending         []string
+	seen            map[string]struct{}
+	// 后台由维护循环统一计算连续失败，手动步骤保留单次提取失败即结束的行为。
+	backgroundMaintenance bool
 	emptyBatches          int
 	createdAt, lastUsed   time.Time
 	ctx                   context.Context
@@ -339,7 +341,11 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 				if errors.As(fetchErr, &publicError) {
 					message = publicError.message
 				}
-				run.finishLocked("failed", message)
+				if run.backgroundMaintenance {
+					run.view.Message = message
+				} else {
+					run.finishLocked("failed", message)
+				}
 			} else {
 				for _, proxy := range batch {
 					if _, exists := run.seen[proxy]; exists {
@@ -354,7 +360,7 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 				if len(run.pending) == 0 {
 					run.emptyBatches++
 					run.view.Message = "本批没有新的代理入口，可继续提取下一批"
-					if run.emptyBatches >= 3 {
+					if run.emptyBatches >= 3 && !run.backgroundMaintenance {
 						run.finishLocked("failed", "连续三批没有新的代理入口，采集已停止")
 					}
 				} else {
@@ -363,6 +369,10 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 			}
 		}
 		if run.view.Status != "running" || len(run.pending) == 0 {
+			if run.view.Status == "running" {
+				run.lastUsed = d.clock()
+				run.idleTimer.Reset(healthyDynamicIdleLimit)
+			}
 			view := run.snapshotLocked()
 			run.mu.Unlock()
 			return view, nil

@@ -22,17 +22,18 @@ func healthyTurnStateProbeAccount() *Account {
 
 func TestOpenAIHealthyTurnStateProbeHTTPOnlyRecordsCompleteResponses(t *testing.T) {
 	for _, tc := range []struct {
-		name, state, body, want string
-		status                  int
+		name, state, body, want, message string
+		status                           int
 	}{
-		{"正常响应", "健康状态", healthyTurnStateSSE(), "recorded", 200},
-		{"无状态头", "", healthyTurnStateSSE(), "no_header", 200},
-		{"限流", "无效状态", healthyTurnStateSSE(), "failed", 429},
-		{"过载", "无效状态", healthyTurnStateSSE(), "failed", 503},
-		{"服务错误", "无效状态", healthyTurnStateSSE(), "failed", 500},
-		{"首字后断流", "无效状态", "data: " + healthyTurnStateDelta + "\n\n", "unhealthy", 200},
-		{"流内限流", "无效状态", "data: " + healthyTurnStateDelta + "\n\ndata: {\"type\":\"error\",\"error\":{\"code\":\"rate_limit_exceeded\"}}\n\n", "unhealthy", 200},
-		{"无首字", "无效状态", "data: " + healthyTurnStateDone + "\n\n", "unhealthy", 200},
+		{"正常响应", "健康状态", healthyTurnStateSSE(), "recorded", "", 200},
+		{"无状态头", "", healthyTurnStateSSE(), "no_header", "模型采集响应成功，但未返回有效的健康状态头", 200},
+		{"拒绝访问", "无效状态", `{"error":"机密正文 https://private.example/token=secret"}`, "failed", "模型采集请求返回 HTTP 403", 403},
+		{"限流", "无效状态", healthyTurnStateSSE(), "failed", "模型采集请求返回 HTTP 429", 429},
+		{"过载", "无效状态", healthyTurnStateSSE(), "failed", "模型采集请求返回 HTTP 503", 503},
+		{"服务错误", "无效状态", healthyTurnStateSSE(), "failed", "模型采集请求返回 HTTP 500", 500},
+		{"首字后断流", "无效状态", "data: " + healthyTurnStateDelta + "\n\n", "unhealthy", "模型采集响应未完整结束", 200},
+		{"流内限流", "无效状态", "data: " + healthyTurnStateDelta + "\n\ndata: {\"type\":\"error\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"机密正文 https://private.example/token=secret\"}}\n\n", "unhealthy", "模型采集响应包含错误或未完成状态", 200},
+		{"无首字", "无效状态", "data: " + healthyTurnStateDone + "\n\n", "unhealthy", "模型采集响应未产生有效内容", 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			upstream := &healthyTurnStateUpstream{responses: []*http.Response{healthyTurnStateResponse(tc.status, tc.state, tc.body)}}
@@ -43,6 +44,10 @@ func TestOpenAIHealthyTurnStateProbeHTTPOnlyRecordsCompleteResponses(t *testing.
 			require.NoError(t, err)
 			require.Equal(t, tc.want, result.Status)
 			require.Equal(t, tc.status, result.HTTPStatus)
+			require.Contains(t, result.Message, tc.message)
+			for _, secret := range []string{"机密正文", "private.example", "token=secret", "test-token"} {
+				require.NotContains(t, result.Message, secret)
+			}
 			require.Len(t, upstream.requests, 1, "失败也只能发送一次")
 			require.Equal(t, "hi", gjson.Get(upstream.bodies[0], "input.0.content.0.text").String())
 			require.Equal(t, "gpt-6-astra", gjson.Get(upstream.bodies[0], "model").String())
@@ -173,6 +178,7 @@ func TestOpenAIHealthyTurnStateProbeCancellation(t *testing.T) {
 	result, err := svc.ProbeOpenAIHealthyTurnState(ctx, account, "gpt-5.4", "http")
 	require.NoError(t, err)
 	require.Equal(t, "unhealthy", result.Status)
+	require.Equal(t, "模型采集已取消，未记录状态头", result.Message)
 	require.Empty(t, gateway.openaiHealthyTurnStates.entries)
 }
 
@@ -210,7 +216,7 @@ func (d *healthyTurnStateProbeWSDialer) Dial(context.Context, string, http.Heade
 }
 
 func TestOpenAIHealthyTurnStateProbeWS(t *testing.T) {
-	for _, status := range []int{101, 429, 503} {
+	for _, status := range []int{101, 403, 429, 503} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			conn := &healthyTurnStateProbeWSConn{events: [][]byte{[]byte(healthyTurnStateDelta), []byte(healthyTurnStateDone)}}
 			dialer := &healthyTurnStateProbeWSDialer{conn: conn, status: status}
@@ -228,6 +234,7 @@ func TestOpenAIHealthyTurnStateProbeWS(t *testing.T) {
 			} else {
 				require.Equal(t, "failed", result.Status)
 				require.Equal(t, status, result.HTTPStatus)
+				require.Contains(t, result.Message, "模型采集 WebSocket 握手返回 HTTP")
 				require.Empty(t, gateway.openaiHealthyTurnStates.entries)
 			}
 		})

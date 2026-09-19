@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -144,6 +146,20 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 	}
 	if ctx.Err() != nil || !observer.healthy || !observer.terminal || observer.failed {
 		result.Status = "unhealthy"
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			result.Message = "模型采集超时，未获得完整响应"
+		case ctx.Err() != nil:
+			result.Message = "模型采集已取消，未记录状态头"
+		case result.Message != "":
+			// 保留传输层已给出的脱敏失败原因。
+		case observer.failed:
+			result.Message = "模型采集响应包含错误或未完成状态，未记录状态头"
+		case !observer.terminal:
+			result.Message = "模型采集响应未完整结束，未记录状态头"
+		default:
+			result.Message = "模型采集响应未产生有效内容，未记录状态头"
+		}
 		return result, nil
 	}
 	if observer.firstOutputTooLate {
@@ -153,6 +169,7 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 	}
 	if observer.candidate.value == "" {
 		result.Status = "no_header"
+		result.Message = "模型采集响应成功，但未返回有效的健康状态头"
 		return result, nil
 	}
 	// 手动测试直到完整健康响应后才提交，测试中途不会产生可供其他请求领取的记录。
@@ -166,6 +183,7 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 		result.Status, result.ExpiresAt = "already_recorded", &entry.expiresAt
 	} else {
 		result.Status = "not_recorded"
+		result.Message = "模型采集完成，但健康状态头未能保存为可用库存"
 	}
 	return result, nil
 }
@@ -199,7 +217,12 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateHTTP(ctx context.Context, c 
 		return nil
 	}
 	result.HTTPStatus = resp.StatusCode
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || resp.Body == nil {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result.Message = fmt.Sprintf("模型采集请求返回 HTTP %d，未记录健康状态头", resp.StatusCode)
+		return nil
+	}
+	if resp.Body == nil {
+		result.Message = "模型采集未返回响应内容，未记录健康状态头"
 		return nil
 	}
 	observer := newOpenAIHealthyTurnStateProbeObserver(openAIHealthyTurnStateAttemptFromRequest(req), resp.Header)
@@ -209,6 +232,11 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateHTTP(ctx context.Context, c 
 	n, readErr := io.Copy(io.Discard, io.LimitReader(observedBody, maxProbeBytes+1))
 	if readErr != nil || n > maxProbeBytes {
 		observer.failed = true
+		if n > maxProbeBytes {
+			result.Message = "模型采集响应过大，已停止读取并跳过状态头记录"
+		} else {
+			result.Message = "模型采集响应读取中断，未记录状态头"
+		}
 	}
 	observer.finish()
 	return observer
@@ -244,13 +272,18 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateWS(ctx context.Context, c *g
 	}
 	result.HTTPStatus = status
 	if err != nil || conn == nil || status != http.StatusSwitchingProtocols {
-		result.Message = "WebSocket 握手失败或超时"
+		if status > 0 && status != http.StatusSwitchingProtocols {
+			result.Message = fmt.Sprintf("模型采集 WebSocket 握手返回 HTTP %d，未记录健康状态头", status)
+		} else {
+			result.Message = "模型采集 WebSocket 握手失败或超时"
+		}
 		return nil
 	}
 	observer := newOpenAIHealthyTurnStateProbeObserver(attempt, responseHeaders)
 	var payload map[string]any
 	if json.Unmarshal(body, &payload) != nil || conn.WriteJSON(ctx, s.buildOpenAIWSCreatePayload(payload, account)) != nil {
 		observer.failed = true
+		result.Message = "模型采集 WebSocket 请求发送失败，未记录状态头"
 		return observer
 	}
 	total := 0
@@ -259,6 +292,11 @@ func (s *OpenAIGatewayService) probeHealthyTurnStateWS(ctx context.Context, c *g
 		total += len(data)
 		if readErr != nil || total > 8<<20 {
 			observer.failed = true
+			if total > 8<<20 {
+				result.Message = "模型采集 WebSocket 响应过大，已停止读取并跳过状态头记录"
+			} else {
+				result.Message = "模型采集 WebSocket 响应读取中断，未记录状态头"
+			}
 			break
 		}
 		observer.observe(data, "")

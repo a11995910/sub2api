@@ -222,8 +222,7 @@ func TestHealthyDynamicModelAliasesShareInventoryAndRetryIsBounded(t *testing.T)
 	retry := healthyDynamicRetry{}
 	for i := 0; i < 10; i++ {
 		retry = nextHealthyDynamicRetry(retry, now)
-		require.GreaterOrEqual(t, retry.after.Sub(now), 30*time.Second)
-		require.LessOrEqual(t, retry.after.Sub(now), 10*time.Minute)
+		require.Equal(t, 15*time.Second, retry.after.Sub(now), "连续轮次失败也保持固定重试间隔")
 	}
 }
 
@@ -249,6 +248,7 @@ func TestHealthyDynamicMaintenanceOldConfigWithoutDefaultsDoesNotStartAutomatica
 }
 
 func TestHealthyDynamicMaintenanceFailureBackoffAndModelFairness(t *testing.T) {
+	t.Parallel()
 	svc, pool, account, fetches, probes := healthyDynamicPoolService(t, []string{"gpt-6-astra", "gpt-5.6-sol"}, 3)
 	d := svc.healthyTurnStateDynamic
 	d.maintenanceActive = make(map[int64]bool)
@@ -265,7 +265,8 @@ func TestHealthyDynamicMaintenanceFailureBackoffAndModelFairness(t *testing.T) {
 	svc.scanHealthyDynamicMaintenance(context.Background())
 	d.maintenanceWorkers.Wait()
 	require.EqualValues(t, 1, fetches.Load())
-	require.EqualValues(t, 1, probes.Load())
+	require.EqualValues(t, 9, probes.Load(), "首个失败之后先补满另一模型，之后连续五次失败才暂停")
+	require.EqualValues(t, 3, pool.counts()["gpt-5.6-sol"], "失败模型不能阻止同一轮补满其他模型")
 	svc.scanHealthyDynamicMaintenance(context.Background())
 	d.maintenanceWorkers.Wait()
 	require.EqualValues(t, 1, fetches.Load(), "退避时间内不重试供应商")
@@ -277,6 +278,7 @@ func TestHealthyDynamicMaintenanceFailureBackoffAndModelFairness(t *testing.T) {
 	svc.scanHealthyDynamicMaintenance(context.Background())
 	d.maintenanceWorkers.Wait()
 	require.EqualValues(t, 3, pool.counts()["gpt-5.6-sol"], "即使前一模型始终失败，其他模型仍须补满全部目标")
+	require.EqualValues(t, 14, probes.Load(), "退避结束后只请求仍有缺口的模型，连续五次失败再暂停")
 }
 
 func TestHealthyDynamicMaintenanceDisablingAccountCancelsCurrentFetch(t *testing.T) {
@@ -313,6 +315,7 @@ func TestHealthyDynamicMaintenanceDisablingAccountCancelsCurrentFetch(t *testing
 }
 
 func TestHealthyDynamicMaintenanceStatusShowsSafeFailureAndRetryTime(t *testing.T) {
+	t.Parallel()
 	svc, _, account, _, _ := healthyDynamicPoolService(t, []string{"gpt-6-astra"}, 1)
 	d := svc.healthyTurnStateDynamic
 	d.maintenanceActive = make(map[int64]bool)
