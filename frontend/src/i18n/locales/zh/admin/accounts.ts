@@ -753,7 +753,7 @@ export default {
         stateStats: {
           title: '健康状态头库存', refresh: '刷新统计',
           hint: '有效库存包含可用和使用中的健康头；过期或失效后自动删除并补充。累计采集数包含历史记录。',
-          error: '统计读取失败，请点击刷新重试。', empty: '暂无记录。配置动态 IP 接口并勾选支持的模型，保存账号后会自动补充。',
+          error: '统计读取失败，请点击刷新重试。', empty: '暂无记录。确认全局动态 IP 接口已配置，勾选本账号支持的模型并保存后会自动补充。',
           emptyConfigured: '当前尚无健康头，请查看上方后台采集状态。',
           maintenanceTitle: '后台采集', nextRetry: '下次重试：{time}',
           maintenanceStatus: { disabled: '已关闭', unconfigured: '待配置', idle: '待命', running: '正在补充', backoff: '暂缓重试' },
@@ -765,12 +765,13 @@ export default {
         dynamic: {
           dynamic: '动态 IP 接口采集',
           description: '采集请求仅使用动态 IP 接口返回的代理，按所选模型发送测试请求。每个模型达到目标库存后停止；健康头失效或过期时自动删除并补足。关闭页面后后台仍会维护，关闭异常替换并保存可停止维护。',
-          saveWithAccount: '配置与上方开关通过底部“更新”一起保存。启用后会产生模型测试请求；每条健康头最长有效 40 分钟，按实际过期时间清理。',
-          url: '代理提取 URL', urlPlaceholder: '输入提取接口；留空保留已保存地址', savedUrl: '已保存：{url}', urlRequired: '必填。接口需返回换行分隔的 IP:PORT；num、time 等供应商参数原样传递。', protocol: '代理协议',
+          saveWithAccount: '配置与上方开关通过底部“更新”一起保存。提取 URL 和代理协议由所有账号共享，模型、库存数量和采集方式按账号保存。启用后会产生模型测试请求；每条健康头最长有效 40 分钟，按实际过期时间清理。',
+          url: '全局代理提取 URL', urlPlaceholder: '首次配置时填写；留空保留全局地址', savedUrl: '已配置全局接口：{url}。当前账号直接复用，无需重复填写；留空保持不变，填写新地址会更新所有账号。', urlRequired: '全局填写一次，其他账号直接复用。接口需返回换行分隔的 IP:PORT；num、time 等供应商参数原样传递。', protocol: '全局代理协议',
+          sharedProxyConflict: '已有账号保存了不同接口，请填写一次统一的全局地址。',
           target: '每个模型的健康头数量', targetHint: '默认 3 个，范围 1–100；已有可用或使用中的健康头均计入目标。', maxAttempts: '每轮最多尝试入口数',
           modelsHint: '从上游同步当前账号支持的文本模型，请勾选需要维护的模型。每个模型分别维护库存，不会自动全选。',
           modelsRequired: '请至少勾选一个支持的模型，并取消当前不支持的模型。', unsupportedModel: '{model}（当前不支持，请取消）', noModels: '上游未返回可用于采集的文本模型。',
-          validation: '请填写提取 URL 并勾选支持的模型；健康头数量为 1–100，每轮尝试数为 1–1000 且不能小于目标。',
+          validation: '请确认已配置全局提取 URL 并勾选支持的模型；健康头数量为 1–100，每轮尝试数为 1–1000 且不能小于目标。',
           saving: '正在保存采集配置…', reload: '重新加载',
           partialSave: '健康头采集设置已保存，账号其他设置未保存，请重试。',
           loadBeforeSave: '请等待采集配置和支持模型加载完成后再更新。', loadFailed: '动态 IP 配置读取失败，请重试。', modelsLoadFailed: '上游支持的模型读取失败，请重新加载。', saveFailed: '采集配置保存失败，请检查提取 URL、模型和数量后重试。'

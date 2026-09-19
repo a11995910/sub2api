@@ -16,7 +16,8 @@
         <label for="healthy-state-dynamic-url" class="input-label">{{ t(`${prefix}.dynamic.url`) }}</label>
         <input id="healthy-state-dynamic-url" v-model="apiUrl" type="password" autocomplete="new-password" class="input" :placeholder="t(`${prefix}.dynamic.urlPlaceholder`)" aria-describedby="healthy-state-dynamic-url-hint" />
         <p id="healthy-state-dynamic-url-hint" class="mt-1 break-words text-xs text-gray-600 dark:text-gray-400">
-          {{ dynamicConfig.configured ? t(`${prefix}.dynamic.savedUrl`, { url: dynamicConfig.api_url_masked }) : t(`${prefix}.dynamic.urlRequired`) }}
+          <span v-if="dynamicConfig.shared_proxy_conflict">{{ t(`${prefix}.dynamic.sharedProxyConflict`) }}</span>
+          <span v-else>{{ dynamicConfig.configured ? t(`${prefix}.dynamic.savedUrl`, { url: dynamicConfig.api_url_masked }) : t(`${prefix}.dynamic.urlRequired`) }}</span>
         </p>
       </div>
       <fieldset class="min-w-0" aria-describedby="healthy-state-model-hint">
@@ -78,6 +79,7 @@ const { t } = useI18n()
 const prefix = 'admin.accounts.openai'
 const defaultConfig = (): HealthyTurnStateDynamicConfig => ({ configured: false, api_url_masked: '', protocol: 'http', target_count: 3, max_attempts: 100, models: [], transport: 'http' })
 const dynamicConfig = ref(defaultConfig())
+const loadedProtocol = ref<HealthyTurnStateDynamicConfig['protocol']>('http')
 const supportedModels = ref<HealthyTurnStateSupportedModel[]>([])
 const apiUrl = ref('')
 // 仅界面输入事件标记变更，读取旧配置和刷新上游模型不会阻断账号其他字段的保存。
@@ -121,7 +123,10 @@ async function loadSettings() {
   ])
   if (controller !== current || current.signal.aborted || disposed || props.accountId !== accountId) return
   loading.value = false
-  if (configResult.status === 'fulfilled') dynamicConfig.value = { ...defaultConfig(), ...configResult.value, models: [...(configResult.value.models || [])] }
+  if (configResult.status === 'fulfilled') {
+    dynamicConfig.value = { ...defaultConfig(), ...configResult.value, models: [...(configResult.value.models || [])] }
+    loadedProtocol.value = dynamicConfig.value.protocol
+  }
   if (modelsResult.status === 'fulfilled') supportedModels.value = modelsResult.value
   if (configResult.status === 'rejected') loadError.value = apiErrorMessage(configResult.reason, t(`${prefix}.dynamic.loadFailed`))
   else if (modelsResult.status === 'rejected') loadError.value = apiErrorMessage(modelsResult.reason, t(`${prefix}.dynamic.modelsLoadFailed`))
@@ -149,11 +154,14 @@ async function saveConfig(allowUnchanged = false): Promise<boolean> {
   try {
     const config = await adminAPI.accounts.updateHealthyTurnStateDynamicConfig(accountId, {
       api_url: apiUrl.value.trim(), protocol: dynamicConfig.value.protocol,
+      // 仅显式修改全局配置时更新，避免旧弹窗保存账号设置时覆盖已更新的协议。
+      update_shared_proxy: apiUrl.value.trim() !== '' || dynamicConfig.value.protocol !== loadedProtocol.value,
       target_count: dynamicConfig.value.target_count, max_attempts: dynamicConfig.value.max_attempts,
       models: [...dynamicConfig.value.models], transport: dynamicConfig.value.transport
     }, current.signal)
     if (controller !== current || current.signal.aborted || disposed || props.accountId !== accountId) return false
     dynamicConfig.value = { ...config, models: [...config.models] }
+    loadedProtocol.value = config.protocol
     apiUrl.value = ''
     dirty.value = false
     statsRevision.value++
@@ -170,6 +178,7 @@ watch(() => [props.accountId, props.active] as const, () => {
   controller?.abort()
   controller = null
   dynamicConfig.value = defaultConfig()
+  loadedProtocol.value = 'http'
   supportedModels.value = []
   apiUrl.value = ''
   dirty.value = false

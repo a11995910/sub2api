@@ -702,7 +702,7 @@ export default {
         stateStats: {
           title: 'Healthy state inventory', refresh: 'Refresh',
           hint: 'Valid inventory includes available and in-use headers. Expired or invalid headers are removed and replenished automatically. Cumulative counts include historical records.',
-          error: 'Statistics could not be loaded. Refresh to retry.', empty: 'No records yet. Configure the dynamic IP API, select supported models, and save the account to begin automatic replenishment.',
+          error: 'Statistics could not be loaded. Refresh to retry.', empty: 'No records yet. Ensure the global dynamic IP API is configured, select this account’s supported models, and save to begin automatic replenishment.',
           emptyConfigured: 'No headers yet. Check the background collection status above.',
           maintenanceTitle: 'Background collection', nextRetry: 'Next retry: {time}',
           maintenanceStatus: { disabled: 'Disabled', unconfigured: 'Setup required', idle: 'Standing by', running: 'Replenishing', backoff: 'Waiting to retry' },
@@ -714,12 +714,13 @@ export default {
         dynamic: {
           dynamic: 'Dynamic IP API collection',
           description: 'Collection uses only proxies returned by the dynamic IP API to test selected models. It stops when each model reaches its inventory target. Invalid or expired headers are removed and replenished automatically. Maintenance continues after this page closes; disable replacement and save to stop it.',
-          saveWithAccount: 'Settings and the replacement switch are saved together with the Update button below. Enabling sends model test requests. Each header lasts up to 40 minutes and is removed at its actual expiry time.',
-          url: 'Proxy extraction URL', urlPlaceholder: 'Enter the API URL; leave blank to keep the saved URL', savedUrl: 'Saved: {url}', urlRequired: 'Required. Return newline-separated IP:PORT entries; provider parameters such as num and time are passed through unchanged.', protocol: 'Proxy protocol',
+          saveWithAccount: 'Settings and the replacement switch are saved together with the Update button below. All accounts share the extraction URL and proxy protocol; models, inventory limits and collection transport are saved per account. Enabling sends model test requests. Each header lasts up to 40 minutes and is removed at its actual expiry time.',
+          url: 'Global proxy extraction URL', urlPlaceholder: 'Enter once; leave blank to keep the global URL', savedUrl: 'Global API configured: {url}. This account uses it automatically. Leave blank to keep it; a new URL updates all accounts.', urlRequired: 'Configure once for all accounts. Return newline-separated IP:PORT entries; provider parameters such as num and time are passed through unchanged.', protocol: 'Global proxy protocol',
+          sharedProxyConflict: 'Existing accounts have different API URLs. Enter one shared global URL to use for all accounts.',
           target: 'Healthy headers per model', targetHint: 'Default: 3; range: 1–100. Both available and in-use headers count toward the target.', maxAttempts: 'Maximum proxy attempts per cycle',
           modelsHint: 'Select text models supported by this account, synced from upstream. Each model has its own inventory; models are not selected automatically.',
           modelsRequired: 'Select at least one supported model and deselect any unsupported models.', unsupportedModel: '{model} (unsupported; deselect)', noModels: 'Upstream returned no text models suitable for collection.',
-          validation: 'Provide an extraction URL and select supported models. Header count must be 1–100; attempts must be 1–1000 and at least the target.',
+          validation: 'Ensure a global extraction URL is configured and select supported models. Header count must be 1–100; attempts must be 1–1000 and at least the target.',
           saving: 'Saving collection settings…', reload: 'Reload',
           partialSave: 'Healthy header collection settings were saved, but other account settings were not. Please retry.',
           loadBeforeSave: 'Wait for collection settings and supported models to load before updating.', loadFailed: 'Could not load dynamic IP settings. Please retry.', modelsLoadFailed: 'Could not load supported models from upstream. Please reload.', saveFailed: 'Could not save collection settings. Check the extraction URL, models and limits, then retry.'

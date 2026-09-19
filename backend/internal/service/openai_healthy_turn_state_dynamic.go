@@ -35,10 +35,16 @@ type HealthyTurnStateDynamicRun struct {
 }
 
 type healthyTurnStateDynamicService struct {
-	settings SettingRepository
-	cipher   SecretEncryptor
-	mu       sync.Mutex
-	runs     map[string]*healthyTurnStateDynamicSession
+	// configMu 保证共享配置迁移、保存与运行注册使用同一版本。
+	configMu              sync.Mutex
+	legacyProxyChecked    bool
+	legacyProxyConflict   bool
+	sharedConfigRevision  uint64
+	accountConfigRevision map[int64]uint64
+	settings              SettingRepository
+	cipher                SecretEncryptor
+	mu                    sync.Mutex
+	runs                  map[string]*healthyTurnStateDynamicSession
 	// 仅用于离线测试；正式实例使用真实提取与单次探测方法。
 	fetch              func(context.Context, HealthyTurnStateDynamicConfigInput) ([]string, error)
 	probe              func(context.Context, *Account, string, string, string) (*OpenAIHealthyTurnStateProbeResult, error)
@@ -168,7 +174,9 @@ func (s *AccountTestService) StartHealthyTurnStateDynamic(ctx context.Context, a
 	if s.openaiGatewayService == nil {
 		return nil, infraerrors.ServiceUnavailable("HEALTHY_TURN_STATE_UNAVAILABLE", "状态头测试服务暂不可用")
 	}
-	config, err := d.loadConfig(ctx, account.ID)
+	d.configMu.Lock()
+	defer d.configMu.Unlock()
+	config, err := d.loadConfigLocked(ctx, account.ID)
 	if err != nil {
 		return nil, err
 	}

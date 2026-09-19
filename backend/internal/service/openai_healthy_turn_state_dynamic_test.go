@@ -31,9 +31,9 @@ func (healthyDynamicTestCipher) Decrypt(encrypted string) (string, error) {
 	return string(data), err
 }
 
-func healthyDynamicTestService(t *testing.T, target, attempts int) (*AccountTestService, *stubSettingRepo, *Account) {
+func healthyDynamicTestService(t *testing.T, target, attempts int) (*AccountTestService, *healthyDynamicTestSettingRepo, *Account) {
 	t.Helper()
-	repo := newStubSettingRepo()
+	repo := &healthyDynamicTestSettingRepo{stubSettingRepo: newStubSettingRepo()}
 	svc := &AccountTestService{openaiGatewayService: &OpenAIGatewayService{}}
 	svc.SetHealthyTurnStateDynamicStorage(repo, healthyDynamicTestCipher{})
 	account := healthyTurnStateProbeAccount()
@@ -54,7 +54,7 @@ func healthyDynamicTestService(t *testing.T, target, attempts int) (*AccountTest
 	return svc, repo, account
 }
 
-func TestHealthyDynamicConfigEncryptedAccountScopedAndRedacted(t *testing.T) {
+func TestHealthyDynamicConfigEncryptedSharedProxyAndRedacted(t *testing.T) {
 	svc, repo, account := healthyDynamicTestService(t, 2, 4)
 	ctx := context.Background()
 	view, err := svc.GetHealthyTurnStateDynamicConfig(ctx, account.ID)
@@ -69,7 +69,9 @@ func TestHealthyDynamicConfigEncryptedAccountScopedAndRedacted(t *testing.T) {
 	}
 	other, err := svc.GetHealthyTurnStateDynamicConfig(ctx, account.ID+1)
 	require.NoError(t, err)
-	require.False(t, other.Configured)
+	require.True(t, other.Configured)
+	require.Equal(t, view.APIURLMasked, other.APIURLMasked)
+	require.Empty(t, other.Models)
 	require.Equal(t, 3, other.TargetCount)
 	_, err = svc.SaveHealthyTurnStateDynamicConfig(ctx, account.ID, HealthyTurnStateDynamicConfigInput{Protocol: "socks5h", TargetCount: 3, MaxAttempts: 5, Models: []string{"gpt-6-astra"}})
 	require.NoError(t, err)

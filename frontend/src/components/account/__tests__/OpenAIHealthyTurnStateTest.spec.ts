@@ -66,7 +66,7 @@ describe('健康状态头自动采集配置', () => {
     await wrapper.get('#healthy-state-dynamic-target').setValue(5)
     expect(await save(wrapper)).toBe(true)
     expect(updateDynamicConfig.mock.calls[0]?.slice(0, 2)).toEqual([7, {
-      api_url: '', protocol: 'socks5h', target_count: 5, max_attempts: 100,
+      api_url: '', protocol: 'socks5h', update_shared_proxy: true, target_count: 5, max_attempts: 100,
       models: ['gpt-5.4', 'gpt-5.5'], transport: 'websocket'
     }])
   })
@@ -89,7 +89,65 @@ describe('健康状态头自动采集配置', () => {
     await wrapper.get('#healthy-state-dynamic-attempts').setValue(100)
     expect(await save(wrapper)).toBe(true)
     expect(updateDynamicConfig.mock.calls[0]?.[1].api_url).toBe('https://provider.example/extract?num=3&time=1')
+    expect(updateDynamicConfig.mock.calls[0]?.[1].update_shared_proxy).toBe(true)
     expect((wrapper.get('#healthy-state-dynamic-url').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('其他账号复用全局接口，只需勾选自己的模型即可留空URL保存', async () => {
+    getDynamicConfig.mockResolvedValueOnce({ ...savedConfig, models: [], protocol: 'socks5h' })
+    const wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain('dynamic.savedUrl')
+    expect(wrapper.text()).not.toContain('dynamic.urlRequired')
+    expect((wrapper.get('#healthy-state-dynamic-url').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.findAll('input[type="checkbox"]').every(input => !(input.element as HTMLInputElement).checked)).toBe(true)
+    expect(await save(wrapper)).toBe(false)
+    expect(updateDynamicConfig).not.toHaveBeenCalled()
+    await wrapper.get('input[value="gpt-5.5"]').setValue(true)
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[0]?.slice(0, 2)).toEqual([7, {
+      api_url: '', protocol: 'socks5h', update_shared_proxy: false, target_count: 3, max_attempts: 100,
+      models: ['gpt-5.5'], transport: 'http'
+    }])
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('协议改回原值后只保存账号配置，保存成功后以最新全局协议为基准', async () => {
+    const wrapper = panel()
+    await flushPromises()
+    await wrapper.get('#healthy-state-dynamic-protocol').setValue('https')
+    await wrapper.get('#healthy-state-dynamic-protocol').setValue('http')
+    updateDynamicConfig.mockResolvedValueOnce({ ...savedConfig, protocol: 'socks5h' })
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[0]?.[1].update_shared_proxy).toBe(false)
+    expect((wrapper.get('#healthy-state-dynamic-protocol').element as HTMLSelectElement).value).toBe('socks5h')
+    await wrapper.get('#healthy-state-dynamic-target').setValue(4)
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[1]?.[1]).toMatchObject({ protocol: 'socks5h', update_shared_proxy: false, target_count: 4 })
+  })
+
+  it('旧账号接口冲突时保留模型和数量，填写统一URL即可修复并保存', async () => {
+    getDynamicConfig.mockResolvedValueOnce({
+      ...savedConfig, configured: false, api_url_masked: '', shared_proxy_conflict: true,
+      models: ['gpt-5.5'], target_count: 5
+    })
+    const wrapper = panel()
+    await flushPromises()
+    expect(wrapper.text()).toContain('dynamic.sharedProxyConflict')
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined()
+    expect((wrapper.get('input[value="gpt-5.5"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('#healthy-state-dynamic-target').element as HTMLInputElement).value).toBe('5')
+    expect(await save(wrapper)).toBe(false)
+    expect(updateDynamicConfig).not.toHaveBeenCalled()
+    await wrapper.get('#healthy-state-dynamic-url').setValue('https://provider.example/unified')
+    expect(await save(wrapper, true)).toBe(true)
+    expect(updateDynamicConfig.mock.calls[0]?.[1]).toMatchObject({
+      api_url: 'https://provider.example/unified', update_shared_proxy: true,
+      models: ['gpt-5.5'], target_count: 5
+    })
+    expect(wrapper.text()).not.toContain('dynamic.sharedProxyConflict')
+    expect(wrapper.text()).toContain('dynamic.savedUrl')
   })
 
   it('模型已不受支持时明确提示并阻止保存，取消旧模型后可保存', async () => {

@@ -48,7 +48,11 @@ func (s *AccountTestService) HealthyTurnStateMaintenanceStatus(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	if config.APIURL == "" || len(config.Models) == 0 {
+	if config.APIURL == "" {
+		return status, nil
+	}
+	if len(config.Models) == 0 {
+		status.Message = "请勾选本账号的测试模型并保存"
 		return status, nil
 	}
 	d.mu.Lock()
@@ -245,6 +249,7 @@ func (s *AccountTestService) scanHealthyDynamicMaintenance(ctx context.Context) 
 			d.mu.Unlock()
 			return
 		}
+		sharedRevision, accountRevision := d.sharedConfigRevision, d.accountConfigRevision[account.ID]
 		d.maintenanceActive[account.ID] = true
 		d.maintenanceWorkers.Add(1)
 		d.mu.Unlock()
@@ -254,6 +259,10 @@ func (s *AccountTestService) scanHealthyDynamicMaintenance(ctx context.Context) 
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			delete(d.maintenanceActive, accountID)
+			// 保存配置后，旧任务的结束结果不能恢复已清除的退避。
+			if sharedRevision != d.sharedConfigRevision || accountRevision != d.accountConfigRevision[accountID] {
+				return
+			}
 			if filled {
 				delete(d.maintenanceRetry, accountID)
 			} else if attempted && ctx.Err() == nil {
