@@ -8,9 +8,9 @@ import (
 
 const (
 	healthyDynamicAccountConcurrency     = 8
-	healthyDynamicProbeConcurrency       = 3
+	healthyDynamicProbeConcurrency       = 10
 	healthyDynamicGlobalProbeConcurrency = 24
-	healthyDynamicAccountAttemptSlice    = 15
+	healthyDynamicAccountAttemptSlice    = 30
 	healthyDynamicAccountTimeSlice       = 90 * time.Second
 )
 

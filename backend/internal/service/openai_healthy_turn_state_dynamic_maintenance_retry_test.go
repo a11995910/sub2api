@@ -24,37 +24,37 @@ func prepareHealthyDynamicRetryTest(svc *AccountTestService) time.Time {
 
 func scanHealthyDynamicRetryTest(t *testing.T, svc *AccountTestService) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	svc.scanHealthyDynamicMaintenance(ctx)
 	svc.healthyTurnStateDynamic.maintenanceWorkers.Wait()
 	require.NoError(t, ctx.Err(), "维护必须在本轮达到库存或失败上限后结束")
 }
 
-func TestHealthyDynamicMaintenanceFourFailuresThenHealthyContinuesWithoutBackoff(t *testing.T) {
+func TestHealthyDynamicMaintenanceNineFailuresThenHealthyContinuesWithoutBackoff(t *testing.T) {
 	t.Parallel()
 	svc, pool, account, _, probes := healthyDynamicPoolService(t, []string{"gpt-6-astra"}, 1)
 	prepareHealthyDynamicRetryTest(svc)
 	svc.healthyTurnStateDynamic.probe = func(_ context.Context, _ *Account, model, transport, _ string) (*OpenAIHealthyTurnStateProbeResult, error) {
 		status := "failed"
-		if probes.Add(1) == 5 {
+		if probes.Add(1) == 10 {
 			pool.record(model)
 			status = "recorded"
 		}
 		return &OpenAIHealthyTurnStateProbeResult{Status: status, Model: model, Transport: transport}, nil
 	}
 	scanHealthyDynamicRetryTest(t, svc)
-	require.EqualValues(t, 5, probes.Load())
+	require.EqualValues(t, 10, probes.Load())
 	require.EqualValues(t, 1, pool.counts()["gpt-6-astra"])
 	require.NotContains(t, svc.healthyTurnStateDynamic.maintenanceRetry, account.ID)
 }
 
-func TestHealthyDynamicMaintenanceFiveFailuresUseDistinctProxiesThenPause(t *testing.T) {
+func TestHealthyDynamicMaintenanceTenFailuresUseDistinctProxiesThenPause(t *testing.T) {
 	t.Parallel()
 	svc, _, account, fetches, probes := healthyDynamicPoolService(t, []string{"gpt-6-astra"}, 1)
 	now := prepareHealthyDynamicRetryTest(svc)
 	proxies := make(map[string]bool)
-	probeTimes := make([]time.Time, 0, 5)
+	probeTimes := make([]time.Time, 0, 10)
 	svc.healthyTurnStateDynamic.probe = func(_ context.Context, _ *Account, model, transport, proxy string) (*OpenAIHealthyTurnStateProbeResult, error) {
 		probes.Add(1)
 		proxies[proxy] = true
@@ -62,8 +62,8 @@ func TestHealthyDynamicMaintenanceFiveFailuresUseDistinctProxiesThenPause(t *tes
 		return &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: model, Transport: transport, Message: "测试代理未通过健康检查"}, nil
 	}
 	scanHealthyDynamicRetryTest(t, svc)
-	require.EqualValues(t, 5, probes.Load())
-	require.Len(t, proxies, 5, "失败后必须使用尚未尝试过的代理入口")
+	require.EqualValues(t, 10, probes.Load())
+	require.Len(t, proxies, 10, "失败后必须使用尚未尝试过的代理入口")
 	for i := 1; i < len(probeTimes); i++ {
 		require.GreaterOrEqual(t, probeTimes[i].Sub(probeTimes[i-1]), 900*time.Millisecond, "切换代理仍须保留一秒节流")
 	}
@@ -73,7 +73,7 @@ func TestHealthyDynamicMaintenanceFiveFailuresUseDistinctProxiesThenPause(t *tes
 	require.NotNil(t, status.NextRetryAt)
 	require.Equal(t, now.Add(15*time.Second), *status.NextRetryAt)
 	scanHealthyDynamicRetryTest(t, svc)
-	require.EqualValues(t, 5, probes.Load(), "固定退避尚未结束时不提前请求")
+	require.EqualValues(t, 10, probes.Load(), "固定退避尚未结束时不提前请求")
 	require.EqualValues(t, 1, fetches.Load())
 }
 
@@ -90,12 +90,12 @@ func TestHealthyDynamicMaintenanceHealthyResultsResetConsecutiveFailures(t *test
 			svc.healthyTurnStateDynamic.probe = func(_ context.Context, _ *Account, model, transport, _ string) (*OpenAIHealthyTurnStateProbeResult, error) {
 				attempt := probes.Add(1)
 				status := "failed"
-				if attempt == 5 {
+				if attempt == 9 {
 					status = healthyStatus
-				} else if healthyStatus == "recorded" && attempt == 6 {
-					// 两个并行缺口在四次失败后同时恢复。
+				} else if healthyStatus == "recorded" && attempt == 10 {
+					// 两个并行缺口在八次失败后同时恢复。
 					status = "recorded"
-				} else if attempt == 10 {
+				} else if attempt == 18 {
 					status = "recorded"
 				}
 				if status == "recorded" {
@@ -104,9 +104,9 @@ func TestHealthyDynamicMaintenanceHealthyResultsResetConsecutiveFailures(t *test
 				return &OpenAIHealthyTurnStateProbeResult{Status: status, Model: model, Transport: transport}, nil
 			}
 			scanHealthyDynamicRetryTest(t, svc)
-			expectedProbes := 10
+			expectedProbes := 18
 			if healthyStatus == "recorded" {
-				expectedProbes = 6
+				expectedProbes = 10
 			}
 			require.EqualValues(t, expectedProbes, probes.Load(), "健康响应后重新累计连续失败，重复健康头也应清零")
 			require.EqualValues(t, target, pool.counts()["gpt-6-astra"], "重复头不能虚增有效库存")
@@ -115,7 +115,7 @@ func TestHealthyDynamicMaintenanceHealthyResultsResetConsecutiveFailures(t *test
 	}
 }
 
-func TestHealthyDynamicMaintenanceAttemptLimitTakesPriorityBeforeFiveFailures(t *testing.T) {
+func TestHealthyDynamicMaintenanceAttemptLimitTakesPriorityBeforeTenFailures(t *testing.T) {
 	t.Parallel()
 	svc, _, account, _, probes := healthyDynamicPoolService(t, []string{"gpt-6-astra"}, 1)
 	d := svc.healthyTurnStateDynamic
@@ -190,10 +190,10 @@ func TestHealthyDynamicMaintenanceFetchFailuresAreCountedWithoutReusingLastProbe
 		expectedProbes   int64
 		expectedRecorded int64
 	}{
-		{name: "连续五次提取错误", fetchFailures: 5, expectedFetches: 5},
-		{name: "连续五次空批次", fetchFailures: 5, emptyBatch: true, expectedFetches: 5},
-		{name: "四次提取错误后恢复", fetchFailures: 4, recover: true, expectedFetches: 5, expectedProbes: 1, expectedRecorded: 1},
-		{name: "旧成功结果不能重置后续提取失败", firstProbe: "recorded", fetchFailures: 5, expectedFetches: 6, expectedProbes: 1, expectedRecorded: 1},
+		{name: "连续十次提取错误", fetchFailures: 10, expectedFetches: 10},
+		{name: "连续十次空批次", fetchFailures: 10, emptyBatch: true, expectedFetches: 10},
+		{name: "九次提取错误后恢复", fetchFailures: 9, recover: true, expectedFetches: 10, expectedProbes: 1, expectedRecorded: 1},
+		{name: "旧成功结果不能重置后续提取失败", firstProbe: "recorded", fetchFailures: 10, expectedFetches: 11, expectedProbes: 1, expectedRecorded: 1},
 		{name: "旧失败结果不能重复累计", firstProbe: "failed", fetchFailures: 3, recover: true, expectedFetches: 5, expectedProbes: 2, expectedRecorded: 1},
 	}
 	for _, tc := range cases {

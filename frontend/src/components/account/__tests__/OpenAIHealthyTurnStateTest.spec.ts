@@ -54,19 +54,19 @@ describe('健康状态头自动采集配置', () => {
     expect(updateDynamicConfig).not.toHaveBeenCalled()
   })
 
-  it('快捷增加至每模型十个仅修改表单，经账号统一保存时写入', async () => {
+  it('快捷增加至每模型四个仅修改表单，经账号统一保存时写入', async () => {
     const wrapper = panel()
     await flushPromises()
     expect(await save(wrapper, true)).toBe(true)
     expect(updateDynamicConfig).not.toHaveBeenCalled()
     await wrapper.get('button').trigger('click')
     expect(wrapper.get('button').attributes('type')).toBe('button')
-    expect((wrapper.get('#healthy-state-dynamic-target').element as HTMLInputElement).value).toBe('10')
-    expect(wrapper.get('#healthy-state-dynamic-target-summary').text()).toContain('"models":1,"total":10')
+    expect((wrapper.get('#healthy-state-dynamic-target').element as HTMLInputElement).value).toBe('4')
+    expect(wrapper.get('#healthy-state-dynamic-target-summary').text()).toContain('"models":1,"total":4')
     expect(updateDynamicConfig).not.toHaveBeenCalled()
     expect(await save(wrapper, true)).toBe(true)
     expect(updateDynamicConfig).toHaveBeenCalledTimes(1)
-    expect(updateDynamicConfig.mock.calls[0]?.[1]).toMatchObject({ target_count: 10, models: ['gpt-5.4'], update_shared_proxy: false, update_default_models: false })
+    expect(updateDynamicConfig.mock.calls[0]?.[1]).toMatchObject({ target_count: 4, models: ['gpt-5.4'], update_shared_proxy: false, update_default_models: false })
   })
 
   it('目标库存按所选项和数量更新，非法数量时不显示误导总数', async () => {
@@ -86,10 +86,10 @@ describe('健康状态头自动采集配置', () => {
     const wrapper = panel()
     await flushPromises()
     await wrapper.get('button').trigger('click')
-    expect((wrapper.get('#healthy-state-dynamic-attempts').element as HTMLInputElement).value).toBe('10')
+    expect((wrapper.get('#healthy-state-dynamic-attempts').element as HTMLInputElement).value).toBe('4')
     expect(updateDynamicConfig).not.toHaveBeenCalled()
     expect(await save(wrapper, true)).toBe(true)
-    expect(updateDynamicConfig.mock.calls[0]?.[1]).toMatchObject({ target_count: 10, max_attempts: 10 })
+    expect(updateDynamicConfig.mock.calls[0]?.[1]).toMatchObject({ target_count: 4, max_attempts: 4 })
   })
 
   it('统一保存所选模型、传输、库存和代理配置，URL留空保留已保存值', async () => {

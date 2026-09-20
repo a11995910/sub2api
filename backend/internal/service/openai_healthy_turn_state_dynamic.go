@@ -78,6 +78,7 @@ type healthyTurnStateDynamicSession struct {
 	backgroundMaintenance bool
 	lastBatch             []*OpenAIHealthyTurnStateProbeResult
 	lastFetchFailures     []string
+	remainingFailures     int
 	proxyWaiting          bool
 	emptyBatches          int
 	createdAt, lastUsed   time.Time
@@ -340,7 +341,7 @@ func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, ac
 	reserved := reserveHealthyDynamicModels(run.models, counts, config.TargetCount, limit)
 	run.mu.Unlock()
 
-	// 供应商每批只有一个入口时，最多提取三批以组成并行批次。
+	// 供应商每批只有一个入口时，按实际预留缺口继续提取，最多十批组成并行批次。
 	for batchIndex := 0; batchIndex < parallelism; batchIndex++ {
 		run.mu.Lock()
 		needsBatch := len(run.pending) < len(reserved) && run.view.Status == "running"
@@ -399,7 +400,8 @@ func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, ac
 				}
 			}
 		}
-		if run.view.Status != "running" || len(run.pending) == 0 {
+		failureLimitReached := run.backgroundMaintenance && run.remainingFailures > 0 && len(run.lastFetchFailures) >= run.remainingFailures
+		if run.view.Status != "running" || len(run.pending) == 0 || failureLimitReached {
 			if run.view.Status == "running" {
 				run.lastUsed = d.clock()
 				run.idleTimer.Reset(healthyDynamicIdleLimit)

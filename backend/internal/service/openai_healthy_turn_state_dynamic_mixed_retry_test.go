@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHealthyDynamicMaintenanceMixedFetchAndProbeFailuresPauseAtFive(t *testing.T) {
+func TestHealthyDynamicMaintenanceMixedFetchAndProbeFailuresPauseAtTen(t *testing.T) {
 	for _, emptyBatch := range []bool{false, true} {
 		name := "提取错误后已有入口探测失败"
 		if emptyBatch {
@@ -42,16 +42,16 @@ func TestHealthyDynamicMaintenanceMixedFetchAndProbeFailuresPauseAtFive(t *testi
 				return &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: model, Transport: transport}, nil
 			}
 			scanHealthyDynamicRetryTest(t, svc)
-			require.EqualValues(t, 4, probes.Load(), "提取失败与已有入口探测失败累计达到阈值后，不能再发新批次")
-			wantFetches := int64(3)
+			wantProbes, wantFetches := int64(4), int64(8)
 			if emptyBatch {
-				wantFetches = 4
+				wantProbes, wantFetches = 3, 9
 			}
+			require.Equal(t, wantProbes, probes.Load(), "提取失败与已有入口探测失败累计达到阈值后，不能再发新批次")
 			require.Equal(t, wantFetches, fetches.Load())
 			status, err := svc.HealthyTurnStateMaintenanceStatus(context.Background(), account.ID)
 			require.NoError(t, err)
 			require.Equal(t, "backoff", status.Status)
-			require.Contains(t, status.Message, "连续 5 次采集失败")
+			require.Contains(t, status.Message, "连续 10 次采集失败")
 			require.Equal(t, now.Add(15*time.Second), *status.NextRetryAt)
 		})
 	}
@@ -86,7 +86,7 @@ func TestHealthyDynamicMaintenanceHealthyProbeResetsEarlierMixedFetchFailure(t *
 	require.EqualValues(t, 6, probes.Load())
 	require.EqualValues(t, 4, fetches.Load())
 	require.EqualValues(t, 3, pool.counts()["gpt-6-astra"])
-	require.NotContains(t, d.maintenanceRetry, account.ID, "尚未达到五次失败时，后到的健康结果应清零此前提取失败")
+	require.NotContains(t, d.maintenanceRetry, account.ID, "尚未达到十次失败时，后到的健康结果应清零此前提取失败")
 }
 
 func TestHealthyDynamicMaintenanceProxyWaitingDoesNotHideFetchFailures(t *testing.T) {
@@ -112,11 +112,11 @@ func TestHealthyDynamicMaintenanceProxyWaitingDoesNotHideFetchFailures(t *testin
 	}
 	scanHealthyDynamicRetryTest(t, svc)
 	require.EqualValues(t, 3, probes.Load(), "被占用的代理不能重复探测")
-	require.EqualValues(t, 4, fetches.Load())
+	require.EqualValues(t, 9, fetches.Load())
 	status, err := svc.HealthyTurnStateMaintenanceStatus(context.Background(), account.ID)
 	require.NoError(t, err)
 	require.Equal(t, "backoff", status.Status)
-	require.Contains(t, status.Message, "连续 5 次采集失败", "代理争用不能覆盖已发生的两次空批次失败")
+	require.Contains(t, status.Message, "连续 10 次采集失败", "代理争用不能覆盖已发生的七次空批次失败")
 }
 
 func TestHealthyDynamicMaintenancePureProxyWaitingDoesNotBackoff(t *testing.T) {

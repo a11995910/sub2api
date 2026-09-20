@@ -14,7 +14,7 @@ import (
 
 const (
 	healthyDynamicMaintenanceInterval = 15 * time.Second
-	healthyDynamicFailureLimit        = 5
+	healthyDynamicFailureLimit        = 10
 	healthyDynamicRetryDelay          = 15 * time.Second
 )
 
@@ -448,6 +448,7 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 		}
 		session.mu.Lock()
 		session.account, session.models = current, currentModels
+		session.remainingFailures = healthyDynamicFailureLimit - consecutiveFailures
 		session.mu.Unlock()
 		previousAttempts, previousBatches := run.Attempts, run.FetchedBatches
 		run, err = s.stepHealthyTurnStateDynamic(ctx, accountID, run.ID, healthyDynamicProbeConcurrency)
@@ -481,7 +482,7 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 				}
 			}
 			for _, result := range batch {
-				// 达到阈值后保留已经发出的至多两个结果，但成功不能取消本次退避。
+				// 达到阈值后保留本批已经发出的结果，但成功不能取消本次退避。
 				if consecutiveFailures >= healthyDynamicFailureLimit {
 					break
 				}
@@ -516,7 +517,7 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 		}
 		if failed && consecutiveFailures >= healthyDynamicFailureLimit {
 			session.mu.Lock()
-			session.finishLocked("failed", fmt.Sprintf("连续 %d 次采集失败，暂停 15 秒后重试；%s", consecutiveFailures, failureMessage))
+			session.finishLocked("failed", fmt.Sprintf("连续 %d 次采集失败，暂停 %d 秒后重试；%s", healthyDynamicFailureLimit, int(healthyDynamicRetryDelay/time.Second), failureMessage))
 			session.mu.Unlock()
 			return false, attempted
 		}
