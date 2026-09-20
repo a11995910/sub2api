@@ -29,7 +29,7 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 	}
 	minSeconds, maxSeconds, maxImages, maxVideos, maxAudios := 1, 15, 7, 0, 0
 	switch model {
-	case "auto-video":
+	case "auto-video", "agnes-video-2.5-flash":
 		maxSeconds, maxImages = 12, 5
 	case "grok-imagine-video-1.5":
 	case "kling-video-v3-omni":
@@ -58,6 +58,9 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("ZYCA 首尾帧协议尚未支持")
 	}
 	resolution, ok := LookupVideoBillingResolution(request.Resolution)
+	if (model == "auto-video" || model == "agnes-video-2.5-flash") && resolution != VideoBillingResolution720P {
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("%s 仅支持 720p 清晰度", model)
+	}
 	if !ok || (model == "minimax-h3" && resolution != VideoBillingResolution1080P && !VideoResolutionRequiresExplicitPrice(resolution)) ||
 		(model != "minimax-h3" && VideoResolutionRequiresExplicitPrice(resolution)) {
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("请显式指定 ZYCA 模型支持的清晰度")

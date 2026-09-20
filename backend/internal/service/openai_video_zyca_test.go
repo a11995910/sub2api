@@ -227,12 +227,16 @@ func TestZYCAModelLimits(t *testing.T) {
 		model            string
 		min, max, images int
 	}{
-		{"auto-video", 1, 12, 5}, {"grok-imagine-video-1.5", 1, 15, 7},
+		{"auto-video", 1, 12, 5}, {"agnes-video-2.5-flash", 1, 12, 5}, {"grok-imagine-video-1.5", 1, 15, 7},
 		{"kling-video-v3-omni", 3, 15, 7}, {"minimax-h3", 4, 15, 9},
 	} {
 		t.Run(tt.model, func(t *testing.T) {
+			resolution := "1080p"
+			if tt.model == "auto-video" || tt.model == "agnes-video-2.5-flash" {
+				resolution = "720p"
+			}
 			for _, duration := range []int{tt.min, tt.max} {
-				payload := map[string]any{"model": tt.model, "prompt": "视频", "duration": duration, "resolution": "1080p"}
+				payload := map[string]any{"model": tt.model, "prompt": "视频", "duration": duration, "resolution": resolution}
 				body, err := json.Marshal(payload)
 				require.NoError(t, err)
 				require.NoError(t, ValidateOpenAIVideoCreateBodyForAccount(zycaTestAccount(), body))
@@ -241,7 +245,7 @@ func TestZYCAModelLimits(t *testing.T) {
 			for i := range refs {
 				refs[i] = "https://cdn.test/" + uuid.NewString() + ".png"
 			}
-			body, err := json.Marshal(map[string]any{"model": tt.model, "prompt": "视频", "duration": tt.min, "resolution": "1080p", "reference_image_urls": refs})
+			body, err := json.Marshal(map[string]any{"model": tt.model, "prompt": "视频", "duration": tt.min, "resolution": resolution, "reference_image_urls": refs})
 			require.NoError(t, err)
 			require.Error(t, ValidateOpenAIVideoCreateBodyForAccount(zycaTestAccount(), body))
 		})
@@ -251,6 +255,7 @@ func TestZYCAModelLimits(t *testing.T) {
 func TestZYCADocumentedSizesAndResolutions(t *testing.T) {
 	for _, tt := range []struct{ model, resolution, ratio, size string }{
 		{"auto-video", "720p", "16:9", "1280x720"},
+		{"agnes-video-2.5-flash", "720p", "16:9", "1280x720"},
 		{"grok-imagine-video-1.5", "480p", "9:16", "480x854"},
 		{"kling-video-v3-omni", "1080p", "1:1", "1080x1080"},
 		{"minimax-h3", "768p", "4:3", "1024x768"},
@@ -279,6 +284,35 @@ func TestZYCADocumentedSizesAndResolutions(t *testing.T) {
 			require.NoError(t, err)
 			require.Error(t, ValidateOpenAIVideoCreateBodyForAccount(zycaTestAccount(), body))
 		}
+	}
+}
+
+func TestZYCAAgnes名称映射与能力边界(t *testing.T) {
+	for _, model := range []string{"auto-video", "agnes-video-2.5-flash"} {
+		t.Run(model, func(t *testing.T) {
+			account := zycaTestAccount()
+			account.Credentials["model_mapping"] = map[string]any{model: "agnes-video-2.5-flash"}
+			body, err := json.Marshal(map[string]any{"model": model, "prompt": "视频", "duration": 1, "resolution": "720p"})
+			require.NoError(t, err)
+			c, _ := openAIVideoForwardTestContext(body)
+			upstream := &httpUpstreamRecorder{resp: zycaTestResponse(200, `{"success":true,"data":{"id":"task-1","status":"queued"}}`)}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			result, err := svc.ForwardOpenAIVideoCreate(context.Background(), c, account, body, "")
+			require.NoError(t, err)
+			require.Equal(t, "/v1/generations", upstream.lastReq.URL.Path)
+			require.Equal(t, "agnes-video-2.5-flash", gjson.GetBytes(upstream.lastBody, "model").String())
+			require.Equal(t, model, result.BillingModel)
+			for _, resolution := range []string{"480p", "768p", "1080p", "2K", "4K"} {
+				body, err := json.Marshal(map[string]any{"model": model, "prompt": "视频", "duration": 5, "resolution": resolution})
+				require.NoError(t, err)
+				require.Error(t, ValidateOpenAIVideoCreateBodyForAccount(account, body))
+			}
+			for _, duration := range []int{0, 13} {
+				body, err := json.Marshal(map[string]any{"model": model, "prompt": "视频", "duration": duration, "resolution": "720p"})
+				require.NoError(t, err)
+				require.Error(t, ValidateOpenAIVideoCreateBodyForAccount(account, body))
+			}
+		})
 	}
 }
 
