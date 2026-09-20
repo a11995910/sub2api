@@ -16,10 +16,35 @@ func (s *OpenAIGatewayService) acquireOpenAIWSWithHealthyTurnState(ctx context.C
 	if attempt != nil {
 		attempt.markStarted()
 	}
+	// 依赖原连接的续链不改握手头，也不为首发策略强制重连。
+	if attempt != nil && !req.ForcePreferredConn && !req.SkipHealthyPreflight {
+		req.Headers = req.Headers.Clone()
+		if req.Headers == nil {
+			req.Headers = make(http.Header)
+		}
+		used, preflightErr := attempt.claimPreflight(ctx, req.Headers)
+		if preflightErr != nil {
+			return nil, preflightErr
+		}
+		if used {
+			req.PreferredConnID, req.ForceNewConn = "", true
+		}
+	}
 	lease, err := s.getOpenAIWSConnPool().Acquire(ctx, req)
+	if attempt != nil && attempt.sent {
+		attempt.httpStatus = http.StatusSwitchingProtocols
+		if err != nil || lease == nil {
+			attempt.httpStatus = 0
+			var failedDial *openAIWSDialError
+			if errors.As(err, &failedDial) {
+				attempt.httpStatus = failedDial.StatusCode
+			}
+			attempt.failed()
+		}
+	}
 	var dialErr *openAIWSDialError
 	// 严格续链依赖原连接，不能为了替换请求头破坏 previous_response_id 的归属。
-	if attempt != nil && !req.ForcePreferredConn && errors.As(err, &dialErr) {
+	if attempt != nil && !req.ForcePreferredConn && !req.SkipHealthyPreflight && errors.As(err, &dialErr) {
 		retry, retryErr := attempt.claimRetry(ctx, dialErr.StatusCode, dialErr.ResponseHeaders, req.Headers.Get(openAICodexTurnStateHeader))
 		if retryErr != nil {
 			return nil, retryErr
@@ -56,7 +81,20 @@ func (s *OpenAIGatewayService) dialOpenAIWSWithHealthyTurnState(ctx context.Cont
 	if attempt != nil {
 		attempt.markStarted()
 	}
+	headers = headers.Clone()
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	if _, err := attempt.claimPreflight(ctx, headers); err != nil {
+		return nil, 0, nil, nil, err
+	}
 	conn, status, responseHeaders, err := dialer.Dial(ctx, wsURL, headers, proxyURL)
+	if attempt != nil && attempt.sent {
+		attempt.httpStatus = status
+		if err != nil || conn == nil {
+			attempt.failed()
+		}
+	}
 	if err != nil && attempt != nil {
 		retry, retryErr := attempt.claimRetry(ctx, status, responseHeaders, headers.Get(openAICodexTurnStateHeader))
 		if retryErr != nil {

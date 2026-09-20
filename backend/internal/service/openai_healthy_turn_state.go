@@ -24,11 +24,8 @@ const (
 )
 
 func (a *Account) OpenAIHealthyTurnStateReplaceEnabled() bool {
-	if a == nil || a.Platform != PlatformOpenAI {
-		return false
-	}
-	enabled, _ := a.Extra[openAIHealthyTurnStateReplaceKey].(bool)
-	return enabled
+	mode := a.OpenAITurnStateMode()
+	return mode == OpenAITurnStateHealthyRetry || mode == OpenAITurnStateHealthyPreflight
 }
 
 // 新建 Business Premium OAuth 默认维护健康头，显式开关始终优先。
@@ -37,6 +34,9 @@ func applyOpenAIHealthyTurnStateCreateDefault(account *Account) {
 		return
 	}
 	if _, exists := account.Extra[openAIHealthyTurnStateReplaceKey]; exists {
+		return
+	}
+	if _, exists := account.Extra[OpenAITurnStateModeKey]; exists {
 		return
 	}
 	planType := strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(account.GetCredential("plan_type"))))
@@ -57,7 +57,7 @@ func ValidateOpenAIHealthyTurnStateExtra(extra map[string]any) error {
 			return infraerrors.BadRequest("INVALID_HEALTHY_TURN_STATE_SETTING", openAIHealthyTurnStateReplaceKey+" 必须为布尔值")
 		}
 	}
-	return nil
+	return validateOpenAITurnStatePolicy(extra)
 }
 
 type openAIHealthyTurnStateScope struct {
@@ -233,6 +233,8 @@ type openAIHealthyTurnStateAttempt struct {
 	budget        *openAIHealthyTurnStateBudget
 	clientContext context.Context
 	replace       bool
+	preflight     bool
+	failClosed    bool
 	borrowed      openAIHealthyTurnStateEntry
 	sent          bool
 	httpStatus    int
@@ -250,6 +252,10 @@ func (a *openAIHealthyTurnStateAttempt) markStarted() {
 
 func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, account *Account, model, endpoint, proxyURL string, headers http.Header) *openAIHealthyTurnStateAttempt {
 	if s == nil || account == nil || account.ID <= 0 || account.Platform != PlatformOpenAI {
+		return nil
+	}
+	// 门票模式由独立链路处理，避免健康池的模型预读、淘汰和补试介入。
+	if account.OpenAICodexTicketEnabled() {
 		return nil
 	}
 	budget := &openAIHealthyTurnStateBudget{}
@@ -277,8 +283,57 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 		cache:  &s.openaiHealthyTurnStates,
 		scope:  openAIHealthyTurnStateScope{account.ID, model, [32]byte{}, transport, proxyID},
 		budget: budget, clientContext: clientCtx, currentState: headers.Get(openAICodexTurnStateHeader),
-		replace: account.OpenAIHealthyTurnStateReplaceEnabled(),
+		replace:    account.OpenAIHealthyTurnStateReplaceEnabled(),
+		preflight:  account.OpenAITurnStateMode() == OpenAITurnStateHealthyPreflight,
+		failClosed: account.OpenAIHealthyTurnStateFailClosed(),
 	}
+}
+
+// claimPreflight 首发使用同一原子租约和一次预算；用过的头不在本次请求中再次补试。
+func (a *openAIHealthyTurnStateAttempt) claimPreflight(ctx context.Context, headers http.Header) (bool, error) {
+	if a == nil || !a.preflight {
+		return false, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err := a.clientContext.Err(); err != nil {
+		return false, err
+	}
+	a.budget.mu.Lock()
+	defer a.budget.mu.Unlock()
+	if a.budget.used {
+		if a.failClosed {
+			return false, wrapOpenAITurnStateUnavailable(ErrOpenAIHealthyTurnStateBudgetExhausted)
+		}
+		return false, nil
+	}
+	// 首发允许领取与客户端同值的头，以确保该值也有独占租约。
+	entry, ok := a.cache.claim(a.scope, "")
+	if !ok {
+		if a.failClosed {
+			return false, wrapOpenAITurnStateUnavailable(&OpenAIHealthyTurnStateUnavailableError{AccountID: a.scope.accountID, Model: a.scope.model})
+		}
+		return false, nil
+	}
+	a.borrowed = entry
+	if err := ctx.Err(); err != nil {
+		a.restore()
+		return false, err
+	}
+	if err := a.clientContext.Err(); err != nil {
+		a.restore()
+		return false, err
+	}
+	if !a.started(0) {
+		if a.failClosed {
+			return false, wrapOpenAITurnStateUnavailable(&OpenAIHealthyTurnStateUnavailableError{AccountID: a.scope.accountID, Model: a.scope.model})
+		}
+		return false, nil
+	}
+	a.budget.used = true
+	headers.Set(openAICodexTurnStateHeader, entry.value)
+	return true, nil
 }
 
 // claimRetry 仅处理真实 HTTP／握手 429、503；模型不一致走独立入口。

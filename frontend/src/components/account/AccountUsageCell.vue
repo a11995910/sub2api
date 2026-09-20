@@ -1,5 +1,10 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
+    <OpenAICodexTicketStatus
+      v-if="account.platform === 'openai' && resolveOpenAITurnStateMode(account.extra) === 'codex_ticket'"
+      :tickets="account.codex_turn_tickets ?? []"
+      compact
+    />
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -664,6 +669,8 @@ import UsageProgressBar from './UsageProgressBar.vue'
 import OAuthUsageWindows from './OAuthUsageWindows.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
+import OpenAICodexTicketStatus from './OpenAICodexTicketStatus.vue'
+import { resolveOpenAITurnStateMode } from '@/utils/openaiTurnState'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'

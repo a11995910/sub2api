@@ -78,13 +78,25 @@ func (r *healthyTurnStateRepository) Save(ctx context.Context, scope service.Hea
 			return false, tx.Commit()
 		}
 	}
-	if existingEncrypted.Valid && existingExpires != nil && existingExpires.After(time.Now()) {
+	// 提前退休的相同值也不得重新入库延寿；原有效期届满前保持原截止时间。
+	if existingExpires != nil && existingExpires.After(time.Now()) {
 		return false, tx.Commit()
 	}
 	if existingExpires != nil && existingExpires.After(value.ExpiresAt) {
 		return false, tx.Commit()
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE openai_healthy_turn_state_account_model_pool SET value_encrypted=$4,transport=$5,proxy_id=$6,expires_at=$7,lease_token='',lease_until=NULL,captures=captures+1,last_captured_at=NOW() WHERE account_id=$1 AND model=$2 AND value_hash=$3`, scope.AccountID, scope.Model, hash, encrypted, scope.Transport, scope.ProxyID, value.ExpiresAt)
+	if err != nil {
+		return false, err
+	}
+	// 新头成功保存后才退休一张十分钟内到期的空闲旧头，采集失败不损失库存。
+	// 跳过持有租约的头；并发领取造成的短暂备用最多随其原期限保留，不延长寿命。
+	_, err = tx.ExecContext(ctx, `UPDATE openai_healthy_turn_state_account_model_pool SET value_encrypted=NULL,lease_token='',lease_until=NULL,last_outcome='refreshed'
+		WHERE id IN (SELECT id FROM openai_healthy_turn_state_account_model_pool
+		WHERE account_id=$1 AND model=$2 AND value_hash<>$3 AND value_encrypted IS NOT NULL
+		AND expires_at>NOW() AND expires_at<=NOW()+INTERVAL '10 minutes'
+		AND (lease_until IS NULL OR lease_until<=NOW()) AND $4::timestamptz>NOW()+INTERVAL '10 minutes'
+		ORDER BY expires_at,id LIMIT 1 FOR UPDATE SKIP LOCKED)`, scope.AccountID, scope.Model, hash, value.ExpiresAt)
 	if err != nil {
 		return false, err
 	}
@@ -274,6 +286,7 @@ func (r *healthyTurnStateRepository) Stats(ctx context.Context, accountID int64)
 	rows, err := r.db.QueryContext(ctx, `SELECT model,
 		COUNT(*) FILTER (WHERE value_encrypted IS NOT NULL AND expires_at>NOW() AND (lease_until IS NULL OR lease_until<=NOW())),
 		COUNT(*) FILTER (WHERE value_encrypted IS NOT NULL AND expires_at>NOW() AND lease_until>NOW()),
+		COUNT(*) FILTER (WHERE value_encrypted IS NOT NULL AND expires_at>NOW() AND expires_at<=NOW()+INTERVAL '10 minutes' AND (lease_until IS NULL OR lease_until<=NOW())),
 		SUM(captures),SUM(attempts),SUM(successes),SUM(failures)
 		FROM openai_healthy_turn_state_account_model_pool WHERE account_id=$1 GROUP BY model ORDER BY model`, accountID)
 	if err != nil {
@@ -281,12 +294,13 @@ func (r *healthyTurnStateRepository) Stats(ctx context.Context, accountID int64)
 	}
 	for rows.Next() {
 		var model service.HealthyTurnStateModelStats
-		if err = rows.Scan(&model.Model, &model.Available, &model.InUse, &model.Captures, &model.Attempts, &model.Successes, &model.Failures); err != nil {
+		if err = rows.Scan(&model.Model, &model.Available, &model.InUse, &model.RefreshDue, &model.Captures, &model.Attempts, &model.Successes, &model.Failures); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		result.Available += model.Available
 		result.InUse += model.InUse
+		result.RefreshDue += model.RefreshDue
 		result.Captures += model.Captures
 		result.Attempts += model.Attempts
 		result.Successes += model.Successes

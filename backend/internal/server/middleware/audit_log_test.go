@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -217,4 +218,64 @@ func TestHealthyDynamicConfigOmitsCredentialURLFromAudit(t *testing.T) {
 	require.Len(t, repository.logs, 1)
 	require.Equal(t, "<credential-bearing body omitted>", repository.logs[0].RequestBody)
 	require.NotContains(t, repository.logs[0].RequestBody, "audit-canary")
+}
+
+func TestCodexTicketAdminAuditRedactsSecretsWithoutChangingRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name     string
+		route    string
+		path     string
+		body     string
+		redacted string
+	}{
+		{
+			name:     "全局采集代理",
+			route:    "/api/v1/admin/settings",
+			path:     "/api/v1/admin/settings",
+			body:     `{"openai_codex_ticket_harvest_proxy_url":"http://audit-canary-user:audit-canary-password@proxy.example:8080","openai_codex_ticket_enabled":true}`,
+			redacted: `{"openai_codex_ticket_harvest_proxy_url":"***","openai_codex_ticket_enabled":true}`,
+		},
+		{
+			name:     "历史账号采集代理",
+			route:    "/api/v1/admin/accounts/:id",
+			path:     "/api/v1/admin/accounts/7",
+			body:     `{"extra":{"codex_harvest_proxy_url":"socks5h://audit-canary-user:audit-canary-password@proxy.example:1080","openai_turn_state_mode":"codex_ticket"}}`,
+			redacted: `{"extra":{"codex_harvest_proxy_url":"***","openai_turn_state_mode":"codex_ticket"}}`,
+		},
+		{
+			name:     "账号请求内门票",
+			route:    "/api/v1/admin/accounts/:id",
+			path:     "/api/v1/admin/accounts/7",
+			body:     `{"extra":{"codex_turn_ticket:gpt-6-astra":{"state":"audit-canary-ticket","length":292},"openai_turn_state_mode":"codex_ticket"}}`,
+			redacted: `{"extra":{"codex_turn_ticket:gpt-6-astra":"***","openai_turn_state_mode":"codex_ticket"}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repository := &auditCaptureRepository{}
+			auditService := service.NewAuditLogService(repository, nil)
+			auditService.Start()
+			router := gin.New()
+			router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
+			router.PUT(tc.route, func(c *gin.Context) {
+				var input map[string]any
+				require.NoError(t, c.ShouldBindJSON(&input))
+				body, err := json.Marshal(input)
+				require.NoError(t, err)
+				require.JSONEq(t, tc.body, string(body), "审计脱敏不得修改业务处理器收到的请求")
+				c.JSON(http.StatusOK, gin.H{"configured": true})
+			})
+			request := httptest.NewRequest(http.MethodPut, tc.path, bytes.NewBufferString(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			auditService.Stop()
+			repository.mu.Lock()
+			defer repository.mu.Unlock()
+			require.Len(t, repository.logs, 1)
+			require.JSONEq(t, tc.redacted, repository.logs[0].RequestBody)
+			require.NotContains(t, repository.logs[0].RequestBody, "audit-canary")
+		})
+	}
 }

@@ -553,6 +553,12 @@ export default {
         openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
         openaiCodexVersionSyncedValue: 'Currently synced: {version}',
         codexHardeningTitle: "Codex Settings",
+        codexTicketEnabled: '上游 292 门票总开关',
+        codexTicketEnabledDesc: '仅对账号状态头策略选择“上游 292 门票”的账号生效。开启后后台采集，并在业务请求中注入；健康头策略不受此开关影响。',
+        codexTicketHarvestProxy: '292 门票采集代理',
+        codexTicketHarvestProxyDesc: '填写完整 HTTP(S) 或 SOCKS5(h) 代理 URL，出口 IP 轮换由代理服务商负责。仅用于门票采集，业务请求仍走账号代理。留空或保留已隐藏的密码表示不修改。',
+        codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
+        codexTicketHarvestProxyConfigured: '已配置（密码已隐藏）。更换时请粘贴完整的新代理 URL。',
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
           "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",

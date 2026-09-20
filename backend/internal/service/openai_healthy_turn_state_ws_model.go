@@ -172,7 +172,7 @@ func (s *OpenAIGatewayService) prepareHealthyWSLeaseGate(lease *openAIWSConnLeas
 	}
 	gate := &openAIHealthyWSModelGate{observer: lease.healthyTurnState}
 	lease.healthyModelGate = gate
-	if req.ForcePreferredConn {
+	if req.ForcePreferredConn || req.SkipHealthyPreflight {
 		return
 	}
 	gate.retry = func(ctx context.Context, payload []byte, attempt *openAIHealthyTurnStateAttempt) (http.Header, error) {

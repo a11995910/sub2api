@@ -381,6 +381,12 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 	if streamStarted {
 		return
 	}
+	if code, message, ok := lastErr.OpenAITurnStateClientError(); ok {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
+			"type": "server_error", "code": code, "message": message,
+		}})
+		return
+	}
 	if lastErr != nil {
 		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
 	}

@@ -488,6 +488,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")
 	}
+	if before.OpenAICodexTicketEnabled != after.OpenAICodexTicketEnabled {
+		changed = append(changed, "openai_codex_ticket_enabled")
+	}
+	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
+		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
+	}
 	if before.OpenAITTFTMode != after.OpenAITTFTMode {
 		changed = append(changed, "openai_ttft_mode")
 	}

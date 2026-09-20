@@ -2277,27 +2277,42 @@
         </div>
       </div>
 
-      <!-- 健康状态头只通过动态代理采集，随异常替换开关启停。 -->
+      <!-- 一个账号只选择一种状态头策略，避免两套采集与注入同时生效。 -->
       <div
         v-if="isOpenAIHealthyTurnStateAccount"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
-        <div class="flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <label for="edit-healthy-turn-state-replace" class="input-label mb-0">{{ t('admin.accounts.openai.healthyTurnStateReplace') }}</label>
-            <p id="edit-healthy-turn-state-replace-hint" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.healthyTurnStateReplaceDesc') }}
-            </p>
-          </div>
-          <Toggle
-            id="edit-healthy-turn-state-replace"
-            v-model="healthyTurnStateReplace"
-            data-testid="edit-healthy-turn-state-replace"
-            :aria-label="t('admin.accounts.openai.healthyTurnStateReplace')"
-            aria-describedby="edit-healthy-turn-state-replace-hint"
+        <div>
+          <label for="edit-turn-state-mode" class="input-label">{{ t('admin.accounts.openai.turnStateMode') }}</label>
+          <Select
+            id="edit-turn-state-mode"
+            v-model="turnStateMode"
+            data-testid="edit-turn-state-mode"
+            :options="turnStateModeOptions"
+            aria-describedby="edit-turn-state-mode-hint"
             :disabled="submitting"
           />
+          <p id="edit-turn-state-mode-hint" class="mt-2 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+            {{ t(`admin.accounts.openai.turnStateModeHints.${turnStateMode}`) }}
+          </p>
         </div>
+        <div v-if="turnStateMode === 'healthy_preflight'" class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label for="edit-healthy-turn-state-fail-closed" class="input-label mb-0">{{ t('admin.accounts.openai.healthyTurnStateFailClosed') }}</label>
+            <p id="edit-healthy-turn-state-fail-closed-hint" class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('admin.accounts.openai.healthyTurnStateFailClosedHint') }}</p>
+          </div>
+          <Toggle id="edit-healthy-turn-state-fail-closed" v-model="healthyTurnStateFailClosed" :disabled="submitting" :aria-label="t('admin.accounts.openai.healthyTurnStateFailClosed')" aria-describedby="edit-healthy-turn-state-fail-closed-hint" />
+        </div>
+        <template v-if="turnStateMode === 'codex_ticket'">
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <label for="edit-codex-ticket-fail-closed" class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketFailClosed') }}</label>
+              <p id="edit-codex-ticket-fail-closed-hint" class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('admin.accounts.openai.codexTicketFailClosedHint') }}</p>
+            </div>
+            <Toggle id="edit-codex-ticket-fail-closed" v-model="codexTicketFailClosed" :disabled="submitting" :aria-label="t('admin.accounts.openai.codexTicketFailClosed')" aria-describedby="edit-codex-ticket-fail-closed-hint" />
+          </div>
+          <OpenAICodexTicketStatus :tickets="account?.codex_turn_tickets ?? []" />
+        </template>
       </div>
 
       <OpenAIHealthyTurnStateTest
@@ -3090,6 +3105,7 @@ import type {
   CheckMixedChannelResponse,
   OpenAICompactMode,
   OpenAIResponsesMode,
+  OpenAITurnStateMode,
   OpenAIEndpointCapability,
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
@@ -3100,6 +3116,8 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import VideoRequestProfileSelect from './VideoRequestProfileSelect.vue'
 import OpenAIHealthyTurnStateTest from './OpenAIHealthyTurnStateTest.vue'
+import OpenAICodexTicketStatus from './OpenAICodexTicketStatus.vue'
+import { isHealthyTurnStateMode, resolveOpenAITurnStateMode } from '@/utils/openaiTurnState'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -3591,7 +3609,11 @@ type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const requestIntegrityMode = ref<'observe' | 'off'>('observe')
 const healthyTurnStateSettings = ref<InstanceType<typeof OpenAIHealthyTurnStateTest> | null>(null)
-const healthyTurnStateReplace = ref(false)
+const turnStateMode = ref<OpenAITurnStateMode>('off')
+const healthyTurnStateReplace = computed(() => isHealthyTurnStateMode(turnStateMode.value))
+const healthyTurnStateFailClosed = ref(false)
+const codexTicketFailClosed = ref(true)
+const turnStateModeOptions = computed(() => (['off', 'healthy_retry', 'healthy_preflight', 'codex_ticket'] as const).map(value => ({ value, label: t(`admin.accounts.openai.turnStateModes.${value}`) })))
 const isOpenAIHealthyTurnStateAccount = computed(() => props.account?.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token'))
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
@@ -4080,7 +4102,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
   requestIntegrityMode.value = newAccount.platform === 'openai' && extra?.request_integrity_mode === 'off' ? 'off' : 'observe'
-  healthyTurnStateReplace.value = extra?.openai_healthy_turn_state_replace === true
+  turnStateMode.value = resolveOpenAITurnStateMode(extra)
+  healthyTurnStateFailClosed.value = extra?.openai_healthy_turn_state_fail_closed === true
+  codexTicketFailClosed.value = extra?.openai_codex_ticket_fail_closed !== false
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -5007,7 +5031,7 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   try {
     if (isOpenAIHealthyTurnStateAccount.value && healthyTurnStateReplace.value) {
       const settings = healthyTurnStateSettings.value
-      const allowUnchanged = props.account?.extra?.openai_healthy_turn_state_replace === true
+      const allowUnchanged = isHealthyTurnStateMode(resolveOpenAITurnStateMode(props.account?.extra))
       const needsSave = !allowUnchanged || settings?.dirty === true
       const saved = await settings?.saveConfig(allowUnchanged)
       if (!saved) return
@@ -5686,7 +5710,12 @@ const handleSubmit = async () => {
 
       newExtra.request_integrity_mode = requestIntegrityMode.value
       delete newExtra.openai_healthy_turn_state_record
+      newExtra.openai_turn_state_mode = turnStateMode.value
       newExtra.openai_healthy_turn_state_replace = healthyTurnStateReplace.value
+      if (turnStateMode.value === 'healthy_preflight') newExtra.openai_healthy_turn_state_fail_closed = healthyTurnStateFailClosed.value
+      else delete newExtra.openai_healthy_turn_state_fail_closed
+      if (turnStateMode.value === 'codex_ticket') newExtra.openai_codex_ticket_fail_closed = codexTicketFailClosed.value
+      else delete newExtra.openai_codex_ticket_fail_closed
 
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。

@@ -1869,6 +1869,10 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
+	if code, message, ok := failoverErr.OpenAITurnStateClientError(); ok {
+		h.handleStreamingAwareErrorWithCode(c, http.StatusServiceUnavailable, "api_error", code, message, streamStarted)
+		return
+	}
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {

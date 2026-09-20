@@ -36,7 +36,7 @@ describe('健康状态头统计', () => {
     const wrapper = panel()
     await flushPromises()
     expect(wrapper.text()).toContain('暂无记录')
-    expect(wrapper.text()).toContain('配置动态 IP 接口')
+    expect(wrapper.text()).toContain('全局动态 IP 接口已配置')
     expect(wrapper.findAll('dd').map(item => item.text())).toEqual(['0', '0'])
     expect(wrapper.find('table').exists()).toBe(false)
   })
@@ -52,10 +52,11 @@ describe('健康状态头统计', () => {
     await flushPromises()
     expect(wrapper.findAll('dd').map(item => item.text())).toEqual(['2', '1474'])
     expect(wrapper.findAll('tbody tr').map(row => row.findAll('th, td').map(cell => cell.text()))).toEqual([
-      ['gpt-6-astra', '0', '1400'], ['gpt-5.6-sol', '1', '74']
+      ['gpt-6-astra', '0', '1400', '0', '0', '0'], ['gpt-5.6-sol', '1', '74', '10', '3', '1']
     ])
     expect(wrapper.text()).not.toContain('暂无记录')
     expect(wrapper.text()).not.toContain('替换成功率')
+    expect(wrapper.text()).toContain('历史累计，不是当前模式的独立成功率')
     expect(wrapper.text()).not.toContain('gpt-test')
     expect(wrapper.find('details').exists()).toBe(false)
   })

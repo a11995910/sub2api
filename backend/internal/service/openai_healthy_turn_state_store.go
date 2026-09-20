@@ -50,19 +50,21 @@ type HealthyTurnStateProbeLog struct {
 }
 
 type HealthyTurnStateModelStats struct {
-	Model     string `json:"model"`
-	Available int64  `json:"available"`
-	InUse     int64  `json:"in_use"`
-	Captures  int64  `json:"captures"`
-	Attempts  int64  `json:"attempts"`
-	Successes int64  `json:"successes"`
-	Failures  int64  `json:"failures"`
+	Model      string `json:"model"`
+	Available  int64  `json:"available"`
+	InUse      int64  `json:"in_use"`
+	RefreshDue int64  `json:"refresh_due"`
+	Captures   int64  `json:"captures"`
+	Attempts   int64  `json:"attempts"`
+	Successes  int64  `json:"successes"`
+	Failures   int64  `json:"failures"`
 }
 
 type HealthyTurnStateStats struct {
 	Maintenance *HealthyTurnStateMaintenanceStatus `json:"maintenance,omitempty"`
 	Available   int64                              `json:"available"`
 	InUse       int64                              `json:"in_use"`
+	RefreshDue  int64                              `json:"refresh_due"`
 	Captures    int64                              `json:"captures"`
 	Attempts    int64                              `json:"attempts"`
 	Successes   int64                              `json:"successes"`

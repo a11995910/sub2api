@@ -106,6 +106,21 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('门票策略显示模型门票状态，其他策略不展示遗留门票', async () => {
+    const account = makeAccount({ platform: 'openai', type: 'setup-token', extra: { openai_turn_state_mode: 'codex_ticket' },
+      codex_turn_tickets: [
+        { model: 'gpt-6-astra', ready: true, blocked: false, remaining_seconds: 120 },
+        { model: 'gpt-5.6-sol', ready: false, blocked: true, remaining_seconds: 0 }
+      ] })
+    const wrapper = mount(AccountUsageCell, { props: { account }, global: { stubs: { OpenAIQuotaResetCell: true } } })
+    expect(wrapper.get('[data-testid="codex-ticket-status"]').text()).toContain('gpt-6-astra')
+    expect(wrapper.text()).toContain('codexTurnTicketReady')
+    expect(wrapper.text()).toContain('codexTurnTicketPaused')
+    await wrapper.setProps({ account: { ...account, extra: { openai_turn_state_mode: 'healthy_retry' } } })
+    expect(wrapper.find('[data-testid="codex-ticket-status"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {

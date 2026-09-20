@@ -67,6 +67,55 @@ func healthyStateTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func TestHealthyTurnStateRepositoryRefreshRetiresOnlyIdleExpiringValue(t *testing.T) {
+	db := healthyStateTestDB(t)
+	ctx := context.Background()
+	repo := NewHealthyTurnStateRepository(db, &AESEncryptor{key: []byte(strings.Repeat("a", 32))})
+	scope := service.HealthyTurnStateScope{AccountID: 1, Model: "gpt-test", Transport: "http"}
+	old := service.HealthyTurnStateValue{Value: "临期旧头", ExpiresAt: time.Now().Add(9 * time.Minute)}
+	stored, err := repo.Save(ctx, scope, old)
+	require.NoError(t, err)
+	require.True(t, stored)
+	stats, err := repo.Stats(ctx, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, stats.Available)
+	require.EqualValues(t, 1, stats.RefreshDue, "提前刷新前旧头仍可领取")
+	newValue := service.HealthyTurnStateValue{Value: "新采集头", ExpiresAt: time.Now().Add(40 * time.Minute)}
+	stored, err = repo.Save(ctx, scope, newValue)
+	require.NoError(t, err)
+	require.True(t, stored)
+	stats, err = repo.Stats(ctx, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, stats.Available, "成功换新不得增加有效库存")
+	require.Zero(t, stats.RefreshDue)
+	got, err := repo.Get(ctx, scope)
+	require.NoError(t, err)
+	require.Equal(t, newValue.Value, got.Value)
+	old.ExpiresAt = time.Now().Add(40 * time.Minute)
+	stored, err = repo.Save(ctx, scope, old)
+	require.NoError(t, err)
+	require.False(t, stored, "提前退休的重复旧值不能重新入库延寿")
+
+	// 已被业务请求持有的旧头不参加提前退休；结果仍写回原租约。
+	other := service.HealthyTurnStateScope{AccountID: 1, Model: "gpt-other", Transport: "http"}
+	old.ExpiresAt = time.Now().Add(9 * time.Minute)
+	stored, err = repo.Save(ctx, other, old)
+	require.NoError(t, err)
+	require.True(t, stored)
+	held, err := repo.Claim(ctx, other, "")
+	require.NoError(t, err)
+	require.NotNil(t, held)
+	stored, err = repo.Save(ctx, other, newValue)
+	require.NoError(t, err)
+	require.True(t, stored)
+	require.NoError(t, repo.Start(ctx, other, *held, 200))
+	require.NoError(t, repo.Complete(ctx, other, *held, true, 200))
+	stats, err = repo.Stats(ctx, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, stats.Available)
+	require.EqualValues(t, 1, stats.Successes, "租约完成不受提前刷新影响")
+}
+
 func TestHealthyTurnStateRepositoryPersistence(t *testing.T) {
 	db := healthyStateTestDB(t)
 	ctx := context.Background()
@@ -344,7 +393,7 @@ func TestHealthyTurnStateRepositoryStatsAreCompleteAndAccountScoped(t *testing.T
 	require.EqualValues(t, 7, stats.Failures)
 	require.EqualValues(t, 55, stats.Available)
 	require.Equal(t, []service.HealthyTurnStateModelStats{
-		{Model: "模型一", Available: 55, Captures: 55, Attempts: 55, Successes: 55},
+		{Model: "模型一", Available: 55, RefreshDue: 55, Captures: 55, Attempts: 55, Successes: 55},
 		{Model: "模型二", Captures: 7, Attempts: 7, Failures: 7},
 	}, stats.Models, "累计统计不能截断为最近50条")
 	_, err = db.Exec("UPDATE openai_healthy_turn_state_account_model_pool SET expires_at=NOW()-INTERVAL '1 second' WHERE account_id=1")

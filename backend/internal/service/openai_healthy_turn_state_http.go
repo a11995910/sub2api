@@ -19,11 +19,24 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamWithHealthyTurnState(req *http.Re
 	if attempt == nil || req.URL == nil || !strings.HasSuffix(strings.TrimRight(req.URL.Path, "/"), "/responses") {
 		return s.doOpenAIUpstreamOnce(req, proxyURL, account)
 	}
+	if attempt.preflight {
+		req = req.Clone(req.Context())
+		if _, err := attempt.claimPreflight(req.Context(), req.Header); err != nil {
+			return nil, err
+		}
+	}
 	attempt.markStarted()
 	response, err := s.doOpenAIHealthyTurnStateUpstreamAttempt(req, proxyURL, account)
 	headersReceivedAt := time.Now()
+	if response != nil {
+		attempt.httpStatus = response.StatusCode
+	}
 	if err != nil || response == nil {
+		attempt.failed()
 		return response, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		attempt.failed()
 	}
 	for {
 		mismatch := false

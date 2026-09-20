@@ -133,6 +133,8 @@ var auditBodySensitiveExactKeys = func() map[string]struct{} {
 		// custom_key 为用户自设的平台 API Key 明文，
 		// session 为 Ollama Cloud 用量的浏览器会话 Cookie 明文。
 		"proxy_key", "custom_key", "session",
+		// 新旧门票采集代理地址可能在 URL 中携带用户名和密码，必须整体擦除。
+		SettingKeyOpenAICodexTicketHarvestProxyURL, "codex_harvest_proxy_url",
 	}
 	set := make(map[string]struct{}, len(builtin)+len(SensitiveCredentialKeys)+16)
 	for _, k := range builtin {
@@ -160,6 +162,10 @@ var auditBodySensitiveSubstrings = []string{
 
 func isAuditSensitiveBodyKey(key string) bool {
 	k := auditNormalizeBodyKey(key)
+	// 账号更新中伪造的运行态门票也不得进入审计正文，整体擦除该模型的票据对象。
+	if strings.HasPrefix(k, auditNormalizeBodyKey(openAICodexTicketExtraKeyPrefix)) {
+		return true
+	}
 	if _, ok := auditBodySensitiveExactKeys[k]; ok {
 		return true
 	}

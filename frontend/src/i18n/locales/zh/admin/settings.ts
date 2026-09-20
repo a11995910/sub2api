@@ -546,6 +546,12 @@ export default {
         openaiCodexVersionAutoSyncHint: '每 6 小时从官方仓库获取最新稳定版客户端版本号，无需为了跟版本而升级本服务。关闭后仅使用上方手填版本或内置版本。',
         openaiCodexVersionSyncedValue: '当前同步到：{version}',
         codexHardeningTitle: 'Codex 设置',
+        codexTicketEnabled: '上游 292 门票总开关',
+        codexTicketEnabledDesc: '仅对账号状态头策略选择“上游 292 门票”的账号生效。开启后后台采集，并在业务请求中注入；健康头策略不受此开关影响。',
+        codexTicketHarvestProxy: '292 门票采集代理',
+        codexTicketHarvestProxyDesc: '填写完整 HTTP(S) 或 SOCKS5(h) 代理 URL，出口 IP 轮换由代理服务商负责。仅用于门票采集，业务请求仍走账号代理。留空或保留已隐藏的密码表示不修改。',
+        codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
+        codexTicketHarvestProxyConfigured: '已配置（密码已隐藏）。更换时请粘贴完整的新代理 URL。',
         codexClientRestrictionTitle: 'Codex 客户端限制',
         codexHardeningDesc:
           '仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效（全局）。在 User-Agent/Originator 之外，用版本区间、引擎指纹门与黑/白名单巩固判定。',

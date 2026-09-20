@@ -249,6 +249,8 @@ type SystemSettings struct {
 	BackendModeEnabled bool
 
 	// Gateway forwarding behavior
+	OpenAICodexTicketEnabled               bool   // 292 门票实验总开关
+	OpenAICodexTicketHarvestProxyURL       string // 独立采集代理，空值回退启动配置
 	OpenAITTFTMode                         string // Responses first_token_ms 统计口径（默认 semantic）
 	EnableFingerprintUnification           bool   // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough              bool   // 是否透传客户端原始 metadata（默认 false）

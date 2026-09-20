@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -82,9 +83,14 @@ type openAIWSAcquireRequest struct {
 	ForceNewConn bool
 	// ForcePreferredConn: 强制本次只使用 PreferredConnID，禁止漂移到其它连接。
 	ForcePreferredConn bool
+	// SkipHealthyPreflight: 当前请求含续链状态，不为健康头策略改写握手或换连接。
+	SkipHealthyPreflight bool
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
+	// 门票属于握手；独立请求不能复用另一模式或旧票建立的连接。仅存摘要，不存明文。
+	turnStateMode       string
+	codexTicketDigest   [sha256.Size]byte
 	betaFeatures        string
 	codexInstallationID string
 	sessionIDHyphen     string
@@ -1215,6 +1221,15 @@ retryAcquire:
 	preferredConnID := stringsTrim(req.PreferredConnID)
 	forcePreferredConn := allowReuse && req.ForcePreferredConn
 
+	// 续链须保留原连接的状态头，票刷新和模式切换不能破坏已有 response 的归属。
+	// 仅忽略新增票维度，原有会话身份和 beta 兼容性仍需满足。
+	if allowReuse && (req.SkipHealthyPreflight || req.ForcePreferredConn) && preferredConnID != "" {
+		if preferredConn := ap.conns[preferredConnID]; preferredConn != nil {
+			compatibility.turnStateMode = preferredConn.handshakeCompatibility.turnStateMode
+			compatibility.codexTicketDigest = preferredConn.handshakeCompatibility.codexTicketDigest
+		}
+	}
+
 	if allowReuse {
 		if forcePreferredConn {
 			if preferredConnID == "" {
@@ -2202,7 +2217,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
-	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, headers)
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2414,6 +2429,12 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header) openAIWSHandshakeCompatibilityKey {
 	key := openAIWSHandshakeCompatibilityKey{
 		betaFeatures: normalizeOpenAIWSBetaFeatures(headers),
+	}
+	if stateMode := account.OpenAITurnStateMode(); stateMode != OpenAITurnStateOff {
+		key.turnStateMode = stateMode
+	}
+	if isOpenAICodexTicketAccount(account) {
+		key.codexTicketDigest = sha256.Sum256([]byte(strings.TrimSpace(headers.Get(openAICodexTurnStateHeader))))
 	}
 	mode := activeCodexFingerprintMode(account)
 	if mode == codexFingerprintOff {

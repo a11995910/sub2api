@@ -25,22 +25,31 @@
       </dl>
       <p v-if="stats.in_use" class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t(`${prefix}.inUse`, { count: stats.in_use }) }}</p>
       <p v-if="!stats.models.length" class="mt-3 text-sm text-gray-600 dark:text-gray-400">{{ t(`${prefix}.${stats.maintenance && !['disabled', 'unconfigured'].includes(stats.maintenance.status) ? 'emptyConfigured' : 'empty'}`) }}</p>
-      <table v-else class="mt-3 w-full table-fixed text-sm" :aria-label="t(`${prefix}.modelCaptures`)">
-        <thead>
-          <tr class="border-b border-gray-200 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-            <th scope="col" class="py-2 pr-3 text-left font-medium">{{ t(`${prefix}.model`) }}</th>
-            <th scope="col" class="w-20 py-2 text-right font-medium">{{ t(`${prefix}.available`) }}</th>
-            <th scope="col" class="w-20 py-2 text-right font-medium">{{ t(`${prefix}.captures`) }}</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-          <tr v-for="row in stats.models" :key="row.model">
-            <th scope="row" class="break-words py-3 pr-3 text-left font-medium text-gray-900 dark:text-gray-100">{{ row.model }}</th>
-            <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.available + row.in_use }}</td>
-            <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.captures }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else class="mt-3 overflow-x-auto">
+        <table class="w-full min-w-[520px] table-fixed text-sm" :aria-label="t(`${prefix}.modelCaptures`)">
+          <thead>
+            <tr class="border-b border-gray-200 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+              <th scope="col" class="py-2 pr-3 text-left font-medium">{{ t(`${prefix}.model`) }}</th>
+              <th scope="col" class="w-20 py-2 text-right font-medium">{{ t(`${prefix}.available`) }}</th>
+              <th scope="col" class="w-16 py-2 text-right font-medium">{{ t(`${prefix}.captures`) }}</th>
+              <th scope="col" class="w-16 py-2 text-right font-medium">{{ t(`${prefix}.attempts`) }}</th>
+              <th scope="col" class="w-16 py-2 text-right font-medium">{{ t(`${prefix}.successes`) }}</th>
+              <th scope="col" class="w-16 py-2 text-right font-medium">{{ t(`${prefix}.failures`) }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+            <tr v-for="row in stats.models" :key="row.model">
+              <th scope="row" class="break-words py-3 pr-3 text-left font-medium text-gray-900 dark:text-gray-100">{{ row.model }}</th>
+              <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.available + row.in_use }}</td>
+              <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.captures }}</td>
+              <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.attempts }}</td>
+              <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.successes }}</td>
+              <td class="py-3 text-right tabular-nums text-gray-900 dark:text-gray-100">{{ row.failures }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-xs leading-relaxed text-gray-600 dark:text-gray-400">{{ t(`${prefix}.historyHint`) }}</p>
     </template>
   </section>
 </template>

@@ -90,6 +90,7 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 	}()
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+	ctx = WithOpenAITurnStateProbe(ctx)
 
 	copyAccount := *account
 	copyAccount.Extra = maps.Clone(account.Extra)
@@ -97,6 +98,8 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 		copyAccount.Extra = make(map[string]any)
 	}
 	copyAccount.Extra[openAIHealthyTurnStateReplaceKey] = false
+	// 显式关闭新策略，采集必须检验无健康头注入时的原始响应。
+	copyAccount.Extra[OpenAITurnStateModeKey] = OpenAITurnStateOff
 	account = &copyAccount
 	gateway := s.openaiGatewayService
 	token, _, err := gateway.GetAccessToken(ctx, account)

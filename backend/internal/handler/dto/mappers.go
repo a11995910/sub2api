@@ -603,6 +603,9 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 	}
 	redacted := make(map[string]any, len(extra))
 	for key, value := range extra {
+		if service.IsOpenAICodexTicketPrivateExtraKey(key) {
+			continue
+		}
 		switch key {
 		case service.OllamaCloudUsageSessionExtraKey,
 			service.OllamaCloudUsageAutoRefreshExtraKey,
@@ -645,6 +648,7 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 		return nil
 	}
 	return &AccountListItem{
+		CodexTurnTickets:        a.CodexTurnTickets,
 		AnthropicForwardingRisk: a.AnthropicForwardingRisk,
 		ID:                      a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,

@@ -119,6 +119,47 @@ func TestRedactAuditBody_AuthoritativeTablesSynced(t *testing.T) {
 	}
 }
 
+func TestRedactAuditBody_CodexTicketSecrets(t *testing.T) {
+	raw := []byte(`{
+		"openai_codex_ticket_harvest_proxy_url": "http://audit-canary-user:audit-canary-password@proxy.example:8080",
+		"openaiCodexTicketHarvestProxyURL": "socks5h://audit-canary-user:audit-canary-password@proxy.example:1080",
+		"extra": {
+			"codex_harvest_proxy_url": "https://audit-canary-legacy:audit-canary-password@proxy.example:443",
+			"codexHarvestProxyURL": "http://audit-canary-legacy:audit-canary-password@proxy.example:8080",
+			"codex_turn_ticket:gpt-6-astra": {"state": "audit-canary-ticket", "length": 292},
+			"codexTurnTicket:gpt-6-astra": {"state": "audit-canary-camel-ticket"},
+			"openai_turn_state_mode": "codex_ticket"
+		},
+		"openai_codex_ticket_enabled": true,
+		"name": "门票账号"
+	}`)
+	out := RedactAuditBody(raw, "application/json")
+	if strings.Contains(out, "audit-canary") {
+		t.Fatalf("审计正文仍包含代理凭据或门票：%s", out)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("脱敏结果不是有效 JSON：%v", err)
+	}
+	for _, key := range []string{SettingKeyOpenAICodexTicketHarvestProxyURL, "openaiCodexTicketHarvestProxyURL"} {
+		if parsed[key] != auditRedactedPlaceholder {
+			t.Fatalf("采集代理字段 %q 未整体脱敏：%s", key, out)
+		}
+	}
+	extra, ok := parsed["extra"].(map[string]any)
+	if !ok {
+		t.Fatalf("脱敏结果未保留账号 extra 结构：%s", out)
+	}
+	for _, key := range []string{"codex_harvest_proxy_url", "codexHarvestProxyURL", "codex_turn_ticket:gpt-6-astra", "codexTurnTicket:gpt-6-astra"} {
+		if extra[key] != auditRedactedPlaceholder {
+			t.Fatalf("账号敏感字段 %q 未整体脱敏：%s", key, out)
+		}
+	}
+	if parsed["name"] != "门票账号" || parsed["openai_codex_ticket_enabled"] != true || extra["openai_turn_state_mode"] != "codex_ticket" {
+		t.Fatalf("非敏感账号名称和模式设置应保留以便追责：%s", out)
+	}
+}
+
 // SensitiveCredentialKeys 中的每个键都必须被审计脱敏判定命中（防两表漂移的守卫）。
 func TestAuditSensitiveKeys_CoverCredentialTable(t *testing.T) {
 	for _, k := range SensitiveCredentialKeys {

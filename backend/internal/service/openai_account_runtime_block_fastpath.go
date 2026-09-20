@@ -552,9 +552,20 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 // block is dropped with generation+deadline CAS. Model-scoped transient blocks
 // are left alone. This is fail-open if a DB write failed or the snapshot has
 // not caught up yet: empty cooldown fields drop the local account-level block.
-func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string, compact ...bool) bool {
 	if s == nil {
 		return false
+	}
+	requireCompact := len(compact) > 0 && compact[0]
+	if s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)) {
+		return true
+	}
+	// 健康头仅用于 Responses 推理；compact 不参与，避免错误拦截压缩请求。
+	if !requireCompact && account.OpenAIHealthyTurnStateFailClosed() {
+		outboundModel := s.openAICodexTicketOutboundModel(account, requestedModel, false)
+		if !s.HasOpenAIHealthyTurnState(account, outboundModel) {
+			return true
+		}
 	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {

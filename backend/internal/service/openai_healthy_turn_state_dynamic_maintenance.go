@@ -144,8 +144,12 @@ func (s *AccountTestService) healthyDynamicInventory(ctx context.Context, accoun
 	}
 	counts := make(map[string]int64, len(stats.Models))
 	for _, model := range stats.Models {
-		// 使用中的头仍属于库存，不能因临时租约额外采集。
-		counts[model.Model] = model.Available + model.InUse
+		// 临期空闲头提前补齐，旧头到新头入库前仍可用；占用中的租约不撤销。
+		count := model.Available + model.InUse - model.RefreshDue
+		if count < 0 {
+			count = 0
+		}
+		counts[model.Model] = count
 	}
 	return counts, nil
 }

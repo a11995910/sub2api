@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,12 @@ func TestOpenAIHealthyWSModelGatePreservesConcatenatedAndMalformedFrames(t *test
 			svc := &OpenAIGatewayService{}
 			account := &Account{ID: 56, Platform: PlatformOpenAI}
 			attempt := svc.newOpenAIHealthyTurnStateAttempt(nil, account, "gpt-6-astra", "ws:测试上游", "", nil)
+			original := openAIHealthyTurnStateEntry{value: "已借用健康头", expiresAt: time.Now().Add(time.Minute)}
+			require.True(t, svc.openaiHealthyTurnStates.store(attempt.scope, original))
+			borrowed, claimed := svc.openaiHealthyTurnStates.claim(attempt.scope, "")
+			require.True(t, claimed)
+			attempt.borrowed = borrowed
+			require.True(t, attempt.started(101))
 			observer := newOpenAIHealthyTurnStateObserver(attempt, healthyTurnStateResponse(200, "测试健康头", "").Header)
 			gate := &openAIHealthyWSModelGate{observer: observer}
 			gate.begin([]byte(`{"type":"response.create","model":"gpt-6-astra"}`))
@@ -45,8 +52,11 @@ func TestOpenAIHealthyWSModelGatePreservesConcatenatedAndMalformedFrames(t *test
 				require.Equal(t, coderws.MessageText, kind)
 				require.Equal(t, test.payload, string(payload), "模型检查不能改写原始帧")
 			}
-			_, recorded := svc.openaiHealthyTurnStates.get(attempt.scope)
-			require.Equal(t, test.healthy, recorded, "只有完整健康帧允许保存健康头")
+			entry, available := svc.openaiHealthyTurnStates.get(attempt.scope)
+			require.Equal(t, test.healthy, available, "只有完整健康帧允许归还已借用的健康头")
+			if available {
+				require.Equal(t, original.value, entry.value, "普通响应不得将返回的新头加入库存")
+			}
 		})
 	}
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -522,9 +523,15 @@ type OpenAIGatewayService struct {
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
-	openaiCodexTurnStateOrigins sync.Map
-	openaiCodexTurnStateWrites  atomic.Uint64
-	openaiHealthyTurnStates     openAIHealthyTurnStateCache
+	openaiCodexTickets           sync.Map
+	openaiCodexTicketFlight      singleflight.Group
+	openaiCodexTicketLifecycleMu sync.Mutex
+	openaiCodexTicketCancel      context.CancelFunc
+	openaiCodexTicketDone        chan struct{}
+	openaiCodexTicketStopped     bool
+	openaiCodexTurnStateOrigins  sync.Map
+	openaiCodexTurnStateWrites   atomic.Uint64
+	openaiHealthyTurnStates      openAIHealthyTurnStateCache
 }
 
 func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore) {
@@ -621,6 +628,7 @@ func NewOpenAIGatewayService(
 	if openAITokenProvider != nil {
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
+	svc.StartOpenAICodexTicketHarvester()
 	svc.logOpenAIWSModeBootstrap()
 	return svc
 }
@@ -803,6 +811,13 @@ func (s *OpenAIGatewayService) getOpenAIWSProtocolResolver() OpenAIWSProtocolRes
 func classifyOpenAIWSReconnectReason(err error) (string, bool) {
 	if err == nil {
 		return "", false
+	}
+	// 本地库存或请求预算不足，原账号重连不会改善；交给调度层选择其他账号。
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) {
+		if code, _, ok := failoverErr.OpenAITurnStateClientError(); ok {
+			return code, false
+		}
 	}
 	var fallbackErr *openAIWSFallbackError
 	if !errors.As(err, &fallbackErr) || fallbackErr == nil {

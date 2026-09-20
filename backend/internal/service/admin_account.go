@@ -418,9 +418,13 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if err := ValidateOpenAIRequestIntegrityExtra(accountExtra); err != nil {
 		return nil, err
 	}
+	if err := ValidateOpenAICodexTicketExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	if err := ValidateOpenAIHealthyTurnStateExtra(accountExtra); err != nil {
 		return nil, err
 	}
+	accountExtra = RedactOpenAICodexTicketExtra(accountExtra)
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -590,6 +594,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
 			return nil, err
 		}
+		if err := ValidateOpenAICodexTicketExtra(input.Extra); err != nil {
+			return nil, err
+		}
 		if err := ValidateOpenAIHealthyTurnStateExtra(input.Extra); err != nil {
 			return nil, err
 		}
@@ -711,6 +718,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		normalizedExtra = MergeOpenAICodexTicketExtra(RedactOpenAICodexTicketExtra(normalizedExtra), account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
@@ -922,9 +930,13 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	if err := ValidateOpenAIRequestIntegrityExtra(updates); err != nil {
 		return err
 	}
+	if err := ValidateOpenAICodexTicketExtra(updates); err != nil {
+		return err
+	}
 	if err := ValidateOpenAIHealthyTurnStateExtra(updates); err != nil {
 		return err
 	}
+	updates = RedactOpenAICodexTicketExtra(updates)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -954,10 +966,14 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
 		return nil, err
 	}
+	if err := ValidateOpenAICodexTicketExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	if err := ValidateOpenAIHealthyTurnStateExtra(input.Extra); err != nil {
 		return nil, err
 	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
+	input.Extra = RedactOpenAICodexTicketExtra(input.Extra)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
