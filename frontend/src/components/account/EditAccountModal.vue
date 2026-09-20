@@ -2311,7 +2311,7 @@
             </div>
             <Toggle id="edit-codex-ticket-fail-closed" v-model="codexTicketFailClosed" :disabled="submitting" :aria-label="t('admin.accounts.openai.codexTicketFailClosed')" aria-describedby="edit-codex-ticket-fail-closed-hint" />
           </div>
-          <OpenAICodexTicketStatus :tickets="account?.codex_turn_tickets ?? []" />
+          <OpenAICodexTicketStatus :tickets="account?.codex_turn_tickets ?? []" :account-id="account?.id" :active="show" />
         </template>
       </div>
 

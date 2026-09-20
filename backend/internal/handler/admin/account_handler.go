@@ -49,6 +49,7 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 // AccountHandler handles admin account management
 type AccountHandler struct {
 	codexTicketSettings     *service.SettingService
+	codexTicketGateway      *service.OpenAIGatewayService
 	adminService            service.AdminService
 	oauthService            *service.OAuthService
 	openaiOAuthService      *service.OpenAIOAuthService
@@ -3392,8 +3393,18 @@ func setDefaultPositiveInt(extra map[string]any, key string, defaultValue int) {
 func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
 	h.codexTicketSettings = settings
 }
+
+// SetCodexTicketGateway 连接实时采集观测状态，不通过账号 extra 暴露私密门票。
+func (h *AccountHandler) SetCodexTicketGateway(gateway *service.OpenAIGatewayService) {
+	h.codexTicketGateway = gateway
+}
+
 func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
 	if h == nil || h.cfg == nil || out == nil {
+		return
+	}
+	if h.codexTicketGateway != nil {
+		out.CodexTurnTickets = h.codexTicketGateway.OpenAICodexTicketStatuses(context.Background(), account, time.Now())
 		return
 	}
 	cfg := h.cfg.Gateway.OpenAICodexTicket

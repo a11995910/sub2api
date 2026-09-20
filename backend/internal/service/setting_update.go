@@ -526,6 +526,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, err
 	}
 	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
+	source := normalizeOpenAICodexTicketHarvestSource(OpenAICodexTicketHarvestSource{
+		Mode:            settings.OpenAICodexTicketHarvestProxyMode,
+		ProxyURL:        settings.OpenAICodexTicketHarvestProxyURL,
+		ExtractURL:      settings.OpenAICodexTicketHarvestExtractURL,
+		ExtractProtocol: settings.OpenAICodexTicketHarvestExtractProtocol,
+	})
+	if err := ValidateOpenAICodexTicketHarvestSource(source); err != nil {
+		return nil, err
+	}
+	updates[SettingKeyOpenAICodexTicketHarvestProxyMode] = source.Mode
+	updates[SettingKeyOpenAICodexTicketHarvestExtractURL] = source.ExtractURL
+	updates[SettingKeyOpenAICodexTicketHarvestExtractProtocol] = source.ExtractProtocol
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)

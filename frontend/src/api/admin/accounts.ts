@@ -322,8 +322,8 @@ export async function listWithEtag(
  * @param id - Account ID
  * @returns Account details
  */
-export async function getById(id: number): Promise<Account> {
-  const { data } = await apiClient.get<Account>(`/admin/accounts/${id}`)
+export async function getById(id: number, signal?: AbortSignal): Promise<Account> {
+  const { data } = await apiClient.get<Account>(`/admin/accounts/${id}`, { signal })
   return data
 }
 

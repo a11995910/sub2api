@@ -28,27 +28,6 @@ func (a *Account) OpenAIHealthyTurnStateReplaceEnabled() bool {
 	return mode == OpenAITurnStateHealthyRetry || mode == OpenAITurnStateHealthyPreflight
 }
 
-// 新建 Business Premium OAuth 默认维护健康头，显式开关始终优先。
-func applyOpenAIHealthyTurnStateCreateDefault(account *Account) {
-	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
-		return
-	}
-	if _, exists := account.Extra[openAIHealthyTurnStateReplaceKey]; exists {
-		return
-	}
-	if _, exists := account.Extra[OpenAITurnStateModeKey]; exists {
-		return
-	}
-	planType := strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(account.GetCredential("plan_type"))))
-	if planType != "selfservebusinessprolite" {
-		return
-	}
-	if account.Extra == nil {
-		account.Extra = make(map[string]any)
-	}
-	account.Extra[openAIHealthyTurnStateReplaceKey] = true
-}
-
 // ValidateOpenAIHealthyTurnStateExtra 校验替换开关，并移除已停用的普通请求记录配置。
 func ValidateOpenAIHealthyTurnStateExtra(extra map[string]any) error {
 	delete(extra, openAIHealthyTurnStateRecordKey)

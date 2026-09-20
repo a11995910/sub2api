@@ -97,6 +97,20 @@ func (r *codexTicketLifecycleSettings) GetValue(ctx context.Context, key string)
 	return r.get(ctx, key)
 }
 
+func (r *codexTicketLifecycleSettings) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	values := make(map[string]string)
+	for _, key := range keys {
+		value, err := r.get(ctx, key)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			return nil, err
+		}
+		if err == nil {
+			values[key] = value
+		}
+	}
+	return values, nil
+}
+
 func TestCodexTicketHarvesterStopCancelsInFlightWork(t *testing.T) {
 	for _, stage := range []string{"settings-enabled", "settings-proxy", "accounts", "upstream", "persist"} {
 		t.Run(stage, func(t *testing.T) {

@@ -703,18 +703,36 @@ export default {
           off: '关闭本账号的额外状态头采集与注入。客户端原有状态头仍按协议处理。',
           healthy_retry: '遇到 429／503 或响应模型不一致时，领取同账号同模型的健康头补试。采集需完整健康响应；失败头会淘汰。',
           healthy_preflight: '首次请求即领取同账号同模型的健康头注入。健康头经过完整响应验证，并以租约避免并发重复领取。',
-          codex_ticket: '使用 026 的 292 门票策略，按账号与模型共享门票。请先在系统设置 → Codex 设置开启总开关并配置旋转代理；无需配置下方健康头动态 IP 接口。'
+          codex_ticket: 'Uses the 026 strategy with tickets shared per account and model. Enable collection in Settings → Codex settings and choose a fixed proxy or batch IP extraction API. The healthy-header extraction settings below are not required.'
         },
         healthyTurnStateFailClosed: '无健康头时暂停该模型',
         healthyTurnStateFailClosedHint: '默认关闭：没有可领取的健康头时，继续原请求。开启后仅暂停本账号缺头模型的调度。',
         codexTicketFailClosed: '无 292 门票时暂停该模型',
         codexTicketFailClosedHint: '默认开启：总开关生效后，缺少有效门票的模型暂停调度。关闭后允许无票请求。',
-        codexTurnTicket: '上游 292 门票状态',
-        codexTurnTicketDesc: '显示最近读取的门票状态。剩余时间是服务本地期限；切换策略及缺票行为将在保存后生效。',
-        codexTurnTicketEmpty: '暂无门票状态。请确认系统总开关、采集代理及账号策略已保存，再刷新账号。',
-        codexTurnTicketMissing: '暂无门票，仍允许请求',
-        codexTurnTicketReady: '剩余 {time}',
-        codexTurnTicketPaused: '缺少门票，模型已暂停',
+        codexTurnTicket: 'Upstream 292 ticket status',
+        codexTurnTicketDesc: 'Refreshes every 5 seconds while open. Remaining time is the local lifetime at the latest refresh. Strategy and missing-ticket changes apply after saving.',
+        codexTurnTicketEmpty: 'No ticket status. Check that the global switch, collection source, and account strategy are saved.',
+        codexTurnTicketMissing: 'No ticket; requests are allowed',
+        codexTurnTicketReady: '{time} remaining',
+        codexTurnTicketPaused: 'No ticket; model paused',
+        codexTicketRefresh: 'Refresh status',
+        codexTicketRefreshError: 'Refresh failed. Showing the previous result; another refresh will run shortly.',
+        codexTicketCollecting: 'Collecting',
+        codexTicketProgress: 'Proxy {index} of {total} in this round',
+        codexTicketLastResult: 'Last result: {result}',
+        codexTicketNextAttempt: 'Next attempt, estimated: {time}',
+        codexTicketWaiting: 'Waiting for collection scheduling; the next round starts about {seconds} seconds after this round finishes',
+        codexTicketRefreshDue: 'Early refresh window starts: {time}',
+        codexTicketResults: {
+          success: 'Ticket collected', invalid_format: 'No valid 292 ticket received', auth_failed: 'Authentication failed',
+          proxy_error: 'Proxy connection or authentication failed', request_timeout: 'Collection request timed out', upstream_error: 'Upstream request failed',
+          canceled: 'Collection canceled', proxy_extract_failed: 'Proxy extraction failed'
+        },
+        codexTicketPauseReasons: {
+          proxy_not_configured: 'Collection paused: configure a collection source',
+          account_inactive: 'Collection paused: account unavailable',
+          collector_unavailable: 'Collector unavailable'
+        },
         healthyTurnStateReplace: 'Replace turn state on errors (experimental)',
         healthyTurnStateReplaceDesc: 'Enable and save to maintain healthy state headers for selected models through dynamic IP proxies. Retry HTTP 429/503 or model mismatches with a header for the same account and model. Failed headers are removed and replenished.',
         stateStats: {

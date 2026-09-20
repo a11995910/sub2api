@@ -4535,6 +4535,14 @@
                   />
                 </div>
                 <div>
+                  <label for="codex-ticket-harvest-mode" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestMode') }}</label>
+                  <select id="codex-ticket-harvest-mode" v-model="form.openai_codex_ticket_harvest_proxy_mode" class="input mt-3 w-full">
+                    <option value="proxy">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestModeProxy') }}</option>
+                    <option value="extract">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestModeExtract') }}</option>
+                  </select>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestModeHint') }}</p>
+                </div>
+                <div v-if="form.openai_codex_ticket_harvest_proxy_mode === 'proxy'">
                   <label for="codex-ticket-harvest-proxy" class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
                   </label>
@@ -4555,6 +4563,22 @@
                   >
                     {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
                   </p>
+                </div>
+                <div v-else class="space-y-4">
+                  <div>
+                    <label for="codex-ticket-harvest-extract" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtract') }}</label>
+                    <input id="codex-ticket-harvest-extract" v-model="form.openai_codex_ticket_harvest_extract_url" type="text" class="input mt-3 w-full font-mono text-sm" :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestExtractPlaceholder')" autocomplete="off" />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtractDesc') }}</p>
+                    <p v-if="form.openai_codex_ticket_harvest_extract_configured" class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtractConfigured') }}</p>
+                  </div>
+                  <div>
+                    <label for="codex-ticket-harvest-extract-protocol" class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtractProtocol') }}</label>
+                    <select id="codex-ticket-harvest-extract-protocol" v-model="form.openai_codex_ticket_harvest_extract_protocol" class="input mt-2 w-full sm:w-56">
+                      <option value="http">HTTP</option>
+                      <option value="https">HTTPS</option>
+                      <option value="socks5h">SOCKS5（{{ t('admin.settings.gatewayForwarding.codexTicketRemoteDNS') }}）</option>
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -10314,6 +10338,10 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_enabled: false,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
+  openai_codex_ticket_harvest_proxy_mode: 'proxy' as 'proxy' | 'extract',
+  openai_codex_ticket_harvest_extract_url: '',
+  openai_codex_ticket_harvest_extract_configured: false,
+  openai_codex_ticket_harvest_extract_protocol: 'http' as 'http' | 'https' | 'socks5h',
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -12053,6 +12081,9 @@ async function saveSettings() {
       openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
+      openai_codex_ticket_harvest_proxy_mode: form.openai_codex_ticket_harvest_proxy_mode,
+      openai_codex_ticket_harvest_extract_url: form.openai_codex_ticket_harvest_extract_url?.trim() || '',
+      openai_codex_ticket_harvest_extract_protocol: form.openai_codex_ticket_harvest_extract_protocol,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:

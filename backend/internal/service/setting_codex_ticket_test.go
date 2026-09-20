@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,94 @@ func (r *codexTicketSettingRepo) GetValue(ctx context.Context, key string) (stri
 		return "", r.err
 	}
 	return r.codexPolicyMigrationRepoStub.GetValue(ctx, key)
+}
+
+func (r *codexTicketSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			values[key] = value
+		}
+	}
+	return values, nil
+}
+
+func TestCodexTicketHarvestSourceRuntimeSettingsAndHotReload(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
+	settings := NewSettingService(repo, &config.Config{})
+	fallback := normalizeOpenAICodexTicketHarvestSource(OpenAICodexTicketHarvestSource{ProxyURL: "http://fallback.example:8080"})
+	require.Equal(t, fallback, settings.GetOpenAICodexTicketHarvestSource(context.Background(), fallback))
+	repo.values[SettingKeyOpenAICodexTicketHarvestProxyMode] = "extract"
+	repo.values[SettingKeyOpenAICodexTicketHarvestExtractURL] = "https://supplier.example/first-secret"
+	repo.values[SettingKeyOpenAICodexTicketHarvestExtractProtocol] = "socks5h"
+	settings.InvalidateOpenAICodexTicketHarvestSourceCache()
+	source := settings.GetOpenAICodexTicketHarvestSource(context.Background(), fallback)
+	require.Equal(t, "extract", source.Mode)
+	require.Equal(t, "https://supplier.example/first-secret", source.ExtractURL)
+	require.Equal(t, "socks5h", source.ExtractProtocol)
+	repo.values[SettingKeyOpenAICodexTicketHarvestExtractURL] = "https://supplier.example/second-secret"
+	settings.openAICodexTicketHarvestSourceCache.Store(&cachedOpenAICodexTicketHarvestSource{value: source})
+	source = settings.GetOpenAICodexTicketHarvestSource(context.Background(), fallback)
+	require.Equal(t, "https://supplier.example/second-secret", source.ExtractURL)
+	repo.err = errors.New("数据库暂不可用")
+	settings.openAICodexTicketHarvestSourceCache.Store(&cachedOpenAICodexTicketHarvestSource{value: source})
+	require.Equal(t, source, settings.GetOpenAICodexTicketHarvestSource(context.Background(), fallback), "数据库短暂失败保留完整已知配置")
+}
+
+type codexTicketHarvestSourceBlockingRepo struct {
+	*codexTicketSettingRepo
+	started chan struct{}
+	release chan struct{}
+	reads   atomic.Int32
+}
+
+func (r *codexTicketHarvestSourceBlockingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	values, err := r.codexTicketSettingRepo.GetMultiple(ctx, keys)
+	if r.reads.Add(1) == 1 {
+		close(r.started)
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return values, err
+}
+
+func TestCodexTicketHarvestSourceInvalidationDiscardsInflightOldRead(t *testing.T) {
+	repo := &codexTicketHarvestSourceBlockingRepo{
+		codexTicketSettingRepo: &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{
+			SettingKeyOpenAICodexTicketHarvestProxyMode:  "extract",
+			SettingKeyOpenAICodexTicketHarvestExtractURL: "https://supplier.example/old-secret",
+		}}},
+		started: make(chan struct{}), release: make(chan struct{}),
+	}
+	settings := NewSettingService(repo, &config.Config{})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	first := make(chan OpenAICodexTicketHarvestSource, 1)
+	go func() { first <- settings.GetOpenAICodexTicketHarvestSource(ctx, OpenAICodexTicketHarvestSource{}) }()
+	select {
+	case <-repo.started:
+	case <-ctx.Done():
+		t.Fatal("旧配置查询未启动")
+	}
+	repo.values[SettingKeyOpenAICodexTicketHarvestExtractURL] = "https://supplier.example/new-secret"
+	settings.InvalidateOpenAICodexTicketHarvestSourceCache()
+	current := settings.GetOpenAICodexTicketHarvestSource(ctx, OpenAICodexTicketHarvestSource{})
+	require.Equal(t, "https://supplier.example/new-secret", current.ExtractURL)
+	close(repo.release)
+	select {
+	case value := <-first:
+		require.Equal(t, current, value, "在途旧查询完成后必须重取新来源")
+	case <-ctx.Done():
+		t.Fatal("旧配置查询未结束")
+	}
+	require.Equal(t, current, settings.GetOpenAICodexTicketHarvestSource(ctx, OpenAICodexTicketHarvestSource{}), "旧查询不得覆盖已失效缓存")
+	require.EqualValues(t, 2, repo.reads.Load())
 }
 
 func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {

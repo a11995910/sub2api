@@ -135,6 +135,8 @@ var auditBodySensitiveExactKeys = func() map[string]struct{} {
 		"proxy_key", "custom_key", "session",
 		// 新旧门票采集代理地址可能在 URL 中携带用户名和密码，必须整体擦除。
 		SettingKeyOpenAICodexTicketHarvestProxyURL, "codex_harvest_proxy_url",
+		// 提取接口的路径和查询参数都可能携带供应商凭据。
+		SettingKeyOpenAICodexTicketHarvestExtractURL,
 	}
 	set := make(map[string]struct{}, len(builtin)+len(SensitiveCredentialKeys)+16)
 	for _, k := range builtin {

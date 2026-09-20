@@ -1410,6 +1410,7 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
+    JSON.stringify(current.codex_turn_tickets) !== JSON.stringify(next.codex_turn_tickets) ||
     buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
     buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
@@ -1453,7 +1454,7 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
   }
 }
 
-const refreshAccountsIncrementally = async () => {
+const refreshAccountsIncrementally = async (options: { refreshTodayStats?: boolean } = {}) => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
@@ -1486,7 +1487,7 @@ const refreshAccountsIncrementally = async () => {
     }
     upstreamBillingNow.value = Date.now()
 
-    await refreshTodayStatsBatch()
+    if (options.refreshTodayStats !== false) await refreshTodayStatsBatch()
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1654,6 +1655,14 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
   1000,
   { immediate: false }
 )
+
+// 门票采集状态按整页刷新，避免每行分别请求；弹窗打开时由弹窗独立刷新。
+useIntervalFn(async () => {
+  if (document.hidden || loading.value || autoRefreshFetching.value || isAnyModalOpen.value) return
+  if (menu.show || showAccountToolsDropdown.value || showAutoRefreshDropdown.value || inAutoRefreshSilentWindow()) return
+  if (!accounts.value.some(account => account.platform === 'openai' && account.extra?.openai_turn_state_mode === 'codex_ticket')) return
+  await refreshAccountsIncrementally({ refreshTodayStats: false })
+}, 5000)
 
 const GROK_QUOTA_SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const GROK_QUOTA_SIGNAL_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000

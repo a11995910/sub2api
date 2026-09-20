@@ -754,18 +754,36 @@ export default {
           off: '关闭本账号的额外状态头采集与注入。客户端原有状态头仍按协议处理。',
           healthy_retry: '遇到 429／503 或响应模型不一致时，领取同账号同模型的健康头补试。采集需完整健康响应；失败头会淘汰。',
           healthy_preflight: '首次请求即领取同账号同模型的健康头注入。健康头经过完整响应验证，并以租约避免并发重复领取。',
-          codex_ticket: '使用 026 的 292 门票策略，按账号与模型共享门票。请先在系统设置 → Codex 设置开启总开关并配置旋转代理；无需配置下方健康头动态 IP 接口。'
+          codex_ticket: '使用 026 的 292 门票策略，按账号与模型共享门票。请先在系统设置 → Codex 设置开启总开关并配置固定代理或批量 IP 提取接口；无需配置下方健康头动态 IP 接口。'
         },
         healthyTurnStateFailClosed: '无健康头时暂停该模型',
         healthyTurnStateFailClosedHint: '默认关闭：没有可领取的健康头时，继续原请求。开启后仅暂停本账号缺头模型的调度。',
         codexTicketFailClosed: '无 292 门票时暂停该模型',
         codexTicketFailClosedHint: '默认开启：总开关生效后，缺少有效门票的模型暂停调度。关闭后允许无票请求。',
         codexTurnTicket: '上游 292 门票状态',
-        codexTurnTicketDesc: '显示最近读取的门票状态。剩余时间是服务本地期限；切换策略及缺票行为将在保存后生效。',
-        codexTurnTicketEmpty: '暂无门票状态。请确认系统总开关、采集代理及账号策略已保存，再刷新账号。',
+        codexTurnTicketDesc: '页面打开时每 5 秒读取采集状态。剩余时间为最近读取的本地期限；切换策略及缺票行为将在保存后生效。',
+        codexTurnTicketEmpty: '暂无门票状态。请确认系统总开关、采集来源及账号策略已保存。',
         codexTurnTicketMissing: '暂无门票，仍允许请求',
         codexTurnTicketReady: '剩余 {time}',
         codexTurnTicketPaused: '缺少门票，模型已暂停',
+        codexTicketRefresh: '刷新状态',
+        codexTicketRefreshError: '状态刷新失败，当前显示上次结果；稍后自动重试。',
+        codexTicketCollecting: '正在采集',
+        codexTicketProgress: '本轮第 {index} / {total} 个代理',
+        codexTicketLastResult: '最近结果：{result}',
+        codexTicketNextAttempt: '预计下次尝试：{time}',
+        codexTicketWaiting: '等待本轮采集调度；下一轮在本轮结束后约 {seconds} 秒开始',
+        codexTicketRefreshDue: '进入提前刷新窗口：{time}',
+        codexTicketResults: {
+          success: '采集成功', invalid_format: '未取得有效 292 门票', auth_failed: '认证失败',
+          proxy_error: '代理连接或认证失败', request_timeout: '采集请求超时', upstream_error: '上游请求失败',
+          canceled: '采集已取消', proxy_extract_failed: '代理提取失败'
+        },
+        codexTicketPauseReasons: {
+          proxy_not_configured: '采集已暂停：请先配置采集来源',
+          account_inactive: '采集已暂停：账号当前不可用',
+          collector_unavailable: '采集器当前不可用'
+        },
         healthyTurnStateReplace: '异常时替换健康状态头（实验）',
         healthyTurnStateReplaceDesc: '开启并保存后，通过动态 IP 代理为勾选的模型维护健康状态头。请求遇到 429／503 或响应模型不一致时，使用同账号同模型的健康头补试；失败的健康头会删除并补充。',
         stateStats: {

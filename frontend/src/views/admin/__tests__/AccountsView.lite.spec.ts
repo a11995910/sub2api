@@ -237,6 +237,31 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
+  it('292采集状态定期整页刷新并合并未改updated_at的结果，卸载后停止', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const waiting = { model: 'gpt-5.5', ready: false, blocked: true, remaining_seconds: 0, harvest_status: 'waiting' }
+    const row = { ...listRow, extra: { openai_turn_state_mode: 'codex_ticket' }, codex_turn_tickets: [waiting] }
+    listAccounts.mockResolvedValueOnce({ items: [row], total: 1, page: 1, page_size: 20, pages: 1 })
+    listWithEtag.mockResolvedValueOnce({ notModified: false, etag: 'collecting', data: { items: [{ ...row, codex_turn_tickets: [{ ...waiting, harvest_status: 'collecting' }] }], total: 1, pages: 1 } })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getBatchTodayStats).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+    expect(wrapper.getComponent(DataTableStub).props('data')[0].codex_turn_tickets[0].harvest_status).toBe('collecting')
+    expect(getById).not.toHaveBeenCalled()
+    expect(getBatchTodayStats).toHaveBeenCalledTimes(1)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+  })
+
   it('loads the full account by id before opening edit, test, and stats actions', async () => {
     const wrapper = mountView()
     await flushPromises()

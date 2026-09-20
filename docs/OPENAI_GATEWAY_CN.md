@@ -82,7 +82,7 @@ OpenAI OAuth／SetupToken 账号编辑页使用 `extra.openai_turn_state_mode` �
 | `healthy_preflight` | 维护同一健康头池；新的 Responses HTTP 请求或可新建的 WS 连接在首发前原子领取并注入 | 默认继续原请求；`extra.openai_healthy_turn_state_fail_closed=true` 时跳过缺头账号，领取竞争导致缺头时换号／返回 503 |
 | `codex_ticket` | 使用移植自上游 v0.2.6 的门票采集和首发覆盖规则，独立于健康头池 | 默认缺票暂停该账号对应模型，可用 `extra.openai_codex_ticket_fail_closed=false` 放行 |
 
-未设置模式时，原 `extra.openai_healthy_turn_state_replace=true` 解释为 `healthy_retry`，否则为 `off`。显式模式优先，写入时同步兼容布尔开关；旧客户端仅更新布尔开关仍会映射到相应模式。新建 Business Premium 的原有默认保持不变，不将存量账号自动切为首发或门票模式。
+未设置模式时，原 `extra.openai_healthy_turn_state_replace=true` 解释为 `healthy_retry`，否则为 `off`。显式模式优先，写入时同步兼容布尔开关；旧客户端仅更新布尔开关仍会映射到相应模式。新建独立 OpenAI OAuth／SetupToken 账号省略模式和旧开关时默认写入 `codex_ticket`，与订阅档位无关；显式配置优先，不将存量账号或影子账号自动切换。
 
 健康头首发沿用加密、多头、租约和失败淘汰。每个客户端请求／WS 会话共用一次健康头使用预算，首发已使用后不叠加健康头异常补试；普通转发的其他重试规则仍有效。换号也不重置这一次预算：后续账号默认按原请求发送；若后续账号启用缺头拦截，则明确返回健康头尝试次数已用完，而不是误报该账号库存为空。严格依赖原 WS 连接的续链不强制换连接。所有独立采集请求显式跳过注入，避免用已有头帮助采集结果通过验证。
 
@@ -90,19 +90,21 @@ OpenAI OAuth／SetupToken 账号编辑页使用 `extra.openai_turn_state_mode` �
 
 ### 上游 292 门票模式
 
-该模式需要同时打开系统设置中的“292 打票”总开关并在账号选择 `codex_ticket`。配置独立旋转代理后，后台对启用该模式的活跃、非影子 OpenAI OAuth 类账号采集。业务请求仍使用账号原来的代理。代理供应商负责出口轮换；专用采集连接使用 HTTP/1.1 并禁用连接复用，本系统不能保证每次实际出口不同。
+该模式需要同时打开系统设置中的“292 打票”总开关并在账号选择 `codex_ticket`。配置独立采集来源后，后台对启用该模式的活跃、非影子 OpenAI OAuth 类账号采集。来源支持固定代理地址和批量 IP 提取接口。业务请求仍使用账号原来的代理。代理供应商负责出口轮换；专用采集连接使用 HTTP/1.1 并禁用连接复用，本系统不能保证每次实际出口不同。
 
-后台设置字段为 `openai_codex_ticket_enabled`、`openai_codex_ticket_harvest_proxy_url`；代理读回时脱敏，空值或脱敏占位保留已保存值。YAML／环境变量使用 `gateway.openai_codex_ticket`：`target_length=292`、`ttl_seconds=3600`、`refresh_before_seconds=600`、`harvest_probe_interval_seconds=6`、`harvest_attempt_timeout_seconds=25`、`fail_closed=true`；默认模型为 `gpt-6-astra`、`gpt-5.6-sol`，其他模型可通过 `models` 配置。总开关默认关闭，运行时设置约五秒缓存。
+后台设置字段为 `openai_codex_ticket_enabled`、`openai_codex_ticket_harvest_proxy_mode`（`proxy`／`extract`，默认 `proxy`）、`openai_codex_ticket_harvest_proxy_url`、`openai_codex_ticket_harvest_extract_url` 和 `openai_codex_ticket_harvest_extract_protocol`（`http`／`https`／`socks5h`，默认 `http`）。固定代理和提取接口独立保存，切换来源不会清空另一来源；代理凭据和提取 URL 路径、查询参数在读回及审计中脱敏，空值或脱敏占位保留已保存值。YAML／环境变量使用 `gateway.openai_codex_ticket`：`target_length=292`、`ttl_seconds=3600`、`refresh_before_seconds=600`、`harvest_probe_interval_seconds=6`、`harvest_attempt_timeout_seconds=25`、`fail_closed=true`；默认模型为 `gpt-6-astra`、`gpt-5.6-sol`，其他模型可通过 `models` 配置。总开关默认关闭，运行时设置约五秒缓存。
+
+批量提取接口必须为公网 HTTPS URL，返回按行分隔的 `IP:端口` 或代理 URL 文本；无协议的条目使用所选代理协议。接口原查询参数保持不变，例如 `num=10` 表示供应商返回十个代理，系统不会改写 `num`、`time` 等参数。每轮仅在存在缺票或临期目标时提取一次，去重后给当轮目标复用；提取请求禁止重定向，超时 20 秒，响应上限 64KiB。最多四个账号／模型目标同时采集，每个目标依次尝试当批代理，命中有效票立即停止；固定代理仍保持原有按目标并行、每目标单次尝试。整轮结束后约六秒再检查，库存满足时不调用提取接口。代理有效期由供应商决定，接口参数 `time` 不改变门票本地期限；批次过期或失败时等待后续轮次重新提取。
 
 门票只要求 HTTP 200、状态头长度等于配置长度、前缀为 `gAAAAA`；拿到响应头即关闭正文，不验证输出、响应模型或完整成功。因此“有效门票”仅指符合本地格式和期限，不能解释为回答质量保证。每账号、实际出站模型保存一张票，允许并发复用；默认一小时为本地期限，提前十分钟刷新，不根据业务失败自动淘汰，以保留上游对照行为。票存入账号服务端 `extra`，账号编辑不能自行写入，管理 DTO 与导出均移除票原文。
 
 HTTP Responses、透传、Messages 兼容桥及 WS 握手使用相同的注入规则；compact 按实际出站模型判定，非配置模型不缺票拦截。获取 WS 连接时按账号模式与票摘要匹配，独立建连或重连按本轮实际模型读取最新票；带 `previous_response_id` 的续链仍保留原连接，不在续链中更换状态头。同一个客户端 WS 会话按既有设计持有上游连接，后续轮次切换模型或后台刷票不会自动重建握手；对比模式、模型或新票时应重连客户端再发起独立请求。健康头采集、首发及异常补试在门票模式下均不执行，两套库存不互相取用。
 
-账号响应 `codex_turn_tickets` 提供各模型的 `ready`、`remaining_seconds`、`blocked` 和到期时间，不返回票原文。对比时使用相同模型、相近账号条件和相同时间窗口的独立账号／分组，对照请求成功率、429／503、模型不一致、首字延迟及采集消耗。健康库存面板中的使用／成功／失败是历史累计，切换模式不会清零，不应当作当前模式的独立成功率。门票的就绪状态也不等于业务成功率。
+账号响应 `codex_turn_tickets` 提供各模型的 `ready`、`remaining_seconds`、`blocked`、到期与预计刷新时间，并包含 `harvest_status`、`last_attempt_at`、`last_result`、`last_http_status`、`attempt_index`／`attempt_total` 和 `next_attempt_at` 等采集摘要，不返回票原文、代理地址或原始错误。编辑页和账号列表每五秒刷新状态；编辑中的未保存字段不受刷新影响。只有下一轮定时器实际安排后才给出预计尝试时间，轮内排队可能继续延后实际请求；没有确定时间时显示等待本轮调度。最近采集结果仅保存在进程内，重启后清空；已持久化的有效票继续可用。对比时使用相同模型、相近账号条件和相同时间窗口的独立账号／分组，对照请求成功率、429／503、模型不一致、首字延迟及采集消耗。健康库存面板中的使用／成功／失败是历史累计，切换模式不会清零，不应当作当前模式的独立成功率。门票的就绪状态也不等于业务成功率。
 
 ### 健康状态头采集与替换
 
-OpenAI OAuth 账号编辑页的健康头模式对应 `healthy_retry` 或 `healthy_preflight`，兼容字段为 `extra.openai_healthy_turn_state_replace`。新建 OpenAI `oauth` 账号的 `credentials.plan_type` 为 `self_serve_business_prolite`（Business Premium）且未提供该开关时默认开启；档位匹配去除空格、下划线、连字符并忽略大小写，精确匹配 `selfservebusinessprolite`。显式 `false` 保留；其他档位、`setup-token` 和已有账号不受该创建默认影响。开启后使用全局共享的动态 IP 接口、本账号勾选模型及目标库存维护健康头；普通业务响应不再自动记录健康头。旧 `extra.openai_healthy_turn_state_record` 不再生效，创建、更新、额外字段更新和批量更新校验时会移除该旧字段；替换开关必须为布尔值，否则返回 `400 INVALID_HEALTHY_TURN_STATE_SETTING`。
+OpenAI OAuth 账号编辑页的健康头模式对应 `healthy_retry` 或 `healthy_preflight`，兼容字段为 `extra.openai_healthy_turn_state_replace`。新建独立 OpenAI OAuth／SetupToken 账号默认选择 292 门票；需要健康头异常补试或首发时应显式设置模式，旧布尔开关仍兼容。已有账号保留其原策略，订阅档位变化不触发策略切换。开启后使用全局共享的动态 IP 接口、本账号勾选模型及目标库存维护健康头；普通业务响应不再自动记录健康头。旧 `extra.openai_healthy_turn_state_record` 不再生效，创建、更新、额外字段更新和批量更新校验时会移除该旧字段；替换开关必须为布尔值，否则返回 `400 INVALID_HEALTHY_TURN_STATE_SETTING`。
 
 编辑页从账号上游同步模型并以复选框展示，必须至少选择一个文本模型。管理员专用 `GET /api/v1/admin/accounts/:id/healthy-turn-state/models` 返回 `[{id, display_name}]`；OAuth 复用带账号认证的 `https://chatgpt.com/backend-api/codex/models` 与现有账号模型缓存。清单过滤图片等专用媒体模型和通配符，并核实账号映射后的实际模型仍在上游目录中；有效的账号精确别名可以选择。上游同步失败明确报错，不回退静态默认目录。保存动态配置时再次校验所选模型。静态 OpenAI 模型目录与官方上游保持一致，健康头实际可选项以账号上游清单为准。
 
@@ -142,7 +144,7 @@ OpenAI OAuth 账号编辑页的健康头模式对应 `healthy_retry` 或 `health
 
 运行返回 `id`、`status`（`running`／`completed`／`stopped`／`failed`）、当前实际 `model`、选择的 `models`、`transport`、`attempts`、`recorded`、`target_count`、`max_attempts`、`fetched_batches`、`last_result` 和提示。`recorded` 表示本次新增数，目标判断使用数据库中的当前有效库存。编辑页使用服务端自动维护；上述手动运行接口保留兼容，需调用方逐步推进，停止仅影响本次运行，已开启的服务端维护仍继续。每账号同一进程只允许一个采集运行，避免后台维护与手动补位重复发出测试。手动运行空闲 5 分钟或总时长达到 4 小时终止；运行状态仅短时保留，已保存头与历史统计独立持久化。当前生产部署为单实例，采集运行协调仍为进程内状态。
 
-管理员 API Key 创建 OAuth 账号时，可在 `POST /api/v1/admin/accounts` 的原有请求中设置 `extra.openai_healthy_turn_state_replace=true`，认证头使用 `x-api-key`。新建 Business Premium OAuth 且 `credentials.plan_type` 已正确识别时可省略开关，由创建默认开启；已有账号的导入更新和后续档位变更不会自动开启。全局接口和最近模型选择已保存的情况下，后台会自行完成本账号的模型核实、独立配置初始化和库存维护，无需额外调用动态配置 `PUT` 或访问编辑页面。`POST /api/v1/admin/accounts/import/codex-session` 同样接受顶层 `extra` 开关；详细字段示例见 [账号管理](ADMIN_ACCOUNT_MANAGEMENT_CN.md#请求完整性与账号测试)。开关和数量仍按账号独立保存，未指定数量的新账号使用每模型 3 个。
+管理员 API Key 创建 OAuth 账号时，可在 `POST /api/v1/admin/accounts` 的原有请求中设置 `extra.openai_healthy_turn_state_replace=true`，认证头使用 `x-api-key`。省略模式及旧开关的新账号默认使用 292 门票；要继续使用健康头必须显式指定上述开关或健康头模式，已有账号的导入更新和后续档位变更不会自动改变策略。全局接口和最近模型选择已保存的情况下，后台会自行完成本账号的模型核实、独立配置初始化和库存维护，无需额外调用动态配置 `PUT` 或访问编辑页面。`POST /api/v1/admin/accounts/import/codex-session` 同样接受顶层 `extra` 开关；详细字段示例见 [账号管理](ADMIN_ACCOUNT_MANAGEMENT_CN.md#请求完整性与账号测试)。开关和数量仍按账号独立保存，未指定数量的新账号使用每模型 3 个。
 
 管理员还可调用 `GET /api/v1/admin/accounts/:id/healthy-turn-state` 查询当前有效库存、占用数量和历史累计。每模型统计包含 `model`、`captures`、`available`、`in_use`、`attempts`、`successes`、`failures`，有效库存为 `available + in_use`。`maintenance` 返回后台维护状态、脱敏结果提示与下次重试时间，提取 403、白名单失败或探测失败可在面板中查看；面板活跃时每 15 秒刷新。累计次数不受最近 50 条明细限制，过期或淘汰不扣减历史累计；有效期内同值返回不会重复计数。接口保留顶层统计和最近的 `records`／`probes`，全部仅属于路径账号；不返回头原文、密文、摘要、租约或凭据。成功率只计算完整结束的替换使用；HTTP 200／WS 101 本身不算成功，进程中断且未写入结果的调用保持未确认。
 
@@ -271,7 +273,7 @@ OpenAI 账号可根据 Codex 用量窗口自动从调度候选中临时排除。
 
 ## OpenAI 健康状态头隔离与补试
 
-健康状态头的采集、领取、租约、失败淘汰和累计统计均按账号与实际发送模型隔离。同账号、同模型可跨 HTTP／WebSocket 和代理使用；新建 Business Premium OAuth 在未显式配置时默认开启替换，其他账号默认关闭，已有开关不追溯更改。开启后按已保存的动态 IP 接口与勾选模型维护有效库存，普通请求不新增记录。采集条件、计数口径、接口和历史数据处理见[健康状态头采集与替换](#健康状态头采集与替换)。
+健康状态头的采集、领取、租约、失败淘汰和累计统计均按账号与实际发送模型隔离。同账号、同模型可跨 HTTP／WebSocket 和代理使用；新建独立 OpenAI OAuth／SetupToken 账号默认使用 292 门票，健康头策略需显式选择，已有策略不追溯更改。开启后按已保存的动态 IP 接口与勾选模型维护有效库存，普通请求不新增记录。采集条件、计数口径、接口和历史数据处理见[健康状态头采集与替换](#健康状态头采集与替换)。
 
 遇到 HTTP 请求或 WebSocket 握手 `429`／`503`，或响应声明模型与实际发送模型不一致时，开启替换的请求最多从当前账号、当前模型领取一条未过期记录补试。三类异常共享同一次补试额度，并遵守上游等待时间。模型不一致仅在响应尚未转发、原请求可安全重放时补试；WS 使用新连接和原始请求帧，包含 `previous_response_id` 或要求严格复用原连接时不重放。没有可用记录、替换关闭或补试仍不一致时，HTTP 返回 `502 upstream_model_mismatch`；WS 返回转发错误。已开始转发的流若后续才声明不一致，终止流并记为失败，不重放已经交付的内容。数据库租约保证同一条记录不会同时被多个请求领取；补试成功后归还，失败时清除密文并保存当前账号与模型下的拒绝摘要。
 

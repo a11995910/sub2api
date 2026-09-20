@@ -123,6 +123,8 @@ func TestRedactAuditBody_CodexTicketSecrets(t *testing.T) {
 	raw := []byte(`{
 		"openai_codex_ticket_harvest_proxy_url": "http://audit-canary-user:audit-canary-password@proxy.example:8080",
 		"openaiCodexTicketHarvestProxyURL": "socks5h://audit-canary-user:audit-canary-password@proxy.example:1080",
+		"openai_codex_ticket_harvest_extract_url": "https://supplier.example/audit-canary-path?key=audit-canary-token",
+		"openaiCodexTicketHarvestExtractURL": "https://supplier.example/audit-canary-path?key=audit-canary-token",
 		"extra": {
 			"codex_harvest_proxy_url": "https://audit-canary-legacy:audit-canary-password@proxy.example:443",
 			"codexHarvestProxyURL": "http://audit-canary-legacy:audit-canary-password@proxy.example:8080",
@@ -141,7 +143,7 @@ func TestRedactAuditBody_CodexTicketSecrets(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("脱敏结果不是有效 JSON：%v", err)
 	}
-	for _, key := range []string{SettingKeyOpenAICodexTicketHarvestProxyURL, "openaiCodexTicketHarvestProxyURL"} {
+	for _, key := range []string{SettingKeyOpenAICodexTicketHarvestProxyURL, "openaiCodexTicketHarvestProxyURL", SettingKeyOpenAICodexTicketHarvestExtractURL, "openaiCodexTicketHarvestExtractURL"} {
 		if parsed[key] != auditRedactedPlaceholder {
 			t.Fatalf("采集代理字段 %q 未整体脱敏：%s", key, out)
 		}

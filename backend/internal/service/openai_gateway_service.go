@@ -524,6 +524,7 @@ type OpenAIGatewayService struct {
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTickets           sync.Map
+	openaiCodexTicketHarvest     openAICodexTicketHarvestState
 	openaiCodexTicketFlight      singleflight.Group
 	openaiCodexTicketLifecycleMu sync.Mutex
 	openaiCodexTicketCancel      context.CancelFunc

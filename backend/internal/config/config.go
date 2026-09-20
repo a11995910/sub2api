@@ -2442,6 +2442,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.ttl_seconds", 3600)
 	viper.SetDefault("gateway.openai_codex_ticket.refresh_before_seconds", 600)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_mode", "proxy")
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_extract_url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_extract_protocol", "http")
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
@@ -3958,6 +3961,9 @@ type OpenAICodexTicketConfig struct {
 	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
 	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"`
 	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
+	HarvestProxyMode             string   `mapstructure:"harvest_proxy_mode"`
+	HarvestExtractURL            string   `mapstructure:"harvest_extract_url"`
+	HarvestExtractProtocol       string   `mapstructure:"harvest_extract_protocol"`
 	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
 	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
 	FailClosed                   bool     `mapstructure:"fail_closed"`

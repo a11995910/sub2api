@@ -1,10 +1,13 @@
 package admin
 
 import (
+	"testing"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestAccountResponseCodexTicketsUsesConfiguredPolicy(t *testing.T) {
@@ -19,6 +22,18 @@ func TestAccountResponseCodexTicketsUsesConfiguredPolicy(t *testing.T) {
 	require.False(t, status[0].Blocked)
 	h.cfg.Gateway.OpenAICodexTicket.FailClosed = true
 	require.True(t, h.accountResponseFromService(account).CodexTurnTickets[0].Blocked)
+}
+
+func TestAccountListETagTracksCodexTicketHarvestProgress(t *testing.T) {
+	items := []dto.AccountListItem{{CodexTurnTickets: []service.OpenAICodexTicketStatus{{Model: "gpt-6-astra", HarvestStatus: "waiting"}}}}
+	before := buildAccountsListETag(items, 1, 1, 10, "openai", "", "", "", true)
+	attemptAt := time.Now()
+	items[0].CodexTurnTickets[0].HarvestStatus = "collecting"
+	items[0].CodexTurnTickets[0].LastAttemptAt = &attemptAt
+	items[0].CodexTurnTickets[0].AttemptIndex = 1
+	items[0].CodexTurnTickets[0].AttemptTotal = 4
+	after := buildAccountsListETag(items, 1, 1, 10, "openai", "", "", "", true)
+	require.NotEqual(t, before, after, "账号updated_at不变时也必须返回新的采集状态")
 }
 
 func TestAccountResponseCodexTicketsReadsLiveSettingsAfterRestart(t *testing.T) {

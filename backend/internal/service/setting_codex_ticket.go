@@ -148,4 +148,110 @@ func (s *SettingService) InvalidateOpenAICodexTicketHarvestProxyCache() {
 	}
 	s.openAICodexTicketHarvestProxySF.Forget(SettingKeyOpenAICodexTicketHarvestProxyURL)
 	s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{expiresAt: 0})
+	s.InvalidateOpenAICodexTicketHarvestSourceCache()
+}
+
+type cachedOpenAICodexTicketHarvestSource struct {
+	value      OpenAICodexTicketHarvestSource
+	expiresAt  int64
+	generation uint64
+}
+
+func openAICodexTicketHarvestSourceFromSettings(values map[string]string, fallback OpenAICodexTicketHarvestSource) OpenAICodexTicketHarvestSource {
+	for key, target := range map[string]*string{
+		SettingKeyOpenAICodexTicketHarvestProxyMode:       &fallback.Mode,
+		SettingKeyOpenAICodexTicketHarvestProxyURL:        &fallback.ProxyURL,
+		SettingKeyOpenAICodexTicketHarvestExtractURL:      &fallback.ExtractURL,
+		SettingKeyOpenAICodexTicketHarvestExtractProtocol: &fallback.ExtractProtocol,
+	} {
+		if value := strings.TrimSpace(values[key]); value != "" {
+			*target = value
+		}
+	}
+	return normalizeOpenAICodexTicketHarvestSource(fallback)
+}
+
+// GetOpenAICodexTicketHarvestSource 原子读取同一次设置快照，避免切换来源时拼接新旧配置。
+func (s *SettingService) GetOpenAICodexTicketHarvestSource(ctx context.Context, fallback OpenAICodexTicketHarvestSource) OpenAICodexTicketHarvestSource {
+	fallback = normalizeOpenAICodexTicketHarvestSource(fallback)
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if cached, ok := s.openAICodexTicketHarvestSourceCache.Load().(*cachedOpenAICodexTicketHarvestSource); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+		resultCh := s.openAICodexTicketHarvestSourceSF.DoChan(SettingKeyOpenAICodexTicketHarvestProxyMode, func() (any, error) {
+			s.openAICodexTicketHarvestSourceMu.Lock()
+			generation := s.openAICodexTicketHarvestSourceGeneration
+			if cached, ok := s.openAICodexTicketHarvestSourceCache.Load().(*cachedOpenAICodexTicketHarvestSource); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+				s.openAICodexTicketHarvestSourceMu.Unlock()
+				return cached, nil
+			}
+			s.openAICodexTicketHarvestSourceMu.Unlock()
+			dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+				SettingKeyOpenAICodexTicketHarvestProxyMode,
+				SettingKeyOpenAICodexTicketHarvestProxyURL,
+				SettingKeyOpenAICodexTicketHarvestExtractURL,
+				SettingKeyOpenAICodexTicketHarvestExtractProtocol,
+			})
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			s.openAICodexTicketHarvestSourceMu.Lock()
+			defer s.openAICodexTicketHarvestSourceMu.Unlock()
+			// 保存与代际比较同锁；失效前开始的查询绝不能重新发布旧供应商凭据。
+			if generation != s.openAICodexTicketHarvestSourceGeneration {
+				return &cachedOpenAICodexTicketHarvestSource{generation: generation}, nil
+			}
+			if err != nil {
+				if cached, ok := s.openAICodexTicketHarvestSourceCache.Load().(*cachedOpenAICodexTicketHarvestSource); ok && cached != nil && cached.value.Mode != "" {
+					next := &cachedOpenAICodexTicketHarvestSource{value: cached.value, expiresAt: time.Now().Add(time.Second).UnixNano(), generation: generation}
+					s.openAICodexTicketHarvestSourceCache.Store(next)
+					return next, nil
+				}
+				return &cachedOpenAICodexTicketHarvestSource{value: fallback, generation: generation}, nil
+			}
+			source := openAICodexTicketHarvestSourceFromSettings(values, fallback)
+			next := &cachedOpenAICodexTicketHarvestSource{value: source, expiresAt: time.Now().Add(openAICodexTicketHarvestProxyCacheTTL).UnixNano(), generation: generation}
+			s.openAICodexTicketHarvestSourceCache.Store(next)
+			return next, nil
+		})
+		select {
+		case <-ctx.Done():
+			return fallback
+		case result := <-resultCh:
+			if value, ok := result.Val.(*cachedOpenAICodexTicketHarvestSource); ok && result.Err == nil {
+				s.openAICodexTicketHarvestSourceMu.Lock()
+				current := value.generation == s.openAICodexTicketHarvestSourceGeneration
+				s.openAICodexTicketHarvestSourceMu.Unlock()
+				if current {
+					return value.value
+				}
+				continue
+			}
+			return fallback
+		}
+	}
+	// 连续配置切换时本轮暂停采集，不退回旧来源或启动配置。
+	return normalizeOpenAICodexTicketHarvestSource(OpenAICodexTicketHarvestSource{})
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketHarvestSourceCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketHarvestSourceMu.Lock()
+	defer s.openAICodexTicketHarvestSourceMu.Unlock()
+	s.openAICodexTicketHarvestSourceGeneration++
+	s.openAICodexTicketHarvestSourceSF.Forget(SettingKeyOpenAICodexTicketHarvestProxyMode)
+	s.openAICodexTicketHarvestSourceCache.Store(&cachedOpenAICodexTicketHarvestSource{expiresAt: 0})
 }

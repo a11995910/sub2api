@@ -905,6 +905,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
 	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
+	source := OpenAICodexTicketHarvestSource{}
+	if s.cfg != nil {
+		source.Mode = s.cfg.Gateway.OpenAICodexTicket.HarvestProxyMode
+		source.ExtractURL = s.cfg.Gateway.OpenAICodexTicket.HarvestExtractURL
+		source.ExtractProtocol = s.cfg.Gateway.OpenAICodexTicket.HarvestExtractProtocol
+	}
+	source = openAICodexTicketHarvestSourceFromSettings(settings, source)
+	result.OpenAICodexTicketHarvestProxyMode = source.Mode
+	result.OpenAICodexTicketHarvestExtractURL = source.ExtractURL
+	result.OpenAICodexTicketHarvestExtractProtocol = source.ExtractProtocol
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {

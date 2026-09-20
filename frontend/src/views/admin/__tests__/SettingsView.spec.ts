@@ -787,6 +787,37 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("切换292批量提取来源保留固定代理，并只提交可写配置", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_proxy_mode: 'proxy',
+      openai_codex_ticket_harvest_proxy_url: 'http://saved.example.com:8080',
+      openai_codex_ticket_harvest_extract_url: 'https://extract.example.com/••••',
+      openai_codex_ticket_harvest_extract_configured: true,
+      openai_codex_ticket_harvest_extract_protocol: 'http',
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('#codex-ticket-harvest-mode').setValue('extract');
+    expect(wrapper.find('#codex-ticket-harvest-proxy').exists()).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('#codex-ticket-harvest-extract').element.value).toBe('https://extract.example.com/••••');
+    await wrapper.get('#codex-ticket-harvest-extract').setValue('https://extract.example.com/batch?token=fixture');
+    await wrapper.get('#codex-ticket-harvest-extract-protocol').setValue('socks5h');
+    await wrapper.get('#codex-ticket-harvest-mode').setValue('proxy');
+    expect(wrapper.get<HTMLInputElement>('#codex-ticket-harvest-proxy').element.value).toBe('http://saved.example.com:8080');
+    await wrapper.get('#codex-ticket-harvest-mode').setValue('extract');
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0]).toMatchObject({
+      openai_codex_ticket_harvest_proxy_mode: 'extract',
+      openai_codex_ticket_harvest_proxy_url: 'http://saved.example.com:8080',
+      openai_codex_ticket_harvest_extract_url: 'https://extract.example.com/batch?token=fixture',
+      openai_codex_ticket_harvest_extract_protocol: 'socks5h',
+    });
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty('openai_codex_ticket_harvest_extract_configured');
+    wrapper.unmount();
+  });
+
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },

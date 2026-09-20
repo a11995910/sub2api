@@ -1250,6 +1250,17 @@ export interface OpenAICodexTicketStatus {
   remaining_seconds: number
   blocked: boolean
   expires_at?: string
+  harvest_status?: 'collecting' | 'waiting' | 'ready' | 'paused'
+  last_attempt_at?: string
+  last_result?: 'success' | 'invalid_format' | 'auth_failed' | 'proxy_error' | 'request_timeout' | 'upstream_error' | 'canceled' | 'proxy_extract_failed'
+  last_http_status?: number
+  next_attempt_at?: string
+  refresh_due_at?: string
+  retry_interval_seconds?: number
+  attempt_timeout_seconds?: number
+  pause_reason?: 'proxy_not_configured' | 'account_inactive' | 'collector_unavailable'
+  attempt_index?: number
+  attempt_total?: number
 }
 
 export interface Account {

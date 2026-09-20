@@ -17,6 +17,25 @@ const (
 	OpenAIHealthyTurnStateFailClosedKey = "openai_healthy_turn_state_fail_closed"
 )
 
+// 新建独立 OpenAI OAuth 类账号默认使用 292 门票；显式模式和旧开关始终优先。
+// 仅供创建入口调用，读取或更新已有账号时不得重新套用默认值。
+func applyOpenAITurnStateCreateDefault(account *Account) {
+	if !account.IsOpenAIOAuthLike() || account.IsShadow() {
+		return
+	}
+	if _, exists := account.Extra[OpenAITurnStateModeKey]; exists {
+		return
+	}
+	if _, exists := account.Extra[openAIHealthyTurnStateReplaceKey]; exists {
+		return
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	account.Extra[OpenAITurnStateModeKey] = OpenAITurnStateCodexTicket
+	account.Extra[openAIHealthyTurnStateReplaceKey] = false
+}
+
 // OpenAITurnStateMode 保留旧开关语义；无法识别的存量模式按关闭处理。
 func (a *Account) OpenAITurnStateMode() string {
 	if a == nil || a.Platform != PlatformOpenAI {

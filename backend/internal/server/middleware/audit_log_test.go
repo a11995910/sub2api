@@ -244,6 +244,13 @@ func TestCodexTicketAdminAuditRedactsSecretsWithoutChangingRequest(t *testing.T)
 			redacted: `{"extra":{"codex_harvest_proxy_url":"***","openai_turn_state_mode":"codex_ticket"}}`,
 		},
 		{
+			name:     "全局批量提取链接",
+			route:    "/api/v1/admin/settings",
+			path:     "/api/v1/admin/settings",
+			body:     `{"openai_codex_ticket_harvest_extract_url":"https://supplier.example/audit-canary-path?key=audit-canary-token","openai_codex_ticket_harvest_proxy_mode":"extract"}`,
+			redacted: `{"openai_codex_ticket_harvest_extract_url":"***","openai_codex_ticket_harvest_proxy_mode":"extract"}`,
+		},
+		{
 			name:     "账号请求内门票",
 			route:    "/api/v1/admin/accounts/:id",
 			path:     "/api/v1/admin/accounts/7",
