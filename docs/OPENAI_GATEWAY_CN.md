@@ -82,7 +82,7 @@ OpenAI OAuth／SetupToken 账号编辑页使用 `extra.openai_turn_state_mode` �
 | `healthy_preflight` | 维护同一健康头池；新的 Responses HTTP 请求或可新建的 WS 连接在首发前原子领取并注入 | 默认继续原请求；`extra.openai_healthy_turn_state_fail_closed=true` 时跳过缺头账号，领取竞争导致缺头时换号／返回 503 |
 | `codex_ticket` | 使用移植自上游 v0.2.6 的门票采集和首发覆盖规则，独立于健康头池 | 默认缺票暂停该账号对应模型，可用 `extra.openai_codex_ticket_fail_closed=false` 放行 |
 
-未设置模式时，原 `extra.openai_healthy_turn_state_replace=true` 解释为 `healthy_retry`，否则为 `off`。显式模式优先，写入时同步兼容布尔开关；旧客户端仅更新布尔开关仍会映射到相应模式。新建独立 OpenAI OAuth／SetupToken 账号省略模式和旧开关时默认写入 `codex_ticket`，与订阅档位无关；显式配置优先，不将存量账号或影子账号自动切换。
+未设置模式时，原 `extra.openai_healthy_turn_state_replace=true` 解释为 `healthy_retry`，否则为 `off`。显式模式优先，写入时同步兼容布尔开关；旧客户端仅更新布尔开关仍会映射到相应模式。新建独立 OpenAI OAuth／SetupToken 账号省略模式和旧开关时默认写入 `healthy_preflight`，与订阅档位无关；显式配置优先，不将存量账号或影子账号自动切换。
 
 健康头首发沿用加密、多头、租约和失败淘汰。每个客户端请求／WS 会话共用一次健康头使用预算，首发已使用后不叠加健康头异常补试；普通转发的其他重试规则仍有效。换号也不重置这一次预算：后续账号默认按原请求发送；若后续账号启用缺头拦截，则明确返回健康头尝试次数已用完，而不是误报该账号库存为空。严格依赖原 WS 连接的续链不强制换连接。所有独立采集请求显式跳过注入，避免用已有头帮助采集结果通过验证。
 
@@ -104,7 +104,7 @@ HTTP Responses、透传、Messages 兼容桥及 WS 握手使用相同的注入�
 
 ### 健康状态头采集与替换
 
-OpenAI OAuth 账号编辑页的健康头模式对应 `healthy_retry` 或 `healthy_preflight`，兼容字段为 `extra.openai_healthy_turn_state_replace`。新建独立 OpenAI OAuth／SetupToken 账号默认选择 292 门票；需要健康头异常补试或首发时应显式设置模式，旧布尔开关仍兼容。已有账号保留其原策略，订阅档位变化不触发策略切换。开启后使用全局共享的动态 IP 接口、本账号勾选模型及目标库存维护健康头；普通业务响应不再自动记录健康头。旧 `extra.openai_healthy_turn_state_record` 不再生效，创建、更新、额外字段更新和批量更新校验时会移除该旧字段；替换开关必须为布尔值，否则返回 `400 INVALID_HEALTHY_TURN_STATE_SETTING`。
+OpenAI OAuth 账号编辑页的健康头模式对应 `healthy_retry` 或 `healthy_preflight`，兼容字段为 `extra.openai_healthy_turn_state_replace`。新建独立 OpenAI OAuth／SetupToken 账号默认选择健康头首发注入；需要异常补试或 292 门票时应显式设置模式，旧布尔开关仍兼容。已有账号保留其原策略，订阅档位变化不触发策略切换。开启后使用全局共享的动态 IP 接口、本账号勾选模型及目标库存维护健康头；普通业务响应不再自动记录健康头。旧 `extra.openai_healthy_turn_state_record` 不再生效，创建、更新、额外字段更新和批量更新校验时会移除该旧字段；替换开关必须为布尔值，否则返回 `400 INVALID_HEALTHY_TURN_STATE_SETTING`。
 
 编辑页从账号上游同步模型并以复选框展示，必须至少选择一个文本模型。管理员专用 `GET /api/v1/admin/accounts/:id/healthy-turn-state/models` 返回 `[{id, display_name}]`；OAuth 复用带账号认证的 `https://chatgpt.com/backend-api/codex/models` 与现有账号模型缓存。清单过滤图片等专用媒体模型和通配符，并核实账号映射后的实际模型仍在上游目录中；有效的账号精确别名可以选择。上游同步失败明确报错，不回退静态默认目录。保存动态配置时再次校验所选模型。静态 OpenAI 模型目录与官方上游保持一致，健康头实际可选项以账号上游清单为准。
 
@@ -144,7 +144,7 @@ OpenAI OAuth 账号编辑页的健康头模式对应 `healthy_retry` 或 `health
 
 运行返回 `id`、`status`（`running`／`completed`／`stopped`／`failed`）、当前实际 `model`、选择的 `models`、`transport`、`attempts`、`recorded`、`target_count`、`max_attempts`、`fetched_batches`、`last_result` 和提示。`recorded` 表示本次新增数，目标判断使用数据库中的当前有效库存。编辑页使用服务端自动维护；上述手动运行接口保留兼容，需调用方逐步推进，停止仅影响本次运行，已开启的服务端维护仍继续。每账号同一进程只允许一个采集运行，避免后台维护与手动补位重复发出测试。手动运行空闲 5 分钟或总时长达到 4 小时终止；运行状态仅短时保留，已保存头与历史统计独立持久化。当前生产部署为单实例，采集运行协调仍为进程内状态。
 
-管理员 API Key 创建 OAuth 账号时，可在 `POST /api/v1/admin/accounts` 的原有请求中设置 `extra.openai_healthy_turn_state_replace=true`，认证头使用 `x-api-key`。省略模式及旧开关的新账号默认使用 292 门票；要继续使用健康头必须显式指定上述开关或健康头模式，已有账号的导入更新和后续档位变更不会自动改变策略。全局接口和最近模型选择已保存的情况下，后台会自行完成本账号的模型核实、独立配置初始化和库存维护，无需额外调用动态配置 `PUT` 或访问编辑页面。`POST /api/v1/admin/accounts/import/codex-session` 同样接受顶层 `extra` 开关；详细字段示例见 [账号管理](ADMIN_ACCOUNT_MANAGEMENT_CN.md#请求完整性与账号测试)。开关和数量仍按账号独立保存，未指定数量的新账号使用每模型 3 个。
+管理员 API Key 创建 OAuth 账号时，可在 `POST /api/v1/admin/accounts` 的原有请求中设置 `extra.openai_healthy_turn_state_replace=true`，认证头使用 `x-api-key`。省略模式及旧开关的新账号默认使用健康头首发注入；显式传上述旧开关则使用异常补试，292 门票需显式指定 `codex_ticket`，已有账号的导入更新和后续档位变更不会自动改变策略。全局接口和最近模型选择已保存的情况下，后台会自行完成本账号的模型核实、独立配置初始化和库存维护，无需额外调用动态配置 `PUT` 或访问编辑页面。`POST /api/v1/admin/accounts/import/codex-session` 同样接受顶层 `extra` 开关；详细字段示例见 [账号管理](ADMIN_ACCOUNT_MANAGEMENT_CN.md#请求完整性与账号测试)。开关和数量仍按账号独立保存，未指定数量的新账号使用每模型 3 个。
 
 管理员还可调用 `GET /api/v1/admin/accounts/:id/healthy-turn-state` 查询当前有效库存、占用数量和历史累计。每模型统计包含 `model`、`captures`、`available`、`in_use`、`attempts`、`successes`、`failures`，有效库存为 `available + in_use`。`maintenance` 返回后台维护状态、脱敏结果提示与下次重试时间，提取 403、白名单失败或探测失败可在面板中查看；面板活跃时每 15 秒刷新。累计次数不受最近 50 条明细限制，过期或淘汰不扣减历史累计；有效期内同值返回不会重复计数。接口保留顶层统计和最近的 `records`／`probes`，全部仅属于路径账号；不返回头原文、密文、摘要、租约或凭据。成功率只计算完整结束的替换使用；HTTP 200／WS 101 本身不算成功，进程中断且未写入结果的调用保持未确认。
 
@@ -273,7 +273,7 @@ OpenAI 账号可根据 Codex 用量窗口自动从调度候选中临时排除。
 
 ## OpenAI 健康状态头隔离与补试
 
-健康状态头的采集、领取、租约、失败淘汰和累计统计均按账号与实际发送模型隔离。同账号、同模型可跨 HTTP／WebSocket 和代理使用；新建独立 OpenAI OAuth／SetupToken 账号默认使用 292 门票，健康头策略需显式选择，已有策略不追溯更改。开启后按已保存的动态 IP 接口与勾选模型维护有效库存，普通请求不新增记录。采集条件、计数口径、接口和历史数据处理见[健康状态头采集与替换](#健康状态头采集与替换)。
+健康状态头的采集、领取、租约、失败淘汰和累计统计均按账号与实际发送模型隔离。同账号、同模型可跨 HTTP／WebSocket 和代理使用；新建独立 OpenAI OAuth／SetupToken 账号默认使用健康头首发注入，其他策略需显式选择，已有策略不追溯更改。开启后按已保存的动态 IP 接口与勾选模型维护有效库存，普通请求不新增记录。采集条件、计数口径、接口和历史数据处理见[健康状态头采集与替换](#健康状态头采集与替换)。
 
 遇到 HTTP 请求或 WebSocket 握手 `429`／`503`，或响应声明模型与实际发送模型不一致时，开启替换的请求最多从当前账号、当前模型领取一条未过期记录补试。三类异常共享同一次补试额度，并遵守上游等待时间。模型不一致仅在响应尚未转发、原请求可安全重放时补试；WS 使用新连接和原始请求帧，包含 `previous_response_id` 或要求严格复用原连接时不重放。没有可用记录、替换关闭或补试仍不一致时，HTTP 返回 `502 upstream_model_mismatch`；WS 返回转发错误。已开始转发的流若后续才声明不一致，终止流并记为失败，不重放已经交付的内容。数据库租约保证同一条记录不会同时被多个请求领取；补试成功后归还，失败时清除密文并保存当前账号与模型下的拒绝摘要。
 
