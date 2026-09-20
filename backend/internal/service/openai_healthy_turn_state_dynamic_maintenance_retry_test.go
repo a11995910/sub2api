@@ -92,6 +92,9 @@ func TestHealthyDynamicMaintenanceHealthyResultsResetConsecutiveFailures(t *test
 				status := "failed"
 				if attempt == 5 {
 					status = healthyStatus
+				} else if healthyStatus == "recorded" && attempt == 6 {
+					// 两个并行缺口在四次失败后同时恢复。
+					status = "recorded"
 				} else if attempt == 10 {
 					status = "recorded"
 				}
@@ -101,7 +104,11 @@ func TestHealthyDynamicMaintenanceHealthyResultsResetConsecutiveFailures(t *test
 				return &OpenAIHealthyTurnStateProbeResult{Status: status, Model: model, Transport: transport}, nil
 			}
 			scanHealthyDynamicRetryTest(t, svc)
-			require.EqualValues(t, 10, probes.Load(), "健康响应后重新累计连续失败，重复健康头也应清零")
+			expectedProbes := 10
+			if healthyStatus == "recorded" {
+				expectedProbes = 6
+			}
+			require.EqualValues(t, expectedProbes, probes.Load(), "健康响应后重新累计连续失败，重复健康头也应清零")
 			require.EqualValues(t, target, pool.counts()["gpt-6-astra"], "重复头不能虚增有效库存")
 			require.NotContains(t, svc.healthyTurnStateDynamic.maintenanceRetry, account.ID)
 		})
@@ -205,6 +212,10 @@ func TestHealthyDynamicMaintenanceFetchFailuresAreCountedWithoutReusingLastProbe
 				if tc.firstProbe != "" {
 					failureStart = 2
 				}
+				if tc.firstProbe == "recorded" && fetch == 1 {
+					// 首批提供两个入口；第二个重复健康头不填充缺口。
+					return []string{"http://8.8.8.8:1001", "http://8.8.8.8:1002"}, nil
+				}
 				if fetch >= failureStart && fetch < failureStart+int64(tc.fetchFailures) {
 					if tc.emptyBatch {
 						return nil, nil
@@ -215,8 +226,11 @@ func TestHealthyDynamicMaintenanceFetchFailuresAreCountedWithoutReusingLastProbe
 			}
 			svc.healthyTurnStateDynamic.probe = func(_ context.Context, _ *Account, model, transport, _ string) (*OpenAIHealthyTurnStateProbeResult, error) {
 				status := "recorded"
-				if probes.Add(1) == 1 && tc.firstProbe != "" {
+				probeNumber := probes.Add(1)
+				if probeNumber == 1 && tc.firstProbe != "" {
 					status = tc.firstProbe
+				} else if tc.firstProbe == "recorded" && probeNumber == 2 {
+					status = "already_recorded"
 				}
 				if status == "recorded" {
 					pool.record(model)
@@ -225,7 +239,11 @@ func TestHealthyDynamicMaintenanceFetchFailuresAreCountedWithoutReusingLastProbe
 			}
 			scanHealthyDynamicRetryTest(t, svc)
 			require.Equal(t, tc.expectedFetches, fetches.Load())
-			require.Equal(t, tc.expectedProbes, probes.Load())
+			expectedProbes := tc.expectedProbes
+			if tc.firstProbe == "recorded" {
+				expectedProbes++
+			}
+			require.Equal(t, expectedProbes, probes.Load())
 			require.Equal(t, tc.expectedRecorded, pool.counts()["gpt-6-astra"])
 			if tc.recover {
 				require.NotContains(t, svc.healthyTurnStateDynamic.maintenanceRetry, account.ID)

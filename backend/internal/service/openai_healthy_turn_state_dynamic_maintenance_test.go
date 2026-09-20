@@ -265,7 +265,9 @@ func TestHealthyDynamicMaintenanceFailureBackoffAndModelFairness(t *testing.T) {
 	svc.scanHealthyDynamicMaintenance(context.Background())
 	d.maintenanceWorkers.Wait()
 	require.EqualValues(t, 1, fetches.Load())
-	require.EqualValues(t, 9, probes.Load(), "首个失败之后先补满另一模型，之后连续五次失败才暂停")
+	firstAttempts := probes.Load()
+	require.GreaterOrEqual(t, firstAttempts, int64(8), "补齐另一模型后仍须连续五次失败才暂停")
+	require.LessOrEqual(t, firstAttempts, int64(15), "并行批次失败后不能无限占据采集槽")
 	require.EqualValues(t, 3, pool.counts()["gpt-5.6-sol"], "失败模型不能阻止同一轮补满其他模型")
 	svc.scanHealthyDynamicMaintenance(context.Background())
 	d.maintenanceWorkers.Wait()
@@ -278,7 +280,7 @@ func TestHealthyDynamicMaintenanceFailureBackoffAndModelFairness(t *testing.T) {
 	svc.scanHealthyDynamicMaintenance(context.Background())
 	d.maintenanceWorkers.Wait()
 	require.EqualValues(t, 3, pool.counts()["gpt-5.6-sol"], "即使前一模型始终失败，其他模型仍须补满全部目标")
-	require.EqualValues(t, 14, probes.Load(), "退避结束后只请求仍有缺口的模型，连续五次失败再暂停")
+	require.EqualValues(t, firstAttempts+6, probes.Load(), "退避结束后仅剩一个模型三个缺口，第二批达到五次失败且保留已发出的第六个结果")
 }
 
 func TestHealthyDynamicMaintenanceDisablingAccountCancelsCurrentFetch(t *testing.T) {

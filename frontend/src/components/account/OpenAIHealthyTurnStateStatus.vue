@@ -8,7 +8,7 @@
     <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ t(`${prefix}.error`) }}</p>
     <p v-else-if="loading && !stats" role="status" class="mt-3 text-sm text-gray-600 dark:text-gray-400">{{ t('common.loading') }}</p>
     <template v-else-if="stats">
-      <div v-if="stats.maintenance" class="mt-3 rounded-lg border p-3 text-sm" :class="stats.maintenance.status === 'backoff' ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300' : 'border-gray-200 text-gray-700 dark:border-dark-600 dark:text-gray-300'" role="status" aria-live="polite" aria-atomic="true">
+      <div v-if="stats.maintenance" class="mt-3 rounded-lg border p-3 text-sm" :class="maintenanceClass" role="status" aria-live="polite" aria-atomic="true">
         <p class="font-medium">{{ t(`${prefix}.maintenanceTitle`) }} · {{ t(`${prefix}.maintenanceStatus.${stats.maintenance.status}`) }}</p>
         <p v-if="stats.maintenance.message" class="mt-1 break-words text-xs leading-relaxed">{{ stats.maintenance.message }}</p>
         <p v-if="stats.maintenance.next_retry_at" class="mt-1 text-xs tabular-nums">{{ t(`${prefix}.nextRetry`, { time: formatDateTime(stats.maintenance.next_retry_at) }) }}</p>
@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { HealthyTurnStateStats } from '@/api/admin/accounts'
@@ -67,6 +67,18 @@ const prefix = 'admin.accounts.openai.stateStats'
 const stats = ref<HealthyTurnStateStats | null>(null)
 const loading = ref(false)
 const error = ref(false)
+const maintenanceClass = computed(() => {
+  switch (stats.value?.maintenance?.status) {
+    case 'error':
+      return 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'
+    case 'backoff':
+      return 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
+    case 'queued':
+      return 'border-primary-200 bg-primary-50 text-primary-800 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300'
+    default:
+      return 'border-gray-200 text-gray-700 dark:border-dark-600 dark:text-gray-300'
+  }
+})
 let controller: AbortController | null = null
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let disposed = false

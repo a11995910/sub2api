@@ -170,6 +170,13 @@ export interface ContentModerationAPIKeyLoad {
   last_http_status: number
 }
 
+export interface ContentModerationInputContent {
+  text: string
+  text_truncated: boolean
+  text_runes: number
+  image_count: number
+}
+
 export interface ContentModerationLog {
   id: number
   request_id: string
@@ -191,6 +198,7 @@ export interface ContentModerationLog {
   category_scores: Record<string, number>
   threshold_snapshot: Record<string, number>
   input_excerpt: string
+  input_content?: ContentModerationInputContent | null
   upstream_latency_ms: number | null
   error: string
   violation_count: number
@@ -274,6 +282,11 @@ export async function unbanUser(userID: number): Promise<ContentModerationUnbanU
   return data
 }
 
+export async function getLogDetail(id: number): Promise<ContentModerationLog> {
+  const { data } = await apiClient.get<ContentModerationLog>(`/admin/risk-control/logs/${id}`)
+  return data
+}
+
 export async function deleteFlaggedHash(inputHash: string): Promise<DeleteFlaggedHashResponse> {
   const { data } = await apiClient.delete<DeleteFlaggedHashResponse>('/admin/risk-control/hashes', {
     data: { input_hash: inputHash },
@@ -292,6 +305,7 @@ export const riskControlAPI = {
   getStatus,
   testAPIKeys,
   listLogs,
+  getLogDetail,
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,

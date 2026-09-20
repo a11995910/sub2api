@@ -46,15 +46,20 @@ type healthyTurnStateDynamicService struct {
 	mu                    sync.Mutex
 	runs                  map[string]*healthyTurnStateDynamicSession
 	// 仅用于离线测试；正式实例使用真实提取与单次探测方法。
-	fetch              func(context.Context, HealthyTurnStateDynamicConfigInput) ([]string, error)
-	probe              func(context.Context, *Account, string, string, string) (*OpenAIHealthyTurnStateProbeResult, error)
-	now                func() time.Time
-	inventory          func(context.Context, int64) (map[string]int64, error)
-	maintenanceCancel  context.CancelFunc
-	maintenanceDone    chan struct{}
-	maintenanceWorkers sync.WaitGroup
-	maintenanceActive  map[int64]bool
-	maintenanceRetry   map[int64]healthyDynamicRetry
+	fetch                  func(context.Context, HealthyTurnStateDynamicConfigInput) ([]string, error)
+	probe                  func(context.Context, *Account, string, string, string) (*OpenAIHealthyTurnStateProbeResult, error)
+	now                    func() time.Time
+	inventory              func(context.Context, int64) (map[string]int64, error)
+	maintenanceCancel      context.CancelFunc
+	maintenanceDone        chan struct{}
+	maintenanceWorkers     sync.WaitGroup
+	maintenanceActive      map[int64]bool
+	maintenanceRetry       map[int64]healthyDynamicRetry
+	maintenanceNextAccount int64
+	maintenanceScanError   string
+	probeMu                sync.Mutex
+	probeSlots             chan struct{}
+	activeProxies          map[string]bool
 }
 
 type healthyTurnStateDynamicSession struct {
@@ -71,6 +76,9 @@ type healthyTurnStateDynamicSession struct {
 	seen            map[string]struct{}
 	// 后台由维护循环统一计算连续失败，手动步骤保留单次提取失败即结束的行为。
 	backgroundMaintenance bool
+	lastBatch             []*OpenAIHealthyTurnStateProbeResult
+	lastFetchFailures     []string
+	proxyWaiting          bool
 	emptyBatches          int
 	createdAt, lastUsed   time.Time
 	ctx                   context.Context
@@ -270,6 +278,11 @@ func (s *AccountTestService) StopHealthyTurnStateDynamic(ctx context.Context, ac
 }
 
 func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, accountID int64, runID string) (*HealthyTurnStateDynamicRun, error) {
+	return s.stepHealthyTurnStateDynamic(ctx, accountID, runID, 1)
+}
+
+// 后台批次与手动步骤复用库存、代理提取、预算和结果写回逻辑。
+func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, accountID int64, runID string, parallelism int) (*HealthyTurnStateDynamicRun, error) {
 	d, err := s.healthyDynamicService()
 	if err != nil {
 		return nil, err
@@ -293,6 +306,9 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 		return view, nil
 	}
 	run.lastUsed = d.clock()
+	run.lastBatch = nil
+	run.lastFetchFailures = nil
+	run.proxyWaiting = false
 	run.idleTimer.Reset(healthyDynamicIdleLimit)
 	stepCtx, cancel := context.WithCancel(run.ctx)
 	stopRequestCancellation := context.AfterFunc(ctx, cancel)
@@ -316,15 +332,25 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 		run.mu.Unlock()
 		return view, nil
 	}
-	probeModel := selected.requested
 	run.view.Model = selected.upstream
-	needsBatch := len(run.pending) == 0
-	if needsBatch {
-		run.view.FetchedBatches++
+	limit := min(parallelism, run.view.MaxAttempts-run.view.Attempts)
+	if run.backgroundMaintenance {
+		limit = min(limit, healthyDynamicAccountAttemptSlice-run.view.Attempts)
 	}
+	reserved := reserveHealthyDynamicModels(run.models, counts, config.TargetCount, limit)
 	run.mu.Unlock()
 
-	if needsBatch {
+	// 供应商每批只有一个入口时，最多提取三批以组成并行批次。
+	for batchIndex := 0; batchIndex < parallelism; batchIndex++ {
+		run.mu.Lock()
+		needsBatch := len(run.pending) < len(reserved) && run.view.Status == "running"
+		if needsBatch {
+			run.view.FetchedBatches++
+		}
+		run.mu.Unlock()
+		if !needsBatch {
+			break
+		}
 		fetch := d.fetch
 		if fetch == nil {
 			fetch = fetchHealthyDynamicProxyBatch
@@ -342,11 +368,13 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 					message = publicError.message
 				}
 				if run.backgroundMaintenance {
+					run.lastFetchFailures = append(run.lastFetchFailures, message)
 					run.view.Message = message
 				} else {
 					run.finishLocked("failed", message)
 				}
 			} else {
+				previousPending := len(run.pending)
 				for _, proxy := range batch {
 					if _, exists := run.seen[proxy]; exists {
 						continue
@@ -356,6 +384,9 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 					}
 					run.seen[proxy] = struct{}{}
 					run.pending = append(run.pending, proxy)
+				}
+				if run.backgroundMaintenance && len(run.pending) == previousPending {
+					run.lastFetchFailures = append(run.lastFetchFailures, "本批没有新的代理入口，可继续提取下一批")
 				}
 				if len(run.pending) == 0 {
 					run.emptyBatches++
@@ -378,6 +409,9 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 			return view, nil
 		}
 		run.mu.Unlock()
+		if fetchErr != nil {
+			break
+		}
 	}
 
 	run.mu.Lock()
@@ -389,27 +423,53 @@ func (s *AccountTestService) StepHealthyTurnStateDynamic(ctx context.Context, ac
 		run.mu.Unlock()
 		return view, nil
 	}
-	proxy := run.pending[0]
-	run.pending[0] = ""
-	run.pending = run.pending[1:]
-	run.view.Attempts++
-	run.mu.Unlock()
-	probe := d.probe
-	if probe == nil {
-		probe = s.ProbeOpenAIHealthyTurnStateWithProxy
+	jobs := make([]healthyDynamicProbeJob, 0, len(reserved))
+	for remaining := len(run.pending); remaining > 0 && len(jobs) < len(reserved); remaining-- {
+		proxy := run.pending[0]
+		run.pending[0] = ""
+		run.pending = run.pending[1:]
+		if !d.reserveHealthyDynamicProxy(proxy) {
+			run.pending = append(run.pending, proxy)
+			continue
+		}
+		jobs = append(jobs, healthyDynamicProbeJob{model: reserved[len(jobs)], proxy: proxy})
 	}
-	result, probeErr := probe(stepCtx, account, probeModel, transport, proxy)
+	run.view.Attempts += len(jobs)
+	if len(jobs) == 0 {
+		run.proxyWaiting = true
+		run.view.Message = "本批代理入口正在被其他账号采集使用，稍后重试"
+		view := run.snapshotLocked()
+		run.mu.Unlock()
+		return view, nil
+	}
+	run.mu.Unlock()
+	results := make(chan healthyDynamicProbeCompletion, len(jobs))
+	for _, job := range jobs {
+		go func(job healthyDynamicProbeJob) {
+			// Account 的模型缓存可变，每次并行探测使用独立账号副本。
+			copyAccount := *account
+			copyAccount.Credentials, copyAccount.Extra = maps.Clone(account.Credentials), maps.Clone(account.Extra)
+			result, err := s.probeHealthyDynamicLimited(stepCtx, &copyAccount, job.model.requested, transport, job.proxy)
+			if err != nil || result == nil {
+				result = &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: job.model.upstream, Transport: transport, Message: "本次代理探测失败"}
+			}
+			results <- healthyDynamicProbeCompletion{model: job.model, result: result}
+		}(job)
+	}
+	for range jobs {
+		completed := <-results
+		run.mu.Lock()
+		run.lastBatch = append(run.lastBatch, completed.result)
+		run.view.LastResult = completed.result
+		if completed.result.Status == "recorded" {
+			run.view.Recorded++
+			run.recordedByModel[completed.model.upstream]++
+			counts[completed.model.upstream]++
+		}
+		run.mu.Unlock()
+	}
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	if probeErr != nil || result == nil {
-		result = &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: run.view.Model, Transport: transport, Message: "本次代理探测失败"}
-	}
-	run.view.LastResult = result
-	if result.Status == "recorded" {
-		run.view.Recorded++
-		run.recordedByModel[selected.upstream]++
-		counts[selected.upstream]++
-	}
 	if stepCtx.Err() != nil {
 		run.finishLocked("stopped", "请求已取消，采集停止")
 	}

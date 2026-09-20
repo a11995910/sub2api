@@ -794,7 +794,7 @@ export default {
           error: '统计读取失败，请点击刷新重试。', empty: '暂无记录。确认全局动态 IP 接口已配置，勾选本账号支持的模型并保存后会自动补充。',
           emptyConfigured: '当前尚无健康头，请查看上方后台采集状态。',
           maintenanceTitle: '后台采集', nextRetry: '下次重试：{time}',
-          maintenanceStatus: { disabled: '已关闭', unconfigured: '待配置', idle: '待命', running: '正在补充', backoff: '暂缓重试' },
+          maintenanceStatus: { disabled: '已关闭', unconfigured: '待配置', idle: '待命', queued: '排队待采集', running: '正在补充', backoff: '暂缓重试', error: '采集配置或维护异常' },
           accountCaptures: '累计采集', accountAvailable: '当前有效库存', modelCaptures: '各模型健康头库存', model: '模型', captures: '累计', available: '有效库存', inUse: '其中 {count} 个使用中'
         },
         testTitle: '健康状态头自动采集',
@@ -802,11 +802,11 @@ export default {
         testTransport: '传输方式',
         dynamic: {
           dynamic: '动态 IP 接口采集',
-          description: '采集请求仅使用动态 IP 接口返回的代理，按所选模型发送测试请求。每个模型达到目标库存后停止；健康头失效或过期时自动删除并补足。关闭页面后后台仍会维护，选择关闭或上游 292 门票并保存，可停止健康头维护。',
+          description: '采集请求仅使用动态 IP 接口返回的代理，账号之间及账号内所选模型均可并发补充。每个模型达到目标库存后停止；健康头失效或过期时自动删除并补足。关闭页面后后台仍会维护，选择关闭或上游 292 门票并保存，可停止健康头维护。',
           saveWithAccount: '配置与上方策略通过底部“更新”一起保存。提取 URL 和代理协议由所有账号共享，模型、库存数量和采集方式按账号保存。启用后会产生模型测试请求；每条健康头本地保留 40 分钟，剩余不足 10 分钟时提前补新；这不是上游官方有效期。',
           url: '全局代理提取 URL', urlPlaceholder: '首次配置时填写；留空保留全局地址', savedUrl: '已配置全局接口：{url}。当前账号直接复用，无需重复填写；留空保持不变，填写新地址会更新所有账号。', urlRequired: '全局填写一次，其他账号直接复用。接口需返回换行分隔的 IP:PORT；num、time 等供应商参数原样传递。', protocol: '全局代理协议',
           sharedProxyConflict: '已有账号保存了不同接口，请填写一次统一的全局地址。',
-          target: '每个模型的健康头数量', targetHint: '默认 3 个，范围 1–100；使用中的健康头仍计入目标，剩余不足 10 分钟的空闲头提前补新。', maxAttempts: '每轮最多尝试入口数',
+          target: '每个模型的健康头数量', targetHint: '默认 10 个，范围 1–100；已保存账号保留原数量。使用中的健康头仍计入目标，剩余不足 10 分钟的空闲头提前补新。', targetPreset: '设为每模型 {count} 个', targetSummary: '已选 {models} 项，预计最多 {total} 个；相同实际模型共用库存。', maxAttempts: '每轮最多尝试入口数',
           modelsHint: '从上游同步当前账号支持的文本模型，每个模型分别维护库存。修改并保存模型选择后，会记作新账号的默认，已配置账号不受影响。',
           modelsInherited: '已沿用上次选择中当前账号支持的模型，可直接点击底部“更新”。',
           modelsRequired: '请至少勾选一个支持的模型，并取消当前不支持的模型。首次保存后，新账号会默认沿用选择。', unsupportedModel: '{model}（当前不支持，请取消）', noModels: '上游未返回可用于采集的文本模型。',

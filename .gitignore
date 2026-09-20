@@ -154,6 +154,7 @@ docs/*
 !docs/VIDEO_TASK_BILLING_CN.md
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md
+!docs/CONTENT_MODERATION_CN.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/LOTTERY.md
 !docs/channel-monitor-v2-safe-defaults.md

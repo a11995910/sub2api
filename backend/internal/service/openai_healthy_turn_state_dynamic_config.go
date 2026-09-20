@@ -214,7 +214,7 @@ func (d *healthyTurnStateDynamicService) loadConfig(ctx context.Context, account
 }
 
 func (d *healthyTurnStateDynamicService) loadConfigLocked(ctx context.Context, accountID int64) (HealthyTurnStateDynamicConfigInput, error) {
-	input := HealthyTurnStateDynamicConfigInput{Protocol: "http", TargetCount: 3, MaxAttempts: 100, Models: []string{}, Transport: "http"}
+	input := HealthyTurnStateDynamicConfigInput{Protocol: "http", TargetCount: 10, MaxAttempts: 100, Models: []string{}, Transport: "http"}
 	if accountID <= 0 {
 		return input, healthyDynamicConfigError()
 	}

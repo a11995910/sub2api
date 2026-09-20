@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
 )
@@ -47,9 +48,21 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 		collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
 		collectLastGeminiContent(gjson.GetBytes(body, "contents"), &parts, &images)
 	}
+	text := strings.Join(parts, "\n")
 	out := ContentModerationInput{
-		Text:   normalizeContentModerationText(strings.Join(parts, "\n")),
+		Text:   normalizeContentModerationText(text),
 		Images: normalizeModerationImages(images),
+	}
+	if !out.IsEmpty() {
+		// PostgreSQL 不接受 NUL；先完整脱敏再截断，避免密钥跨越截断边界而留下未脱敏前缀。
+		redactedText := redactContentModerationSecrets(strings.ReplaceAll(text, "\x00", ""))
+		textRunes := utf8.RuneCountInString(redactedText)
+		out.logInput = &ContentModerationLogInput{
+			Text:          trimRunes(redactedText, maxModerationLogInputRunes),
+			TextTruncated: textRunes > maxModerationLogInputRunes,
+			TextRunes:     textRunes,
+			ImageCount:    len(out.Images),
+		}
 	}
 	out.Normalize()
 	return out

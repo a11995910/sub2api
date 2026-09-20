@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -51,10 +52,25 @@ func (s *AccountTestService) HealthyTurnStateMaintenanceStatus(ctx context.Conte
 	}
 	config, err := d.loadConfig(ctx, accountID)
 	if err != nil {
-		return nil, err
+		status.Status, status.Message = "error", infraerrors.Message(err)
+		return status, nil
 	}
 	if config.APIURL == "" {
 		return status, nil
+	}
+	missing := false
+	if len(config.Models) > 0 {
+		models, modelErr := healthyDynamicModels(account, config.Models, "")
+		if modelErr != nil {
+			status.Status, status.Message = "error", "已保存的采集模型不再受账号支持，请重新选择模型"
+			return status, nil
+		}
+		counts, inventoryErr := s.healthyDynamicInventory(ctx, accountID)
+		if inventoryErr != nil {
+			status.Status, status.Message = "error", "读取健康头库存失败，等待重试"
+			return status, nil
+		}
+		_, missing = healthyDynamicMissingModel(models, counts, config.TargetCount)
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -70,7 +86,13 @@ func (s *AccountTestService) HealthyTurnStateMaintenanceStatus(ctx context.Conte
 		}
 		run.mu.Unlock()
 	}
-	status.Status, status.Message = "idle", "定期检查库存，有缺口时自动补齐"
+	status.Status, status.Message = "idle", "所选模型库存已达到目标，定期检查并自动补齐"
+	if missing {
+		status.Status, status.Message = "queued", "库存存在缺口，等待下一轮并发采集调度"
+	}
+	if d.maintenanceScanError != "" {
+		status.Status, status.Message = "error", d.maintenanceScanError
+	}
 	if len(config.Models) == 0 {
 		status.Status, status.Message = "unconfigured", "等待核实上游支持模型并继承上次选择"
 	}
@@ -219,12 +241,32 @@ func (s *AccountTestService) scanHealthyDynamicMaintenance(ctx context.Context) 
 	scanCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	accounts, err := s.accountRepo.ListByPlatform(scanCtx, PlatformOpenAI)
+	d.mu.Lock()
 	if err != nil {
+		d.maintenanceScanError = "读取待采集账号失败，等待下一轮重试"
+		d.mu.Unlock()
 		return
+	}
+	d.maintenanceScanError = ""
+	nextAccount := d.maintenanceNextAccount
+	d.mu.Unlock()
+	// 同优先级按账号 ID 稳定排序，从上轮最后派发账号的下一位继续。
+	slices.SortFunc(accounts, func(a, b Account) int {
+		if order := cmp.Compare(a.Priority, b.Priority); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.ID, b.ID)
+	})
+	if offset := slices.IndexFunc(accounts, func(a Account) bool { return a.ID == nextAccount }); offset > 0 {
+		accounts = append(accounts[offset:], accounts[:offset]...)
 	}
 	for i := range accounts {
 		account := &accounts[i]
 		if scanCtx.Err() != nil {
+			d.mu.Lock()
+			d.maintenanceNextAccount = account.ID
+			d.maintenanceScanError = "本轮库存检查超时，下一轮从未检查账号继续"
+			d.mu.Unlock()
 			return
 		}
 		if !healthyDynamicMaintenanceEnabled(account) {
@@ -236,7 +278,7 @@ func (s *AccountTestService) scanHealthyDynamicMaintenance(ctx context.Context) 
 		retry := d.maintenanceRetry[account.ID]
 		workers := len(d.maintenanceActive)
 		d.mu.Unlock()
-		if active || d.clock().Before(retry.after) || workers >= 4 {
+		if active || d.clock().Before(retry.after) || workers >= healthyDynamicAccountConcurrency {
 			continue
 		}
 		config, err := d.loadConfig(scanCtx, account.ID)
@@ -262,6 +304,7 @@ func (s *AccountTestService) scanHealthyDynamicMaintenance(ctx context.Context) 
 			return
 		}
 		sharedRevision, accountRevision := d.sharedConfigRevision, d.accountConfigRevision[account.ID]
+		d.maintenanceNextAccount = accounts[(i+1)%len(accounts)].ID
 		d.maintenanceActive[account.ID] = true
 		d.maintenanceWorkers.Add(1)
 		d.mu.Unlock()
@@ -362,7 +405,17 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 	}()
 	run, err := s.StartHealthyTurnStateDynamic(ctx, account, HealthyTurnStateDynamicStartInput{})
 	if err != nil {
-		return false, false
+		d.mu.Lock()
+		if sharedRevision == d.sharedConfigRevision && accountRevision == d.accountConfigRevision[accountID] {
+			retry := d.maintenanceRetry[accountID]
+			retry.message = infraerrors.Message(err)
+			if d.maintenanceRetry == nil {
+				d.maintenanceRetry = make(map[int64]healthyDynamicRetry)
+			}
+			d.maintenanceRetry[accountID] = retry
+		}
+		d.mu.Unlock()
+		return false, true
 	}
 	defer s.StopHealthyTurnStateDynamic(context.Background(), accountID, run.ID)
 	session, err := d.findRun(accountID, run.ID)
@@ -373,6 +426,7 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 	session.backgroundMaintenance = true
 	session.mu.Unlock()
 	consecutiveFailures := 0
+	startedAt := time.Now()
 	for ctx.Err() == nil {
 		// 每次网络请求前重读开关、模型与凭据，禁用或修改配置后不继续旧任务。
 		current, err := s.accountRepo.GetByID(ctx, accountID)
@@ -396,7 +450,7 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 		session.account, session.models = current, currentModels
 		session.mu.Unlock()
 		previousAttempts, previousBatches := run.Attempts, run.FetchedBatches
-		run, err = s.StepHealthyTurnStateDynamic(ctx, accountID, run.ID)
+		run, err = s.stepHealthyTurnStateDynamic(ctx, accountID, run.ID, healthyDynamicProbeConcurrency)
 		if err != nil {
 			return false, attempted
 		}
@@ -405,28 +459,51 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 			return false, false
 		}
 		failed, failureMessage := false, ""
-		if run.Attempts > previousAttempts && run.LastResult != nil {
-			if run.LastResult.Status == "recorded" || run.LastResult.Status == "already_recorded" {
-				consecutiveFailures = 0
-			} else {
-				failed, failureMessage = true, run.LastResult.Message
+		session.mu.Lock()
+		proxyWaiting := session.proxyWaiting
+		batch := append([]*OpenAIHealthyTurnStateProbeResult(nil), session.lastBatch...)
+		fetchFailures := append([]string(nil), session.lastFetchFailures...)
+		session.mu.Unlock()
+		// 凑齐并行入口时可能先提取失败再使用已有入口，按发生顺序计入，不能被同批探测遗漏。
+		for _, message := range fetchFailures {
+			if consecutiveFailures >= healthyDynamicFailureLimit {
+				break
 			}
-		} else if run.FetchedBatches > previousBatches && run.Status == "running" {
-			// 本次只有提取失败或无新入口，不能重复计算上一步残留的 LastResult。
-			failed, failureMessage = true, run.Message
-		}
-		if failed {
+			failed, failureMessage = true, message
 			consecutiveFailures++
-			if failureMessage == "" {
-				failureMessage = "本次代理采集未获得有效健康头"
-			}
-			// 使用实际探测模型的位置推进游标，满库存模型跳过后也能正确轮换。
+		}
+		if run.Attempts > previousAttempts && len(batch) > 0 {
+			batchOffset := modelOffset
 			for index, model := range currentModels {
-				if model.upstream == run.Model {
-					modelOffset = (modelOffset + index + 1) % len(currentModels)
+				if model.upstream == batch[len(batch)-1].Model {
+					modelOffset = (batchOffset + index + 1) % len(currentModels)
 					break
 				}
 			}
+			for _, result := range batch {
+				// 达到阈值后保留已经发出的至多两个结果，但成功不能取消本次退避。
+				if consecutiveFailures >= healthyDynamicFailureLimit {
+					break
+				}
+				if result.Status == "recorded" || result.Status == "already_recorded" {
+					consecutiveFailures = 0
+				} else {
+					failed, failureMessage = true, result.Message
+					consecutiveFailures++
+					for index, model := range currentModels {
+						if model.upstream == result.Model {
+							modelOffset = (batchOffset + index + 1) % len(currentModels)
+							break
+						}
+					}
+				}
+			}
+		} else if !proxyWaiting && len(fetchFailures) == 0 && run.Status == "running" && (run.FetchedBatches > previousBatches || run.Attempts == previousAttempts) {
+			failed, failureMessage = true, run.Message
+			consecutiveFailures++
+		}
+		if failed && failureMessage == "" {
+			failureMessage = "本次代理采集未获得有效健康头"
 		}
 		if run.Status != "running" {
 			latestConfig, configErr := d.loadConfig(ctx, accountID)
@@ -440,6 +517,23 @@ func (s *AccountTestService) maintainHealthyDynamicAccount(ctx context.Context, 
 		if failed && consecutiveFailures >= healthyDynamicFailureLimit {
 			session.mu.Lock()
 			session.finishLocked("failed", fmt.Sprintf("连续 %d 次采集失败，暂停 15 秒后重试；%s", consecutiveFailures, failureMessage))
+			session.mu.Unlock()
+			return false, attempted
+		}
+		if proxyWaiting {
+			message := "代理入口正在被其他账号使用，释放采集槽后等待调度"
+			if len(fetchFailures) > 0 {
+				message += "；" + failureMessage
+			}
+			session.mu.Lock()
+			session.finishLocked("completed", message)
+			session.mu.Unlock()
+			// 纯代理争用不记失败；同批真实提取错误仍保留已尝试状态，等待固定退避后重试。
+			return false, len(fetchFailures) > 0
+		}
+		if run.Attempts >= healthyDynamicAccountAttemptSlice || time.Since(startedAt) >= healthyDynamicAccountTimeSlice {
+			session.mu.Lock()
+			session.finishLocked("completed", "本轮采集时间片已结束，剩余缺口轮转后继续补齐")
 			session.mu.Unlock()
 			return false, attempted
 		}

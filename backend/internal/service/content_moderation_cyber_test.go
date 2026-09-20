@@ -41,6 +41,10 @@ func (r *cyberOrderingTestRepo) ListLogs(ctx context.Context, filter ContentMode
 	return nil, nil, nil
 }
 
+func (r *cyberOrderingTestRepo) GetLog(ctx context.Context, id int64) (*ContentModerationLog, error) {
+	return nil, ErrContentModerationLogNotFound
+}
+
 func (r *cyberOrderingTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
 	return 0, nil
 }
@@ -123,6 +127,7 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 	log := logs[0]
 
 	require.Equal(t, "cyber_policy", log.Action)
+	require.Nil(t, log.InputContent, "未采集请求正文的事件不能伪造原始输入")
 	require.True(t, log.Flagged)
 	require.Equal(t, "cyber_policy", log.HighestCategory)
 	require.Contains(t, log.Error, "flagged")

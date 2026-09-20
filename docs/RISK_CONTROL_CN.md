@@ -11,6 +11,7 @@
 | `GET /api/v1/admin/risk-control/status` | 读取运行态状态、队列、worker、前置拦截和审计 API Key 负载。 |
 | `POST /api/v1/admin/risk-control/api-keys/test` | 测试审计 API Key，并可携带测试文本和图片。 |
 | `GET /api/v1/admin/risk-control/logs` | 分页查询审计日志。 |
+| `GET /api/v1/admin/risk-control/logs/:id` | 按需读取审计详情及已采集的脱敏输入正文。 |
 | `POST /api/v1/admin/risk-control/users/:user_id/unban` | 解除自动封禁用户。 |
 | `DELETE /api/v1/admin/risk-control/hashes` | 删除指定命中哈希。 |
 | `DELETE /api/v1/admin/risk-control/hashes/all` | 清空命中哈希。 |
@@ -52,9 +53,12 @@
 - OpenAI Responses
 - OpenAI Chat Completions
 - OpenAI Images
+- OpenAI Video
 - Gemini
 
 图片输入最多取 1 张用于审计。测试接口允许提交文本和图片，图片大小按服务端限制校验。
+
+审计日志列表只展示摘要；详情按需读取脱敏输入正文，保留原文换行，最多保存 65,536 个 Unicode 字符。历史记录未保存正文时无法恢复，详情会提示原文不可用。采集范围、接口字段和保留规则见 [内容审计输入详情](CONTENT_MODERATION_CN.md)。
 
 ## 异常与边界处理
 

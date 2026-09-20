@@ -64,6 +64,7 @@ const (
 	maxContentModerationTimeoutMS     = 30000
 	maxModerationInputRunes           = 12000
 	maxModerationExcerptRunes         = 240
+	maxModerationLogInputRunes        = 65536
 
 	defaultContentModerationWorkerCount          = 4
 	maxContentModerationWorkerCount              = 32
@@ -325,6 +326,9 @@ type ContentModerationCheckInput struct {
 type ContentModerationInput struct {
 	Text   string
 	Images []string
+
+	// 审计正文在归一化前提取并脱敏，异步任务不再依赖原始请求体。
+	logInput *ContentModerationLogInput
 }
 
 func (in *ContentModerationInput) Normalize() {
@@ -386,35 +390,43 @@ type ContentModerationDecision struct {
 	Action          string             `json:"action"`
 }
 
+type ContentModerationLogInput struct {
+	Text          string `json:"text"`
+	TextTruncated bool   `json:"text_truncated"`
+	TextRunes     int    `json:"text_runes"`
+	ImageCount    int    `json:"image_count"`
+}
+
 type ContentModerationLog struct {
-	ID                int64              `json:"id"`
-	RequestID         string             `json:"request_id"`
-	UserID            *int64             `json:"user_id,omitempty"`
-	UserEmail         string             `json:"user_email"`
-	APIKeyID          *int64             `json:"api_key_id,omitempty"`
-	APIKeyName        string             `json:"api_key_name"`
-	GroupID           *int64             `json:"group_id,omitempty"`
-	GroupName         string             `json:"group_name"`
-	Endpoint          string             `json:"endpoint"`
-	Provider          string             `json:"provider"`
-	Model             string             `json:"model"`
-	Mode              string             `json:"mode"`
-	Action            string             `json:"action"`
-	Flagged           bool               `json:"flagged"`
-	HighestCategory   string             `json:"highest_category"`
-	HighestScore      float64            `json:"highest_score"`
-	MatchedKeyword    string             `json:"matched_keyword"`
-	CategoryScores    map[string]float64 `json:"category_scores"`
-	ThresholdSnapshot map[string]float64 `json:"threshold_snapshot"`
-	InputExcerpt      string             `json:"input_excerpt"`
-	UpstreamLatencyMS *int               `json:"upstream_latency_ms,omitempty"`
-	Error             string             `json:"error"`
-	ViolationCount    int                `json:"violation_count"`
-	AutoBanned        bool               `json:"auto_banned"`
-	EmailSent         bool               `json:"email_sent"`
-	UserStatus        string             `json:"user_status"`
-	QueueDelayMS      *int               `json:"queue_delay_ms,omitempty"`
-	CreatedAt         time.Time          `json:"created_at"`
+	ID                int64                      `json:"id"`
+	RequestID         string                     `json:"request_id"`
+	UserID            *int64                     `json:"user_id,omitempty"`
+	UserEmail         string                     `json:"user_email"`
+	APIKeyID          *int64                     `json:"api_key_id,omitempty"`
+	APIKeyName        string                     `json:"api_key_name"`
+	GroupID           *int64                     `json:"group_id,omitempty"`
+	GroupName         string                     `json:"group_name"`
+	Endpoint          string                     `json:"endpoint"`
+	Provider          string                     `json:"provider"`
+	Model             string                     `json:"model"`
+	Mode              string                     `json:"mode"`
+	Action            string                     `json:"action"`
+	Flagged           bool                       `json:"flagged"`
+	HighestCategory   string                     `json:"highest_category"`
+	HighestScore      float64                    `json:"highest_score"`
+	MatchedKeyword    string                     `json:"matched_keyword"`
+	CategoryScores    map[string]float64         `json:"category_scores"`
+	ThresholdSnapshot map[string]float64         `json:"threshold_snapshot"`
+	InputExcerpt      string                     `json:"input_excerpt"`
+	InputContent      *ContentModerationLogInput `json:"input_content,omitempty"`
+	UpstreamLatencyMS *int                       `json:"upstream_latency_ms,omitempty"`
+	Error             string                     `json:"error"`
+	ViolationCount    int                        `json:"violation_count"`
+	AutoBanned        bool                       `json:"auto_banned"`
+	EmailSent         bool                       `json:"email_sent"`
+	UserStatus        string                     `json:"user_status"`
+	QueueDelayMS      *int                       `json:"queue_delay_ms,omitempty"`
+	CreatedAt         time.Time                  `json:"created_at"`
 }
 
 type ContentModerationLogFilter struct {
@@ -482,6 +494,7 @@ type ContentModerationClearHashesResult struct {
 type ContentModerationRepository interface {
 	CreateLog(ctx context.Context, log *ContentModerationLog) error
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
+	GetLog(ctx context.Context, id int64) (*ContentModerationLog, error)
 	// CountFlaggedByUserSince 统计窗口内计入封号的违规次数（排除 hash_block；
 	// excludeCyberPolicy 为 true 时额外排除 cyber_policy 行）。
 	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error)
@@ -944,7 +957,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 					"keyword_blocking_mode", cfg.KeywordBlockingMode,
 					"keyword", keyword)
 				scores := map[string]float64{contentModerationKeywordCategory: 1.0}
-				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, content.ExcerptText(), nil, nil, "")
+				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, content, nil, nil, "")
 				log.MatchedKeyword = keyword
 				s.enqueueRecord(input, cfg, log, hashText, false, true)
 				return &ContentModerationDecision{
@@ -992,7 +1005,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 				message = fmt.Sprintf("%s（hash: %s）", message, hashText)
 			}
 			scores := map[string]float64{"hash": 1.0}
-			log := s.buildLog(input, cfg, ContentModerationActionHashBlock, true, "hash", 1.0, scores, content.ExcerptText(), nil, nil, "")
+			log := s.buildLog(input, cfg, ContentModerationActionHashBlock, true, "hash", 1.0, scores, content, nil, nil, "")
 			s.enqueueRecord(input, cfg, log, hashText, false, false)
 			return &ContentModerationDecision{
 				Allowed:    false,
@@ -1074,7 +1087,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 			s.asyncErrors.Add(1)
 		}
 		if cfg.RecordNonHits {
-			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
+			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, content, &latency, queueDelay, err.Error())
 			_ = s.repo.CreateLog(ctx, log)
 		}
 		return allow
@@ -1107,7 +1120,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		"latency_ms", latency,
 		"queue_delay_ms", queueDelay)
 	if flagged || cfg.RecordNonHits {
-		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, content.ExcerptText(), &latency, queueDelay, "")
+		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, content, &latency, queueDelay, "")
 		if queueDelay == nil && cfg.Mode == ContentModerationModePreBlock {
 			s.enqueueRecord(input, cfg, log, hashText, flagged, flagged)
 		} else {
@@ -1170,6 +1183,7 @@ func (s *ContentModerationService) enqueueAsync(input ContentModerationCheckInpu
 		s.asyncDropped.Add(1)
 		return
 	}
+	input.Body = nil
 	task := contentModerationTask{
 		input:      input,
 		content:    content,
@@ -1202,6 +1216,7 @@ func (s *ContentModerationService) enqueueRecord(input ContentModerationCheckInp
 		s.asyncDropped.Add(1)
 		return
 	}
+	input.Body = nil
 	task := contentModerationTask{
 		input:            input,
 		inputHash:        inputHash,
@@ -1853,7 +1868,7 @@ func (s *ContentModerationService) resolveModerationProxyURL(ctx context.Context
 	return proxyURL, nil
 }
 
-func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, text string, latency *int, queueDelay *int, errText string) *ContentModerationLog {
+func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, content ContentModerationInput, latency *int, queueDelay *int, errText string) *ContentModerationLog {
 	var userID *int64
 	if input.UserID > 0 {
 		userID = &input.UserID
@@ -1880,7 +1895,8 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 		HighestScore:      highestScore,
 		CategoryScores:    cloneFloatMap(scores),
 		ThresholdSnapshot: cloneFloatMap(cfg.Thresholds),
-		InputExcerpt:      trimRunes(redactContentModerationSecrets(text), maxModerationExcerptRunes),
+		InputExcerpt:      trimRunes(redactContentModerationSecrets(strings.ReplaceAll(content.ExcerptText(), "\x00", "")), maxModerationExcerptRunes),
+		InputContent:      content.logInput,
 		UpstreamLatencyMS: latency,
 		QueueDelayMS:      queueDelay,
 		Error:             errText,

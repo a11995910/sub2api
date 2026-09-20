@@ -94,6 +94,17 @@ func (r *contentModerationTestRepo) ListLogs(ctx context.Context, filter Content
 	return nil, nil, nil
 }
 
+func (r *contentModerationTestRepo) GetLog(ctx context.Context, id int64) (*ContentModerationLog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, log := range r.logs {
+		if log.ID == id {
+			return &log, nil
+		}
+	}
+	return nil, ErrContentModerationLogNotFound
+}
+
 func (r *contentModerationTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -417,7 +428,7 @@ func TestBuildContentModerationLog_RedactsInputExcerpt(t *testing.T) {
 		Provider:  "openai",
 	}
 
-	log := svc.buildLog(input, cfg, ContentModerationActionAllow, true, "sexual", 0.8, map[string]float64{"sexual": 0.8}, "hello sk-proj-1234567890abcdef", nil, nil, "")
+	log := svc.buildLog(input, cfg, ContentModerationActionAllow, true, "sexual", 0.8, map[string]float64{"sexual": 0.8}, ContentModerationInput{Text: "hello sk-proj-1234567890abcdef"}, nil, nil, "")
 
 	require.NotContains(t, log.InputExcerpt, "sk-proj-1234567890abcdef")
 	require.Contains(t, log.InputExcerpt, "[已脱敏]")
@@ -903,7 +914,7 @@ func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMem
 	require.Equal(t, "检查这张图", input.Text)
 	require.Equal(t, []string{"data:image/png;base64,aGVsbG8="}, input.Images)
 
-	log := (&ContentModerationService{}).buildLog(ContentModerationCheckInput{}, defaultContentModerationConfig(), ContentModerationActionAllow, false, "", 0, nil, input.ExcerptText(), nil, nil, "")
+	log := (&ContentModerationService{}).buildLog(ContentModerationCheckInput{}, defaultContentModerationConfig(), ContentModerationActionAllow, false, "", 0, nil, input, nil, nil, "")
 	require.Equal(t, "检查这张图", log.InputExcerpt)
 	require.NotContains(t, log.InputExcerpt, "aGVsbG8=")
 }

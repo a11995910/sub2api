@@ -159,7 +159,7 @@ export interface HealthyTurnStateModelStats {
 }
 
 export interface HealthyTurnStateMaintenance {
-  status: 'disabled' | 'unconfigured' | 'idle' | 'running' | 'backoff'
+  status: 'disabled' | 'unconfigured' | 'idle' | 'queued' | 'running' | 'backoff' | 'error'
   message: string
   next_retry_at?: string | null
 }

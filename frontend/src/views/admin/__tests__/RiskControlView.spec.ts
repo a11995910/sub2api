@@ -1,16 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import type { DOMWrapper, VueWrapper } from '@vue/test-utils'
 
 import RiskControlView from '../RiskControlView.vue'
-import type { ContentModerationConfig, UpdateContentModerationConfig } from '@/api/admin/riskControl'
+import type { ContentModerationConfig, ContentModerationLog, UpdateContentModerationConfig } from '@/api/admin/riskControl'
+
+enableAutoUnmount(afterEach)
 
 const {
   getConfig,
   updateConfig,
   getStatus,
   listLogs,
+  getLogDetail,
+  copyToClipboard,
   getGroups,
   getProxies,
   showError,
@@ -20,6 +24,8 @@ const {
   updateConfig: vi.fn(),
   getStatus: vi.fn(),
   listLogs: vi.fn(),
+  getLogDetail: vi.fn(),
+  copyToClipboard: vi.fn(),
   getGroups: vi.fn(),
   getProxies: vi.fn(),
   showError: vi.fn(),
@@ -33,6 +39,7 @@ vi.mock('@/api/admin', () => ({
       updateConfig,
       getStatus,
       listLogs,
+      getLogDetail,
       testAPIKeys: vi.fn(),
       deleteFlaggedHash: vi.fn(),
       clearFlaggedHashes: vi.fn(),
@@ -56,6 +63,10 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/utils/apiError', () => ({
   extractApiErrorMessage: (_err: unknown, fallback: string) => fallback,
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({ copyToClipboard }),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -190,12 +201,68 @@ function findButtonByText(wrapper: VueWrapper, text: string): DOMWrapper<HTMLBut
   return button
 }
 
+function moderationLog(overrides: Partial<ContentModerationLog> = {}): ContentModerationLog {
+  return {
+    id: 1,
+    request_id: 'audit-request-1',
+    user_id: 1,
+    user_email: 'user@example.com',
+    api_key_id: 1,
+    api_key_name: '测试密钥',
+    group_id: 1,
+    group_name: '测试分组',
+    endpoint: '/v1/responses',
+    provider: 'openai',
+    model: 'gpt-5.6-luna',
+    mode: 'pre_block',
+    action: 'keyword_blocked',
+    flagged: true,
+    highest_category: 'keyword',
+    highest_score: 1,
+    matched_keyword: '测试关键词',
+    category_scores: {},
+    threshold_snapshot: {},
+    input_excerpt: '旧的输入摘要',
+    upstream_latency_ms: 0,
+    error: '',
+    violation_count: 1,
+    auto_banned: false,
+    email_sent: false,
+    user_status: 'active',
+    queue_delay_ms: 0,
+    created_at: '2026-09-20T12:00:00Z',
+    ...overrides,
+  }
+}
+
+async function mountWithLogs(items: ContentModerationLog[]) {
+  listLogs.mockResolvedValue({ items, total: items.length, page: 1, page_size: 20, pages: 1 })
+  const wrapper = mount(RiskControlView, {
+    global: {
+      stubs: {
+        AppLayout: AppLayoutStub,
+        BaseDialog: BaseDialogStub,
+        Icon: true,
+        Select: true,
+        Toggle: true,
+        Pagination: true,
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        ProxySelector: true,
+      },
+    },
+  })
+  await flushPromises()
+  return wrapper
+}
+
 describe('admin RiskControlView', () => {
   beforeEach(() => {
     getConfig.mockReset()
     updateConfig.mockReset()
     getStatus.mockReset()
     listLogs.mockReset()
+    getLogDetail.mockReset()
+    copyToClipboard.mockReset()
     getGroups.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
@@ -215,6 +282,120 @@ describe('admin RiskControlView', () => {
       api_key_masks: [],
       api_key_statuses: [],
     }))
+  })
+
+  it('点击记录后获取原始输入并保留换行，复制详情全文而非列表摘要', async () => {
+    const row = moderationLog()
+    const fullText = `第一行原始输入\n${'完整内容'.repeat(100)}\n末尾内容`
+    let resolveDetail!: (detail: ContentModerationLog) => void
+    getLogDetail.mockReturnValue(new Promise<ContentModerationLog>((resolve) => { resolveDetail = resolve }))
+    const wrapper = await mountWithLogs([row])
+
+    expect(getLogDetail).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    expect(getLogDetail).toHaveBeenCalledWith(1)
+    expect(wrapper.find('[data-test="input-detail-loading"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="input-detail-text"]').exists()).toBe(false)
+
+    resolveDetail({ ...row, input_content: { text: fullText, text_truncated: false, text_runes: fullText.length, image_count: 0 } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="input-detail-text"]').element.textContent).toBe(fullText)
+    expect(wrapper.get('[data-test="input-detail-notice"]').text()).toBe('admin.riskControl.inputDetailRedactedHint')
+    await wrapper.get('[data-test="input-detail-copy"]').trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith(fullText)
+  })
+
+  it('旧记录明确提示仅有摘要，审核错误不会冒充输入内容', async () => {
+    const row = moderationLog({ input_excerpt: '', error: '上游审核超时' })
+    getLogDetail.mockResolvedValue(row)
+    const wrapper = await mountWithLogs([row])
+
+    expect(wrapper.get('[data-test="input-detail-open-1"]').text()).toBe('-')
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="input-detail-notice"]').text()).toBe('admin.riskControl.inputDetailUnavailableHint')
+    expect(wrapper.find('[data-test="input-detail-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="input-detail-copy"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="input-detail-audit-error"]').text()).toBe('上游审核超时')
+
+    getLogDetail.mockResolvedValue({ ...row, input_excerpt: '已保存的历史摘要' })
+    await findButtonByText(wrapper, 'common.close').trigger('click')
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="input-detail-text"]').text()).toBe('已保存的历史摘要')
+    expect(wrapper.get('[data-test="input-detail-notice"]').text()).toBe('admin.riskControl.inputDetailUnavailableHint')
+  })
+
+  it('截断记录和图片输入显示保存范围，纯图片输入不回退成摘要', async () => {
+    const row = moderationLog()
+    getLogDetail.mockResolvedValue({ ...row, input_content: { text: '保存的前缀', text_truncated: true, text_runes: 70000, image_count: 2 } })
+    const wrapper = await mountWithLogs([row])
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="input-detail-truncated"]').text()).toBe('admin.riskControl.inputDetailTruncatedHint')
+    expect(wrapper.get('[data-test="input-detail-images"]').text()).toBe('admin.riskControl.inputDetailImagesHint')
+    expect(wrapper.get('[data-test="input-detail-text"]').text()).toBe('保存的前缀')
+
+    getLogDetail.mockResolvedValue({ ...row, input_content: { text: '', text_truncated: false, text_runes: 0, image_count: 1 } })
+    await findButtonByText(wrapper, 'common.close').trigger('click')
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="input-detail-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="input-detail-images"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="input-detail-empty"]').text()).toBe('admin.riskControl.inputDetailNoText')
+  })
+
+  it('加载详情失败显示错误并支持重试，失败时不会把摘要当成已加载的原文', async () => {
+    const row = moderationLog()
+    getLogDetail.mockRejectedValueOnce(new Error('请求失败')).mockResolvedValueOnce({
+      ...row,
+      input_content: { text: '重试后的原始输入', text_truncated: false, text_runes: 9, image_count: 0 },
+    })
+    const wrapper = await mountWithLogs([row])
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="input-detail-error"]').text()).toContain('admin.riskControl.inputDetailLoadFailed')
+    expect(wrapper.find('[data-test="input-detail-text"]').exists()).toBe(false)
+    await wrapper.get('[data-test="input-detail-retry"]').trigger('click')
+    await flushPromises()
+    expect(getLogDetail).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-test="input-detail-error"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="input-detail-text"]').text()).toBe('重试后的原始输入')
+  })
+
+  it('切换记录时忽略前一条延迟返回的详情', async () => {
+    const first = moderationLog()
+    const second = moderationLog({ id: 2, input_excerpt: '第二条摘要' })
+    let resolveFirst!: (detail: ContentModerationLog) => void
+    getLogDetail.mockReturnValueOnce(new Promise<ContentModerationLog>((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ ...second, input_content: { text: '第二条原始输入', text_truncated: false, text_runes: 7, image_count: 0 } })
+    const wrapper = await mountWithLogs([first, second])
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await wrapper.get('[data-test="input-detail-open-2"]').trigger('click')
+    await flushPromises()
+    resolveFirst({ ...first, input_content: { text: '过期的第一条原始输入', text_truncated: false, text_runes: 10, image_count: 0 } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="input-detail-text"]').text()).toBe('第二条原始输入')
+  })
+
+  it('关闭弹窗后返回的旧详情不会重新打开弹窗', async () => {
+    const row = moderationLog()
+    let resolveDetail!: (detail: ContentModerationLog) => void
+    getLogDetail.mockReturnValue(new Promise<ContentModerationLog>((resolve) => { resolveDetail = resolve }))
+    const wrapper = await mountWithLogs([row])
+    await wrapper.get('[data-test="input-detail-open-1"]').trigger('click')
+    await findButtonByText(wrapper, 'common.close').trigger('click')
+    resolveDetail({ ...row, input_content: { text: '已关闭记录的内容', text_truncated: false, text_runes: 8, image_count: 0 } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="input-detail-text"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="input-detail-loading"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('已关闭记录的内容')
   })
 
   it('saves the selected model filter mode and models', async () => {

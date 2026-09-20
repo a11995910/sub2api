@@ -41,8 +41,12 @@
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="healthy-state-dynamic-target" class="input-label">{{ t(`${prefix}.dynamic.target`) }}</label>
-          <input id="healthy-state-dynamic-target" v-model.number="dynamicConfig.target_count" type="number" min="1" max="100" step="1" class="input" aria-describedby="healthy-state-dynamic-target-hint" />
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="healthy-state-dynamic-target" v-model.number="dynamicConfig.target_count" type="number" min="1" max="100" step="1" class="input min-w-24 flex-1" aria-describedby="healthy-state-dynamic-target-hint healthy-state-dynamic-target-summary" />
+            <button type="button" class="btn btn-secondary min-h-11 text-xs" :disabled="dynamicConfig.target_count === defaultTargetCount" @click="applyDefaultTarget">{{ t(`${prefix}.dynamic.targetPreset`, { count: defaultTargetCount }) }}</button>
+          </div>
           <p id="healthy-state-dynamic-target-hint" class="mt-1 text-xs leading-relaxed text-gray-600 dark:text-gray-400">{{ t(`${prefix}.dynamic.targetHint`) }}</p>
+          <p v-if="totalTarget !== null" id="healthy-state-dynamic-target-summary" class="mt-1 text-xs font-medium text-primary-700 dark:text-primary-300">{{ t(`${prefix}.dynamic.targetSummary`, { models: dynamicConfig.models.length, total: totalTarget }) }}</p>
         </div>
         <div>
           <label for="healthy-state-dynamic-attempts" class="input-label">{{ t(`${prefix}.dynamic.maxAttempts`) }}</label>
@@ -79,13 +83,14 @@ import OpenAIHealthyTurnStateStatus from './OpenAIHealthyTurnStateStatus.vue'
 const props = defineProps<{ accountId: number; active: boolean; disabled?: boolean }>()
 const { t } = useI18n()
 const prefix = 'admin.accounts.openai'
-const defaultConfig = (): HealthyTurnStateDynamicConfig => ({ configured: false, api_url_masked: '', protocol: 'http', target_count: 3, max_attempts: 100, models: [], transport: 'http' })
+const defaultTargetCount = 10
+const defaultConfig = (): HealthyTurnStateDynamicConfig => ({ configured: false, api_url_masked: '', protocol: 'http', target_count: defaultTargetCount, max_attempts: 100, models: [], transport: 'http' })
 const dynamicConfig = ref(defaultConfig())
 const loadedProtocol = ref<HealthyTurnStateDynamicConfig['protocol']>('http')
 const loadedModels = ref<string[]>([])
 const supportedModels = ref<HealthyTurnStateSupportedModel[]>([])
 const apiUrl = ref('')
-// 仅界面输入事件标记变更，读取旧配置和刷新上游模型不会阻断账号其他字段的保存。
+// 仅界面输入和快捷调整标记变更，读取旧配置和刷新上游模型不会阻断账号其他字段的保存。
 const dirty = ref(false)
 const loaded = ref(false)
 const loading = ref(false)
@@ -98,6 +103,10 @@ let controller: AbortController | null = null
 let disposed = false
 const unsupportedSelections = computed(() => dynamicConfig.value.models.filter(model => !supportedModels.value.some(supported => supported.id === model)))
 const modelsChanged = computed(() => JSON.stringify([...dynamicConfig.value.models].sort()) !== JSON.stringify([...loadedModels.value].sort()))
+const totalTarget = computed(() => {
+  const target = dynamicConfig.value.target_count
+  return Number.isInteger(target) && target >= 1 && target <= 100 ? dynamicConfig.value.models.length * target : null
+})
 const validConfig = computed(() => {
   const { target_count: target, max_attempts: attempts, models } = dynamicConfig.value
   return (dynamicConfig.value.configured || apiUrl.value.trim() !== '') && models.length > 0 && unsupportedSelections.value.length === 0 && Number.isInteger(target) && target >= 1 && target <= 100 && Number.isInteger(attempts) && attempts >= target && attempts <= 1000
@@ -114,6 +123,12 @@ function apiErrorMessage(error: unknown, fallback: string) {
 function clearInheritanceNotice() {
   dynamicConfig.value.models_inherited = false
   dynamicConfig.value.models_inheritance_message = ''
+}
+
+function applyDefaultTarget() {
+  dynamicConfig.value.target_count = defaultTargetCount
+  if (dynamicConfig.value.max_attempts < defaultTargetCount) dynamicConfig.value.max_attempts = defaultTargetCount
+  dirty.value = true
 }
 
 async function loadSettings() {

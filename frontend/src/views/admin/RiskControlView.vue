@@ -349,6 +349,7 @@
                         type="button"
                         class="group flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                         :title="inputSummaryText(row)"
+                        :data-test="`input-detail-open-${row.id}`"
                         @click="openInputDetail(row)"
                       >
                         <span class="min-w-0 flex-1 truncate">{{ inputSummaryText(row) }}</span>
@@ -1095,7 +1096,7 @@
           <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.inputDetailContent') }}</p>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t(inputDetailRow.input_content ? 'admin.riskControl.inputDetailContent' : 'admin.riskControl.inputDetailExcerpt') }}</p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ inputDetailRow.endpoint || '-' }} · {{ inputDetailRow.provider || '-' }} / {{ inputDetailRow.model || '-' }}
                 </p>
@@ -1104,7 +1105,37 @@
                 {{ inputDetailRow.group_name }}
               </span>
             </div>
-            <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
+            <div v-if="inputDetailLoading" class="flex items-center justify-center gap-2 py-10 text-sm text-gray-500 dark:text-gray-400" role="status" data-test="input-detail-loading">
+              <span class="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-primary-500 dark:border-dark-600 dark:border-t-primary-400"></span>
+              {{ t('common.loading') }}
+            </div>
+            <div v-else-if="inputDetailError" class="mt-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-900/20" role="alert" data-test="input-detail-error">
+              <p class="text-sm text-red-700 dark:text-red-300">{{ inputDetailError }}</p>
+              <button type="button" class="btn btn-secondary mt-3" data-test="input-detail-retry" @click="openInputDetail(inputDetailRow)">{{ t('common.retry') }}</button>
+            </div>
+            <template v-else>
+              <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400" data-test="input-detail-notice">
+                {{ t(inputDetailRow.input_content ? 'admin.riskControl.inputDetailRedactedHint' : 'admin.riskControl.inputDetailUnavailableHint') }}
+              </p>
+              <p v-if="inputDetailRow.input_content?.text_truncated" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" data-test="input-detail-truncated">
+                {{ t('admin.riskControl.inputDetailTruncatedHint', { count: inputDetailRow.input_content.text_runes }) }}
+              </p>
+              <p v-if="inputDetailRow.input_content?.image_count" class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400" data-test="input-detail-images">
+                {{ t('admin.riskControl.inputDetailImagesHint', { count: inputDetailRow.input_content.image_count }) }}
+              </p>
+              <div v-if="inputDetailText" class="mt-3 flex justify-end">
+                <button type="button" class="btn btn-secondary inline-flex items-center gap-1.5" data-test="input-detail-copy" @click="copyToClipboard(inputDetailText)">
+                  <Icon name="copy" size="xs" />
+                  {{ t('common.copy') }}
+                </button>
+              </div>
+              <pre v-if="inputDetailText" class="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50" data-test="input-detail-text">{{ inputDetailText }}</pre>
+              <p v-else class="mt-4 text-sm text-gray-500 dark:text-gray-400" data-test="input-detail-empty">{{ t('admin.riskControl.inputDetailNoText') }}</p>
+              <div v-if="inputDetailRow.error" class="mt-4 rounded-lg border border-red-100 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-900/20">
+                <p class="text-xs font-medium text-red-700 dark:text-red-300">{{ t('admin.riskControl.inputDetailAuditError') }}</p>
+                <p class="mt-1 whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-300" data-test="input-detail-audit-error">{{ inputDetailRow.error }}</p>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -1145,6 +1176,7 @@ import type {
 } from '@/api/admin/riskControl'
 import type { AdminGroup, Proxy, SelectOption } from '@/types'
 import { useAppStore } from '@/stores/app'
+import { useClipboard } from '@/composables/useClipboard'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 
@@ -1197,6 +1229,7 @@ const riskThresholdCategories = Object.keys(riskThresholdDefaults)
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 const defaultBlockMessage = () => t('admin.riskControl.defaultBlockMessage')
 
 const loading = ref(true)
@@ -1221,6 +1254,9 @@ const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
+const inputDetailLoading = ref(false)
+const inputDetailError = ref('')
+let inputDetailRequestID = 0
 let statusTimer: number | null = null
 
 const configForm = reactive({
@@ -1585,8 +1621,8 @@ const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
 ))
 
 const inputDetailText = computed(() => {
-  if (!inputDetailRow.value) return '-'
-  return inputDetailRow.value.input_excerpt || inputDetailRow.value.error || '-'
+  if (!inputDetailRow.value) return ''
+  return inputDetailRow.value.input_content?.text ?? inputDetailRow.value.input_excerpt ?? ''
 })
 
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
@@ -1881,15 +1917,32 @@ function canUnbanRow(row: ContentModerationLog): boolean {
 }
 
 function inputSummaryText(row: ContentModerationLog): string {
-  return row.input_excerpt || row.error || '-'
+  return row.input_excerpt || '-'
 }
 
-function openInputDetail(row: ContentModerationLog) {
-  inputDetailRow.value = row
+async function openInputDetail(row: ContentModerationLog) {
+  const requestID = ++inputDetailRequestID
+  inputDetailRow.value = { ...row, input_content: undefined }
+  inputDetailLoading.value = true
+  inputDetailError.value = ''
+  try {
+    const detail = await adminAPI.riskControl.getLogDetail(row.id)
+    // 关闭弹窗或切换记录后，不允许旧请求回填当前详情。
+    if (requestID !== inputDetailRequestID) return
+    inputDetailRow.value = detail
+  } catch (err: unknown) {
+    if (requestID !== inputDetailRequestID) return
+    inputDetailError.value = extractApiErrorMessage(err, t('admin.riskControl.inputDetailLoadFailed'))
+  } finally {
+    if (requestID === inputDetailRequestID) inputDetailLoading.value = false
+  }
 }
 
 function closeInputDetail() {
+  inputDetailRequestID++
   inputDetailRow.value = null
+  inputDetailLoading.value = false
+  inputDetailError.value = ''
 }
 
 async function unbanUser(row: ContentModerationLog) {
@@ -2365,6 +2418,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  inputDetailRequestID++
   if (statusTimer !== null) {
     window.clearInterval(statusTimer)
     statusTimer = null

@@ -743,7 +743,7 @@ export default {
           error: 'Statistics could not be loaded. Refresh to retry.', empty: 'No records yet. Ensure the global dynamic IP API is configured, select this account’s supported models, and save to begin automatic replenishment.',
           emptyConfigured: 'No headers yet. Check the background collection status above.',
           maintenanceTitle: 'Background collection', nextRetry: 'Next retry: {time}',
-          maintenanceStatus: { disabled: 'Disabled', unconfigured: 'Setup required', idle: 'Standing by', running: 'Replenishing', backoff: 'Waiting to retry' },
+          maintenanceStatus: { disabled: 'Disabled', unconfigured: 'Setup required', idle: 'Standing by', queued: 'Queued for collection', running: 'Replenishing', backoff: 'Waiting to retry', error: 'Collection configuration or maintenance error' },
           accountCaptures: 'Total collected', accountAvailable: 'Valid inventory', modelCaptures: 'Healthy state inventory by model', model: 'Model', captures: 'Total', available: 'Valid', inUse: '{count} in use'
         },
         testTitle: 'Automatic healthy state collection',
@@ -751,11 +751,11 @@ export default {
         testTransport: 'Transport',
         dynamic: {
           dynamic: 'Dynamic IP API collection',
-          description: 'Collection uses only proxies returned by the dynamic IP API to test selected models. It stops when each model reaches its inventory target. Invalid or expired headers are removed and replenished automatically. Maintenance continues after this page closes; select Off or Codex ticket mode and save to stop healthy collection.',
+          description: 'Collection uses only proxies returned by the dynamic IP API. Accounts and selected models within each account can replenish concurrently. It stops when each model reaches its inventory target. Invalid or expired headers are removed and replenished automatically. Maintenance continues after this page closes; select Off or Codex ticket mode and save to stop healthy collection.',
           saveWithAccount: 'Settings and the selected strategy are saved together with the Update button below. All accounts share the extraction URL and proxy protocol; models, inventory limits and collection transport are saved per account. Enabling sends model test requests. Headers are retained locally for 40 minutes and replenished with less than 10 minutes remaining; this is not an official upstream lifetime.',
           url: 'Global proxy extraction URL', urlPlaceholder: 'Enter once; leave blank to keep the global URL', savedUrl: 'Global API configured: {url}. This account uses it automatically. Leave blank to keep it; a new URL updates all accounts.', urlRequired: 'Configure once for all accounts. Return newline-separated IP:PORT entries; provider parameters such as num and time are passed through unchanged.', protocol: 'Global proxy protocol',
           sharedProxyConflict: 'Existing accounts have different API URLs. Enter one shared global URL to use for all accounts.',
-          target: 'Healthy headers per model', targetHint: 'Default: 3; range: 1–100. 使用中的健康头仍计入目标，剩余不足 10 分钟的空闲头提前补新。', maxAttempts: 'Maximum proxy attempts per cycle',
+          target: 'Healthy headers per model', targetHint: 'Default: 10; range: 1–100. Existing accounts retain their saved count. Headers in use count toward the target; idle headers with less than 10 minutes remaining are replenished early.', targetPreset: 'Set to {count} per model', targetSummary: '{models} selections, up to {total} headers; aliases of the same actual model share inventory.', maxAttempts: 'Maximum proxy attempts per cycle',
           modelsHint: 'Text models are synced from upstream, with separate inventory for each model. Changing and saving the selection updates the default for new accounts; configured accounts keep their own selections.',
           modelsInherited: 'Your last selection has been applied to models supported by this account. Click Update below to save.',
           modelsRequired: 'Select at least one supported model and deselect any unsupported models. After the first save, new accounts will reuse this selection.', unsupportedModel: '{model} (unsupported; deselect)', noModels: 'Upstream returned no text models suitable for collection.',

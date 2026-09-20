@@ -1333,6 +1333,10 @@ func (r *contentModerationHandlerTestRepo) logSnapshot() []service.ContentModera
 	return append([]service.ContentModerationLog(nil), r.logs...)
 }
 
+func (r *contentModerationHandlerTestRepo) GetLog(ctx context.Context, id int64) (*service.ContentModerationLog, error) {
+	return nil, service.ErrContentModerationLogNotFound
+}
+
 func (r *contentModerationHandlerTestRepo) ListLogs(ctx context.Context, filter service.ContentModerationLogFilter) ([]service.ContentModerationLog, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }

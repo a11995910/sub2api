@@ -119,13 +119,26 @@ describe('健康状态头统计', () => {
   })
 
   it.each([
-    ['disabled', '已关闭'], ['unconfigured', '待配置'], ['idle', '待命'], ['running', '正在补充']
+    ['disabled', '已关闭'], ['unconfigured', '待配置'], ['idle', '待命'], ['running', '正在补充'], ['queued', '排队待采集'], ['error', '采集配置或维护异常']
   ])('后台状态 %s 显示中文说明', async (status, label) => {
     getStats.mockResolvedValue({ ...empty, maintenance: { status, message: '', next_retry_at: null } })
     const wrapper = panel()
     await flushPromises()
     expect(wrapper.get('[role="status"]').text()).toContain(`后台采集 · ${label}`)
     expect(wrapper.text()).not.toContain('下次重试')
+  })
+
+  it.each([
+    ['queued', 'border-primary-200', '等待其他账号采集完成'],
+    ['error', 'border-red-200', '采集配置读取失败，请稍后重试']
+  ])('后台状态 %s 保留说明并使用对应提示色', async (status, colorClass, message) => {
+    getStats.mockResolvedValue({ ...empty, maintenance: { status, message, next_retry_at: null } })
+    const wrapper = panel()
+    await flushPromises()
+    expect(wrapper.get('[role="status"]').classes()).toContain(colorClass)
+    expect(wrapper.get('[role="status"]').text()).toContain(message)
+    expect(wrapper.text()).toContain('当前尚无健康头，请查看上方后台采集状态')
+    expect(wrapper.text()).not.toContain('暂无记录。确认全局动态 IP 接口已配置')
   })
 
   it('打开期间每15秒刷新，慢请求期间不重叠发起轮询', async () => {
