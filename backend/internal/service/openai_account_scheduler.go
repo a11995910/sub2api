@@ -2206,8 +2206,20 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	platform string,
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
-) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
+	defer func() {
+		if err == nil && selection != nil && selection.Account != nil {
+			account := selection.Account
+			model := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
+			selection.CheckAvailability = func() error {
+				if s.openAICodexTicketBlocksAccount(account, model) {
+					return wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
+				}
+				return nil
+			}
+		}
+	}()
+	selection, decision, err = s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err
 	}

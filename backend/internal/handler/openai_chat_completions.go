@@ -228,7 +228,19 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 		channelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
-		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		accountReleaseFunc, slotResult, slotFailover := h.acquireResponsesAccountSlotWithFailover(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		if slotFailover != nil {
+			failedAccountIDs[account.ID] = struct{}{}
+			lastFailoverErr = slotFailover
+			if switchCount >= maxAccountSwitches {
+				h.handleFailoverExhausted(c, slotFailover, streamStarted)
+				return
+			}
+			switchCount++
+			h.gatewayService.RecordOpenAIAccountSwitch()
+			reqLog.Info("账号排队期间票据失效，切换其他账号", zap.Int64("account_id", account.ID))
+			continue
+		}
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号；否决次数达上限则按无可用账号终止。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
