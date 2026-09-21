@@ -81,7 +81,8 @@ func TestHealthyDynamicConfigEncryptedSharedProxyAndRedacted(t *testing.T) {
 	require.Equal(t, "socks5h", stored.Protocol)
 	require.NotContains(t, account.Extra, "api_url")
 	for _, input := range []HealthyTurnStateDynamicConfigInput{
-		{APIURL: "http://supplier.example/private-token", Protocol: "http", TargetCount: 1, MaxAttempts: 1},
+		{APIURL: "ftp://supplier.example/private-token", Protocol: "http", TargetCount: 1, MaxAttempts: 1},
+		{APIURL: "http://127.0.0.1/private-token", Protocol: "http", TargetCount: 1, MaxAttempts: 1},
 		{APIURL: "https://127.0.0.1/private-token", Protocol: "http", TargetCount: 1, MaxAttempts: 1},
 		{APIURL: "https://supplier.example/private-token", Protocol: "ftp", TargetCount: 1, MaxAttempts: 1},
 		{APIURL: "https://supplier.example/private-token", Protocol: "http", TargetCount: 0, MaxAttempts: 1},
@@ -94,6 +95,24 @@ func TestHealthyDynamicConfigEncryptedSharedProxyAndRedacted(t *testing.T) {
 		require.Error(t, err)
 		require.NotContains(t, err.Error(), "private-token")
 	}
+}
+
+func TestHealthyDynamicHTTPConfigSaveReloadAndMask(t *testing.T) {
+	svc, repo, account := healthyDynamicTestService(t, 1, 10)
+	ctx := context.Background()
+	raw := "http://supplier.example:8089/gen?key=private-token&count=1&stype=json"
+	view, err := svc.SaveHealthyTurnStateDynamicConfig(ctx, account.ID, HealthyTurnStateDynamicConfigInput{
+		APIURL: raw, Protocol: "http", TargetCount: 1, MaxAttempts: 10, Models: []string{"gpt-6-astra"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "http://supplier.example:8089/••••", view.APIURLMasked)
+	require.NotContains(t, repo.values[healthyDynamicSharedProxyKey], "private-token")
+	stored, err := svc.healthyTurnStateDynamic.loadConfig(ctx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, raw, stored.APIURL)
+	other, err := svc.GetHealthyTurnStateDynamicConfig(ctx, account.ID+1)
+	require.NoError(t, err)
+	require.Equal(t, view.APIURLMasked, other.APIURLMasked)
 }
 
 func TestHealthyDynamicConfigRequiresExplicitModelsAndDeduplicatesSelection(t *testing.T) {

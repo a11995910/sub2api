@@ -565,7 +565,7 @@ export default {
         codexTicketHarvestProxyConfigured: 'Configured (password hidden). To replace it, paste the complete new proxy URL.',
         codexTicketHarvestExtract: 'Batch IP extraction URL',
         codexTicketHarvestExtractPlaceholder: 'https://proxy.example.com/api/get-ip',
-        codexTicketHarvestExtractDesc: 'Fetches a batch of proxies and tries them in order until a valid ticket is collected. At most 4 account/model targets run concurrently across the service. Failed targets wait for the next round. View progress in the account’s 292 ticket status.',
+        codexTicketHarvestExtractDesc: 'Supports HTTP/HTTPS APIs returning newline-separated IP:PORT entries or BestGo JSON. Fetches a batch of proxies and tries them in order until a valid ticket is collected. At most 4 account/model targets run concurrently across the service. Failed targets wait for the next round. View progress in the account’s 292 ticket status.',
         codexTicketHarvestExtractConfigured: 'Configured (path and parameters hidden). Leave blank or keep the masked value to preserve it; paste a complete URL to replace it.',
         codexTicketHarvestExtractProtocol: 'Default protocol for extracted proxies',
         codexTicketRemoteDNS: 'remote DNS',

@@ -65,7 +65,7 @@ func (s *AccountTestService) healthyDynamicService() (*healthyTurnStateDynamicSe
 }
 
 func healthyDynamicConfigError() error {
-	return infraerrors.BadRequest("INVALID_HEALTHY_DYNAMIC_CONFIG", "请填写有效的 HTTPS 提取接口、代理协议和采集限额")
+	return infraerrors.BadRequest("INVALID_HEALTHY_DYNAMIC_CONFIG", "请填写有效的 HTTP／HTTPS 提取接口、代理协议和采集限额")
 }
 
 func validateHealthyDynamicAPIURL(raw string) error {
@@ -73,7 +73,7 @@ func validateHealthyDynamicAPIURL(raw string) error {
 		return healthyDynamicConfigError()
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" || isBlockedHostname(u.Hostname()) {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" || isBlockedHostname(u.Hostname()) {
 		return healthyDynamicConfigError()
 	}
 	if port := u.Port(); port != "" {
@@ -104,7 +104,7 @@ func healthyDynamicConfigView(input HealthyTurnStateDynamicConfigInput) *Healthy
 	if input.APIURL != "" {
 		// 路径也可能携带供应商密钥，仅显示供应商主机和固定脱敏后缀。
 		if u, err := url.Parse(input.APIURL); err == nil {
-			view.APIURLMasked = "https://" + u.Host + "/••••"
+			view.APIURLMasked = u.Scheme + "://" + u.Host + "/••••"
 		}
 	}
 	return view

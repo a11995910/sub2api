@@ -68,6 +68,7 @@ func TestHealthyDynamicProxyParserWhitelistFailureRequiresExactFormat(t *testing
 }
 
 func TestHealthyDynamicFetchLimitsRedirectsAndRedactsErrors(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:9")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:9")
 	client := newHealthyDynamicFetchClient()
 	transport := client.Transport.(*http.Transport)
@@ -95,7 +96,7 @@ func TestHealthyDynamicFetchLimitsRedirectsAndRedactsErrors(t *testing.T) {
 			calls := 0
 			client.Transport = healthyDynamicRoundTripper(func(req *http.Request) (*http.Response, error) {
 				calls++
-				require.Equal(t, "text/plain", req.Header.Get("Accept"))
+				require.Equal(t, "text/plain, application/json", req.Header.Get("Accept"))
 				deadline, ok := req.Context().Deadline()
 				require.True(t, ok)
 				require.LessOrEqual(t, time.Until(deadline), 20*time.Second)
@@ -130,4 +131,50 @@ func TestHealthyDynamicFetchCancellation(t *testing.T) {
 	})
 	_, err := fetchHealthyDynamicProxyBatchWithClient(ctx, HealthyTurnStateDynamicConfigInput{APIURL: "https://supplier.example", Protocol: "http", TargetCount: 1, MaxAttempts: 1}, client)
 	require.Error(t, err)
+}
+
+func TestHealthyDynamicJSONFetchPreservesHTTPURLAndNormalizesEntries(t *testing.T) {
+	input := HealthyTurnStateDynamicConfigInput{
+		APIURL:   "http://supplier.example:8089/gen?zone=custom&ptype=1&region=US&count=1&proto=http&stype=json&sessType=rotating",
+		Protocol: "socks5h", TargetCount: 1, MaxAttempts: 10,
+	}
+	client := newHealthyDynamicFetchClient()
+	client.Transport = healthyDynamicRoundTripper(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, input.APIURL, req.URL.String(), "提取数量与轮换参数必须原样传递")
+		// 以正文识别格式，供应商未声明 Content-Type 时也能读取。
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("\ufeff " + `{"code":200,"success":"success","msg":"","error":"","data":[{"ip":"8.8.8.8","port":8080},{"ip":"8.8.8.8","port":8080},{"ip":"8.8.8.8","port":8081},{"ip":"2001:4860:4860::8888","port":1080}]}`)), Request: req}, nil
+	})
+	batch, err := fetchHealthyDynamicProxyBatchWithClient(context.Background(), input, client)
+	require.NoError(t, err)
+	require.Equal(t, []string{"socks5h://8.8.8.8:8080", "socks5h://8.8.8.8:8081", "socks5h://[2001:4860:4860::8888]:1080"}, batch)
+}
+
+func TestHealthyDynamicJSONRejectsInvalidAndRedactsSupplierErrors(t *testing.T) {
+	for _, body := range []string{
+		`{"code":200,"success":"success","data":[{"ip":"8.8.8.8","port":8080},{"ip":"127.0.0.1","port":80}]}`,
+		`{"code":200,"success":"success","data":[{"ip":"169.254.169.254","port":80}]}`,
+		`{"code":200,"success":"success","data":[{"ip":"proxy.example","port":80}]}`,
+		`{"code":200,"success":"success","data":[{"ip":"user:private-token@8.8.8.8","port":80}]}`,
+		`{"code":200,"success":"success","data":[{"ip":"8.8.8.8","port":0}]}`,
+		`{"code":200,"success":"success","data":[{"ip":"8.8.8.8","port":65536}]}`,
+		`{"code":200,"success":"success","data":[{"ip":"8.8.8.8","port":"private-token"}]}`,
+		`{"code":200,"success":"success","data":[null]}`,
+		`{"code":200,"success":"success","data":null}`,
+		`{"code":200,"success":"success"}`,
+		`{"code":200,"success":"success","data":[]}{"secret":"private-token"}`,
+		`{"code":400,"success":"","msg":"private-token","error":"private-token","data":[]}`,
+		`{"code":200,"success":"","data":[{"ip":"8.8.8.8","port":80}]}`,
+		`{"data":[{"ip":"8.8.8.8","port":80}]}`,
+	} {
+		batch, err := parseHealthyDynamicProxyBatch([]byte(body), "http")
+		require.Error(t, err)
+		require.Nil(t, batch, "任一条目无效时拒绝整批")
+		require.NotContains(t, err.Error(), "private-token")
+	}
+	batch, err := parseHealthyDynamicProxyBatch([]byte(`{"code":400,"success":"","msg":"IP Whitelist Check Failed","error":"IP Whitelist Check Failed","data":[]}`), "http")
+	require.Nil(t, batch)
+	require.ErrorContains(t, err, "未加入供应商白名单")
+	batch, err = parseHealthyDynamicProxyBatch([]byte(`{"code":200,"success":"success","data":[]}`), "http")
+	require.NoError(t, err)
+	require.Empty(t, batch, "成功空批次交由已有的无新入口机制处理")
 }

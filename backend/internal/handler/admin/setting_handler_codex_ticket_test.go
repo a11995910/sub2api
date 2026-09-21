@@ -50,7 +50,7 @@ func TestSettingsCodexTicketRejectInvalidProxyWithoutLeakingPassword(t *testing.
 func TestSettingsCodexTicketExtractWriteReadAndHotReload(t *testing.T) {
 	key := service.SettingKeyOpenAICodexTicketHarvestExtractURL
 	oldURL := "https://supplier.example/old-secret-path?key=old-secret-token"
-	newURL := "https://supplier.example/new-secret-path?key=new-secret-token"
+	newURL := "http://supplier.example:8089/new-secret-path?key=new-secret-token&count=10&stype=json"
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{key: oldURL})
 	fallback := service.OpenAICodexTicketHarvestSource{}
 	require.Equal(t, oldURL, h.settingService.GetOpenAICodexTicketHarvestSource(context.Background(), fallback).ExtractURL)
@@ -80,13 +80,14 @@ func TestSettingsCodexTicketExtractWriteReadAndHotReload(t *testing.T) {
 	h.GetSettings(c)
 	require.Equal(t, http.StatusOK, get.Code)
 	require.NotContains(t, get.Body.String(), "new-secret")
-	require.Contains(t, get.Body.String(), "https://supplier.example/••••")
+	require.Contains(t, get.Body.String(), "http://supplier.example:8089/••••")
 }
 
 func TestSettingsCodexTicketExtractRejectsInvalidWithoutLeakingURL(t *testing.T) {
 	key := service.SettingKeyOpenAICodexTicketHarvestExtractURL
 	for _, body := range []map[string]any{
-		{key: "http://supplier.example/private-token"},
+		{key: "ftp://supplier.example/private-token"},
+		{key: "http://127.0.0.1/private-token"},
 		{key: "https://127.0.0.1/private-token"},
 		{service.SettingKeyOpenAICodexTicketHarvestProxyMode: "invalid"},
 		{service.SettingKeyOpenAICodexTicketHarvestProxyMode: "extract"},

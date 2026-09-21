@@ -558,7 +558,7 @@ export default {
         codexTicketHarvestProxyConfigured: '已配置（密码已隐藏）。更换时请粘贴完整的新代理 URL。',
         codexTicketHarvestExtract: '批量 IP 提取 URL',
         codexTicketHarvestExtractPlaceholder: 'https://proxy.example.com/api/get-ip',
-        codexTicketHarvestExtractDesc: '后台从接口提取一批代理，按顺序尝试，取得有效门票即停止本目标尝试。全局最多同时采集 4 个账号模型，失败后等待下一轮。进度可在账号的 292 门票状态中查看。',
+        codexTicketHarvestExtractDesc: '支持 HTTP／HTTPS 提取接口，返回逐行 IP:PORT 或 BestGo JSON。后台提取一批代理后按顺序尝试，取得有效门票即停止本目标尝试。全局最多同时采集 4 个账号模型，失败后等待下一轮。进度可在账号的 292 门票状态中查看。',
         codexTicketHarvestExtractConfigured: '已配置（路径及参数已隐藏）。留空或保留隐藏值表示不修改；更换时粘贴完整 URL。',
         codexTicketHarvestExtractProtocol: '提取结果的默认代理协议',
         codexTicketRemoteDNS: '远端 DNS',

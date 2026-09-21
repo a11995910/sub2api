@@ -23,7 +23,11 @@ func TestCodexTicketHarvestExtractValidationAndMask(t *testing.T) {
 	valid := OpenAICodexTicketHarvestSource{Mode: "extract", ExtractURL: "https://supplier.example/private-path?key=private-token", ExtractProtocol: "http"}
 	require.NoError(t, ValidateOpenAICodexTicketHarvestSource(valid))
 	require.Equal(t, "https://supplier.example/••••", MaskOpenAICodexTicketHarvestExtractURL(valid.ExtractURL))
-	for _, raw := range []string{"http://supplier.example/private-token", "https://localhost/private-token", "https://127.0.0.1/private-token", "https://169.254.169.254/private-token", "https://10.0.0.1/private-token", "https://user:private-token@supplier.example/", "https://supplier.example/#private-token"} {
+	httpSource := valid
+	httpSource.ExtractURL = "http://supplier.example:8089/gen?key=private-token"
+	require.NoError(t, ValidateOpenAICodexTicketHarvestSource(httpSource))
+	require.Equal(t, "http://supplier.example:8089/••••", MaskOpenAICodexTicketHarvestExtractURL(httpSource.ExtractURL))
+	for _, raw := range []string{"ftp://supplier.example/private-token", "http://localhost/private-token", "http://127.0.0.1/private-token", "https://localhost/private-token", "https://127.0.0.1/private-token", "https://169.254.169.254/private-token", "https://10.0.0.1/private-token", "https://user:private-token@supplier.example/", "https://supplier.example/#private-token"} {
 		source := valid
 		source.ExtractURL = raw
 		err := ValidateOpenAICodexTicketHarvestSource(source)
@@ -47,7 +51,7 @@ func TestCodexTicketHarvestExtractValidationAndMask(t *testing.T) {
 }
 
 func TestCodexTicketHarvestExtractBatchUsesSafeParserAndSingleFetch(t *testing.T) {
-	source := OpenAICodexTicketHarvestSource{Mode: "extract", ExtractURL: "https://supplier.example/private-path?key=private-token", ExtractProtocol: "socks5h"}
+	source := OpenAICodexTicketHarvestSource{Mode: "extract", ExtractURL: "http://supplier.example:8089/gen?key=private-token&count=10&proto=http&stype=json&sessType=rotating", ExtractProtocol: "socks5h"}
 	for _, tc := range []struct {
 		name       string
 		status     int
@@ -56,6 +60,7 @@ func TestCodexTicketHarvestExtractBatchUsesSafeParserAndSingleFetch(t *testing.T
 		want       []string
 	}{
 		{name: "多行去重", status: 200, body: "8.8.8.8:8080\r\n8.8.4.4:1080\n8.8.8.8:8080\n", want: []string{"socks5h://8.8.8.8:8080", "socks5h://8.8.4.4:1080"}},
+		{name: "JSON列表", status: 200, body: `{"code":200,"success":"success","data":[{"ip":"8.8.8.8","port":8080}]}`, want: []string{"socks5h://8.8.8.8:8080"}},
 		{name: "保留完整认证代理", status: 200, body: "http://user:private-password@8.8.8.8:8080\n", want: []string{"http://user:private-password@8.8.8.8:8080"}},
 		{name: "私网拒绝整批", status: 200, body: "8.8.8.8:8080\n127.0.0.1:80"},
 		{name: "空批", status: 200, body: "\r\n"},
@@ -71,7 +76,7 @@ func TestCodexTicketHarvestExtractBatchUsesSafeParserAndSingleFetch(t *testing.T
 			client.Transport = codexTicketExtractRoundTripper(func(req *http.Request) (*http.Response, error) {
 				calls++
 				require.Equal(t, source.ExtractURL, req.URL.String())
-				require.Equal(t, "text/plain", req.Header.Get("Accept"))
+				require.Equal(t, "text/plain, application/json", req.Header.Get("Accept"))
 				deadline, ok := req.Context().Deadline()
 				require.True(t, ok)
 				require.LessOrEqual(t, time.Until(deadline), 20*time.Second)

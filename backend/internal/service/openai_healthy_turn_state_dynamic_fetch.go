@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -79,9 +80,18 @@ func parseHealthyDynamicProxyBatch(body []byte, protocol string) ([]string, erro
 			return nil, newHealthyDynamicPublicError(fmt.Sprintf("服务器出口 IP %s 未加入供应商白名单，请在当前产品的 API 白名单中添加", ip.String()))
 		}
 	}
+	lines := strings.Split(strings.TrimPrefix(string(body), "\ufeff"), "\n")
+	trimmed := strings.TrimSpace(strings.TrimPrefix(string(body), "\ufeff"))
+	if strings.HasPrefix(trimmed, "{") {
+		var err error
+		lines, err = parseHealthyDynamicProxyJSON([]byte(trimmed))
+		if err != nil {
+			return nil, err
+		}
+	}
 	var proxies []string
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(strings.TrimPrefix(string(body), "\ufeff"), "\n") {
+	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -95,6 +105,42 @@ func parseHealthyDynamicProxyBatch(body []byte, protocol string) ([]string, erro
 		}
 	}
 	return proxies, nil
+}
+
+// 兼容已核实的 BestGo JSON 格式；供应商消息与原始解析错误均不得直接回显。
+func parseHealthyDynamicProxyJSON(body []byte) ([]string, error) {
+	var batch struct {
+		Code    int    `json:"code"`
+		Success string `json:"success"`
+		Message string `json:"msg"`
+		Error   string `json:"error"`
+		Data    []struct {
+			IP   string `json:"ip"`
+			Port int    `json:"port"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &batch); err != nil {
+		return nil, newHealthyDynamicPublicError("代理提取 JSON 格式无效")
+	}
+	if batch.Code != 200 || batch.Success != "success" {
+		if batch.Message == "IP Whitelist Check Failed" || batch.Error == "IP Whitelist Check Failed" {
+			return nil, newHealthyDynamicPublicError("服务器出口 IP 未加入供应商白名单，请在当前产品的 API 白名单中添加")
+		}
+		return nil, newHealthyDynamicPublicError("代理提取 JSON 返回无效或未成功，请检查供应商接口配置")
+	}
+	if batch.Data == nil {
+		return nil, newHealthyDynamicPublicError("代理提取 JSON 缺少有效的 data 列表")
+	}
+	lines := make([]string, 0, len(batch.Data))
+	for _, entry := range batch.Data {
+		// 拼接前验证字段，拒绝将 ip 中夹带的协议或认证内容解释为代理地址。
+		ip := net.ParseIP(entry.IP)
+		if !healthyDynamicPublicIP(ip) || entry.Port < 1 || entry.Port > 65535 {
+			return nil, newHealthyDynamicPublicError("提取结果包含无效或非公网的代理入口")
+		}
+		lines = append(lines, net.JoinHostPort(ip.String(), strconv.Itoa(entry.Port)))
+	}
+	return lines, nil
 }
 
 func newHealthyDynamicFetchClient() *http.Client {
@@ -122,7 +168,7 @@ func fetchHealthyDynamicProxyBatchWithClient(ctx context.Context, input HealthyT
 	if err != nil {
 		return nil, newHealthyDynamicPublicError("无法构造代理提取请求")
 	}
-	req.Header.Set("Accept", "text/plain")
+	req.Header.Set("Accept", "text/plain, application/json")
 	response, err := client.Do(req)
 	if response != nil && response.Body != nil {
 		defer response.Body.Close()

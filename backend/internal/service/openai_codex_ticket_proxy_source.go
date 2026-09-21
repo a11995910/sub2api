@@ -41,7 +41,7 @@ func normalizeOpenAICodexTicketHarvestSource(source OpenAICodexTicketHarvestSour
 
 func ValidateOpenAICodexTicketHarvestSource(source OpenAICodexTicketHarvestSource) error {
 	source = normalizeOpenAICodexTicketHarvestSource(source)
-	invalid := infraerrors.BadRequest("INVALID_CODEX_TICKET_HARVEST_SOURCE", "请选择固定代理或批量提取，并填写有效的 HTTPS 提取接口及代理协议")
+	invalid := infraerrors.BadRequest("INVALID_CODEX_TICKET_HARVEST_SOURCE", "请选择固定代理或批量提取，并填写有效的 HTTP／HTTPS 提取接口及代理协议")
 	if source.Mode != OpenAICodexTicketHarvestProxyMode && source.Mode != OpenAICodexTicketHarvestExtractMode {
 		return invalid
 	}
@@ -64,7 +64,7 @@ func MaskOpenAICodexTicketHarvestExtractURL(raw string) string {
 		return ""
 	}
 	parsed, _ := url.Parse(raw)
-	return "https://" + parsed.Host + "/••••"
+	return parsed.Scheme + "://" + parsed.Host + "/••••"
 }
 
 func (s *OpenAIGatewayService) openAICodexTicketHarvestSource(ctx context.Context) OpenAICodexTicketHarvestSource {
