@@ -190,12 +190,25 @@ func (s *OpenAIGatewayService) openAICodexTicketHarvestProxyURLContext(ctx conte
 	return strings.TrimSpace(s.openAICodexTicketConfig().HarvestProxyURL)
 }
 
+// 标准门票兼容 292 和 332 字符；显式配置其他长度时仍按配置精确校验。
+// 采集、调度、状态展示和请求绑定必须使用同一套格式规则。
+func validOpenAICodexTicketState(state string, targetLen int) bool {
+	if targetLen <= 0 {
+		targetLen = 292
+	}
+	lengthOK := len(state) == targetLen
+	if targetLen == 292 || targetLen == 332 {
+		lengthOK = len(state) == 292 || len(state) == 332
+	}
+	return lengthOK && strings.HasPrefix(state, openAICodexTicketStatePrefix)
+}
+
 func (t *openAICodexTicket) valid(now time.Time, targetLen int) bool {
 	if t == nil || t.Invalidated || t.ProxyURL == "" || ValidateOpenAICodexTicketHarvestProxyURL(t.ProxyURL) != nil {
 		return false
 	}
 	state := strings.TrimSpace(t.State)
-	if len(state) != targetLen || t.Length != targetLen || !strings.HasPrefix(state, openAICodexTicketStatePrefix) {
+	if t.Length != len(state) || !validOpenAICodexTicketState(state, targetLen) {
 		return false
 	}
 	if t.ExpiresAt.IsZero() || !now.Before(t.ExpiresAt) {
@@ -627,7 +640,7 @@ func (s *OpenAIGatewayService) probeOpenAICodexTicketWithProxies(ctx context.Con
 				logger.L().Info("openai_codex_ticket probe miss", zap.Int64("account_id", account.ID), zap.String("model", model), zap.String("reason", result))
 				continue
 			}
-			if status != http.StatusOK || state == "" || len(state) != cfg.TargetLength || !strings.HasPrefix(state, openAICodexTicketStatePrefix) {
+			if status != http.StatusOK || !validOpenAICodexTicketState(state, cfg.TargetLength) {
 				result = classifyOpenAICodexTicketProbeResponse(status)
 				logger.L().Info("openai_codex_ticket probe miss", zap.Int64("account_id", account.ID), zap.String("model", model), zap.Int("http", status), zap.Int("len", len(state)))
 				continue

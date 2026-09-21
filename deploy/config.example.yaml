@@ -339,7 +339,7 @@ gateway:
   # 只验 HTTP 200、长度和前缀，拿到头即关闭，不验证完整模型输出。
   openai_codex_ticket:
     enabled: false
-    target_length: 292
+    target_length: 292 # 292 或 332 均兼容两种长度；其他值仅接受指定长度
     ttl_seconds: 3600
     refresh_before_seconds: 600 # 仅保留配置兼容，不再提前换票或换出口
     harvest_proxy_url: ""

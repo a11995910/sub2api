@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,39 +20,51 @@ func boundTicket(model, proxy string) *openAICodexTicket {
 }
 
 func TestCodexTicketBindingHarvestPersistsSuccessfulProxyAndRoutesAfterRestart(t *testing.T) {
-	upstream := &httpUpstreamRecorder{responses: []*http.Response{
-		{StatusCode: 403, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(""))},
-		codexTicketResponse(),
-	}}
-	cfg := config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, HarvestProxyURL: "http://192.0.2.1:8080"}
-	svc := ticketTestService(t, cfg, upstream)
-	account := ticketTestAccount(41)
-	account.Status = StatusActive
-	repo := &codexTicketRefreshRepo{accounts: []Account{*account}}
-	svc.accountRepo = repo
-	source := svc.openAICodexTicketHarvestSource(context.Background())
-	svc.probeOpenAICodexTicketWithProxies(context.Background(), account, "gpt-6-astra", []string{cfg.HarvestProxyURL, "http://192.0.2.2:8080"}, source)
-	ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
-	require.NotNil(t, ticket)
-	require.Equal(t, "http://192.0.2.2:8080", ticket.ProxyURL)
-	require.Equal(t, ticket.ProxyURL, upstream.lastProxyURL)
+	for _, length := range []int{292, 332} {
+		t.Run(strconv.Itoa(length), func(t *testing.T) {
+			response := codexTicketResponse()
+			response.Header.Set(openAICodexTurnStateHeader, fakeCodexTicketState(length))
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: 403, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(""))},
+				response,
+			}}
+			cfg := config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, HarvestProxyURL: "http://192.0.2.1:8080"}
+			svc := ticketTestService(t, cfg, upstream)
+			account := ticketTestAccount(41)
+			account.Status = StatusActive
+			repo := &codexTicketRefreshRepo{accounts: []Account{*account}}
+			svc.accountRepo = repo
+			source := svc.openAICodexTicketHarvestSource(context.Background())
+			svc.probeOpenAICodexTicketWithProxies(context.Background(), account, "gpt-6-astra", []string{cfg.HarvestProxyURL, "http://192.0.2.2:8080"}, source)
+			ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
+			require.NotNil(t, ticket)
+			require.Equal(t, length, ticket.Length)
+			require.Equal(t, "http://192.0.2.2:8080", ticket.ProxyURL)
+			require.Equal(t, ticket.ProxyURL, upstream.lastProxyURL)
 
-	// 用真实 JSON 往返模拟数据库与进程重启，不沿用原内存缓存。
-	encoded, err := json.Marshal(repo.updates)
-	require.NoError(t, err)
-	var persisted map[string]any
-	require.NoError(t, json.Unmarshal(encoded, &persisted))
-	account.Extra[openAICodexTicketExtraKey(ticket.Model)] = persisted[openAICodexTicketExtraKey(ticket.Model)]
-	business := &httpUpstreamRecorder{responses: []*http.Response{codexTicketResponse()}}
-	restarted := ticketTestService(t, cfg, business)
-	req, err := http.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", strings.NewReader(`{"model":"gpt-6-astra"}`))
-	require.NoError(t, err)
-	require.NoError(t, restarted.bindOpenAICodexTicketRequest(req, account, ticket.Model))
-	resp, err := restarted.doOpenAIUpstream(req, "http://192.0.2.99:8080", account)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, ticket.ProxyURL, business.lastProxyURL)
-	require.Equal(t, ticket.State, business.requests[0].Header.Get(openAICodexTurnStateHeader))
+			// 用真实 JSON 往返模拟数据库与进程重启，不沿用原内存缓存。
+			encoded, err := json.Marshal(repo.updates)
+			require.NoError(t, err)
+			var persisted map[string]any
+			require.NoError(t, json.Unmarshal(encoded, &persisted))
+			account.Extra[openAICodexTicketExtraKey(ticket.Model)] = persisted[openAICodexTicketExtraKey(ticket.Model)]
+			business := &httpUpstreamRecorder{responses: []*http.Response{codexTicketResponse()}}
+			restarted := ticketTestService(t, cfg, business)
+			require.False(t, restarted.openAICodexTicketBlocksAccount(account, ticket.Model))
+			status := restarted.OpenAICodexTicketStatuses(context.Background(), account, time.Now())[0]
+			require.True(t, status.Ready)
+			require.False(t, status.Blocked)
+			require.Equal(t, length, status.Length)
+			req, err := http.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", strings.NewReader(`{"model":"gpt-6-astra"}`))
+			require.NoError(t, err)
+			require.NoError(t, restarted.bindOpenAICodexTicketRequest(req, account, ticket.Model))
+			resp, err := restarted.doOpenAIUpstream(req, "http://192.0.2.99:8080", account)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, ticket.ProxyURL, business.lastProxyURL)
+			require.Equal(t, ticket.State, business.requests[0].Header.Get(openAICodexTurnStateHeader))
+		})
+	}
 }
 
 func TestCodexTicketBindingUsesAtomicSnapshotAndModelIsolation(t *testing.T) {

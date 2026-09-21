@@ -703,7 +703,7 @@ export default {
           off: '关闭本账号的额外状态头采集与注入。客户端原有状态头仍按协议处理。',
           healthy_retry: '遇到 429／503 或响应模型不一致时，领取同账号同模型的健康头补试。采集需完整健康响应；失败头会淘汰。',
           healthy_preflight: '首次请求即领取同账号同模型的健康头注入。健康头经过完整响应验证，并以租约避免并发重复领取。',
-          codex_ticket: '按账号与模型绑定 292 门票和成功采集代理，业务请求持续走该代理直至失效。请在系统设置 → Codex 设置开启总开关并配置固定或粘性 IP 采集来源。'
+          codex_ticket: '兼容 292／332 字符门票，按账号与模型绑定门票和成功采集代理，业务请求持续走该代理直至失效。请在系统设置 → Codex 设置开启总开关并配置固定或粘性 IP 采集来源。'
         },
         healthyTurnStateFailClosed: '无健康头时暂停该模型',
         healthyTurnStateFailClosedHint: '默认开启：没有可领取的健康头时，暂停本账号该模型的调度。关闭后继续原请求。',
@@ -724,7 +724,7 @@ export default {
         codexTicketWaiting: 'Waiting for collection scheduling; the next round starts about {seconds} seconds after this round finishes',
         codexTicketRefreshDue: '到期后重新采集：{time}',
         codexTicketResults: {
-          success: 'Ticket collected', invalid_format: 'No valid 292 ticket received', auth_failed: 'Authentication failed',
+          success: 'Ticket collected', invalid_format: '未取得有效 292／332 门票', auth_failed: 'Authentication failed',
           proxy_error: 'Proxy connection or authentication failed', request_timeout: 'Collection request timed out', upstream_error: 'Upstream request failed',
           canceled: 'Collection canceled', proxy_extract_failed: 'Proxy extraction failed'
         },

@@ -404,7 +404,7 @@ func TestOpenAICodexTicketStatuses_RespectRuntimeConfiguration(t *testing.T) {
 	require.True(t, OpenAICodexTicketStatuses(account, cfg, time.Now())[0].Blocked)
 }
 func TestProbeOpenAICodexTicket_RejectsInvalidState(t *testing.T) {
-	for _, state := range []string{fakeCodexTicketState(312), strings.Repeat("X", 292), ""} {
+	for _, state := range []string{fakeCodexTicketState(312), fakeCodexTicketState(356), strings.Repeat("X", 292), strings.Repeat("X", 332), ""} {
 		h := http.Header{}
 		h.Set(openAICodexTurnStateHeader, state)
 		upstream := &httpUpstreamRecorder{responses: []*http.Response{{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(""))}}}
@@ -417,9 +417,34 @@ func TestProbeOpenAICodexTicket_RejectsInvalidState(t *testing.T) {
 func TestOpenAICodexTicket_RequiresActualLengthAndExpiry(t *testing.T) {
 	ticket := &openAICodexTicket{ProxyURL: "http://192.0.2.10:8080", State: fakeCodexTicketState(312), Length: 292, ExpiresAt: time.Now().Add(time.Hour)}
 	require.False(t, ticket.valid(time.Now(), 292))
+	ticket.State = fakeCodexTicketState(332)
+	require.False(t, ticket.valid(time.Now(), 292), "记录长度必须与实际长度一致")
 	ticket.State = fakeCodexTicketState(292)
 	ticket.ExpiresAt = time.Time{}
 	require.False(t, ticket.valid(time.Now(), 292))
+}
+
+func TestCodexTicketCompatibleLengthsRespectConfiguration(t *testing.T) {
+	for _, target := range []int{0, 292, 332, 312} {
+		for _, length := range []int{292, 312, 332, 356} {
+			want := length == 292 || length == 332
+			if target == 312 {
+				want = length == 312
+			}
+			ticket := &openAICodexTicket{ProxyURL: "http://192.0.2.10:8080", State: fakeCodexTicketState(length), Length: length, ExpiresAt: time.Now().Add(time.Hour)}
+			require.Equal(t, want, ticket.valid(time.Now(), target), "配置=%d，实际长度=%d", target, length)
+		}
+	}
+}
+
+func TestProbeCodexTicket332RequiresHTTP200(t *testing.T) {
+	response := codexTicketResponse()
+	response.StatusCode = http.StatusForbidden
+	response.Header.Set(openAICodexTurnStateHeader, fakeCodexTicketState(332))
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "http://192.0.2.10:8080"}, &httpUpstreamRecorder{responses: []*http.Response{response}})
+	account := ticketTestAccount(41)
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
 }
 
 // /responses/compact 的出站模型被 Forward 改写为 gateway.openai_compact_model
