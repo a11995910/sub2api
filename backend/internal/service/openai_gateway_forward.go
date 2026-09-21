@@ -1483,6 +1483,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if err := s.bindOpenAICodexTicketRequest(req, account, extractOpenAICodexTicketModel(body)); err != nil {
 		return nil, err
 	}
+	s.observeOpenAICodexTicketRequestModel(c, req, account)
 	if account.UsesOpenAICodexProtocol() {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
@@ -1559,7 +1560,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http", req.Header, body, "not_applicable")
 
-	return s.prepareOpenAIHealthyTurnStateRequest(c, account, req, gjson.GetBytes(body, "model").String()), nil
+	return req, nil
 }
 
 // codexIdentityOverrideUA 返回账号级显式配置的出站 User-Agent，供强制统一身份时作为覆写来源。

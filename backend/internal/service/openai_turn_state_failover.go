@@ -15,9 +15,6 @@ func (e *UpstreamFailoverError) OpenAITurnStateClientError() (code, message stri
 	if e == nil || e.Reason != openAITurnStateUnavailableReason {
 		return "", "", false
 	}
-	if e.ClientMessage == ErrOpenAIHealthyTurnStateBudgetExhausted.Error() {
-		return "turn_state_budget_exhausted", ErrOpenAIHealthyTurnStateBudgetExhausted.Error(), true
-	}
 	return "turn_state_unavailable", openAITurnStateUnavailableMessage, true
 }
 
@@ -39,9 +36,6 @@ func wrapOpenAITurnStateUnavailable(err error) error {
 		return err
 	}
 	code, message := "turn_state_unavailable", openAITurnStateUnavailableMessage
-	if errors.Is(err, ErrOpenAIHealthyTurnStateBudgetExhausted) {
-		code, message = "turn_state_budget_exhausted", ErrOpenAIHealthyTurnStateBudgetExhausted.Error()
-	}
 	body, _ := json.Marshal(map[string]any{"error": map[string]string{"type": "server_error", "code": code, "message": message}})
 	return &openAITurnStateFailoverError{cause: err, failover: &UpstreamFailoverError{
 		StatusCode:        http.StatusServiceUnavailable,

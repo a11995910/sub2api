@@ -14,6 +14,7 @@
         <span v-else-if="ticket.blocked" class="text-amber-700 dark:text-amber-400">{{ t(`${prefix}.codexTurnTicketPaused`) }}</span>
         <span v-else class="text-gray-600 dark:text-gray-400">{{ t(`${prefix}.codexTurnTicketMissing`) }}</span>
       </div>
+      <p v-if="!ticket.ready && ticket.invalid_reason" class="text-amber-700 dark:text-amber-400" data-testid="codex-ticket-invalid-reason">{{ t(`${prefix}.codexTicketInvalidReasons.${ticket.invalid_reason}`) }}</p>
       <p v-if="ticket.harvest_status === 'collecting'" class="text-primary-700 dark:text-primary-300" data-testid="codex-ticket-collecting">
         {{ t(`${prefix}.codexTicketCollecting`) }}<span v-if="(ticket.attempt_total ?? 0) > 1 && (ticket.attempt_index ?? 0) > 0"> · {{ t(`${prefix}.codexTicketProgress`, { index: ticket.attempt_index, total: ticket.attempt_total }) }}</span>
       </p>

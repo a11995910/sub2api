@@ -1123,7 +1123,8 @@ func TestForwardAsRawChatCompletions_UpstreamRequestIgnoresClientCancel(t *testi
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
-	require.NoError(t, upstream.lastReq.Context().Err())
+	require.NoError(t, upstream.requestContextErr, "客户端取消不影响上游请求")
+	require.ErrorIs(t, upstream.lastReq.Context().Err(), context.Canceled, "响应关闭后释放上游上下文")
 }
 
 func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedChatURL(t *testing.T) {

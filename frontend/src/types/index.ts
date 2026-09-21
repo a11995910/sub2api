@@ -1241,7 +1241,7 @@ export interface OllamaCloudUsageSettings {
   debounce_minutes: number
 }
 
-export type OpenAITurnStateMode = 'off' | 'healthy_retry' | 'healthy_preflight' | 'codex_ticket'
+export type OpenAITurnStateMode = 'off' | 'codex_ticket'
 
 export interface OpenAICodexTicketStatus {
   model: string
@@ -1252,7 +1252,8 @@ export interface OpenAICodexTicketStatus {
   expires_at?: string
   harvest_status?: 'collecting' | 'waiting' | 'ready' | 'paused'
   last_attempt_at?: string
-  last_result?: 'success' | 'invalid_format' | 'auth_failed' | 'proxy_error' | 'request_timeout' | 'upstream_error' | 'canceled' | 'proxy_extract_failed'
+  invalid_reason?: 'model_mismatch' | 'upstream_failure'
+  last_result?: 'model_mismatch' | 'response_unverified' | 'success' | 'invalid_format' | 'auth_failed' | 'proxy_error' | 'request_timeout' | 'upstream_error' | 'canceled' | 'proxy_extract_failed'
   last_http_status?: number
   next_attempt_at?: string
   refresh_due_at?: string
@@ -1280,8 +1281,6 @@ export interface Account {
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     openai_turn_state_mode?: OpenAITurnStateMode
-    openai_healthy_turn_state_replace?: boolean
-    openai_healthy_turn_state_fail_closed?: boolean
     openai_codex_ticket_fail_closed?: boolean
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>

@@ -4,7 +4,9 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +31,8 @@ func newUnrestrictedAccountTest() (*AccountTestService, *unrestrictedAccountTest
 		Credentials: map[string]any{"access_token": "test-token"}}
 	setAccountModelRateLimitSnapshot(account, "gpt-5.4", until, "429", time.Now())
 	repo := &unrestrictedAccountTestRepo{rateLimitClearRepoStub: rateLimitClearRepoStub{getByIDAccount: account}}
-	response := healthyTurnStateResponse(http.StatusOK, "", healthyTurnStateSSE())
+	response := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader("data: " + `{"type":"response.output_text.delta","delta":"测试输出"}` + "\n\ndata: " + `{"type":"response.completed","response":{"status":"completed"}}` + "\n\n"))}
 	response.Header.Set("x-codex-primary-used-percent", "20")
 	response.Header.Set("x-codex-primary-reset-after-seconds", "120")
 	response.Header.Set("x-codex-primary-window-minutes", "300")

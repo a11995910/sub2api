@@ -249,10 +249,10 @@ type SystemSettings struct {
 	BackendModeEnabled bool
 
 	// Gateway forwarding behavior
-	OpenAICodexTicketEnabled                bool   // 292 门票实验总开关
+	OpenAICodexTicketEnabled                bool   // 292/332 门票实验总开关
 	OpenAICodexTicketHarvestProxyURL        string // 独立采集代理，空值回退启动配置
 	OpenAICodexTicketHarvestProxyMode       string // proxy 固定入口；extract 批量提取
-	OpenAICodexTicketHarvestExtractURL      string // 独立 292 提取接口，响应只显示供应商主机
+	OpenAICodexTicketHarvestExtractURL      string // 独立 292/332 提取接口，响应只显示供应商主机
 	OpenAICodexTicketHarvestExtractProtocol string // 提取结果省略协议时使用的协议
 	OpenAITTFTMode                          string // Responses first_token_ms 统计口径（默认 semantic）
 	EnableFingerprintUnification            bool   // 是否统一 OAuth 账号的指纹头（默认 true）

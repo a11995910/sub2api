@@ -29,7 +29,6 @@ func TestTurnStateFailoverExhaustionPreserves503AcrossEntrypoints(t *testing.T) 
 	gin.SetMode(gin.TestMode)
 	for _, failure := range []struct{ name, code, message string }{
 		{"库存不足", "turn_state_unavailable", "当前账号模型暂时没有可用状态头，请稍后重试"},
-		{"预算耗尽", "turn_state_budget_exhausted", service.ErrOpenAIHealthyTurnStateBudgetExhausted.Error()},
 	} {
 		t.Run(failure.name, func(t *testing.T) {
 			for _, entry := range []struct {
@@ -85,7 +84,7 @@ func TestTurnStateFailoverAfterHeartbeatPreservesTerminalErrorAndOps503(t *testi
 			require.NoError(t, err)
 			recordGatewayStreamHeartbeat(c, written)
 			c.Writer.Flush()
-			message := service.ErrOpenAIHealthyTurnStateBudgetExhausted.Error()
+			message := "当前账号模型暂时没有可用状态头，请稍后重试"
 			entry.handle(c, localTurnStateFailover(message), true)
 			require.Equal(t, http.StatusOK, recorder.Code)
 			require.True(t, strings.HasPrefix(recorder.Body.String(), heartbeat))
@@ -117,7 +116,7 @@ func TestTurnStateFailoverDoesNotDuplicateCommittedChatOrResponses(t *testing.T)
 			_, err := c.Writer.WriteString(entry.payload)
 			require.NoError(t, err)
 			c.Writer.Flush()
-			entry.handle(c, localTurnStateFailover(service.ErrOpenAIHealthyTurnStateBudgetExhausted.Error()), true)
+			entry.handle(c, localTurnStateFailover("当前账号模型暂时没有可用状态头，请稍后重试"), true)
 			require.Equal(t, entry.payload, recorder.Body.String())
 		})
 	}
@@ -127,12 +126,12 @@ func TestTurnStateWebSocketFailoverRetainsLocalReason(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	message := service.ErrOpenAIHealthyTurnStateBudgetExhausted.Error()
+	message := "当前账号模型暂时没有可用状态头，请稍后重试"
 	closeOpenAIWSFailoverExhausted(c, nil, localTurnStateFailover(message))
 	streamErr, ok := service.GetOpsStreamError(c)
 	require.True(t, ok)
 	require.Equal(t, http.StatusServiceUnavailable, streamErr.IntendedStatus)
 	require.Equal(t, "server_error", streamErr.ErrType)
-	require.Equal(t, "turn_state_budget_exhausted", streamErr.Code)
+	require.Equal(t, "turn_state_unavailable", streamErr.Code)
 	require.Equal(t, message, streamErr.Message)
 }

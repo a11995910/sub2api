@@ -2277,9 +2277,9 @@
         </div>
       </div>
 
-      <!-- 一个账号只选择一种状态头策略，避免两套采集与注入同时生效。 -->
+      <!-- 账号可关闭或启用 292/332 门票策略。 -->
       <div
-        v-if="isOpenAIHealthyTurnStateAccount"
+        v-if="isOpenAITurnStateAccount"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -2296,13 +2296,6 @@
             {{ t(`admin.accounts.openai.turnStateModeHints.${turnStateMode}`) }}
           </p>
         </div>
-        <div v-if="turnStateMode === 'healthy_preflight'" class="flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <label for="edit-healthy-turn-state-fail-closed" class="input-label mb-0">{{ t('admin.accounts.openai.healthyTurnStateFailClosed') }}</label>
-            <p id="edit-healthy-turn-state-fail-closed-hint" class="mt-1 text-xs text-gray-600 dark:text-gray-400">{{ t('admin.accounts.openai.healthyTurnStateFailClosedHint') }}</p>
-          </div>
-          <Toggle id="edit-healthy-turn-state-fail-closed" v-model="healthyTurnStateFailClosed" :disabled="submitting" :aria-label="t('admin.accounts.openai.healthyTurnStateFailClosed')" aria-describedby="edit-healthy-turn-state-fail-closed-hint" />
-        </div>
         <template v-if="turnStateMode === 'codex_ticket'">
           <div class="flex items-center justify-between gap-4">
             <div class="min-w-0">
@@ -2314,14 +2307,6 @@
           <OpenAICodexTicketStatus :tickets="account?.codex_turn_tickets ?? []" :account-id="account?.id" :active="show" />
         </template>
       </div>
-
-      <OpenAIHealthyTurnStateTest
-        v-if="account && isOpenAIHealthyTurnStateAccount && healthyTurnStateReplace"
-        ref="healthyTurnStateSettings"
-        :account-id="account.id"
-        :active="show"
-        :disabled="submitting"
-      />
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
@@ -3115,9 +3100,8 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import VideoRequestProfileSelect from './VideoRequestProfileSelect.vue'
-import OpenAIHealthyTurnStateTest from './OpenAIHealthyTurnStateTest.vue'
 import OpenAICodexTicketStatus from './OpenAICodexTicketStatus.vue'
-import { isHealthyTurnStateMode, resolveOpenAITurnStateMode } from '@/utils/openaiTurnState'
+import { resolveOpenAITurnStateMode } from '@/utils/openaiTurnState'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -3608,13 +3592,10 @@ const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const requestIntegrityMode = ref<'observe' | 'off'>('observe')
-const healthyTurnStateSettings = ref<InstanceType<typeof OpenAIHealthyTurnStateTest> | null>(null)
 const turnStateMode = ref<OpenAITurnStateMode>('off')
-const healthyTurnStateReplace = computed(() => isHealthyTurnStateMode(turnStateMode.value))
-const healthyTurnStateFailClosed = ref(true)
 const codexTicketFailClosed = ref(true)
-const turnStateModeOptions = computed(() => (['off', 'healthy_retry', 'healthy_preflight', 'codex_ticket'] as const).map(value => ({ value, label: t(`admin.accounts.openai.turnStateModes.${value}`) })))
-const isOpenAIHealthyTurnStateAccount = computed(() => props.account?.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token'))
+const turnStateModeOptions = computed(() => (['off', 'codex_ticket'] as const).map(value => ({ value, label: t(`admin.accounts.openai.turnStateModes.${value}`) })))
+const isOpenAITurnStateAccount = computed(() => props.account?.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token'))
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -4103,7 +4084,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexFingerprintMode.value = 'off'
   requestIntegrityMode.value = newAccount.platform === 'openai' && extra?.request_integrity_mode === 'off' ? 'off' : 'observe'
   turnStateMode.value = resolveOpenAITurnStateMode(extra)
-  healthyTurnStateFailClosed.value = extra?.openai_healthy_turn_state_fail_closed !== false
   codexTicketFailClosed.value = extra?.openai_codex_ticket_fail_closed !== false
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
@@ -5027,16 +5007,7 @@ const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Ac
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
-  let healthyConfigSaved = false
   try {
-    if (isOpenAIHealthyTurnStateAccount.value && healthyTurnStateReplace.value) {
-      const settings = healthyTurnStateSettings.value
-      const allowUnchanged = isHealthyTurnStateMode(resolveOpenAITurnStateMode(props.account?.extra))
-      const needsSave = !allowUnchanged || settings?.dirty === true
-      const saved = await settings?.saveConfig(allowUnchanged)
-      if (!saved) return
-      healthyConfigSaved = needsSave
-    }
     let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
     updatedAccount = await persistGrokMediaEligibility(accountID, updatedAccount)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
@@ -5053,9 +5024,7 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
       })
       return
     }
-    appStore.showError(healthyConfigSaved
-      ? t('admin.accounts.openai.dynamic.partialSave')
-      : error.message || t('admin.accounts.failedToUpdate'))
+    appStore.showError(error.message || t('admin.accounts.failedToUpdate'))
   } finally {
     submitting.value = false
   }
@@ -5711,9 +5680,8 @@ const handleSubmit = async () => {
       newExtra.request_integrity_mode = requestIntegrityMode.value
       delete newExtra.openai_healthy_turn_state_record
       newExtra.openai_turn_state_mode = turnStateMode.value
-      newExtra.openai_healthy_turn_state_replace = healthyTurnStateReplace.value
-      if (turnStateMode.value === 'healthy_preflight') newExtra.openai_healthy_turn_state_fail_closed = healthyTurnStateFailClosed.value
-      else delete newExtra.openai_healthy_turn_state_fail_closed
+      delete newExtra.openai_healthy_turn_state_replace
+      delete newExtra.openai_healthy_turn_state_fail_closed
       if (turnStateMode.value === 'codex_ticket') newExtra.openai_codex_ticket_fail_closed = codexTicketFailClosed.value
       else delete newExtra.openai_codex_ticket_fail_closed
 

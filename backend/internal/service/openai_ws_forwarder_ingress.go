@@ -872,7 +872,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		applyStagedCodexFingerprintHeaders(c, account, req.Headers)
 		req.PreferredConnID = strings.TrimSpace(preferred)
 		req.ForcePreferredConn = forcePreferredConn
-		req.SkipHealthyPreflight = hasPreviousResponse
+		req.HasPreviousResponse = hasPreviousResponse
 		// dedicated 模式下每次获取均新建连接，避免跨会话复用残留上下文；
 		// 上游读写失败后的重试同样新建，避免再拿到同批陈旧的空闲连接。
 		req.ForceNewConn = dedicatedMode || forceNewConn
@@ -887,8 +887,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				return nil, wrapOpenAITurnStateUnavailable(err)
 			}
 		}
-		// 健康头领取必须使用本轮最终模型，包含分组映射与账号映射，避免握手补试跨模型取用。
-		lease, acquireErr := s.acquireOpenAIWSWithHealthyTurnState(acquireCtx, c, req, upstreamModel)
+		// 门票绑定使用本轮最终模型，包含分组映射与账号映射，避免跨模型复用门票。
+		lease, acquireErr := s.acquireOpenAIWSWithCodexTicket(acquireCtx, req, upstreamModel)
 		acquireCancel()
 		var dialErr *openAIWSDialError
 		if acquireErr != nil && s.isAgentIdentityAccount(ctx, account) && errors.As(acquireErr, &dialErr) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
@@ -1810,7 +1810,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 
 		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize, currentRequestedReasoningEffort, currentIntegrity)
-		// 健康头替换可能重建上游连接，续链绑定必须使用最终连接。
+		// 续链绑定使用最终连接，保持会话与响应的归属一致。
 		if currentConnID := strings.TrimSpace(sessionLease.ConnID()); currentConnID != connID {
 			connID, sessionConnID = currentConnID, currentConnID
 			turnState = strings.TrimSpace(sessionLease.HandshakeHeader(openAIWSTurnStateHeader))

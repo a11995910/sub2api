@@ -560,13 +560,6 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)) {
 		return true
 	}
-	// 健康头仅用于 Responses 推理；compact 不参与，避免错误拦截压缩请求。
-	if !requireCompact && account.OpenAIHealthyTurnStateFailClosed() {
-		outboundModel := s.openAICodexTicketOutboundModel(account, requestedModel, false)
-		if !s.HasOpenAIHealthyTurnState(account, outboundModel) {
-			return true
-		}
-	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {
 		if accountPersistedSchedulingCooldownActive(account) {

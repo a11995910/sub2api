@@ -421,7 +421,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if err := ValidateOpenAICodexTicketExtra(accountExtra); err != nil {
 		return nil, err
 	}
-	if err := ValidateOpenAIHealthyTurnStateExtra(accountExtra); err != nil {
+	if err := validateOpenAITurnStatePolicy(accountExtra); err != nil {
 		return nil, err
 	}
 	accountExtra = RedactOpenAICodexTicketExtra(accountExtra)
@@ -597,7 +597,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := ValidateOpenAICodexTicketExtra(input.Extra); err != nil {
 			return nil, err
 		}
-		if err := ValidateOpenAIHealthyTurnStateExtra(input.Extra); err != nil {
+		if err := validateOpenAITurnStatePolicy(input.Extra); err != nil {
 			return nil, err
 		}
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -933,7 +933,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	if err := ValidateOpenAICodexTicketExtra(updates); err != nil {
 		return err
 	}
-	if err := ValidateOpenAIHealthyTurnStateExtra(updates); err != nil {
+	if err := validateOpenAITurnStatePolicy(updates); err != nil {
 		return err
 	}
 	updates = RedactOpenAICodexTicketExtra(updates)
@@ -969,7 +969,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if err := ValidateOpenAICodexTicketExtra(input.Extra); err != nil {
 		return nil, err
 	}
-	if err := ValidateOpenAIHealthyTurnStateExtra(input.Extra); err != nil {
+	if err := validateOpenAITurnStatePolicy(input.Extra); err != nil {
 		return nil, err
 	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.

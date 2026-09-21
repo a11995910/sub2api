@@ -31,7 +31,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('292 门票采集状态', () => {
+describe('292/332 门票采集状态', () => {
+  it('业务模型不一致后明确显示票据失效，并展示采集模型验证失败', () => {
+    const wrapper = panel({ tickets: [{ ...ticket, invalid_reason: 'model_mismatch', last_result: 'model_mismatch' }] })
+    expect(wrapper.get('[data-testid="codex-ticket-invalid-reason"]').text()).toContain('模型不一致，门票及代理绑定已失效')
+    expect(wrapper.text()).toContain('响应模型不一致，未保存门票')
+    expect(wrapper.text()).toContain('缺少门票，模型已暂停')
+    expect(wrapper.find('.text-emerald-700').exists()).toBe(false)
+  })
+
   it('展示安全结果、批次进度，采集中不显示旧重试时间', () => {
     const wrapper = panel({ tickets: [{ ...ticket, harvest_status: 'collecting', attempt_index: 2, attempt_total: 4, last_result: 'upstream_error', last_http_status: 403, next_attempt_at: '2026-09-20T10:00:00Z' }] })
     expect(wrapper.text()).toContain('缺少门票，模型已暂停')

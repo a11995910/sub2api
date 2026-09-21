@@ -133,17 +133,12 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			return true
 		},
 	}
-	temporaryProxy := IsHealthyTurnStateTemporaryProxy(ctx)
-	if proxy := strings.TrimSpace(proxyURL); proxy != "" || temporaryProxy {
-		proxyClient, err := d.proxyHTTPClientForRequest(proxy, temporaryProxy)
+	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
+		proxyClient, err := d.proxyHTTPClient(proxy)
 		if err != nil {
 			return nil, 0, nil, err
 		}
 		opts.HTTPClient = proxyClient
-		if temporaryProxy {
-			// 升级成功后的 WS 连接由调用方关闭；握手失败也必须释放 HTTP 空闲连接。
-			defer closeOpenAIWSProxyClient(proxyClient)
-		}
 	}
 
 	conn, resp, err := coderws.Dial(ctx, targetURL, opts)
@@ -173,10 +168,6 @@ func (d *coderOpenAIWSClientDialer) Dial(
 }
 
 func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client, error) {
-	return d.proxyHTTPClientForRequest(proxy, false)
-}
-
-func (d *coderOpenAIWSClientDialer) proxyHTTPClientForRequest(proxy string, temporary bool) (*http.Client, error) {
 	if d == nil {
 		return nil, errors.New("openai ws dialer is nil")
 	}
@@ -186,9 +177,6 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClientForRequest(proxy string, temp
 	}
 	if parsedProxyURL == nil {
 		return nil, errors.New("proxy url is empty")
-	}
-	if temporary {
-		return buildOpenAIWSProxyHTTPClient(parsedProxyURL, true)
 	}
 	now := time.Now().UnixNano()
 
@@ -200,7 +188,7 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClientForRequest(proxy string, temp
 		return entry.client, nil
 	}
 	d.cleanupProxyClientsLocked(now)
-	client, err := buildOpenAIWSProxyHTTPClient(parsedProxyURL, false)
+	client, err := buildOpenAIWSProxyHTTPClient(parsedProxyURL)
 	if err != nil {
 		return nil, err
 	}
@@ -213,15 +201,14 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClientForRequest(proxy string, temp
 	return client, nil
 }
 
-// buildOpenAIWSProxyHTTPClient 统一配置代理协议，临时采集不保留握手连接。
-func buildOpenAIWSProxyHTTPClient(proxyURL *url.URL, temporary bool) (*http.Client, error) {
+// buildOpenAIWSProxyHTTPClient 统一配置业务连接的代理协议。
+func buildOpenAIWSProxyHTTPClient(proxyURL *url.URL) (*http.Client, error) {
 	transport := &http.Transport{
 		MaxIdleConns:        openAIWSProxyTransportMaxIdleConns,
 		MaxIdleConnsPerHost: openAIWSProxyTransportMaxIdleConnsPerHost,
 		IdleConnTimeout:     openAIWSProxyTransportIdleConnTimeout,
 		TLSHandshakeTimeout: 10 * time.Second,
 		ForceAttemptHTTP2:   true,
-		DisableKeepAlives:   temporary,
 	}
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err

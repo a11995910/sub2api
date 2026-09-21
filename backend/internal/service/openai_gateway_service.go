@@ -533,7 +533,6 @@ type OpenAIGatewayService struct {
 	openaiCodexTicketStopped     bool
 	openaiCodexTurnStateOrigins  sync.Map
 	openaiCodexTurnStateWrites   atomic.Uint64
-	openaiHealthyTurnStates      openAIHealthyTurnStateCache
 }
 
 func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore) {

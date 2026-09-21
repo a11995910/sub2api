@@ -209,12 +209,12 @@ func TestHarvestOpenAICodexTicket_StopsAt292AndUsesHarvestProxy(t *testing.T) {
 			{
 				StatusCode: http.StatusOK,
 				Header:     header312,
-				Body:       io.NopCloser(strings.NewReader("data: {}\n\n")),
+				Body:       io.NopCloser(strings.NewReader(codexTicketSuccessSSE("gpt-6-astra"))),
 			},
 			{
 				StatusCode: http.StatusOK,
 				Header:     header292,
-				Body:       io.NopCloser(strings.NewReader("data: {}\n\n")),
+				Body:       io.NopCloser(strings.NewReader(codexTicketSuccessSSE("gpt-6-astra"))),
 			},
 		},
 	}
@@ -260,7 +260,7 @@ func TestHarvestOpenAICodexTicket_HTTP503DoesNotAbortHunt(t *testing.T) {
 	responses = append(responses, &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     header292,
-		Body:       io.NopCloser(strings.NewReader("data: {}\n\n")),
+		Body:       io.NopCloser(strings.NewReader(codexTicketSuccessSSE("gpt-6-astra"))),
 	})
 	upstream := &httpUpstreamRecorder{responses: responses}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
@@ -369,7 +369,8 @@ func (u *codexTicketConcurrentUpstream) Do(req *http.Request, _ string, _ int64,
 	}
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, fakeCodexTicketState(292))
-	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader("data: {}\n\n"))}, nil
+	body, _ := io.ReadAll(req.Body)
+	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(codexTicketSuccessSSE(extractOpenAICodexTicketModel(body))))}, nil
 }
 func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *testing.T) {
 	account := ticketTestAccount(41)
@@ -538,7 +539,7 @@ func (r *codexTicketRefreshRepo) GetByID(_ context.Context, id int64) (*Account,
 
 func TestCodexTicketProbeRechecksAccountBeforeSendAndPersist(t *testing.T) {
 	for _, phase := range []string{"发送前", "保存前"} {
-		for _, mode := range []string{OpenAITurnStateOff, OpenAITurnStateHealthyRetry, OpenAITurnStateHealthyPreflight} {
+		for _, mode := range []string{OpenAITurnStateOff, "healthy_retry", "healthy_preflight"} {
 			t.Run(phase+"/"+mode, func(t *testing.T) {
 				account := ticketTestAccount(941)
 				account.Status = StatusActive

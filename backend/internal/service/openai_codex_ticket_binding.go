@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -12,11 +11,32 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
 type openAICodexTicketBindingKey struct{}
+
+// 将模型审计绑定到本次请求使用的票，重试时必须覆盖上一请求的观察回调。
+func (s *OpenAIGatewayService) observeOpenAICodexTicketRequestModel(c *gin.Context, req *http.Request, account *Account) {
+	if c == nil {
+		return
+	}
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+	}
+	observer.codexTicketModelObserved = nil
+	ticket, _ := req.Context().Value(openAICodexTicketBindingKey{}).(*openAICodexTicket)
+	if ticket != nil {
+		observer.codexTicketModelObserved = func(model string) {
+			if mismatch := upstreamModelMismatch(ticket.Model, model); mismatch != nil && *mismatch {
+				s.invalidateOpenAICodexTicket(account, ticket, "model_mismatch")
+			}
+		}
+	}
+}
 
 func (s *OpenAIGatewayService) bindOpenAICodexTicketRequest(req *http.Request, account *Account, model string) error {
 	ticket, err := s.bindOpenAICodexTicket(req.Context(), account, model, req.Header)
@@ -36,7 +56,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBindingUsable(account *Account, 
 }
 
 // 同一代门票与代理共同退休；旧请求的迟到失败不能淘汰新采集的绑定。
-func (s *OpenAIGatewayService) invalidateOpenAICodexTicket(account *Account, ticket *openAICodexTicket) {
+func (s *OpenAIGatewayService) invalidateOpenAICodexTicket(account *Account, ticket *openAICodexTicket, reason string) {
 	if ticket == nil || account == nil {
 		return
 	}
@@ -49,6 +69,7 @@ func (s *OpenAIGatewayService) invalidateOpenAICodexTicket(account *Account, tic
 	}
 	retired := *current
 	retired.Invalidated = true
+	retired.InvalidReason = reason
 	retired.ExpiresAt = time.Now()
 	s.openaiCodexTickets.Store(openAICodexTicketKey(account.ID, ticket.Model), &retired)
 	if s.accountRepo != nil {
@@ -94,56 +115,37 @@ func (s *OpenAIGatewayService) observeOpenAICodexTicketBinding(account *Account,
 	}
 	var once sync.Once
 	return func(ctx context.Context, status int, err error, payload []byte) {
-		if openAICodexTicketBindingFailed(ctx, status, err, payload) {
-			once.Do(func() { s.invalidateOpenAICodexTicket(account, ticket) })
+		reason := ""
+		if codexTicketResponseModelMismatch(ticket.Model, payload) {
+			reason = "model_mismatch"
+		} else if openAICodexTicketBindingFailed(ctx, status, err, payload) {
+			reason = "upstream_failure"
+		}
+		if reason != "" {
+			once.Do(func() { s.invalidateOpenAICodexTicket(account, ticket, reason) })
 		}
 	}
 }
 
-// 只观察有限大小的错误事件，不预读或修改业务响应，不保存正文。
+// 同时观察模型声明和失效错误，不预读或修改业务响应。
 type openAICodexTicketBody struct {
 	io.ReadCloser
-	ctx      context.Context
-	observe  openAICodexTicketObservation
-	line     []byte
-	overflow bool
+	ctx     context.Context
+	observe openAICodexTicketObservation
+	parser  *codexTicketResponseParser
 }
 
 func (b *openAICodexTicketBody) Read(p []byte) (int, error) {
-	n, err := b.ReadCloser.Read(p)
-	remaining := p[:n]
-	for len(remaining) > 0 {
-		end := bytes.IndexByte(remaining, '\n')
-		part := remaining
-		if end >= 0 {
-			part = remaining[:end]
-		}
-		if !b.overflow && len(b.line)+len(part) <= 64<<10 {
-			b.line = append(b.line, part...)
-		} else {
-			b.overflow = true
-			b.line = nil
-		}
-		if end < 0 {
-			break
-		}
-		b.observeLine()
-		remaining = remaining[end+1:]
+	if b.parser == nil {
+		b.parser = &codexTicketResponseParser{observe: func(payload []byte, _ string) { b.observe(b.ctx, 0, nil, payload) }}
 	}
+	n, err := b.ReadCloser.Read(p)
+	b.parser.feed(p[:n])
 	if err != nil {
-		b.observeLine()
+		b.parser.finish()
 		if !errors.Is(err, io.EOF) {
 			b.observe(b.ctx, 0, err, nil)
 		}
 	}
 	return n, err
-}
-
-func (b *openAICodexTicketBody) observeLine() {
-	if !b.overflow {
-		payload := bytes.TrimSpace(b.line)
-		payload = bytes.TrimSpace(bytes.TrimPrefix(payload, []byte("data:")))
-		b.observe(b.ctx, 0, nil, payload)
-	}
-	b.line, b.overflow = b.line[:0], false
 }

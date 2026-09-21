@@ -202,16 +202,16 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, s.openAIWSAcquireTimeout())
 	defer acquireCancel()
 
-	lease, err := s.acquireOpenAIWSWithHealthyTurnState(acquireCtx, c, openAIWSAcquireRequest{
+	lease, err := s.acquireOpenAIWSWithCodexTicket(acquireCtx, openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,
 		Headers: wsHeaders,
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},
-		PreferredConnID:      preferredConnID,
-		ForceNewConn:         forceNewConn,
-		SkipHealthyPreflight: previousResponseID != "",
+		PreferredConnID:     preferredConnID,
+		ForceNewConn:        forceNewConn,
+		HasPreviousResponse: previousResponseID != "",
 		ProxyURL: func() string {
 			if account.ProxyID != nil && account.Proxy != nil {
 				return account.Proxy.URL()

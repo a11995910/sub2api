@@ -278,8 +278,6 @@ func ProvideAccountTestService(
 	openAIGatewayService *OpenAIGatewayService,
 	settingService *SettingService,
 	pluginManager *PluginManager,
-	settingRepo SettingRepository,
-	encryptor SecretEncryptor,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -295,8 +293,6 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
-	service.SetHealthyTurnStateDynamicStorage(settingRepo, encryptor)
-	service.StartHealthyTurnStateMaintenance()
 	return service
 }
 
@@ -1138,7 +1134,7 @@ func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.
 	return aggregator
 }
 
-// 正式依赖注入必须提供数据库仓储，存储故障时不退回内存记录。
+// 统一构造 OpenAI 网关服务。
 func ProvideOpenAIGatewayService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
@@ -1163,9 +1159,7 @@ func ProvideOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
-	store HealthyTurnStateRepository,
 ) *OpenAIGatewayService {
 	svc := NewOpenAIGatewayService(accountRepo, groupRepo, usageLogRepo, usageBillingRepo, userRepo, userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService, settingService, userPlatformQuotaRepo)
-	svc.openaiHealthyTurnStates.repo = store
 	return svc
 }

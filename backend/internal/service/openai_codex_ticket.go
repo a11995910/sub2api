@@ -31,20 +31,21 @@ const (
 	openAICodexTicketDefaultSolModel = "gpt-5.6-sol"
 )
 
-// ErrOpenAICodexTicketUnavailable 表示该号该模型没有可用的 292 门票，
+// ErrOpenAICodexTicketUnavailable 表示该号该模型没有可用的 292/332 门票，
 // 且 fail_closed 禁止裸打业务请求。
 var ErrOpenAICodexTicketUnavailable = errors.New("codex turn-state ticket unavailable")
 
 type openAICodexTicket struct {
-	AccountID   int64     `json:"account_id"`
-	Model       string    `json:"model"`
-	State       string    `json:"state"`
-	Length      int       `json:"length"`
-	CapturedAt  time.Time `json:"captured_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	Attempts    int       `json:"attempts"`
-	ProxyURL    string    `json:"proxy_url"`
-	Invalidated bool      `json:"invalidated,omitempty"`
+	AccountID     int64     `json:"account_id"`
+	Model         string    `json:"model"`
+	State         string    `json:"state"`
+	Length        int       `json:"length"`
+	CapturedAt    time.Time `json:"captured_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	Attempts      int       `json:"attempts"`
+	ProxyURL      string    `json:"proxy_url"`
+	Invalidated   bool      `json:"invalidated,omitempty"`
+	InvalidReason string    `json:"invalid_reason,omitempty"`
 }
 
 func openAICodexTicketKey(accountID int64, model string) string {
@@ -106,6 +107,7 @@ func (s *OpenAIGatewayService) openAICodexTicketGatedModel(model string) bool {
 type OpenAICodexTicketStatus struct {
 	Model                 string     `json:"model"`
 	Length                int        `json:"length,omitempty"`
+	InvalidReason         string     `json:"invalid_reason,omitempty"`
 	Ready                 bool       `json:"ready"`
 	RemainingSeconds      int64      `json:"remaining_seconds"`
 	Blocked               bool       `json:"blocked"`
@@ -144,6 +146,9 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		ticket := parseOpenAICodexTicketFromAny(0, model, nil)
 		if account != nil && account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
+		}
+		if ticket != nil && ticket.Invalidated {
+			status.InvalidReason = ticket.InvalidReason
 		}
 		if ticket.valid(now, targetLen) {
 			status.Ready = true
@@ -408,13 +413,20 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	if resp == nil {
 		return "", 0, errors.New("nil upstream response")
 	}
-	// 只采集响应头，立即关闭流，且不复用连接。
+	// 先取消读取再关闭正文，成功终态之后不等待连接结束。
 	defer func() {
+		cancel()
 		if resp.Body != nil {
 			_ = resp.Body.Close()
 		}
 	}()
-	return extractOpenAICodexTurnState(resp.Header), resp.StatusCode, nil
+	state = extractOpenAICodexTurnState(resp.Header)
+	if resp.StatusCode == http.StatusOK && validOpenAICodexTicketState(state, s.openAICodexTicketConfig().TargetLength) {
+		if err := validateCodexTicketProbeResponse(resp.Body, model); err != nil {
+			return "", resp.StatusCode, err
+		}
+	}
+	return state, resp.StatusCode, nil
 }
 
 func jsonString(v string) string {
@@ -739,7 +751,7 @@ func IsMaskedProxyURL(raw string) bool {
 	return ok && password == "***"
 }
 
-// 凭据影子账号不拥有门票；仅显式选择 292 对照模式的独立账号参与打票和门控。
+// 凭据影子账号不拥有门票；仅显式选择 292/332 门票模式的独立账号参与打票和门控。
 func isOpenAICodexTicketAccount(account *Account) bool {
 	return account != nil && account.IsOpenAIOAuthLike() && !account.IsShadow() && account.OpenAICodexTicketEnabled()
 }
@@ -774,7 +786,7 @@ func openAICodexTicketFailClosed(account *Account, fallback bool) bool {
 func ValidateOpenAICodexTicketExtra(extra map[string]any) error {
 	if raw, exists := extra["openai_codex_ticket_fail_closed"]; exists {
 		if _, ok := raw.(bool); !ok {
-			return infraerrors.BadRequest("INVALID_CODEX_TICKET_SETTING", "292 门票缺票策略必须为布尔值")
+			return infraerrors.BadRequest("INVALID_CODEX_TICKET_SETTING", "292/332 门票缺票策略必须为布尔值")
 		}
 	}
 	return nil

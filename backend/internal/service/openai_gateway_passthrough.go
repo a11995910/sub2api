@@ -639,6 +639,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if err := s.bindOpenAICodexTicketRequest(req, account, extractOpenAICodexTicketModel(body)); err != nil {
 		return nil, err
 	}
+	s.observeOpenAICodexTicketRequestModel(c, req, account)
 
 	// 覆盖入站鉴权残留，并注入上游认证
 	req.Header.Del("authorization")
@@ -736,7 +737,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http_passthrough", req.Header, body, "not_applicable")
 
-	return s.prepareOpenAIHealthyTurnStateRequest(c, account, req, gjson.GetBytes(body, "model").String()), nil
+	return req, nil
 }
 
 func stripOpenAILegacyResponsesBeta(headers http.Header) {

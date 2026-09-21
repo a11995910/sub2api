@@ -15,7 +15,7 @@ const (
 	OpenAICodexTicketHarvestExtractMode = "extract"
 )
 
-var ErrOpenAICodexTicketHarvestSourceUnconfigured = errors.New("292 门票采集来源尚未配置")
+var ErrOpenAICodexTicketHarvestSourceUnconfigured = errors.New("292/332 门票采集来源尚未配置")
 
 // OpenAICodexTicketHarvestSource 仅供服务内部使用，包含供应商凭据，不得直接序列化给客户端。
 type OpenAICodexTicketHarvestSource struct {
@@ -48,7 +48,7 @@ func ValidateOpenAICodexTicketHarvestSource(source OpenAICodexTicketHarvestSourc
 	if source.ExtractProtocol != "http" && source.ExtractProtocol != "https" && source.ExtractProtocol != "socks5h" {
 		return invalid
 	}
-	if source.ExtractURL != "" && validateHealthyDynamicAPIURL(source.ExtractURL) != nil {
+	if source.ExtractURL != "" && validateCodexTicketProxyAPIURL(source.ExtractURL) != nil {
 		return invalid
 	}
 	if source.Mode == OpenAICodexTicketHarvestExtractMode && source.ExtractURL == "" {
@@ -60,7 +60,7 @@ func ValidateOpenAICodexTicketHarvestSource(source OpenAICodexTicketHarvestSourc
 // MaskOpenAICodexTicketHarvestExtractURL 连同路径一起脱敏，供应商密钥可能位于 URL 任意部分。
 func MaskOpenAICodexTicketHarvestExtractURL(raw string) string {
 	raw = strings.TrimSpace(raw)
-	if raw == "" || validateHealthyDynamicAPIURL(raw) != nil {
+	if raw == "" || validateCodexTicketProxyAPIURL(raw) != nil {
 		return ""
 	}
 	parsed, _ := url.Parse(raw)
@@ -101,7 +101,7 @@ func (s *OpenAIGatewayService) resolveOpenAICodexTicketHarvestProxies(ctx contex
 	return []string{source.ProxyURL}, source.Mode, nil
 }
 
-// 复用健康头提取的公网校验、DNS 安全拨号、禁止重定向、20 秒超时与 64KiB 上限。
+// 使用代理提取的公网校验、DNS 安全拨号、禁止重定向、20 秒超时与 64KiB 上限。
 // client 仅供测试注入；生产始终使用独立安全客户端，禁止环境代理。
 func fetchOpenAICodexTicketHarvestProxyBatch(ctx context.Context, source OpenAICodexTicketHarvestSource, client *http.Client) ([]string, error) {
 	source = normalizeOpenAICodexTicketHarvestSource(source)
@@ -111,19 +111,19 @@ func fetchOpenAICodexTicketHarvestProxyBatch(ctx context.Context, source OpenAIC
 	if err := ValidateOpenAICodexTicketHarvestSource(source); err != nil {
 		return nil, err
 	}
-	input := HealthyTurnStateDynamicConfigInput{APIURL: source.ExtractURL, Protocol: source.ExtractProtocol, TargetCount: 1, MaxAttempts: 1}
+	input := codexTicketProxyFetchInput{APIURL: source.ExtractURL, Protocol: source.ExtractProtocol}
 	var proxies []string
 	var err error
 	if client == nil {
-		proxies, err = fetchHealthyDynamicProxyBatch(ctx, input)
+		proxies, err = fetchCodexTicketProxyBatch(ctx, input)
 	} else {
-		proxies, err = fetchHealthyDynamicProxyBatchWithClient(ctx, input, client)
+		proxies, err = fetchCodexTicketProxyBatchWithClient(ctx, input, client)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if len(proxies) == 0 {
-		return nil, newHealthyDynamicPublicError("代理提取接口未返回可用入口")
+		return nil, newCodexTicketProxyPublicError("代理提取接口未返回可用入口")
 	}
 	return proxies, nil
 }

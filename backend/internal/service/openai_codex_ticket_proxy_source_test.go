@@ -66,13 +66,13 @@ func TestCodexTicketHarvestExtractBatchUsesSafeParserAndSingleFetch(t *testing.T
 		{name: "空批", status: 200, body: "\r\n"},
 		{name: "重定向", status: 302, body: "private-token"},
 		{name: "授权失败", status: 403, body: "private-token"},
-		{name: "过大响应", status: 200, body: strings.Repeat(" ", healthyDynamicBatchMaxBytes+1)},
+		{name: "过大响应", status: 200, body: strings.Repeat(" ", codexTicketProxyBatchMaxBytes+1)},
 		{name: "未知格式", status: 200, body: `{"key":"private-token"}`},
 		{name: "网络错误", networkErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			client := newHealthyDynamicFetchClient()
+			client := newCodexTicketProxyFetchClient()
 			client.Transport = codexTicketExtractRoundTripper(func(req *http.Request) (*http.Response, error) {
 				calls++
 				require.Equal(t, source.ExtractURL, req.URL.String())

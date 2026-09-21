@@ -106,6 +106,10 @@ func (s *OpenAIGatewayService) OpenAICodexTicketStatuses(ctx context.Context, ac
 		status.Ready = ticket.valid(now, cfg.TargetLength)
 		status.Blocked = openAICodexTicketFailClosed(account, cfg.FailClosed) && !status.Ready
 		status.Length, status.RemainingSeconds, status.ExpiresAt = 0, 0, nil
+		status.InvalidReason = ""
+		if ticket != nil && ticket.Invalidated {
+			status.InvalidReason = ticket.InvalidReason
+		}
 		needsRefresh := true
 		if status.Ready {
 			status.Length = ticket.Length
@@ -147,6 +151,12 @@ func (s *OpenAIGatewayService) OpenAICodexTicketStatuses(ctx context.Context, ac
 }
 
 func classifyOpenAICodexTicketProbeError(err error) string {
+	if errors.Is(err, errCodexTicketModelMismatch) {
+		return "model_mismatch"
+	}
+	if errors.Is(err, errCodexTicketUnverified) {
+		return "response_unverified"
+	}
 	if errors.Is(err, context.Canceled) {
 		return "canceled"
 	}

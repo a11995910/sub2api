@@ -152,7 +152,6 @@ type AccountTestService struct {
 	modelMetadataRegistryAt   time.Time
 	pluginManager             *PluginManager
 	openaiGatewayService      *OpenAIGatewayService
-	healthyTurnStateDynamic   *healthyTurnStateDynamicService
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style

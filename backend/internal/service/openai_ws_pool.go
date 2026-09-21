@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	coderws "github.com/coder/websocket"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -86,8 +85,8 @@ type openAIWSAcquireRequest struct {
 	ForceNewConn bool
 	// ForcePreferredConn: 强制本次只使用 PreferredConnID，禁止漂移到其它连接。
 	ForcePreferredConn bool
-	// SkipHealthyPreflight: 当前请求含续链状态，不为健康头策略改写握手或换连接。
-	SkipHealthyPreflight bool
+	// HasPreviousResponse 表示请求携带续链状态，保持原连接的归属。
+	HasPreviousResponse bool
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
@@ -106,18 +105,15 @@ type openAIWSHandshakeCompatibilityKey struct {
 }
 
 type openAIWSConnLease struct {
-	healthyModelGate   *openAIHealthyWSModelGate
-	healthyTurnStateMu sync.Mutex
-	healthyTurnState   *openAIHealthyTurnStateObserver
-	pool               *openAIWSConnPool
-	accountID          int64
-	conn               *openAIWSConn
-	queueWait          time.Duration
-	connPick           time.Duration
-	idleBefore         time.Duration
-	ageBefore          time.Duration
-	reused             bool
-	released           atomic.Bool
+	pool       *openAIWSConnPool
+	accountID  int64
+	conn       *openAIWSConn
+	queueWait  time.Duration
+	connPick   time.Duration
+	idleBefore time.Duration
+	ageBefore  time.Duration
+	reused     bool
+	released   atomic.Bool
 }
 
 func (l *openAIWSConnLease) activeConn() (*openAIWSConn, error) {
@@ -214,7 +210,6 @@ func (l *openAIWSConnLease) WriteJSON(value any, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	l.prepareHealthyModelRequest(value)
 	return conn.writeJSONWithTimeout(context.Background(), value, timeout)
 }
 
@@ -223,7 +218,6 @@ func (l *openAIWSConnLease) WriteJSONWithContextTimeout(ctx context.Context, val
 	if err != nil {
 		return err
 	}
-	l.prepareHealthyModelRequest(value)
 	return conn.writeJSONWithTimeout(ctx, value, timeout)
 }
 
@@ -232,68 +226,31 @@ func (l *openAIWSConnLease) WriteJSONContext(ctx context.Context, value any) err
 	if err != nil {
 		return err
 	}
-	l.prepareHealthyModelRequest(value)
 	return conn.writeJSON(value, ctx)
 }
 
 func (l *openAIWSConnLease) ReadMessage(timeout time.Duration) ([]byte, error) {
-	read := func() (coderws.MessageType, []byte, error) {
-		conn, err := l.activeConn()
-		if err != nil {
-			return 0, nil, err
-		}
-		payload, err := conn.readMessageWithTimeout(timeout)
-		return coderws.MessageText, payload, err
+	conn, err := l.activeConn()
+	if err != nil {
+		return nil, err
 	}
-	if l != nil && l.healthyModelGate != nil {
-		_, payload, err := l.healthyModelGate.read(context.Background(), read)
-		return payload, err
-	}
-	_, payload, err := read()
-	if l != nil {
-		l.observeHealthyTurnState(payload, err)
-	}
-	return payload, err
+	return conn.readMessageWithTimeout(timeout)
 }
 
 func (l *openAIWSConnLease) ReadMessageContext(ctx context.Context) ([]byte, error) {
-	read := func() (coderws.MessageType, []byte, error) {
-		conn, err := l.activeConn()
-		if err != nil {
-			return 0, nil, err
-		}
-		payload, err := conn.readMessage(ctx)
-		return coderws.MessageText, payload, err
+	conn, err := l.activeConn()
+	if err != nil {
+		return nil, err
 	}
-	if l != nil && l.healthyModelGate != nil {
-		_, payload, err := l.healthyModelGate.read(ctx, read)
-		return payload, err
-	}
-	_, payload, err := read()
-	if l != nil {
-		l.observeHealthyTurnState(payload, err)
-	}
-	return payload, err
+	return conn.readMessage(ctx)
 }
 
 func (l *openAIWSConnLease) ReadMessageWithContextTimeout(ctx context.Context, timeout time.Duration) ([]byte, error) {
-	read := func() (coderws.MessageType, []byte, error) {
-		conn, err := l.activeConn()
-		if err != nil {
-			return 0, nil, err
-		}
-		payload, err := conn.readMessageWithContextTimeout(ctx, timeout)
-		return coderws.MessageText, payload, err
+	conn, err := l.activeConn()
+	if err != nil {
+		return nil, err
 	}
-	if l != nil && l.healthyModelGate != nil {
-		_, payload, err := l.healthyModelGate.read(ctx, read)
-		return payload, err
-	}
-	_, payload, err := read()
-	if l != nil {
-		l.observeHealthyTurnState(payload, err)
-	}
-	return payload, err
+	return conn.readMessageWithContextTimeout(ctx, timeout)
 }
 
 func (l *openAIWSConnLease) PingWithTimeout(timeout time.Duration) error {
@@ -326,12 +283,6 @@ func (l *openAIWSConnLease) Release() {
 	if !l.released.CompareAndSwap(false, true) {
 		return
 	}
-	if l.healthyModelGate != nil {
-		l.healthyModelGate.finish()
-	}
-	l.healthyTurnStateMu.Lock()
-	l.healthyTurnState.finish()
-	l.healthyTurnStateMu.Unlock()
 	l.conn.release()
 	if l.pool != nil {
 		l.pool.notifyAccountPoolChanged(l.accountID)
@@ -1243,7 +1194,7 @@ retryAcquire:
 
 	// 续链须保留原连接的状态头，票刷新和模式切换不能破坏已有 response 的归属。
 	// 仅忽略新增票维度，原有会话身份和 beta 兼容性仍需满足。
-	if req.codexTicket == nil && allowReuse && (req.SkipHealthyPreflight || req.ForcePreferredConn) && preferredConnID != "" {
+	if req.codexTicket == nil && allowReuse && (req.HasPreviousResponse || req.ForcePreferredConn) && preferredConnID != "" {
 		if preferredConn := ap.conns[preferredConnID]; preferredConn != nil {
 			compatibility.turnStateMode = preferredConn.handshakeCompatibility.turnStateMode
 			compatibility.codexTicketDigest = preferredConn.handshakeCompatibility.codexTicketDigest

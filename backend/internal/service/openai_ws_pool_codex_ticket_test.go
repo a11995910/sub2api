@@ -78,7 +78,7 @@ func TestOpenAIWSConnPool_CodexTicketContinuationPreservesOriginalConnection(t *
 
 			req.PreferredConnID = firstID
 			req.ForcePreferredConn = forcePreferred
-			req.SkipHealthyPreflight = !forcePreferred
+			req.HasPreviousResponse = !forcePreferred
 			req.Headers.Set(openAICodexTurnStateHeader, "ticket-after-refresh")
 			account.Extra[OpenAITurnStateModeKey] = OpenAITurnStateOff
 			continued, err := pool.Acquire(context.Background(), req)
@@ -90,7 +90,7 @@ func TestOpenAIWSConnPool_CodexTicketContinuationPreservesOriginalConnection(t *
 
 			// 续链复用不改变真实握手身份，后续独立请求仍应使用新模式和新票。
 			req.ForcePreferredConn = false
-			req.SkipHealthyPreflight = false
+			req.HasPreviousResponse = false
 			independent, err := pool.Acquire(context.Background(), req)
 			require.NoError(t, err)
 			require.False(t, independent.Reused())
