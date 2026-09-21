@@ -72,7 +72,7 @@ func TestHealthyDynamicConfigEncryptedSharedProxyAndRedacted(t *testing.T) {
 	require.True(t, other.Configured)
 	require.Equal(t, view.APIURLMasked, other.APIURLMasked)
 	require.Empty(t, other.Models)
-	require.Equal(t, 4, other.TargetCount)
+	require.Equal(t, 2, other.TargetCount)
 	_, err = svc.SaveHealthyTurnStateDynamicConfig(ctx, account.ID, HealthyTurnStateDynamicConfigInput{Protocol: "socks5h", TargetCount: 3, MaxAttempts: 5, Models: []string{"gpt-6-astra"}})
 	require.NoError(t, err)
 	stored, err := svc.healthyTurnStateDynamic.loadConfig(ctx, account.ID)

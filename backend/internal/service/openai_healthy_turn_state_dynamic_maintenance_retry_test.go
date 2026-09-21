@@ -193,7 +193,7 @@ func TestHealthyDynamicMaintenanceFetchFailuresAreCountedWithoutReusingLastProbe
 		{name: "连续十次提取错误", fetchFailures: 10, expectedFetches: 10},
 		{name: "连续十次空批次", fetchFailures: 10, emptyBatch: true, expectedFetches: 10},
 		{name: "九次提取错误后恢复", fetchFailures: 9, recover: true, expectedFetches: 10, expectedProbes: 1, expectedRecorded: 1},
-		{name: "旧成功结果不能重置后续提取失败", firstProbe: "recorded", fetchFailures: 10, expectedFetches: 11, expectedProbes: 1, expectedRecorded: 1},
+		{name: "优选入口失效后提取失败仍累计", firstProbe: "recorded", fetchFailures: 10, expectedFetches: 10, expectedProbes: 2, expectedRecorded: 1},
 		{name: "旧失败结果不能重复累计", firstProbe: "failed", fetchFailures: 3, recover: true, expectedFetches: 5, expectedProbes: 2, expectedRecorded: 1},
 	}
 	for _, tc := range cases {
@@ -231,6 +231,8 @@ func TestHealthyDynamicMaintenanceFetchFailuresAreCountedWithoutReusingLastProbe
 					status = tc.firstProbe
 				} else if tc.firstProbe == "recorded" && probeNumber == 2 {
 					status = "already_recorded"
+				} else if tc.firstProbe == "recorded" && probeNumber == 3 {
+					status = "failed"
 				}
 				if status == "recorded" {
 					pool.record(model)

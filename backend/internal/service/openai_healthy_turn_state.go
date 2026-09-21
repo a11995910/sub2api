@@ -203,7 +203,7 @@ func (c *openAIHealthyTurnStateCache) reject(scope openAIHealthyTurnStateScope, 
 
 type openAIHealthyTurnStateBudget struct {
 	mu   sync.Mutex
-	used bool
+	used map[int64]bool // 同一请求／WS 会话内，每个账号各有一次机会。
 }
 
 type openAIHealthyTurnStateAttempt struct {
@@ -237,14 +237,14 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 	if account.OpenAICodexTicketEnabled() {
 		return nil
 	}
-	budget := &openAIHealthyTurnStateBudget{}
+	budget := &openAIHealthyTurnStateBudget{used: make(map[int64]bool)}
 	clientCtx := context.Background()
 	if c != nil {
 		if existing, ok := c.Get(openAIHealthyTurnStateBudgetKey); ok {
 			budget, _ = existing.(*openAIHealthyTurnStateBudget)
 		}
 		if budget == nil {
-			budget = &openAIHealthyTurnStateBudget{}
+			budget = &openAIHealthyTurnStateBudget{used: make(map[int64]bool)}
 		}
 		c.Set(openAIHealthyTurnStateBudgetKey, budget)
 		if c.Request != nil {
@@ -268,7 +268,7 @@ func (s *OpenAIGatewayService) newOpenAIHealthyTurnStateAttempt(c *gin.Context, 
 	}
 }
 
-// claimPreflight 首发使用同一原子租约和一次预算；用过的头不在本次请求中再次补试。
+// claimPreflight 首发与异常补试共享账号预算；换号可领取新账号的头，回到原账号不会重置次数。
 func (a *openAIHealthyTurnStateAttempt) claimPreflight(ctx context.Context, headers http.Header) (bool, error) {
 	if a == nil || !a.preflight {
 		return false, nil
@@ -281,7 +281,7 @@ func (a *openAIHealthyTurnStateAttempt) claimPreflight(ctx context.Context, head
 	}
 	a.budget.mu.Lock()
 	defer a.budget.mu.Unlock()
-	if a.budget.used {
+	if a.budget.used[a.scope.accountID] {
 		if a.failClosed {
 			return false, wrapOpenAITurnStateUnavailable(ErrOpenAIHealthyTurnStateBudgetExhausted)
 		}
@@ -310,7 +310,7 @@ func (a *openAIHealthyTurnStateAttempt) claimPreflight(ctx context.Context, head
 		}
 		return false, nil
 	}
-	a.budget.used = true
+	a.budget.used[a.scope.accountID] = true
 	headers.Set(openAICodexTurnStateHeader, entry.value)
 	return true, nil
 }
@@ -351,7 +351,7 @@ func (a *openAIHealthyTurnStateAttempt) claimReplacement(ctx context.Context, st
 		}
 	}
 	a.budget.mu.Lock()
-	if a.budget.used {
+	if a.budget.used[a.scope.accountID] {
 		a.budget.mu.Unlock()
 		return false, nil
 	}
@@ -360,7 +360,7 @@ func (a *openAIHealthyTurnStateAttempt) claimReplacement(ctx context.Context, st
 		a.budget.mu.Unlock()
 		return false, nil
 	}
-	a.budget.used = true
+	a.budget.used[a.scope.accountID] = true
 	a.budget.mu.Unlock()
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

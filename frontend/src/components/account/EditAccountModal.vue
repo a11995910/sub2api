@@ -3611,7 +3611,7 @@ const requestIntegrityMode = ref<'observe' | 'off'>('observe')
 const healthyTurnStateSettings = ref<InstanceType<typeof OpenAIHealthyTurnStateTest> | null>(null)
 const turnStateMode = ref<OpenAITurnStateMode>('off')
 const healthyTurnStateReplace = computed(() => isHealthyTurnStateMode(turnStateMode.value))
-const healthyTurnStateFailClosed = ref(false)
+const healthyTurnStateFailClosed = ref(true)
 const codexTicketFailClosed = ref(true)
 const turnStateModeOptions = computed(() => (['off', 'healthy_retry', 'healthy_preflight', 'codex_ticket'] as const).map(value => ({ value, label: t(`admin.accounts.openai.turnStateModes.${value}`) })))
 const isOpenAIHealthyTurnStateAccount = computed(() => props.account?.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token'))
@@ -4103,7 +4103,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexFingerprintMode.value = 'off'
   requestIntegrityMode.value = newAccount.platform === 'openai' && extra?.request_integrity_mode === 'off' ? 'off' : 'observe'
   turnStateMode.value = resolveOpenAITurnStateMode(extra)
-  healthyTurnStateFailClosed.value = extra?.openai_healthy_turn_state_fail_closed === true
+  healthyTurnStateFailClosed.value = extra?.openai_healthy_turn_state_fail_closed !== false
   codexTicketFailClosed.value = extra?.openai_codex_ticket_fail_closed !== false
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false

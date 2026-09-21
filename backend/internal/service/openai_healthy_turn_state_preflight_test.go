@@ -85,14 +85,20 @@ func TestHealthyTurnStatePreflightHTTPUsesOneLeaseAndPreservesRequest(t *testing
 }
 
 func TestHealthyTurnStatePreflightMissingInventory(t *testing.T) {
-	for _, closed := range []bool{false, true} {
+	for _, tc := range []struct {
+		closed     any
+		wantClosed bool
+	}{{nil, true}, {false, false}, {true, true}} {
 		upstream := &healthyTurnStateUpstream{responses: []*http.Response{healthyTurnStateResponse(200, "", healthyTurnStateSSE())}}
 		svc := &OpenAIGatewayService{httpUpstream: upstream}
-		account := &Account{ID: 3, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight, OpenAIHealthyTurnStateFailClosedKey: closed}}
+		account := &Account{ID: 3, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight}}
+		if tc.closed != nil {
+			account.Extra[OpenAIHealthyTurnStateFailClosedKey] = tc.closed
+		}
 		_, req := healthyTurnStateRequest(t, svc, account, "无库存")
 		req.Header.Set(openAICodexTurnStateHeader, "客户端原头")
 		resp, err := svc.doOpenAIUpstreamWithHealthyTurnState(req, "", account)
-		if closed {
+		if tc.wantClosed {
 			require.ErrorIs(t, err, ErrOpenAIHealthyTurnStateUnavailable)
 			require.Nil(t, resp)
 			require.Empty(t, upstream.requests)
@@ -119,6 +125,98 @@ func TestHealthyTurnStatePreflightBudgetExhaustionIsDistinctFromMissingInventory
 	require.False(t, used)
 	require.ErrorIs(t, err, ErrOpenAIHealthyTurnStateBudgetExhausted)
 	require.NotErrorIs(t, err, ErrOpenAIHealthyTurnStateUnavailable)
+}
+
+func TestHealthyTurnStatePreflightMissingInventoryDoesNotConsumeBudget(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 3, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight}}
+	c, req := healthyTurnStateRequest(t, svc, account, "空库存")
+	first := openAIHealthyTurnStateAttemptFromRequest(req)
+	used, err := first.claimPreflight(context.Background(), req.Header)
+	require.False(t, used)
+	require.ErrorIs(t, err, ErrOpenAIHealthyTurnStateUnavailable)
+	require.True(t, svc.openaiHealthyTurnStates.store(first.scope, openAIHealthyTurnStateEntry{value: "补充健康头", expiresAt: time.Now().Add(time.Minute)}))
+	next := svc.newOpenAIHealthyTurnStateAttempt(c, account, "gpt-test", "http:测试上游", "", nil)
+	used, err = next.claimPreflight(context.Background(), req.Header)
+	require.NoError(t, err)
+	require.True(t, used, "缺库存未使用健康头，不应消耗该账号的次数")
+	next.restore()
+}
+
+func TestHealthyTurnStateBudgetFollowsAccountAcrossModesAndTransports(t *testing.T) {
+	for _, firstMode := range []string{OpenAITurnStateHealthyPreflight, OpenAITurnStateHealthyRetry} {
+		for _, nextMode := range []string{OpenAITurnStateHealthyPreflight, OpenAITurnStateHealthyRetry} {
+			t.Run(firstMode+"到"+nextMode, func(t *testing.T) {
+				svc := &OpenAIGatewayService{}
+				firstAccount := &Account{ID: 3, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: firstMode}}
+				nextAccount := &Account{ID: 4, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: nextMode}}
+				c, req := healthyTurnStateRequest(t, svc, firstAccount, "换号预算")
+				claim := func(attempt *openAIHealthyTurnStateAttempt) {
+					t.Helper()
+					entry := openAIHealthyTurnStateEntry{value: fmt.Sprintf("账号%d健康头", attempt.scope.accountID), expiresAt: time.Now().Add(time.Minute)}
+					require.True(t, svc.openaiHealthyTurnStates.store(attempt.scope, entry))
+					var used bool
+					var err error
+					if attempt.preflight {
+						used, err = attempt.claimPreflight(context.Background(), make(http.Header))
+					} else {
+						used, err = attempt.claimRetry(context.Background(), http.StatusServiceUnavailable, nil, "")
+					}
+					require.NoError(t, err)
+					require.True(t, used, "切换账号后必须能领取该账号自己的健康头")
+					attempt.failed()
+				}
+				claim(openAIHealthyTurnStateAttemptFromRequest(req))
+				claim(svc.newOpenAIHealthyTurnStateAttempt(c, nextAccount, "gpt-test", "ws:测试上游", "", nil))
+
+				// 更改模型、传输或模式都不能重置原账号已经使用的次数。
+				firstAccount.Extra[OpenAITurnStateModeKey] = OpenAITurnStateHealthyPreflight
+				back := svc.newOpenAIHealthyTurnStateAttempt(c, firstAccount, "其他模型", "ws:测试上游", "", nil)
+				require.True(t, svc.openaiHealthyTurnStates.store(back.scope, openAIHealthyTurnStateEntry{value: "原账号补充库存", expiresAt: time.Now().Add(time.Minute)}))
+				used, err := back.claimPreflight(context.Background(), make(http.Header))
+				require.False(t, used)
+				require.ErrorIs(t, err, ErrOpenAIHealthyTurnStateBudgetExhausted)
+				used, err = back.claimRetry(context.Background(), http.StatusServiceUnavailable, nil, "")
+				require.False(t, used)
+				require.NoError(t, err)
+				require.True(t, svc.HasOpenAIHealthyTurnState(firstAccount, "其他模型"), "被预算拦截不能消耗库存")
+			})
+		}
+	}
+}
+
+func TestHealthyTurnStatePreflightHTTPSwitchAccountAfterFailure(t *testing.T) {
+	upstream := &healthyTurnStateUpstream{responses: []*http.Response{
+		healthyTurnStateResponse(503, "", "上游忙"),
+		healthyTurnStateResponse(200, "", healthyTurnStateSSE()),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	firstAccount := &Account{ID: 3, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight}}
+	nextAccount := &Account{ID: 4, Platform: PlatformOpenAI, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight}}
+	c, req := healthyTurnStateRequest(t, svc, firstAccount, "HTTP换号")
+	for _, account := range []*Account{firstAccount, nextAccount} {
+		require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-test"}, openAIHealthyTurnStateEntry{value: fmt.Sprintf("账号%d健康头", account.ID), expiresAt: time.Now().Add(time.Minute)}))
+	}
+	resp, err := svc.doOpenAIUpstreamWithHealthyTurnState(req, "", firstAccount)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	req.Body, err = req.GetBody()
+	require.NoError(t, err)
+	req = svc.prepareOpenAIHealthyTurnStateRequest(c, nextAccount, req, "gpt-test")
+	resp, err = svc.doOpenAIUpstreamWithHealthyTurnState(req, "", nextAccount)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	payload, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, healthyTurnStateSSE(), string(payload))
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "账号3健康头", upstream.requests[0].Header.Get(openAICodexTurnStateHeader))
+	require.Equal(t, "账号4健康头", upstream.requests[1].Header.Get(openAICodexTurnStateHeader))
+	require.Equal(t, upstream.bodies[0], upstream.bodies[1])
+	require.False(t, svc.HasOpenAIHealthyTurnState(firstAccount, "gpt-test"))
+	require.True(t, svc.HasOpenAIHealthyTurnState(nextAccount, "gpt-test"))
 }
 
 func TestHealthyTurnStatePreflightWSUsesLeaseAndSkipsStrictContinuation(t *testing.T) {
@@ -148,6 +246,48 @@ func TestHealthyTurnStatePreflightWSUsesLeaseAndSkipsStrictContinuation(t *testi
 	require.Len(t, dialer.headers, 1, "严格续链必须复用原连接")
 	require.True(t, svc.HasOpenAIHealthyTurnState(account, "gpt-test"), "严格续链不占用新租约")
 	lease.Release()
+}
+
+func TestHealthyTurnStatePreflightWSSwitchAccountAfterFailure(t *testing.T) {
+	for _, pooled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("连接池%t", pooled), func(t *testing.T) {
+			svc := &OpenAIGatewayService{cfg: &config.Config{}}
+			defer svc.getOpenAIWSConnPool().Close()
+			dialer := &healthyTurnStateWSDialer{status: []int{503, 101}}
+			svc.getOpenAIWSConnPool().setClientDialerForTest(dialer)
+			firstAccount := &Account{ID: 3, Platform: PlatformOpenAI, Concurrency: 2, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight}}
+			nextAccount := &Account{ID: 4, Platform: PlatformOpenAI, Concurrency: 2, Extra: map[string]any{OpenAITurnStateModeKey: OpenAITurnStateHealthyPreflight}}
+			c, _ := healthyTurnStateRequest(t, svc, firstAccount, "WS换号")
+			for i, account := range []*Account{firstAccount, nextAccount} {
+				require.True(t, svc.openaiHealthyTurnStates.store(openAIHealthyTurnStateScope{accountID: account.ID, model: "gpt-test"}, openAIHealthyTurnStateEntry{value: fmt.Sprintf("账号%d健康头", account.ID), expiresAt: time.Now().Add(time.Minute)}))
+				req := openAIWSAcquireRequest{Account: account, WSURL: "wss://chatgpt.com/backend-api/codex/responses", Headers: http.Header{"Authorization": []string{"Bearer 测试凭据"}}}
+				var err error
+				if pooled {
+					var lease *openAIWSConnLease
+					lease, err = svc.acquireOpenAIWSWithHealthyTurnState(context.Background(), c, req, "gpt-test")
+					if lease != nil {
+						lease.Release()
+					}
+				} else {
+					var conn openAIWSClientConn
+					var observer *openAIHealthyTurnStateObserver
+					conn, _, _, observer, err = svc.dialOpenAIWSWithHealthyTurnState(context.Background(), c, account, "gpt-test", req.WSURL, req.Headers, "", dialer)
+					if conn != nil {
+						_ = conn.Close()
+						observer.finish()
+					}
+				}
+				if i == 0 {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err, "第二个账号必须能使用自己的健康头建立连接")
+				}
+			}
+			require.Len(t, dialer.headers, 2)
+			require.Equal(t, "账号3健康头", dialer.headers[0].Get(openAICodexTurnStateHeader))
+			require.Equal(t, "账号4健康头", dialer.headers[1].Get(openAICodexTurnStateHeader))
+		})
+	}
 }
 
 func TestHealthyTurnStateTicketModeSkipsHealthyObserver(t *testing.T) {

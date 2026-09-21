@@ -354,21 +354,33 @@ describe('EditAccountModal', () => {
     wrapper.unmount()
   })
 
-  it('首发模式默认无头继续，可保存暂停策略并清理旧门票覆盖', async () => {
+  it('首发模式默认缺头暂停，保存默认策略并清理旧门票覆盖', async () => {
     const account = { ...buildOpenAIOAuthParentAccount(), extra: { openai_codex_ticket_fail_closed: true } }
     updateAccountMock.mockReset().mockResolvedValue(account)
     saveHealthyConfigMock.mockReset().mockResolvedValue(true)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
     await wrapper.get('[data-testid="edit-turn-state-mode"]').setValue('healthy_preflight')
-    expect(wrapper.get('#edit-healthy-turn-state-fail-closed').attributes('aria-checked')).toBe('false')
-    await wrapper.get('#edit-healthy-turn-state-fail-closed').trigger('click')
+    expect(wrapper.get('#edit-healthy-turn-state-fail-closed').attributes('aria-checked')).toBe('true')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await flushPromises()
     const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
     expect(saved).toMatchObject({ openai_turn_state_mode: 'healthy_preflight', openai_healthy_turn_state_replace: true, openai_healthy_turn_state_fail_closed: true })
     expect(saved).not.toHaveProperty('openai_codex_ticket_fail_closed')
     expect(saveHealthyConfigMock).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('首发模式保留明确关闭的缺头暂停设置', async () => {
+    const account = { ...buildOpenAIOAuthParentAccount(), extra: { openai_turn_state_mode: 'healthy_preflight', openai_healthy_turn_state_fail_closed: false } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    saveHealthyConfigMock.mockReset().mockResolvedValue(true)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get('#edit-healthy-turn-state-fail-closed').attributes('aria-checked')).toBe('false')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra.openai_healthy_turn_state_fail_closed).toBe(false)
     wrapper.unmount()
   })
 

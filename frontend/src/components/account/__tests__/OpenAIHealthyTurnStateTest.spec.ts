@@ -39,7 +39,13 @@ beforeEach(() => {
 afterEach(() => mounted.splice(0).forEach(wrapper => wrapper.unmount()))
 
 describe('健康状态头自动采集配置', () => {
-  it('仅使用动态代理和上游支持模型复选框，保留已选模型与已保存的每模型三条', async () => {
+  it('未加载配置时每模型数量默认为两条', () => {
+    getDynamicConfig.mockReturnValueOnce(new Promise(() => {}))
+    const wrapper = panel()
+    expect((wrapper.get('#healthy-state-dynamic-target').element as HTMLInputElement).value).toBe('2')
+  })
+
+  it('仅使用动态代理和上游支持模型复选框，保留已保存的每模型三条配置', async () => {
     const wrapper = panel()
     await flushPromises()
     expect(getModels).toHaveBeenCalledWith(7, expect.any(AbortSignal))

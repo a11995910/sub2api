@@ -73,7 +73,7 @@ func TestAdminCreateOAuthHealthyTurnStateSwitchFromJSON(t *testing.T) {
 			require.Equal(t, tc.preflight, persisted.OpenAITurnStateMode() == OpenAITurnStateHealthyPreflight)
 			if tc.preflight {
 				require.Equal(t, true, persisted.Extra[openAIHealthyTurnStateReplaceKey], "首发模式必须启用健康池维护")
-				require.False(t, persisted.OpenAIHealthyTurnStateFailClosed(), "新建默认缺头时继续原请求")
+				require.True(t, persisted.OpenAIHealthyTurnStateFailClosed(), "新建默认缺头时暂停该模型")
 			}
 			if tc.ticket {
 				require.Equal(t, false, persisted.Extra[openAIHealthyTurnStateReplaceKey], "门票模式必须关闭健康池维护")

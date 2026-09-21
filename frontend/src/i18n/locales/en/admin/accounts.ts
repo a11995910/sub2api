@@ -706,7 +706,7 @@ export default {
           codex_ticket: 'Uses the 026 strategy with tickets shared per account and model. Enable collection in Settings → Codex settings and choose a fixed proxy or batch IP extraction API. The healthy-header extraction settings below are not required.'
         },
         healthyTurnStateFailClosed: '无健康头时暂停该模型',
-        healthyTurnStateFailClosedHint: '默认关闭：没有可领取的健康头时，继续原请求。开启后仅暂停本账号缺头模型的调度。',
+        healthyTurnStateFailClosedHint: '默认开启：没有可领取的健康头时，暂停本账号该模型的调度。关闭后继续原请求。',
         codexTicketFailClosed: '无 292 门票时暂停该模型',
         codexTicketFailClosedHint: '默认开启：总开关生效后，缺少有效门票的模型暂停调度。关闭后允许无票请求。',
         codexTurnTicket: 'Upstream 292 ticket status',
@@ -755,7 +755,7 @@ export default {
           saveWithAccount: 'Settings and the selected strategy are saved together with the Update button below. All accounts share the extraction URL and proxy protocol; models, inventory limits and collection transport are saved per account. Enabling sends model test requests. Headers are retained locally for 40 minutes and replenished with less than 10 minutes remaining; this is not an official upstream lifetime.',
           url: 'Global proxy extraction URL', urlPlaceholder: 'Enter once; leave blank to keep the global URL', savedUrl: 'Global API configured: {url}. This account uses it automatically. Leave blank to keep it; a new URL updates all accounts.', urlRequired: 'Configure once for all accounts. Return newline-separated IP:PORT entries; provider parameters such as num and time are passed through unchanged.', protocol: 'Global proxy protocol',
           sharedProxyConflict: 'Existing accounts have different API URLs. Enter one shared global URL to use for all accounts.',
-          target: 'Healthy headers per model', targetHint: 'Default: 4; range: 1–100. Existing accounts retain their saved count. Headers in use count toward the target; idle headers with less than 10 minutes remaining are replenished early.', targetPreset: 'Set to {count} per model', targetSummary: '{models} selections, up to {total} headers; aliases of the same actual model share inventory.', maxAttempts: 'Maximum proxy attempts per cycle',
+          target: 'Healthy headers per model', targetHint: 'Default: 2; range: 1–100. Existing accounts retain their saved count. Headers in use count toward the target; idle headers with less than 10 minutes remaining are replenished early.', targetPreset: 'Set to {count} per model', targetSummary: '{models} selections, up to {total} headers; aliases of the same actual model share inventory.', maxAttempts: 'Maximum proxy attempts per cycle',
           modelsHint: 'Text models are synced from upstream, with separate inventory for each model. Changing and saving the selection updates the default for new accounts; configured accounts keep their own selections.',
           modelsInherited: 'Your last selection has been applied to models supported by this account. Click Update below to save.',
           modelsRequired: 'Select at least one supported model and deselect any unsupported models. After the first save, new accounts will reuse this selection.', unsupportedModel: '{model} (unsupported; deselect)', noModels: 'Upstream returned no text models suitable for collection.',

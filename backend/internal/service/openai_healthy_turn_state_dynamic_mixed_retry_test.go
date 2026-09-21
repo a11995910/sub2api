@@ -84,7 +84,7 @@ func TestHealthyDynamicMaintenanceHealthyProbeResetsEarlierMixedFetchFailure(t *
 	}
 	scanHealthyDynamicRetryTest(t, svc)
 	require.EqualValues(t, 6, probes.Load())
-	require.EqualValues(t, 4, fetches.Load())
+	require.EqualValues(t, 3, fetches.Load(), "健康入口成功后优先复用，不再额外提取")
 	require.EqualValues(t, 3, pool.counts()["gpt-6-astra"])
 	require.NotContains(t, d.maintenanceRetry, account.ID, "尚未达到十次失败时，后到的健康结果应清零此前提取失败")
 }

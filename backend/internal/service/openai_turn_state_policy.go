@@ -70,8 +70,9 @@ func (a *Account) OpenAIHealthyTurnStateFailClosed() bool {
 	if a.OpenAITurnStateMode() != OpenAITurnStateHealthyPreflight {
 		return false
 	}
-	enabled, _ := a.Extra[OpenAIHealthyTurnStateFailClosedKey].(bool)
-	return enabled
+	// 首发模式未设置缺头策略时默认暂停；显式关闭仍允许原请求继续。
+	enabled, configured := a.Extra[OpenAIHealthyTurnStateFailClosedKey].(bool)
+	return !configured || enabled
 }
 
 func validateOpenAITurnStatePolicy(extra map[string]any) error {
@@ -97,7 +98,7 @@ func validateOpenAITurnStatePolicy(extra map[string]any) error {
 }
 
 var ErrOpenAIHealthyTurnStateUnavailable = errors.New("当前账号模型没有可领取的健康状态头")
-var ErrOpenAIHealthyTurnStateBudgetExhausted = errors.New("本次请求健康头尝试次数已用完")
+var ErrOpenAIHealthyTurnStateBudgetExhausted = errors.New("本次请求在当前账号的健康头尝试次数已用完")
 
 // OpenAIHealthyTurnStateUnavailableError 供调度层换号；不包含状态值或底层存储错误。
 type OpenAIHealthyTurnStateUnavailableError struct {

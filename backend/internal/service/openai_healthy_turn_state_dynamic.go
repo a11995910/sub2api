@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,7 @@ type healthyTurnStateDynamicService struct {
 	cipher                SecretEncryptor
 	mu                    sync.Mutex
 	runs                  map[string]*healthyTurnStateDynamicSession
+	preferred             healthyDynamicPreferredCache
 	// 仅用于离线测试；正式实例使用真实提取与单次探测方法。
 	fetch                  func(context.Context, HealthyTurnStateDynamicConfigInput) ([]string, error)
 	probe                  func(context.Context, *Account, string, string, string) (*OpenAIHealthyTurnStateProbeResult, error)
@@ -339,12 +341,20 @@ func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, ac
 		limit = min(limit, healthyDynamicAccountAttemptSlice-run.view.Attempts)
 	}
 	reserved := reserveHealthyDynamicModels(run.models, counts, config.TargetCount, limit)
+	preferred := make(map[string]string)
+	for _, model := range reserved {
+		key := healthyDynamicPreferredScope(accountID, model.upstream, transport, config)
+		if proxy := d.preferred.get(key, d.clock()); proxy != "" {
+			preferred[model.upstream] = proxy
+		}
+	}
 	run.mu.Unlock()
 
 	// 供应商每批只有一个入口时，按实际预留缺口继续提取，最多十批组成并行批次。
 	for batchIndex := 0; batchIndex < parallelism; batchIndex++ {
 		run.mu.Lock()
-		needsBatch := len(run.pending) < len(reserved) && run.view.Status == "running"
+		// 有已验证入口时先复用，本批不为扩大并发额外提取代理。
+		needsBatch := len(preferred) == 0 && len(run.pending) < len(reserved) && run.view.Status == "running"
 		if needsBatch {
 			run.view.FetchedBatches++
 		}
@@ -426,15 +436,27 @@ func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, ac
 		return view, nil
 	}
 	jobs := make([]healthyDynamicProbeJob, 0, len(reserved))
-	for remaining := len(run.pending); remaining > 0 && len(jobs) < len(reserved); remaining-- {
-		proxy := run.pending[0]
-		run.pending[0] = ""
-		run.pending = run.pending[1:]
-		if !d.reserveHealthyDynamicProxy(proxy) {
-			run.pending = append(run.pending, proxy)
+	for _, model := range reserved {
+		if proxy := preferred[model.upstream]; proxy != "" {
+			if d.reserveHealthyDynamicProxy(proxy) {
+				// 优选失败后不能再从当前队列或重复提取结果中尝试同一入口。
+				run.pending = slices.DeleteFunc(run.pending, func(candidate string) bool { return candidate == proxy })
+				run.seen[proxy] = struct{}{}
+				jobs = append(jobs, healthyDynamicProbeJob{model: model, proxy: proxy})
+			}
 			continue
 		}
-		jobs = append(jobs, healthyDynamicProbeJob{model: reserved[len(jobs)], proxy: proxy})
+		for remaining := len(run.pending); remaining > 0; remaining-- {
+			proxy := run.pending[0]
+			run.pending[0] = ""
+			run.pending = run.pending[1:]
+			if !d.reserveHealthyDynamicProxy(proxy) {
+				run.pending = append(run.pending, proxy)
+				continue
+			}
+			jobs = append(jobs, healthyDynamicProbeJob{model: model, proxy: proxy})
+			break
+		}
 	}
 	run.view.Attempts += len(jobs)
 	if len(jobs) == 0 {
@@ -455,12 +477,17 @@ func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, ac
 			if err != nil || result == nil {
 				result = &OpenAIHealthyTurnStateProbeResult{Status: "failed", Model: job.model.upstream, Transport: transport, Message: "本次代理探测失败"}
 			}
-			results <- healthyDynamicProbeCompletion{model: job.model, result: result}
+			results <- healthyDynamicProbeCompletion{model: job.model, proxy: job.proxy, result: result}
 		}(job)
 	}
 	for range jobs {
 		completed := <-results
 		run.mu.Lock()
+		// 停止、取消或配置更新后的旧任务不能回填优选缓存。
+		if stepCtx.Err() == nil && run.view.Status == "running" {
+			key := healthyDynamicPreferredScope(accountID, completed.model.upstream, transport, config)
+			d.preferred.complete(key, completed.proxy, completed.result.Status == "recorded" || completed.result.Status == "already_recorded", d.clock())
+		}
 		run.lastBatch = append(run.lastBatch, completed.result)
 		run.view.LastResult = completed.result
 		if completed.result.Status == "recorded" {
@@ -472,6 +499,7 @@ func (s *AccountTestService) stepHealthyTurnStateDynamic(ctx context.Context, ac
 	}
 	run.mu.Lock()
 	defer run.mu.Unlock()
+
 	if stepCtx.Err() != nil {
 		run.finishLocked("stopped", "请求已取消，采集停止")
 	}

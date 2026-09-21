@@ -95,6 +95,9 @@ func TestTurnStateFailoverAfterHeartbeatPreservesTerminalErrorAndOps503(t *testi
 			require.True(t, ok)
 			require.Equal(t, http.StatusServiceUnavailable, streamErr.IntendedStatus)
 			require.Equal(t, message, streamErr.Message)
+			parsed := parseOpsErrorResponse(recorder.Body.Bytes())
+			require.True(t, parsed.StreamFailure)
+			require.Equal(t, http.StatusServiceUnavailable, inferStreamFailureStatus(c, parsed), "实际终止帧也必须在运维中记录为503")
 		})
 	}
 }

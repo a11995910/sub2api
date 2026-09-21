@@ -2065,11 +2065,21 @@ func inferResponsesFailedOpsErrorType(code string) string {
 	}
 }
 
-func inferStreamFailureStatus(_ *gin.Context, parsed parsedOpsError) int {
+func inferStreamFailureStatus(c *gin.Context, parsed parsedOpsError) int {
 	if parsed.StatusCode >= 400 && parsed.StatusCode <= 599 {
 		return parsed.StatusCode
 	}
+	// 流已提交时无法修改 HTTP 状态，优先使用与终止帧匹配的本地错误标记。
+	// 不读取其他账号尝试留下的上游状态，避免污染最终结果。
+	for _, streamErr := range service.GetOpsStreamErrors(c) {
+		if parsed.Message != "" && streamErr.Message == parsed.Message && streamErr.ErrType == parsed.ErrorType &&
+			streamErr.IntendedStatus >= 400 && streamErr.IntendedStatus <= 599 {
+			return streamErr.IntendedStatus
+		}
+	}
 	switch strings.TrimSpace(parsed.Code) {
+	case "turn_state_unavailable", "turn_state_budget_exhausted":
+		return http.StatusServiceUnavailable
 	case "rate_limit_exceeded":
 		return http.StatusTooManyRequests
 	case "permission_denied", "permission_error", "insufficient_permissions", "cyber_policy", "content_policy":

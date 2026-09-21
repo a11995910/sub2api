@@ -214,7 +214,7 @@ func (d *healthyTurnStateDynamicService) loadConfig(ctx context.Context, account
 }
 
 func (d *healthyTurnStateDynamicService) loadConfigLocked(ctx context.Context, accountID int64) (HealthyTurnStateDynamicConfigInput, error) {
-	input := HealthyTurnStateDynamicConfigInput{Protocol: "http", TargetCount: 4, MaxAttempts: 100, Models: []string{}, Transport: "http"}
+	input := HealthyTurnStateDynamicConfigInput{Protocol: "http", TargetCount: 2, MaxAttempts: 100, Models: []string{}, Transport: "http"}
 	if accountID <= 0 {
 		return input, healthyDynamicConfigError()
 	}
@@ -544,6 +544,7 @@ func (s *AccountTestService) SaveHealthyTurnStateDynamicConfig(ctx context.Conte
 		}
 		run.mu.Unlock()
 	}
+	d.preferred.invalidate(accountID, sharedChanged)
 	d.mu.Unlock()
 	return healthyDynamicConfigView(input), nil
 }

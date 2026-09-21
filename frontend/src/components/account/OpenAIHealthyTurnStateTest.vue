@@ -83,8 +83,8 @@ import OpenAIHealthyTurnStateStatus from './OpenAIHealthyTurnStateStatus.vue'
 const props = defineProps<{ accountId: number; active: boolean; disabled?: boolean }>()
 const { t } = useI18n()
 const prefix = 'admin.accounts.openai'
-const defaultTargetCount = 4
-const defaultConfig = (): HealthyTurnStateDynamicConfig => ({ configured: false, api_url_masked: '', protocol: 'http', target_count: defaultTargetCount, max_attempts: 100, models: [], transport: 'http' })
+const defaultTargetCount = 4 // 保留已有快捷增量；新配置的默认库存为 2。
+const defaultConfig = (): HealthyTurnStateDynamicConfig => ({ configured: false, api_url_masked: '', protocol: 'http', target_count: 2, max_attempts: 100, models: [], transport: 'http' })
 const dynamicConfig = ref(defaultConfig())
 const loadedProtocol = ref<HealthyTurnStateDynamicConfig['protocol']>('http')
 const loadedModels = ref<string[]>([])

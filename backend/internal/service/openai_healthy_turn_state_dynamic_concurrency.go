@@ -21,6 +21,7 @@ type healthyDynamicProbeJob struct {
 
 type healthyDynamicProbeCompletion struct {
 	model  healthyDynamicModel
+	proxy  string
 	result *OpenAIHealthyTurnStateProbeResult
 }
 

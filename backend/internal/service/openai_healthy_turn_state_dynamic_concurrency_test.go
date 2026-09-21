@@ -80,6 +80,9 @@ func TestHealthyDynamicParallelBatchBudgetAndDuplicateResults(t *testing.T) {
 	require.Zero(t, run.Recorded)
 	run, err = svc.stepHealthyTurnStateDynamic(context.Background(), account.ID, run.ID, 10)
 	require.NoError(t, err)
+	require.Equal(t, 11, run.Attempts, "优选入口每批只复用一次，不能并发重复使用")
+	run, err = svc.stepHealthyTurnStateDynamic(context.Background(), account.ID, run.ID, 10)
+	require.NoError(t, err)
 	require.Equal(t, 12, run.Attempts, "最后一批只预留剩余预算")
 	require.Zero(t, run.Recorded, "重复健康头不虚增库存")
 	require.Equal(t, "completed", run.Status)
@@ -246,6 +249,9 @@ func TestHealthyDynamicTenthFailureKeepsNineDispatchedResults(t *testing.T) {
 		return false
 	}
 	require.Eventually(t, func() bool { return observedResult(10) }, time.Second, time.Millisecond)
+	// 此用例验证普通并行批次的收尾，先清理首个健康结果产生的优选入口。
+	// 优选入口的串行复用与失败回退由专门用例覆盖。
+	d.preferred.invalidate(account.ID, false)
 	releaseFirst.Do(func() { close(firstFailures) })
 	require.Eventually(t, func() bool { return observedResult(20) }, 3*time.Second, time.Millisecond)
 	require.Eventually(t, func() bool { return probes.Load() == 20 }, time.Second, time.Millisecond, "第二批十路已派发，首个失败后仍有九路在途")
