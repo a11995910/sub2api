@@ -167,7 +167,7 @@ func (s *AccountTestService) probeOpenAIHealthyTurnState(ctx context.Context, ac
 	}
 	if observer.firstOutputTooLate {
 		result.Status = "unhealthy"
-		result.Message = "首字超过 5 秒，未记录状态头"
+		result.Message = fmt.Sprintf("首字超过 %g 秒，未记录状态头", openAIHealthyTurnStateFirstOutputLimit.Seconds())
 		return result, nil
 	}
 	if observer.candidate.value == "" {

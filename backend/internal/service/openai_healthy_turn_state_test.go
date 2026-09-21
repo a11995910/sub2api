@@ -323,7 +323,8 @@ func TestOpenAIHealthyTurnStateLateFirstOutputIsNotRecorded(t *testing.T) {
 	observer.observe([]byte(healthyTurnStateDelta), "")
 	observer.observe([]byte(healthyTurnStateDone), "")
 	observer.finish()
-	require.Empty(t, svc.openaiHealthyTurnStates.entries, "首字超过 5 秒的状态头不得进入共享池")
+	require.True(t, observer.firstOutputTooLate)
+	require.Empty(t, svc.openaiHealthyTurnStates.entries, "首字超过 15 秒的状态头不得进入共享池")
 }
 
 func TestOpenAIHealthyTurnStateRetryAfterAndCancellation(t *testing.T) {

@@ -221,7 +221,7 @@ type openAIHealthyTurnStateAttempt struct {
 	currentState  string
 }
 
-const openAIHealthyTurnStateFirstOutputLimit = 5 * time.Second
+const openAIHealthyTurnStateFirstOutputLimit = 15 * time.Second
 
 func (a *openAIHealthyTurnStateAttempt) markStarted() {
 	if a != nil && a.startedAt.IsZero() {

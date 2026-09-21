@@ -70,6 +70,47 @@ type healthyTurnStateCheckingBody struct {
 	beforeRead func()
 }
 
+func TestHealthyTurnStateProbeFirstOutputLimit(t *testing.T) {
+	for _, format := range []string{"SSE", "JSON"} {
+		for _, tc := range []struct {
+			name   string
+			delay  time.Duration
+			status string
+		}{
+			{"超过旧门槛仍接受", 6 * time.Second, "recorded"},
+			{"十五秒内接受", 14 * time.Second, "recorded"},
+			{"超过十五秒拒绝", 16 * time.Second, "unhealthy"},
+		} {
+			t.Run(format+"/"+tc.name, func(t *testing.T) {
+				upstream := &healthyTurnStateUpstream{}
+				gateway := &OpenAIGatewayService{httpUpstream: upstream}
+				response := healthyTurnStateResponse(200, "首字时间测试头", "")
+				body := healthyTurnStateSSE()
+				if format == "JSON" {
+					response.Header.Set("Content-Type", "application/json")
+					body = `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"健康输出"}]}]}`
+				}
+				response.Body = &healthyTurnStateCheckingBody{Reader: strings.NewReader(body), beforeRead: func() {
+					// 调整探测起点模拟首字等待，避免测试真实休眠十几秒。
+					attempt := openAIHealthyTurnStateAttemptFromRequest(upstream.requests[0])
+					attempt.startedAt = time.Now().Add(-tc.delay)
+				}}
+				upstream.responses = []*http.Response{response}
+				svc := &AccountTestService{openaiGatewayService: gateway}
+				result, err := svc.ProbeOpenAIHealthyTurnState(context.Background(), healthyTurnStateProbeAccount(), "gpt-5.4", "http")
+				require.NoError(t, err)
+				require.Equal(t, tc.status, result.Status)
+				if tc.status == "recorded" {
+					require.Len(t, gateway.openaiHealthyTurnStates.entries, 1)
+				} else {
+					require.Empty(t, gateway.openaiHealthyTurnStates.entries)
+					require.Equal(t, "首字超过 15 秒，未记录状态头", result.Message)
+				}
+			})
+		}
+	}
+}
+
 func TestOpenAIHealthyTurnStateProbeHTTPMissingContentType(t *testing.T) {
 	for _, tc := range []struct {
 		name, state, body, want string
