@@ -90,17 +90,21 @@ OpenAI OAuth／SetupToken 账号编辑页使用 `extra.openai_turn_state_mode` �
 
 ### 上游 292 门票模式
 
-该模式需要同时打开系统设置中的“292 打票”总开关并在账号选择 `codex_ticket`。配置独立采集来源后，后台对启用该模式的活跃、非影子 OpenAI OAuth 类账号采集。来源支持固定代理地址和批量 IP 提取接口。业务请求仍使用账号原来的代理。代理供应商负责出口轮换；专用采集连接使用 HTTP/1.1 并禁用连接复用，本系统不能保证每次实际出口不同。
+该模式需要同时打开系统设置中的“292 打票”总开关并在账号选择 `codex_ticket`。配置独立采集来源后，后台对启用该模式的活跃、非影子 OpenAI OAuth 类账号采集。来源支持固定代理地址和批量 IP 提取接口。成功采集后，门票和本次代理完整地址按账号、实际模型共同保存，业务请求使用这条代理。代理入口不等于实际出口 IP：供应商必须提供固定或粘性出口，且粘性时长应覆盖 `ttl_seconds`；轮换入口即使地址不变，也不能保证请求来自同一个 IP。专用采集连接使用 HTTP/1.1 并禁用连接复用。
 
-后台设置字段为 `openai_codex_ticket_enabled`、`openai_codex_ticket_harvest_proxy_mode`（`proxy`／`extract`，默认 `proxy`）、`openai_codex_ticket_harvest_proxy_url`、`openai_codex_ticket_harvest_extract_url` 和 `openai_codex_ticket_harvest_extract_protocol`（`http`／`https`／`socks5h`，默认 `http`）。固定代理和提取接口独立保存，切换来源不会清空另一来源；代理凭据和提取 URL 路径、查询参数在读回及审计中脱敏，空值或脱敏占位保留已保存值。YAML／环境变量使用 `gateway.openai_codex_ticket`：`target_length=292`、`ttl_seconds=3600`、`refresh_before_seconds=600`、`harvest_probe_interval_seconds=6`、`harvest_attempt_timeout_seconds=25`、`fail_closed=true`；默认模型为 `gpt-6-astra`、`gpt-5.6-sol`，其他模型可通过 `models` 配置。总开关默认关闭，运行时设置约五秒缓存。
+后台设置字段为 `openai_codex_ticket_enabled`、`openai_codex_ticket_harvest_proxy_mode`（`proxy`／`extract`，默认 `proxy`）、`openai_codex_ticket_harvest_proxy_url`、`openai_codex_ticket_harvest_extract_url` 和 `openai_codex_ticket_harvest_extract_protocol`（`http`／`https`／`socks5h`，默认 `http`）。固定代理和提取接口独立保存，切换来源不会清空另一来源；代理凭据和提取 URL 路径、查询参数在读回及审计中脱敏，空值或脱敏占位保留已保存值。YAML／环境变量使用 `gateway.openai_codex_ticket`：`target_length=292`、`ttl_seconds=3600`、`refresh_before_seconds=600`（仅保留配置兼容，不再提前换票换出口）、`harvest_probe_interval_seconds=6`、`harvest_attempt_timeout_seconds=25`、`fail_closed=true`；默认模型为 `gpt-6-astra`、`gpt-5.6-sol`，其他模型可通过 `models` 配置。总开关默认关闭，运行时设置约五秒缓存。
 
-批量提取接口支持公网 HTTP／HTTPS URL，返回按行分隔的 `IP:端口`、代理 URL 文本或下述 BestGo JSON；无协议的条目使用所选代理协议。接口原查询参数保持不变，例如 `num=10` 表示供应商返回十个代理，系统不会改写 `num`、`time` 等参数。每轮仅在存在缺票或临期目标时提取一次，去重后给当轮目标复用；提取请求禁止重定向，超时 20 秒，响应上限 64KiB。最多四个账号／模型目标同时采集，每个目标依次尝试当批代理，命中有效票立即停止；固定代理仍保持原有按目标并行、每目标单次尝试。整轮结束后约六秒再检查，库存满足时不调用提取接口。代理有效期由供应商决定，接口参数 `time` 不改变门票本地期限；批次过期或失败时等待后续轮次重新提取。
+批量提取接口支持公网 HTTP／HTTPS URL，返回按行分隔的 `IP:端口`、代理 URL 文本或下述 BestGo JSON；无协议的条目使用所选代理协议。接口原查询参数保持不变，例如 `num=10` 表示供应商返回十个代理，系统不会改写 `num`、`time` 等参数。每轮仅在存在缺票、到期或绑定失效目标时提取一次，去重后给当轮目标复用；提取请求禁止重定向，超时 20 秒，响应上限 64KiB。最多四个账号／模型目标同时采集，每个目标依次尝试当批代理，命中有效票立即停止；固定代理仍保持原有按目标并行、每目标单次尝试。整轮结束后约六秒再检查，库存满足时不调用提取接口。代理有效期由供应商决定，接口参数 `time` 不改变门票本地期限；批次过期或失败时等待后续轮次重新提取。
 
-门票只要求 HTTP 200、状态头长度等于配置长度、前缀为 `gAAAAA`；拿到响应头即关闭正文，不验证输出、响应模型或完整成功。因此“有效门票”仅指符合本地格式和期限，不能解释为回答质量保证。每账号、实际出站模型保存一张票，允许并发复用；默认一小时为本地期限，提前十分钟刷新，不根据业务失败自动淘汰，以保留上游对照行为。票存入账号服务端 `extra`，账号编辑不能自行写入，管理 DTO 与导出均移除票原文。
+门票只要求 HTTP 200、状态头长度等于配置长度、前缀为 `gAAAAA`；拿到响应头即关闭正文，不验证输出、响应模型或完整成功。因此“有效门票”仅指符合本地格式和期限，不能解释为回答质量保证。每账号、实际出站模型保存一组门票和成功代理，允许并发复用；默认一小时为本地期限，有效期间不提前换票或换出口。门票与代理存入账号服务端 `extra`，账号编辑不能自行写入，管理 DTO、审计与导出均移除门票及代理凭据。旧门票缺少 `proxy_url` 时视为不可用，由后台重新采集；无需数据库迁移。重启会恢复已持久化的完整绑定。
 
-HTTP Responses、透传、Messages 兼容桥及 WS 握手使用相同的注入规则；compact 按实际出站模型判定，非配置模型不缺票拦截。获取 WS 连接时按账号模式与票摘要匹配，独立建连或重连按本轮实际模型读取最新票；带 `previous_response_id` 的续链仍保留原连接，不在续链中更换状态头。同一个客户端 WS 会话按既有设计持有上游连接，后续轮次切换模型或后台刷票不会自动重建握手；对比模式、模型或新票时应重连客户端再发起独立请求。健康头采集、首发及异常补试在门票模式下均不执行，两套库存不互相取用。
+业务出站连接错误、超时、HTTP 403／407／502／504，或明确的状态头失效错误码（`invalid_turn_state`、`turn_state_invalid`、`turn_state_expired`、`invalid_codex_turn_state`、`codex_turn_state_expired`）会将该绑定整体标为失效，下一轮后台重新采集；403 等状态按不可继续使用该绑定处理，不代表已确认其物理 IP 离线。客户端取消、401、429、普通 500／503 不直接淘汰绑定，继续原有鉴权、限流和错误处理。失败不把旧门票拿去其他代理补试；缺票期间遵循原 `fail_closed` 设置，默认暂停对应账号模型。失效标记持久化并保留版本信息，旧账号快照与旧请求的迟到失败不会恢复旧票或淘汰新绑定。供应商静默更换出口无法仅靠业务状态码可靠识别。
 
-账号响应 `codex_turn_tickets` 提供各模型的 `ready`、`remaining_seconds`、`blocked`、到期与预计刷新时间，并包含 `harvest_status`、`last_attempt_at`、`last_result`、`last_http_status`、`attempt_index`／`attempt_total` 和 `next_attempt_at` 等采集摘要，不返回票原文、代理地址或原始错误。编辑页和账号列表每五秒刷新状态；编辑中的未保存字段不受刷新影响。只有下一轮定时器实际安排后才给出预计尝试时间，轮内排队可能继续延后实际请求；没有确定时间时显示等待本轮调度。最近采集结果仅保存在进程内，重启后清空；已持久化的有效票继续可用。对比时使用相同模型、相近账号条件和相同时间窗口的独立账号／分组，对照请求成功率、429／503、模型不一致、首字延迟及采集消耗。健康库存面板中的使用／成功／失败是历史累计，切换模式不会清零，不应当作当前模式的独立成功率。门票的就绪状态也不等于业务成功率。
+B2Proxy 的 [API 提取说明](https://help.b2proxy.com/zh/proxy-settings/residential/api-proxy-extraction) 将会话分为轮换 IP 和粘性 IP：轮换模式每次请求更换出口；粘性模式默认五分钟，需将“提前更换 IP”设为“否”，并使门票期限不超过实际粘性时长。应在供应商面板生成相应提取链接，不猜测或自动改写其查询参数。
+
+HTTP Responses、透传、Messages 兼容桥及 WS 握手从同一门票快照选取请求头和代理，避免并发刷新造成错配；compact 按实际出站模型判定，非配置模型不缺票拦截。获取 WS 连接时按账号模式、票摘要和代理摘要匹配，独立建连或重连按本轮实际模型读取完整绑定；池化会话的独立轮次更换模型或绑定时重新握手。带 `previous_response_id` 的续链只允许原绑定继续使用，绑定到期或改变时要求重新开始会话；原始 WS 帧透传在更换模型或绑定后要求客户端重新连接，避免在旧连接上发送另一模型的票。健康头采集、首发及异常补试在门票模式下均不执行，两套库存不互相取用。
+
+账号响应 `codex_turn_tickets` 提供各模型的 `ready`、`remaining_seconds`、`blocked`、到期与到期重采时间，并包含 `harvest_status`、`last_attempt_at`、`last_result`、`last_http_status`、`attempt_index`／`attempt_total` 和 `next_attempt_at` 等采集摘要，不返回票原文、代理地址或原始错误。编辑页和账号列表每五秒刷新状态；编辑中的未保存字段不受刷新影响。只有下一轮定时器实际安排后才给出预计尝试时间，轮内排队可能继续延后实际请求；没有确定时间时显示等待本轮调度。最近采集结果仅保存在进程内，重启后清空；已持久化且包含成功代理的有效绑定继续可用。对比时使用相同模型、相近账号条件和相同时间窗口的独立账号／分组，对照请求成功率、429／503、模型不一致、首字延迟及采集消耗。健康库存面板中的使用／成功／失败是历史累计，切换模式不会清零，不应当作当前模式的独立成功率。门票的就绪状态也不等于业务成功率。
 
 ### 健康状态头采集与替换
 

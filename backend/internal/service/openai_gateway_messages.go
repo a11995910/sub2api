@@ -388,7 +388,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
 	}
 
-	if err := s.applyOpenAICodexTicket(ctx, account, upstreamModel, upstreamReq.Header); err != nil {
+	if err := s.bindOpenAICodexTicketRequest(upstreamReq, account, upstreamModel); err != nil {
 		return nil, err
 	}
 	// 7. Send request

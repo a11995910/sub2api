@@ -112,7 +112,7 @@ func (s *OpenAIGatewayService) OpenAICodexTicketStatuses(ctx context.Context, ac
 			status.RemainingSeconds = int64(ticket.ExpiresAt.Sub(now) / time.Second)
 			expiresAt := ticket.ExpiresAt
 			status.ExpiresAt = &expiresAt
-			refreshDue := expiresAt.Add(-time.Duration(cfg.RefreshBeforeSeconds) * time.Second)
+			refreshDue := expiresAt
 			status.RefreshDueAt = &refreshDue
 			needsRefresh = !now.Before(refreshDue)
 		}

@@ -20,11 +20,13 @@ type codexTicketIngressReconnectDialer struct {
 	queue   openAIWSQueueDialer
 	mu      sync.Mutex
 	headers []http.Header
+	proxies []string
 }
 
 func (d *codexTicketIngressReconnectDialer) Dial(ctx context.Context, url string, headers http.Header, proxy string) (openAIWSClientConn, int, http.Header, error) {
 	d.mu.Lock()
 	d.headers = append(d.headers, headers.Clone())
+	d.proxies = append(d.proxies, proxy)
 	d.mu.Unlock()
 	conn, status, _, err := d.queue.Dial(ctx, url, headers, proxy)
 	responseHeaders := http.Header{}
@@ -42,7 +44,7 @@ func TestOpenAIWSIngressCodexTicketReconnectUsesCurrentModel(t *testing.T) {
 	cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{
 		Enabled: true, FailClosed: true, Models: []string{"gpt-6-astra", "gpt-5.6-sol"},
 	}
-	firstConn := &openAIWSPreflightFailConn{events: [][]byte{
+	firstConn := &openAIWSCaptureConn{events: [][]byte{
 		[]byte(`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-6-astra","usage":{"input_tokens":1,"output_tokens":1}}}`),
 	}}
 	secondConn := &openAIWSCaptureConn{events: [][]byte{
@@ -63,7 +65,7 @@ func TestOpenAIWSIngressCodexTicketReconnectUsesCurrentModel(t *testing.T) {
 	firstTicket := fakeCodexTicketState(292)
 	secondTicket := openAICodexTicketStatePrefix + strings.Repeat("C", 292-len(openAICodexTicketStatePrefix))
 	for model, state := range map[string]string{"gpt-6-astra": firstTicket, "gpt-5.6-sol": secondTicket} {
-		svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{ProxyURL: map[string]string{"gpt-6-astra": "http://192.0.2.10:8080", "gpt-5.6-sol": "http://192.0.2.11:8080"}[model],
 			Model: model, State: state, Length: len(state), ExpiresAt: time.Now().Add(time.Hour),
 		})
 	}
@@ -113,11 +115,15 @@ func TestOpenAIWSIngressCodexTicketReconnectUsesCurrentModel(t *testing.T) {
 	}
 	dialer.mu.Lock()
 	headers := append([]http.Header(nil), dialer.headers...)
+	proxies := append([]string(nil), dialer.proxies...)
 	dialer.mu.Unlock()
 	require.Len(t, headers, 2)
 	require.Equal(t, firstTicket, headers[0].Get(openAICodexTurnStateHeader))
 	require.Equal(t, secondTicket, headers[1].Get(openAICodexTurnStateHeader), "重连必须使用当前实际模型的门票")
-	require.Equal(t, 1, firstConn.WriteCount(), "原连接应只处理首轮")
+	require.Equal(t, []string{"http://192.0.2.10:8080", "http://192.0.2.11:8080"}, proxies)
+	firstConn.mu.Lock()
+	require.Len(t, firstConn.writes, 1, "原连接应只处理首轮")
+	firstConn.mu.Unlock()
 	secondConn.mu.Lock()
 	writes := append([]map[string]any(nil), secondConn.writes...)
 	secondConn.mu.Unlock()

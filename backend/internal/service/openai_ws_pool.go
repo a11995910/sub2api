@@ -70,9 +70,12 @@ func (e *openAIWSDialError) Unwrap() error {
 }
 
 type openAIWSAcquireRequest struct {
-	Account *Account
-	WSURL   string
-	Headers http.Header
+	codexTicketUsable  func() bool
+	codexTicket        *openAICodexTicket
+	observeCodexTicket openAICodexTicketObservation
+	Account            *Account
+	WSURL              string
+	Headers            http.Header
 	// HeadersFactory is evaluated inside dialConn. It exists so credentials
 	// whose authorization is per-dial (Agent Identity) are never cached in
 	// lastAcquire or delayed prewarm state.
@@ -91,6 +94,7 @@ type openAIWSHandshakeCompatibilityKey struct {
 	// 门票属于握手；独立请求不能复用另一模式或旧票建立的连接。仅存摘要，不存明文。
 	turnStateMode       string
 	codexTicketDigest   [sha256.Size]byte
+	codexProxyDigest    [sha256.Size]byte
 	betaFeatures        string
 	codexInstallationID string
 	sessionIDHyphen     string
@@ -335,8 +339,10 @@ func (l *openAIWSConnLease) Release() {
 }
 
 type openAIWSConn struct {
-	id string
-	ws openAIWSClientConn
+	codexTicket        *openAICodexTicket
+	observeCodexTicket openAICodexTicketObservation
+	id                 string
+	ws                 openAIWSClientConn
 
 	handshakeHeaders       http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
@@ -654,6 +660,9 @@ func (c *openAIWSConn) writeJSON(value any, writeCtx context.Context) error {
 		writeCtx = context.Background()
 	}
 	if err := c.ws.WriteJSON(writeCtx, value); err != nil {
+		if c.observeCodexTicket != nil {
+			c.observeCodexTicket(writeCtx, 0, err, nil)
+		}
 		return err
 	}
 	c.touch()
@@ -688,7 +697,15 @@ func (c *openAIWSConn) readMessageWithContextTimeout(parent context.Context, tim
 	return c.readMessage(readCtx)
 }
 
-func (c *openAIWSConn) readMessage(readCtx context.Context) ([]byte, error) {
+func (c *openAIWSConn) readMessage(readCtx context.Context) (payload []byte, err error) {
+	if readCtx == nil {
+		readCtx = context.Background()
+	}
+	defer func() {
+		if c.observeCodexTicket != nil {
+			c.observeCodexTicket(readCtx, 0, err, payload)
+		}
+	}()
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
 	if c.ws == nil {
@@ -1200,8 +1217,11 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 	}
 
 retryAcquire:
+	if req.codexTicketUsable != nil && !req.codexTicketUsable() {
+		return nil, wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
+	}
 	accountID := req.Account.ID
-	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	compatibility := normalizeOpenAIWSAcquireCompatibility(req, req.Headers)
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
@@ -1223,10 +1243,11 @@ retryAcquire:
 
 	// 续链须保留原连接的状态头，票刷新和模式切换不能破坏已有 response 的归属。
 	// 仅忽略新增票维度，原有会话身份和 beta 兼容性仍需满足。
-	if allowReuse && (req.SkipHealthyPreflight || req.ForcePreferredConn) && preferredConnID != "" {
+	if req.codexTicket == nil && allowReuse && (req.SkipHealthyPreflight || req.ForcePreferredConn) && preferredConnID != "" {
 		if preferredConn := ap.conns[preferredConnID]; preferredConn != nil {
 			compatibility.turnStateMode = preferredConn.handshakeCompatibility.turnStateMode
 			compatibility.codexTicketDigest = preferredConn.handshakeCompatibility.codexTicketDigest
+			compatibility.codexProxyDigest = preferredConn.handshakeCompatibility.codexProxyDigest
 		}
 	}
 
@@ -2180,6 +2201,9 @@ func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
 }
 
 func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConn, error) {
+	if req.codexTicketUsable != nil && !req.codexTicketUsable() {
+		return nil, wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
+	}
 	if p == nil || p.clientDialer == nil {
 		return nil, errors.New("openai ws client dialer is nil")
 	}
@@ -2192,6 +2216,9 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 		}
 	}
 	conn, status, handshakeHeaders, err := p.clientDialer.Dial(ctx, req.WSURL, headers, req.ProxyURL)
+	if req.observeCodexTicket != nil {
+		req.observeCodexTicket(ctx, status, err, nil)
+	}
 	if err != nil {
 		var handshakeErr *openAIWSHandshakeError
 		var responseBody []byte
@@ -2217,7 +2244,8 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
-	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, headers)
+	pooledConn.codexTicket, pooledConn.observeCodexTicket = req.codexTicket, req.observeCodexTicket
+	pooledConn.handshakeCompatibility = normalizeOpenAIWSAcquireCompatibility(req, headers)
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2398,7 +2426,7 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
 	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
-		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)
+		normalizeOpenAIWSAcquireCompatibility(a, a.Headers) == normalizeOpenAIWSAcquireCompatibility(b, b.Headers)
 }
 
 func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
@@ -2424,6 +2452,14 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 	}
 	sort.Strings(normalized)
 	return strings.Join(normalized, ",")
+}
+
+func normalizeOpenAIWSAcquireCompatibility(req openAIWSAcquireRequest, headers http.Header) openAIWSHandshakeCompatibilityKey {
+	key := normalizeOpenAIWSHandshakeCompatibility(req.Account, headers)
+	if req.codexTicket != nil {
+		key.codexProxyDigest = sha256.Sum256([]byte(req.ProxyURL + "\x00" + req.codexTicket.Model + "\x00" + req.codexTicket.CapturedAt.Format(time.RFC3339Nano)))
+	}
+	return key
 }
 
 func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header) openAIWSHandshakeCompatibilityKey {

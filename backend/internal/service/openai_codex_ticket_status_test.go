@@ -71,13 +71,13 @@ func TestCodexTicketLiveStatusHonorsSwitchesAndRefreshWindow(t *testing.T) {
 	account := ticketTestAccount(41)
 	account.Status = StatusActive
 	now := time.Now()
-	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{ProxyURL: "http://192.0.2.10:8080",
 		Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292, ExpiresAt: now.Add(time.Hour),
 	})
 	status := svc.OpenAICodexTicketStatuses(context.Background(), account, now)[0]
 	require.True(t, status.Ready, "未持久化的内存门票也应立即显示")
 	require.Equal(t, "ready", status.HarvestStatus)
-	require.Equal(t, now.Add(50*time.Minute), *status.RefreshDueAt)
+	require.Equal(t, now.Add(time.Hour), *status.RefreshDueAt)
 	require.Nil(t, status.NextAttemptAt)
 	require.False(t, status.Blocked)
 	svc.openaiCodexTicketHarvest.beginAttempt(account.ID, status.Model, 1, 2)

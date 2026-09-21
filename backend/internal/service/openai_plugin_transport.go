@@ -12,7 +12,24 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 	return s.doOpenAIUpstreamWithHealthyTurnState(request, proxyURL, account)
 }
 
-func (s *OpenAIGatewayService) doOpenAIUpstreamOnce(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+func (s *OpenAIGatewayService) doOpenAIUpstreamOnce(request *http.Request, proxyURL string, account *Account) (response *http.Response, err error) {
+	if ticket, _ := request.Context().Value(openAICodexTicketBindingKey{}).(*openAICodexTicket); ticket != nil {
+		if !s.openAICodexTicketBindingUsable(account, ticket) {
+			return nil, wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
+		}
+		proxyURL = ticket.ProxyURL
+		observe := s.observeOpenAICodexTicketBinding(account, ticket)
+		defer func() {
+			status := 0
+			if response != nil {
+				status = response.StatusCode
+			}
+			observe(request.Context(), status, err, nil)
+			if err == nil && response != nil && response.Body != nil {
+				response.Body = &openAICodexTicketBody{ReadCloser: response.Body, ctx: request.Context(), observe: observe}
+			}
+		}()
+	}
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {

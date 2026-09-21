@@ -867,6 +867,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	ticket, ticketErr := s.bindOpenAICodexTicket(ctx, account, capturedSessionModel, headers)
+	if ticketErr != nil {
+		return ticketErr
+	}
+	observeTicket := s.observeOpenAICodexTicketBinding(account, ticket)
+	if ticket != nil {
+		proxyURL = ticket.ProxyURL
+	}
 
 	dialer := s.getOpenAIWSPassthroughDialer()
 	if dialer == nil {
@@ -885,6 +893,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
 		upstreamConn, statusCode, handshakeHeaders, healthyTurnStateObserver, err = s.dialOpenAIWSWithHealthyTurnState(dialCtx, c, account, capturedSessionModel, wsURL, headers, proxyURL, dialer)
+		if observeTicket != nil {
+			observeTicket(dialCtx, statusCode, err, nil)
+		}
 		cancelDial()
 		if err == nil {
 			break
@@ -935,6 +946,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		s.prepareHealthyWSFrameGate(observedFrameConn, account, wsURL, headers, proxyURL, dialer)
 		upstreamFrameConn = observedFrameConn
 		defer observedFrameConn.Close()
+	}
+	if observeTicket != nil {
+		upstreamFrameConn = &openAICodexTicketFrameConn{FrameConn: upstreamFrameConn, observe: observeTicket}
 	}
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,
@@ -1111,6 +1125,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if model == "" {
 				model = capturedSessionModel
 			}
+			if ticket != nil && (isResponseCreate || eventType == "session.update") {
+				current := s.lookupOpenAICodexTicket(account, model)
+				if !current.valid(time.Now(), s.openAICodexTicketConfig().TargetLength) || ticket.Model != model || current.State != ticket.State || current.ProxyURL != ticket.ProxyURL || !current.CapturedAt.Equal(ticket.CapturedAt) {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "门票或绑定出口已变化，请重新连接", ErrOpenAICodexTicketUnavailable)
+				}
+			}
+
 			frameIntegrity.expectMappedModel(model)
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)

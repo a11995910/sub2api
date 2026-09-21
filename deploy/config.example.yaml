@@ -334,13 +334,14 @@ gateway:
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.5"
   # 独立 292 门票实验：只对账号选择 codex_ticket 模式时生效。
-  # 后台可热更新总开关和来源；固定代理由供应商轮换，批量提取每轮获取一次并共用结果。
+  # 后台可热更新总开关和来源；成功门票与代理按账号模型绑定，到期或失效后重采。
+  # 保持实际出口需使用固定或粘性 IP，关闭供应商提前换 IP，粘性时长须覆盖 ttl_seconds。
   # 只验 HTTP 200、长度和前缀，拿到头即关闭，不验证完整模型输出。
   openai_codex_ticket:
     enabled: false
     target_length: 292
     ttl_seconds: 3600
-    refresh_before_seconds: 600
+    refresh_before_seconds: 600 # 仅保留配置兼容，不再提前换票或换出口
     harvest_proxy_url: ""
     harvest_proxy_mode: "proxy" # proxy 固定代理；extract 批量提取
     harvest_extract_url: "" # HTTPS 文本提取接口，仅写运行时配置，勿将实际凭据提交到仓库

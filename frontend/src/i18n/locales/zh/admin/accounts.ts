@@ -754,7 +754,7 @@ export default {
           off: '关闭本账号的额外状态头采集与注入。客户端原有状态头仍按协议处理。',
           healthy_retry: '遇到 429／503 或响应模型不一致时，领取同账号同模型的健康头补试。采集需完整健康响应；失败头会淘汰。',
           healthy_preflight: '首次请求即领取同账号同模型的健康头注入。健康头经过完整响应验证，并以租约避免并发重复领取。',
-          codex_ticket: '使用 026 的 292 门票策略，按账号与模型共享门票。请先在系统设置 → Codex 设置开启总开关并配置固定代理或批量 IP 提取接口；无需配置下方健康头动态 IP 接口。'
+          codex_ticket: '按账号与模型绑定 292 门票和成功采集代理，业务请求持续走该代理直至失效。请在系统设置 → Codex 设置开启总开关并配置固定或粘性 IP 采集来源。'
         },
         healthyTurnStateFailClosed: '无健康头时暂停该模型',
         healthyTurnStateFailClosedHint: '默认开启：没有可领取的健康头时，暂停本账号该模型的调度。关闭后继续原请求。',
@@ -773,7 +773,7 @@ export default {
         codexTicketLastResult: '最近结果：{result}',
         codexTicketNextAttempt: '预计下次尝试：{time}',
         codexTicketWaiting: '等待本轮采集调度；下一轮在本轮结束后约 {seconds} 秒开始',
-        codexTicketRefreshDue: '进入提前刷新窗口：{time}',
+        codexTicketRefreshDue: '到期后重新采集：{time}',
         codexTicketResults: {
           success: '采集成功', invalid_format: '未取得有效 292 门票', auth_failed: '认证失败',
           proxy_error: '代理连接或认证失败', request_timeout: '采集请求超时', upstream_error: '上游请求失败',

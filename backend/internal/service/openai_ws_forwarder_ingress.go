@@ -1660,6 +1660,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		forcePreferredConn := isStrictAffinityTurn(currentPayload)
+		if sessionLease != nil && isOpenAICodexTicketAccount(account) && s.openAICodexTicketEnabledContext(ctx) && !s.openAICodexTicketLeaseMatches(account, openAIWSPayloadStringFromRaw(currentPayload, "model"), sessionLease) {
+			if currentPreviousResponseID != "" || forcePreferredConn {
+				return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "门票或绑定出口已变化，请重新开始会话", ErrOpenAICodexTicketUnavailable)
+			}
+			resetSessionLease(true)
+		}
 		if sessionLease == nil {
 			acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn, turnRetry > 0, openAIWSPayloadStringFromRaw(currentPayload, "model"), currentPreviousResponseID != "")
 			if acquireErr != nil {

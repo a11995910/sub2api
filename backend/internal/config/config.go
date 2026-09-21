@@ -3953,8 +3953,8 @@ func warnIfInsecureURL(field, raw string) {
 }
 
 // OpenAICodexTicketConfig 控制 ChatGPT OAuth 的 x-codex-turn-state 门票。
-// 采集走 harvest_proxy_url，业务出站仍使用账号原代理，只替换该请求头。
-// 门票默认有效 3600 秒，临近过期前 refresh_before_seconds 重新打票。
+// 成功采集的门票与代理出口按账号、模型绑定，业务请求复用该出口。
+// 门票默认有效 3600 秒，到期或绑定失效后重新采集；refresh_before_seconds 仅保留配置兼容。
 type OpenAICodexTicketConfig struct {
 	Enabled                      bool     `mapstructure:"enabled"`
 	TargetLength                 int      `mapstructure:"target_length"`
