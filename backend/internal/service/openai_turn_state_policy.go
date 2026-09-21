@@ -17,7 +17,7 @@ const (
 	OpenAIHealthyTurnStateFailClosedKey = "openai_healthy_turn_state_fail_closed"
 )
 
-// 新建独立 OpenAI OAuth 类账号默认使用健康头首发注入；显式模式和旧开关始终优先。
+// 新建独立 OpenAI OAuth 类账号默认关闭状态头策略；显式模式和旧开关始终优先。
 // 仅供创建入口调用，读取或更新已有账号时不得重新套用默认值。
 func applyOpenAITurnStateCreateDefault(account *Account) {
 	if !account.IsOpenAIOAuthLike() || account.IsShadow() {
@@ -32,8 +32,8 @@ func applyOpenAITurnStateCreateDefault(account *Account) {
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
-	account.Extra[OpenAITurnStateModeKey] = OpenAITurnStateHealthyPreflight
-	account.Extra[openAIHealthyTurnStateReplaceKey] = true
+	account.Extra[OpenAITurnStateModeKey] = OpenAITurnStateOff
+	account.Extra[openAIHealthyTurnStateReplaceKey] = false
 }
 
 // OpenAITurnStateMode 保留旧开关语义；无法识别的存量模式按关闭处理。
