@@ -10,6 +10,8 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // brokerProbePlugin 是仅用于测试的插件传输实现：它实现 HostBrokerReceiver 以拿到
@@ -127,4 +129,83 @@ func TestOfferPluginHostServices_NilHostServicesNoop(t *testing.T) {
 	require.NotPanics(t, func() {
 		offerPluginHostServices(context.Background(), &PluginInstallation{PluginKey: "test.plugin"}, tc.TransportPluginClient, tc.Broker, nil, 5*time.Second)
 	})
+}
+
+// versionedAccountProbe 模拟只接受指定版本的第三方插件，经真实反向 gRPC
+// 查询账号，避免只验证重试次数而漏掉账号接口仍不可用的问题。
+type versionedAccountProbe struct {
+	pluginv1.UnimplementedTransportPluginServer
+	broker          *hcplugin.GRPCBroker
+	acceptedVersion uint32
+	initErr         error
+	mu              sync.Mutex
+	versions        []uint32
+	brokerIDs       []uint32
+	accountIDs      []int64
+}
+
+func (p *versionedAccountProbe) SetHostBroker(broker *hcplugin.GRPCBroker) {
+	p.broker = broker
+}
+
+func (p *versionedAccountProbe) InitHostServices(ctx context.Context, req *pluginv1.InitHostServicesRequest) (*pluginv1.InitHostServicesResponse, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.versions = append(p.versions, req.HostServiceApiVersion)
+	p.brokerIDs = append(p.brokerIDs, req.HostServiceId)
+	if p.initErr != nil {
+		return nil, p.initErr
+	}
+	if req.HostServiceApiVersion != p.acceptedVersion {
+		return &pluginv1.InitHostServicesResponse{Message: "不支持此宿主接口版本"}, nil
+	}
+	conn, err := p.broker.Dial(req.HostServiceId)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
+	accounts, err := pluginv1.NewHostServiceClient(conn).ListAccounts(ctx, &pluginv1.ListAccountsRequest{
+		Platform: "openai", AccountType: "oauth",
+	})
+	if err != nil {
+		return nil, err
+	}
+	p.accountIDs = accounts.AccountIds
+	return &pluginv1.InitHostServicesResponse{Ready: true}, nil
+}
+
+func TestOfferPluginHostServices_VersionNegotiation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		version  uint32
+		initErr  error
+		versions []uint32
+		accounts []int64
+	}{
+		{name: "v2直接连接", version: 2, versions: []uint32{2}, accounts: []int64{7}},
+		{name: "严格v1插件回退后能读取账号", version: 1, versions: []uint32{2, 1}, accounts: []int64{7}},
+		{name: "两次拒绝后停止", version: 99, versions: []uint32{2, 1}},
+		{name: "RPC失败不降级", initErr: status.Error(codes.Unavailable, "连接不可用"), versions: []uint32{2}},
+		{name: "旧插件未实现不降级", initErr: status.Error(codes.Unimplemented, "未实现"), versions: []uint32{2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &versionedAccountProbe{acceptedVersion: tc.version, initErr: tc.initErr}
+			client := dispenseTransportClient(t, probe)
+			scope := newPluginAccountScope(pluginAccountScopeEntry{Platform: "openai", AccountType: "oauth"})
+			directory := &fakeAccountDirectory{infos: []PluginAccountInfo{{ID: 7, Platform: "openai", AccountType: "oauth", Status: "active", Schedulable: true}}}
+			host := newPluginHostServiceServer("test.plugin", newFakePluginKVStore(), directory, scope)
+			offerPluginHostServices(context.Background(), &PluginInstallation{PluginKey: "test.plugin"}, client.TransportPluginClient, client.Broker, host, 5*time.Second)
+
+			probe.mu.Lock()
+			defer probe.mu.Unlock()
+			require.Equal(t, tc.versions, probe.versions)
+			assert.Equal(t, tc.accounts, probe.accountIDs)
+			for _, id := range probe.brokerIDs {
+				assert.Equal(t, probe.brokerIDs[0], id, "降级必须复用同一宿主服务与权限范围")
+			}
+			if len(tc.accounts) > 0 {
+				assert.Equal(t, scope, directory.lastScope)
+			}
+		})
+	}
 }

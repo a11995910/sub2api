@@ -135,6 +135,14 @@ func offerPluginHostServices(
 		HostServiceId:         brokerID,
 		HostServiceApiVersion: pluginv1.HostServiceAPIVersion,
 	})
+	// v2 仅为 v1 增补字段，但部分旧插件严格校验版本相等。仅在插件明确
+	// 拒绝 v2 时，用同一 broker 重试仍受支持的 v1；RPC 失败不触发降级。
+	if err == nil && resp != nil && !resp.Ready && pluginv1.HostServiceAPIVersion == 2 {
+		resp, err = api.InitHostServices(initCtx, &pluginv1.InitHostServicesRequest{
+			HostServiceId:         brokerID,
+			HostServiceApiVersion: 1,
+		})
+	}
 	pluginKey := ""
 	if installation != nil {
 		pluginKey = installation.PluginKey
