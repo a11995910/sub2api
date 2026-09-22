@@ -16,6 +16,50 @@ type zycaVideoRejectedError struct {
 
 func (e *zycaVideoRejectedError) Error() string { return e.message }
 
+type zycaVideoModelProfile struct {
+	minSeconds                      int
+	maxSecondsByResolution          map[string]int
+	maxImages, maxVideos, maxAudios int
+	maxReferences                   int
+	requiresReference               map[string]bool
+}
+
+var zycaVideoModelProfiles = map[string]zycaVideoModelProfile{
+	"auto-video": {
+		minSeconds: 1, maxSecondsByResolution: map[string]int{VideoBillingResolution720P: 12}, maxImages: 5,
+	},
+	"agnes-video-2.5-flash": {
+		minSeconds: 1, maxSecondsByResolution: map[string]int{VideoBillingResolution720P: 12}, maxImages: 5,
+	},
+	"grok-imagine-video-1.5": {
+		minSeconds: 1, maxSecondsByResolution: map[string]int{
+			VideoBillingResolution480P: 15, VideoBillingResolution720P: 15, VideoBillingResolution1080P: 15,
+		}, maxImages: 7,
+	},
+	"kling-video-v3-omni": {
+		minSeconds: 3, maxSecondsByResolution: map[string]int{
+			VideoBillingResolution480P: 15, VideoBillingResolution720P: 15, VideoBillingResolution1080P: 15,
+		}, maxImages: 7,
+	},
+	"minimax-h3": {
+		minSeconds: 4, maxSecondsByResolution: map[string]int{
+			VideoBillingResolution720P: 15, VideoBillingResolution1080P: 15,
+			VideoBillingResolution2K: 15, VideoBillingResolution4K: 15,
+		}, maxImages: 9, maxVideos: 3, maxAudios: 3, maxReferences: 12,
+		requiresReference: map[string]bool{VideoBillingResolution2K: true, VideoBillingResolution4K: true},
+	},
+	"minimax-h3-903": {
+		minSeconds: 1, maxSecondsByResolution: map[string]int{
+			VideoBillingResolution720P: 15, VideoBillingResolution1080P: 15,
+		}, maxImages: 9, maxAudios: 3, maxReferences: 12,
+	},
+	"seedance-2.0mini_933": {
+		minSeconds: 1, maxSecondsByResolution: map[string]int{
+			VideoBillingResolution480P: 15, VideoBillingResolution720P: 12,
+		}, maxImages: 9, maxVideos: 3, maxAudios: 3,
+	},
+}
+
 // ZYCA 参数依据统一生图生视频接口文档，复用对外视频契约。
 func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoRequest, mappedModel string) (OpenAIVideoPreparedRequest, error) {
 	for field := range payload {
@@ -27,45 +71,35 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 	if model == "" {
 		model = request.Model
 	}
-	minSeconds, maxSeconds, maxImages, maxVideos, maxAudios := 1, 15, 7, 0, 0
-	switch model {
-	case "auto-video", "agnes-video-2.5-flash":
-		maxSeconds, maxImages = 12, 5
-	case "grok-imagine-video-1.5":
-	case "kling-video-v3-omni":
-		minSeconds = 3
-	case "minimax-h3":
-		minSeconds, maxImages, maxVideos, maxAudios = 4, 9, 3, 3
-	default:
+	profile, configured := zycaVideoModelProfiles[model]
+	if !configured {
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("尚未配置 ZYCA 视频模型 %q", model)
+	}
+	resolution, knownResolution := LookupVideoBillingResolution(request.Resolution)
+	maxSeconds, supportedResolution := profile.maxSecondsByResolution[resolution]
+	if !knownResolution || !supportedResolution {
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("请显式指定 ZYCA 模型支持的清晰度")
 	}
 	for _, field := range []string{"duration", "seconds"} {
 		if value, exists := payload[field]; exists {
 			seconds, err := strconv.Atoi(fmt.Sprint(value))
-			if err != nil || seconds < minSeconds || seconds > maxSeconds {
-				return OpenAIVideoPreparedRequest{}, fmt.Errorf("%s 必须为 %d 到 %d 的整数秒", field, minSeconds, maxSeconds)
+			if err != nil || seconds < profile.minSeconds || seconds > maxSeconds {
+				return OpenAIVideoPreparedRequest{}, fmt.Errorf("%s 必须为 %d 到 %d 的整数秒", field, profile.minSeconds, maxSeconds)
 			}
 		}
 	}
-	if request.DurationSeconds < minSeconds || request.DurationSeconds > maxSeconds {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("视频时长必须为 %d 到 %d 秒", minSeconds, maxSeconds)
+	if request.DurationSeconds < profile.minSeconds || request.DurationSeconds > maxSeconds {
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("视频时长必须为 %d 到 %d 秒", profile.minSeconds, maxSeconds)
 	}
-	if len(request.ImageURLs) > maxImages || len(request.VideoURLs) > maxVideos || len(request.AudioURLs) > maxAudios ||
-		(model == "minimax-h3" && len(request.ImageURLs)+len(request.VideoURLs)+len(request.AudioURLs) > 12) {
+	referenceCount := len(request.ImageURLs) + len(request.VideoURLs) + len(request.AudioURLs)
+	if len(request.ImageURLs) > profile.maxImages || len(request.VideoURLs) > profile.maxVideos || len(request.AudioURLs) > profile.maxAudios ||
+		(profile.maxReferences > 0 && referenceCount > profile.maxReferences) {
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("参考素材数量超过 ZYCA 模型限制")
 	}
 	if request.FirstImageURL != "" || request.LastImageURL != "" {
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("ZYCA 首尾帧协议尚未支持")
 	}
-	resolution, ok := LookupVideoBillingResolution(request.Resolution)
-	if (model == "auto-video" || model == "agnes-video-2.5-flash") && resolution != VideoBillingResolution720P {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("%s 仅支持 720p 清晰度", model)
-	}
-	if !ok || (model == "minimax-h3" && resolution != VideoBillingResolution1080P && !VideoResolutionRequiresExplicitPrice(resolution)) ||
-		(model != "minimax-h3" && VideoResolutionRequiresExplicitPrice(resolution)) {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("请显式指定 ZYCA 模型支持的清晰度")
-	}
-	if (resolution == VideoBillingResolution2K || resolution == VideoBillingResolution4K) && len(request.ImageURLs)+len(request.VideoURLs)+len(request.AudioURLs) == 0 {
+	if profile.requiresReference[resolution] && referenceCount == 0 {
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("ZYCA 2K 和 4K 视频至少需要一个参考素材")
 	}
 	request.Resolution = resolution

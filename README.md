@@ -583,7 +583,7 @@ curl -X POST https://your-domain.example/v1/videos \
 
 ZYCA 适配的对外入口仍是 `POST /v1/videos`、`GET /v1/videos/{id}` 和 `GET /v1/videos/{id}/content`。网关将参考素材映射为 `parameters.input_images/input_videos/input_audios`，将时长写入 `duration` 和 `parameters.seconds`，音频开关写入 `parameters.generate_audio`。每次提交生成独立的 `client_request_id`；这不代表对外 `Idempotency-Key` 已实现去重，客户端不得自动重提结果不明的创建请求。创建不会回退 Chat Completions 或换账号重试。
 
-ZYCA 分支依据用户提供的《zyca-统一生图生视频接口-node示例》实现，尚无带凭据的真实生成验收。上游 Base URL 为 `https://api.zyca.top`。支持的模型为 `auto-video`（1–12 秒、5 张图）、`grok-imagine-video-1.5`（1–15 秒、7 张图）、`kling-video-v3-omni`（3–15 秒、7 张图）和 `minimax-h3`（4–15 秒、9 张图、3 段视频、3 段音频，总计 12 个参考素材）。前三个模型接受 `480p/720p/1080p`，MiniMax 接受 `768p/1080p/2K/4K`；清晰度必须显式填写，2K/4K 至少需要一个参考素材。首尾帧不支持；不发送水印参数。
+ZYCA 分支依据用户提供的《zyca-统一生图生视频接口-node示例》实现，尚无带凭据的真实生成验收。上游 Base URL 为 `https://api.zyca.top`。支持的模型包括 `auto-video` / `agnes-video-2.5-flash`（1–12 秒、5 张图）、`grok-imagine-video-1.5`（1–15 秒、7 张图）、`kling-video-v3-omni`（3–15 秒、7 张图）、`minimax-h3`（4–15 秒、9 张图、3 段视频、3 段音频，总计 12 个参考素材）、`minimax-h3-903`（1–15 秒、9 张图、3 段音频，总计 12 个参考素材）和 `seedance-2.0mini_933`（9 张图、3 段视频、3 段音频）。MiniMax H3 接受 `720p/1080p/2K/4K`，H3-903 接受 `720p/1080p`；Seedance 2.0 Mini 933 的 480p 接受 1–15 秒，720p 接受 1–12 秒。清晰度必须显式填写，H3 的 2K/4K 至少需要一个参考素材。首尾帧不支持；不发送水印参数。
 
 对外 `aspect_ratio` 支持 `21:9/16:9/4:3/1:1/3:4/9:16`，转换为上游像素 `size`。项目转换策略以清晰度为短边（480、720、768、1080、1440、2160），长边按比例取最近偶数，例如 720p + 16:9 → `1280x720`，4K + 16:9 → `3840x2160`；这是项目尺寸策略，并非文档提供的完整固定尺寸枚举，仍需实测上游接受情况。`size` 也可直接填写该策略的像素尺寸或比例，与 `aspect_ratio`、清晰度不一致时拒绝提交；两者均省略时不发送 `size`。
 
@@ -597,7 +597,7 @@ ZYCA 分支依据用户提供的《zyca-统一生图生视频接口-node示例�
 
 旧任务或其他没有成本快照的兼容用量仍按结算时的配置处理，历史记录不回填。若已提交请求的账号成本解析失败，记录 `openai_usage.video_account_stats_unavailable` 告警，继续客户扣费与用量落库；该条记录的 `account_stats_cost` 留空，统计暂按历史公式“客户基价 × 账号成本倍率”估算，不能视为已确认的上游实际成本。此兜底不放宽新视频请求提交前的成本校验。
 
-价格需在 staging 中按确认后的上游价和独立售价配置，代码不内置截图价格。MiniMax 的接口分辨率遵循文档 `768p`；截图“720P $0.12/秒”是否对应此档尚待确认，不自动转换或填入。
+价格需在 staging 中按确认后的上游价和独立售价配置，代码不内置截图价格。MiniMax 当前模型的首档分辨率统一为 `720p`，不接受 `768p`；不会自动转换或填入价格。
 
 失败响应读取 `data.error_message`，业务错误读取 `message`，复用上游错误脱敏后返回。创建返回 HTTP 成功响应、显式 `success: false` 且没有任务 ID 时，按明确业务拒绝处理并释放预留费用；缺少或无效的 `success`、拒绝响应携带任务 ID、超时和断连仍属于提交结果未知，保留费用待核查，不自动重提。
 

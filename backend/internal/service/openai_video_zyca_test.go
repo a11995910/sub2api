@@ -84,7 +84,7 @@ func TestZYCACreateMapsRequestAndBindsOwner(t *testing.T) {
 func TestZYCAValidationBeforeUpstreamSubmission(t *testing.T) {
 	for _, extra := range []string{
 		`"duration":3`, `"duration":4.5`, `"duration":0`, `"duration":true`, `"duration":16`,
-		`"seconds":"4.5"`, `"resolution":"720p"`, `"resolution":"2K"`, `"resolution":"4K"`,
+		`"seconds":"4.5"`, `"resolution":"768p"`, `"resolution":"2K"`, `"resolution":"4K"`,
 		`"aspect_ratio":"2:1"`, `"size":"1280x720"`, `"seed":1`, `"first_image_url":"https://cdn.test/a.png"`,
 		`"aspect_ratio":"16:9","size":"1080x1920"`, `"aspect_ratio":16`,
 		`"reference_videos":["http://cdn.test/a.mp4"]`,
@@ -228,7 +228,7 @@ func TestZYCAModelLimits(t *testing.T) {
 		min, max, images int
 	}{
 		{"auto-video", 1, 12, 5}, {"agnes-video-2.5-flash", 1, 12, 5}, {"grok-imagine-video-1.5", 1, 15, 7},
-		{"kling-video-v3-omni", 3, 15, 7}, {"minimax-h3", 4, 15, 9},
+		{"kling-video-v3-omni", 3, 15, 7}, {"minimax-h3", 4, 15, 9}, {"minimax-h3-903", 1, 15, 9},
 	} {
 		t.Run(tt.model, func(t *testing.T) {
 			resolution := "1080p"
@@ -258,10 +258,14 @@ func TestZYCADocumentedSizesAndResolutions(t *testing.T) {
 		{"agnes-video-2.5-flash", "720p", "16:9", "1280x720"},
 		{"grok-imagine-video-1.5", "480p", "9:16", "480x854"},
 		{"kling-video-v3-omni", "1080p", "1:1", "1080x1080"},
-		{"minimax-h3", "768p", "4:3", "1024x768"},
+		{"minimax-h3", "720p", "4:3", "960x720"},
 		{"minimax-h3", "1080p", "3:4", "1080x1440"},
 		{"minimax-h3", "2K", "21:9", "3360x1440"},
 		{"minimax-h3", "4K", "16:9", "3840x2160"},
+		{"minimax-h3-903", "720p", "16:9", "1280x720"},
+		{"minimax-h3-903", "1080p", "9:16", "1080x1920"},
+		{"seedance-2.0mini_933", "480p", "16:9", "854x480"},
+		{"seedance-2.0mini_933", "720p", "9:16", "720x1280"},
 	} {
 		t.Run(tt.model+tt.resolution, func(t *testing.T) {
 			body, err := json.Marshal(map[string]any{"model": tt.model, "prompt": "视频", "duration": 5,
@@ -284,6 +288,61 @@ func TestZYCADocumentedSizesAndResolutions(t *testing.T) {
 			require.NoError(t, err)
 			require.Error(t, ValidateOpenAIVideoCreateBodyForAccount(zycaTestAccount(), body))
 		}
+	}
+}
+
+func TestZYCANewModelBoundaries(t *testing.T) {
+	validImages := make([]string, 9)
+	for i := range validImages {
+		validImages[i] = "https://cdn.test/" + uuid.NewString() + ".png"
+	}
+	validAudios := []string{"https://cdn.test/a.mp3", "https://cdn.test/b.mp3", "https://cdn.test/c.mp3"}
+	for _, tt := range []struct {
+		name       string
+		model      string
+		resolution string
+		duration   int
+		images     []string
+		videos     []string
+		audios     []string
+		valid      bool
+	}{
+		{"H3 720p", "minimax-h3", "720p", 4, nil, nil, nil, true},
+		{"H3 rejects 768p", "minimax-h3", "768p", 4, nil, nil, nil, false},
+		{"H3-903 720p 15 seconds", "minimax-h3-903", "720p", 15, nil, nil, nil, true},
+		{"H3-903 1080p", "minimax-h3-903", "1080p", 1, nil, nil, nil, true},
+		{"H3-903 rejects 768p", "minimax-h3-903", "768p", 5, nil, nil, nil, false},
+		{"H3-903 accepts 12 references", "minimax-h3-903", "720p", 5, validImages, nil, validAudios, true},
+		{"H3-903 rejects video reference", "minimax-h3-903", "720p", 5, nil, []string{"https://cdn.test/a.mp4"}, nil, false},
+		{"Seedance 480p 15 seconds", "seedance-2.0mini_933", "480p", 15, nil, nil, nil, true},
+		{"Seedance 720p 12 seconds", "seedance-2.0mini_933", "720p", 12, nil, nil, nil, true},
+		{"Seedance 720p rejects 13 seconds", "seedance-2.0mini_933", "720p", 13, nil, nil, nil, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{
+				"model": tt.model, "prompt": "视频", "duration": tt.duration, "resolution": tt.resolution,
+				"reference_image_urls": tt.images, "reference_videos": tt.videos, "reference_audios": tt.audios,
+			})
+			require.NoError(t, err)
+			err = ValidateOpenAIVideoCreateBodyForAccount(zycaTestAccount(), body)
+			if tt.valid {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestZYCANewModelsAreForwardedUnchanged(t *testing.T) {
+	for _, model := range []string{"minimax-h3-903", "seedance-2.0mini_933"} {
+		t.Run(model, func(t *testing.T) {
+			payload := map[string]any{"model": model, "prompt": "视频", "duration": 12, "resolution": "720p"}
+			request := OpenAIVideoRequest{Model: model, Prompt: "视频", DurationSeconds: 12, Resolution: "720p"}
+			prepared, err := PrepareZYCAVideoCreateBody(payload, request, model)
+			require.NoError(t, err)
+			require.Equal(t, model, gjson.GetBytes(prepared.Body, "model").String())
+		})
 	}
 }
 
@@ -347,7 +406,7 @@ func TestZYCAMiniMaxCombinedReferenceLimit(t *testing.T) {
 }
 
 func TestZYCAExtendedResolutionPricing(t *testing.T) {
-	prices := NormalizeVideoModelPrices(map[string]map[string]float64{"minimax-h3": {"768p": 0.2, "1080p": 0.3, "2k": 0.5, "4k": 0.8}})
+	prices := NormalizeVideoModelPrices(map[string]map[string]float64{"minimax-h3": {"720p": 0.2, "1080p": 0.3, "2k": 0.5, "4k": 0.8}})
 	flat := 0.01
 	group := &Group{VideoPrice480P: &flat, VideoModelPrices: prices}
 	svc := newOpenAIRecordUsageServiceForTest(nil, nil, nil, nil)
@@ -361,7 +420,7 @@ func TestZYCAExtendedResolutionPricing(t *testing.T) {
 		require.NoError(t, checkVideoPricingIntervals(ChannelModelPricing{BillingMode: BillingModeVideo,
 			Intervals: []PricingInterval{{TierLabel: resolution, PerRequestPrice: &price}}}))
 	}
-	for _, resolution := range []string{"768p", "2K", "4K"} {
+	for _, resolution := range []string{"2K", "4K"} {
 		_, err := svc.EstimateVideoCost(context.Background(), &APIKey{Group: &Group{VideoPrice480P: &flat}}, "minimax-h3", resolution, 5)
 		require.ErrorContains(t, err, "每秒价格")
 	}
@@ -414,7 +473,9 @@ func TestZYCAAllResolutionsRequireExplicitPrices(t *testing.T) {
 		{"auto-video", []string{"480p", "720p", "1080p"}},
 		{"grok-imagine-video-1.5", []string{"480p", "720p", "1080p"}},
 		{"kling-video-v3-omni", []string{"480p", "720p", "1080p"}},
-		{"minimax-h3", []string{"768p", "1080p", "2K", "4K"}},
+		{"minimax-h3", []string{"720p", "1080p", "2K", "4K"}},
+		{"minimax-h3-903", []string{"720p", "1080p"}},
+		{"seedance-2.0mini_933", []string{"480p", "720p"}},
 	} {
 		for _, resolution := range tt.resolutions {
 			t.Run(tt.model+resolution, func(t *testing.T) {
