@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCodexTicketLiveStatusTracksAttemptAndActualNextCycle(t *testing.T) {
+func TestCodexTicketLiveStatusTracksIndependentRetry(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
 		Enabled: true, HarvestProxyURL: "http://proxy.example:8080", Models: []string{"gpt-6-astra"},
@@ -44,18 +42,18 @@ func TestCodexTicketLiveStatusTracksAttemptAndActualNextCycle(t *testing.T) {
 	require.NotNil(t, status.LastAttemptAt)
 	require.Equal(t, 1, status.AttemptIndex)
 	require.Equal(t, 1, status.AttemptTotal)
-	require.Nil(t, status.NextAttemptAt, "进行中的整轮没有确定下一轮时刻")
+	require.Nil(t, status.NextAttemptAt, "进行中的目标没有确定下次重试时刻")
 	require.Equal(t, 6, status.RetryIntervalSeconds)
 	require.Equal(t, 25, status.AttemptTimeoutSeconds)
 	finishedAfter := time.Now()
 	close(release)
 	require.Eventually(t, func() bool {
 		return svc.OpenAICodexTicketStatuses(ctx, account, time.Now())[0].NextAttemptAt != nil
-	}, time.Second, time.Millisecond, "本轮结束后应安排下一轮")
+	}, time.Second, time.Millisecond, "该目标结束后应安排独立重试")
 	status = svc.OpenAICodexTicketStatuses(ctx, account, time.Now())[0]
 	require.Equal(t, "waiting", status.HarvestStatus)
 	require.Equal(t, "proxy_error", status.LastResult)
-	require.True(t, status.NextAttemptAt.After(finishedAfter.Add(6*time.Second)), "下次整轮应从本轮结束起等6秒")
+	require.True(t, status.NextAttemptAt.After(finishedAfter.Add(6*time.Second)), "该目标从失败结束起等6秒")
 	require.WithinDuration(t, time.Now().Add(6*time.Second), *status.NextAttemptAt, time.Second)
 	encoded, err := json.Marshal(status)
 	require.NoError(t, err)
@@ -121,84 +119,6 @@ func TestCodexTicketProbeSafeResults(t *testing.T) {
 	}
 	require.Equal(t, "canceled", classifyOpenAICodexTicketProbeError(context.Canceled))
 	require.Equal(t, "request_timeout", classifyOpenAICodexTicketProbeError(context.DeadlineExceeded))
-}
-
-type codexTicketBatchUpstream struct {
-	HTTPUpstream
-	active, peak atomic.Int64
-	started      chan struct{}
-	release      chan struct{}
-	mu           sync.Mutex
-	proxies      map[int64][]string
-}
-
-func (u *codexTicketBatchUpstream) Do(req *http.Request, proxy string, accountID int64, _ int) (*http.Response, error) {
-	active := u.active.Add(1)
-	defer u.active.Add(-1)
-	for peak := u.peak.Load(); active > peak; peak = u.peak.Load() {
-		if u.peak.CompareAndSwap(peak, active) {
-			break
-		}
-	}
-	u.mu.Lock()
-	u.proxies[accountID] = append(u.proxies[accountID], proxy)
-	index := len(u.proxies[accountID])
-	u.mu.Unlock()
-	if index == 1 {
-		u.started <- struct{}{}
-		select {
-		case <-u.release:
-		case <-req.Context().Done():
-			return nil, req.Context().Err()
-		}
-	}
-	response := codexTicketResponse()
-	if index == 1 {
-		response.Header.Set(openAICodexTurnStateHeader, "无效门票")
-	}
-	return response, nil
-}
-
-func TestCodexTicketExtractBatchBoundsConcurrencyAndStopsAfterSuccess(t *testing.T) {
-	upstream := &codexTicketBatchUpstream{started: make(chan struct{}, 8), release: make(chan struct{}), proxies: make(map[int64][]string)}
-	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyMode: "extract", HarvestExtractURL: "https://supplier.example/list", Models: []string{"gpt-6-astra"}}, upstream)
-	var targets []openAICodexTicketHarvestTarget
-	for id := int64(1); id <= 8; id++ {
-		account := ticketTestAccount(id)
-		account.Status = StatusActive
-		targets = append(targets, openAICodexTicketHarvestTarget{account: *account, model: "gpt-6-astra"})
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	source := svc.openAICodexTicketHarvestSource(ctx)
-	done := make(chan struct{})
-	go func() {
-		svc.runOpenAICodexTicketHarvestBatch(ctx, targets, []string{"http://1.1.1.1:8080", "http://8.8.8.8:8080", "http://9.9.9.9:8080"}, "extract", source)
-		close(done)
-	}()
-	for i := 0; i < 4; i++ {
-		select {
-		case <-upstream.started:
-		case <-ctx.Done():
-			t.Fatal("未按并发启动采集")
-		}
-	}
-	require.Equal(t, int64(4), upstream.active.Load())
-	close(upstream.release)
-	select {
-	case <-done:
-	case <-ctx.Done():
-		t.Fatal("批量采集超时")
-	}
-	require.Equal(t, int64(4), upstream.peak.Load())
-	for _, target := range targets {
-		require.Equal(t, []string{"http://1.1.1.1:8080", "http://8.8.8.8:8080"}, upstream.proxies[target.account.ID])
-		status := svc.OpenAICodexTicketStatuses(ctx, &target.account, time.Now())[0]
-		require.True(t, status.Ready)
-		require.Equal(t, "success", status.LastResult)
-		require.Equal(t, 2, status.AttemptIndex)
-		require.Equal(t, 3, status.AttemptTotal)
-	}
 }
 
 func TestCodexTicketBatchDropsResultsAfterSourceChanges(t *testing.T) {

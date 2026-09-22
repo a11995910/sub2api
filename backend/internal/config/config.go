@@ -2447,6 +2447,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_extract_protocol", "http")
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_concurrency", 3)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_global_concurrency", 8)
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
 	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
@@ -3967,6 +3969,8 @@ type OpenAICodexTicketConfig struct {
 	HarvestExtractProtocol       string   `mapstructure:"harvest_extract_protocol"`
 	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
 	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
+	HarvestProxyConcurrency      int      `mapstructure:"harvest_proxy_concurrency"`
+	HarvestGlobalConcurrency     int      `mapstructure:"harvest_global_concurrency"`
 	FailClosed                   bool     `mapstructure:"fail_closed"`
 	Models                       []string `mapstructure:"models"`
 }

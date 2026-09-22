@@ -88,17 +88,23 @@ func (s *OpenAIGatewayService) openAICodexTicketHarvestSourceConfigured(ctx cont
 	return source.Mode == OpenAICodexTicketHarvestExtractMode || source.ProxyURL != ""
 }
 
-// 每轮只调用一次；批量结果供该轮全部账号与模型复用，不自动重试付费提取。
+// 每个账号模型每次采集只提取一次，不自动重试付费提取。
 func (s *OpenAIGatewayService) resolveOpenAICodexTicketHarvestProxies(ctx context.Context) ([]string, string, error) {
 	source := s.openAICodexTicketHarvestSource(ctx)
+	proxies, err := resolveOpenAICodexTicketHarvestProxiesFromSource(ctx, source)
+	return proxies, source.Mode, err
+}
+
+// 提取与探测共用同一来源快照，防止配置切换时混合新旧供应商。
+func resolveOpenAICodexTicketHarvestProxiesFromSource(ctx context.Context, source OpenAICodexTicketHarvestSource) ([]string, error) {
 	if source.Mode == OpenAICodexTicketHarvestExtractMode {
 		proxies, err := fetchOpenAICodexTicketHarvestProxyBatch(ctx, source, nil)
-		return proxies, source.Mode, err
+		return proxies, err
 	}
 	if ValidateOpenAICodexTicketHarvestSource(source) != nil || source.ProxyURL == "" {
-		return nil, source.Mode, ErrOpenAICodexTicketHarvestSourceUnconfigured
+		return nil, ErrOpenAICodexTicketHarvestSourceUnconfigured
 	}
-	return []string{source.ProxyURL}, source.Mode, nil
+	return []string{source.ProxyURL}, nil
 }
 
 // 使用代理提取的公网校验、DNS 安全拨号、禁止重定向、20 秒超时与 64KiB 上限。

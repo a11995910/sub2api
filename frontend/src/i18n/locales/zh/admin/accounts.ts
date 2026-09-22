@@ -796,10 +796,10 @@ export default {
         codexTicketRefresh: '刷新状态',
         codexTicketRefreshError: '状态刷新失败，当前显示上次结果；稍后自动重试。',
         codexTicketCollecting: '正在采集',
-        codexTicketProgress: '本轮第 {index} / {total} 个代理',
+        codexTicketProgress: '本次已发起 {index} / {total} 个代理探测',
         codexTicketLastResult: '最近结果：{result}',
         codexTicketNextAttempt: '预计下次尝试：{time}',
-        codexTicketWaiting: '等待本轮采集调度；下一轮在本轮结束后约 {seconds} 秒开始',
+        codexTicketWaiting: '等待独立采集任务或可用并发位；失败后约 {seconds} 秒重试',
         codexTicketRefreshDue: '到期后重新采集：{time}',
         codexTicketInvalidReasons: { model_mismatch: '模型不一致，门票及代理绑定已失效，等待重新采集', upstream_failure: '门票或代理绑定已失效，等待重新采集' },
         codexTicketResults: {

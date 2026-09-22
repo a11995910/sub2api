@@ -44,15 +44,15 @@ describe('292/332 门票采集状态', () => {
     const wrapper = panel({ tickets: [{ ...ticket, harvest_status: 'collecting', attempt_index: 2, attempt_total: 4, last_result: 'upstream_error', last_http_status: 403, next_attempt_at: '2026-09-20T10:00:00Z' }] })
     expect(wrapper.text()).toContain('缺少门票，模型已暂停')
     expect(wrapper.text()).toContain('正在采集')
-    expect(wrapper.text()).toContain('本轮第 2 / 4 个代理')
+    expect(wrapper.text()).toContain('本次已发起 2 / 4 个代理探测')
     expect(wrapper.text()).toContain('最近结果：上游请求失败')
     expect(wrapper.text()).toContain('HTTP 403')
     expect(wrapper.find('[data-testid="codex-ticket-next-attempt"]').exists()).toBe(false)
   })
 
-  it('本轮排队不伪造倒计时，定时器就绪后才展示预计时刻', async () => {
+  it('独立任务排队不伪造倒计时，定时器就绪后才展示预计时刻', async () => {
     const wrapper = panel()
-    expect(wrapper.text()).toContain('等待本轮采集调度；下一轮在本轮结束后约 6 秒开始')
+    expect(wrapper.text()).toContain('等待独立采集任务或可用并发位；失败后约 6 秒重试')
     expect(wrapper.text()).not.toContain('预计下次尝试')
     const nextAt = '2026-09-20T10:00:00Z'
     await wrapper.setProps({ tickets: [{ ...ticket, next_attempt_at: nextAt }] })

@@ -531,6 +531,12 @@ type OpenAIGatewayService struct {
 	openaiCodexTicketCancel      context.CancelFunc
 	openaiCodexTicketDone        chan struct{}
 	openaiCodexTicketStopped     bool
+	openaiCodexTicketContext     context.Context
+	openaiCodexTicketJobs        map[string]*openAICodexTicketJob
+	openaiCodexTicketWorkers     sync.WaitGroup
+	openaiCodexTicketLimitsOnce  sync.Once
+	openaiCodexTicketTargetSlots chan struct{}
+	openaiCodexTicketProbeSlots  chan struct{}
 	openaiCodexTurnStateOrigins  sync.Map
 	openaiCodexTurnStateWrites   atomic.Uint64
 }

@@ -714,10 +714,10 @@ export default {
         codexTicketRefresh: 'Refresh status',
         codexTicketRefreshError: 'Refresh failed. Showing the previous result; another refresh will run shortly.',
         codexTicketCollecting: 'Collecting',
-        codexTicketProgress: 'Proxy {index} of {total} in this round',
+        codexTicketProgress: '本次已发起 {index} / {total} 个代理探测',
         codexTicketLastResult: 'Last result: {result}',
         codexTicketNextAttempt: 'Next attempt, estimated: {time}',
-        codexTicketWaiting: 'Waiting for collection scheduling; the next round starts about {seconds} seconds after this round finishes',
+        codexTicketWaiting: '等待独立采集任务或可用并发位；失败后约 {seconds} 秒重试',
         codexTicketRefreshDue: '到期后重新采集：{time}',
         codexTicketInvalidReasons: { model_mismatch: '模型不一致，门票及代理绑定已失效，等待重新采集', upstream_failure: '门票或代理绑定已失效，等待重新采集' },
         codexTicketResults: {

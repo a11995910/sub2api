@@ -380,7 +380,12 @@ func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *te
 	upstream := &codexTicketConcurrentUpstream{ready: make(chan struct{})}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "socks5h://proxy.example.com:1080"}, upstream)
 	svc.accountRepo = repo
-	svc.refreshOpenAICodexTickets(context.Background())
+	svc.StartOpenAICodexTicketHarvester()
+	t.Cleanup(svc.StopOpenAICodexTicketHarvester)
+	require.Eventually(t, func() bool {
+		return svc.lookupOpenAICodexTicket(account, openAICodexTicketDefaultModel).valid(time.Now(), 292) && svc.lookupOpenAICodexTicket(account, openAICodexTicketDefaultSolModel).valid(time.Now(), 292)
+	}, 3*time.Second, time.Millisecond)
+	svc.StopOpenAICodexTicketHarvester()
 	require.Equal(t, int64(2), upstream.started.Load())
 	require.Equal(t, map[string]any{"openai_turn_state_mode": "codex_ticket", "existing": true}, account.Extra)
 	require.Len(t, repo.updates, 2)

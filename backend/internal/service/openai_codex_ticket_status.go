@@ -12,6 +12,7 @@ import (
 
 // 采集观测仅保存在进程内，绝不存储门票、代理地址或原始错误。
 type openAICodexTicketHarvestEntry struct {
+	nextAttemptAt time.Time
 	collecting    bool
 	lastAttemptAt time.Time
 	lastResult    string
@@ -21,28 +22,31 @@ type openAICodexTicketHarvestEntry struct {
 }
 
 type openAICodexTicketHarvestState struct {
-	mu           sync.RWMutex
-	entries      map[string]openAICodexTicketHarvestEntry
-	cycleRunning bool
-	nextCycleAt  time.Time
+	mu      sync.RWMutex
+	entries map[string]openAICodexTicketHarvestEntry
 }
 
-func (h *openAICodexTicketHarvestState) beginCycle() {
+func (h *openAICodexTicketHarvestState) scheduleAttempt(accountID int64, model string, at time.Time) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.cycleRunning, h.nextCycleAt = true, time.Time{}
+	if h.entries == nil {
+		h.entries = make(map[string]openAICodexTicketHarvestEntry)
+	}
+	key := openAICodexTicketKey(accountID, model)
+	entry := h.entries[key]
+	entry.nextAttemptAt = at
+	h.entries[key] = entry
 }
 
-func (h *openAICodexTicketHarvestState) endCycle() {
+// attempt_index 表示本次已发起探测数，竞速时不再表示串行代理位置。
+func (h *openAICodexTicketHarvestState) startProbe(accountID int64, model string, total int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.cycleRunning = false
-}
-
-func (h *openAICodexTicketHarvestState) scheduleNextCycle(at time.Time) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.nextCycleAt = at
+	key := openAICodexTicketKey(accountID, model)
+	entry := h.entries[key]
+	entry.attemptIndex++
+	entry.attemptTotal = total
+	h.entries[key] = entry
 }
 
 func (h *openAICodexTicketHarvestState) beginAttempt(accountID int64, model string, index, total int) {
@@ -65,27 +69,15 @@ func (h *openAICodexTicketHarvestState) finishAttempt(accountID int64, model, re
 	h.entries[key] = entry
 }
 
-func (h *openAICodexTicketHarvestState) recordSourceFailure(accountID int64, model string, startedAt time.Time) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.entries == nil {
-		h.entries = make(map[string]openAICodexTicketHarvestEntry)
-	}
-	h.entries[openAICodexTicketKey(accountID, model)] = openAICodexTicketHarvestEntry{lastAttemptAt: startedAt, lastResult: "proxy_extract_failed"}
-}
-
 func (h *openAICodexTicketHarvestState) snapshot(accountID int64, model string) (openAICodexTicketHarvestEntry, time.Time) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	next := h.nextCycleAt
-	if h.cycleRunning {
-		next = time.Time{}
-	}
-	return h.entries[openAICodexTicketKey(accountID, model)], next
+	entry := h.entries[openAICodexTicketKey(accountID, model)]
+	return entry, entry.nextAttemptAt
 }
 
 // OpenAICodexTicketStatuses 合并持久门票与采集器的实时摘要，供管理接口使用。
-// next_attempt_at 只代表已安排的下一轮预计时间，轮内排队仍可能延后实际请求。
+// next_attempt_at 是该账号模型独立安排的重试时间，全局并发排队仍可能延后。
 func (s *OpenAIGatewayService) OpenAICodexTicketStatuses(ctx context.Context, account *Account, now time.Time) []OpenAICodexTicketStatus {
 	if s == nil || !isOpenAICodexTicketAccount(account) {
 		return nil
@@ -120,7 +112,7 @@ func (s *OpenAIGatewayService) OpenAICodexTicketStatuses(ctx context.Context, ac
 			status.RefreshDueAt = &refreshDue
 			needsRefresh = !now.Before(refreshDue)
 		}
-		entry, nextCycle := s.openaiCodexTicketHarvest.snapshot(account.ID, status.Model)
+		entry, nextAttempt := s.openaiCodexTicketHarvest.snapshot(account.ID, status.Model)
 		if !entry.lastAttemptAt.IsZero() {
 			attemptAt := entry.lastAttemptAt
 			status.LastAttemptAt = &attemptAt
@@ -142,8 +134,8 @@ func (s *OpenAIGatewayService) OpenAICodexTicketStatuses(ctx context.Context, ac
 			status.HarvestStatus = "ready"
 		default:
 			status.HarvestStatus = "waiting"
-			if nextCycle.After(now) {
-				status.NextAttemptAt = &nextCycle
+			if nextAttempt.After(now) {
+				status.NextAttemptAt = &nextAttempt
 			}
 		}
 	}

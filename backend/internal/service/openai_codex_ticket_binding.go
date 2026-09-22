@@ -60,6 +60,12 @@ func (s *OpenAIGatewayService) invalidateOpenAICodexTicket(account *Account, tic
 	if ticket == nil || account == nil {
 		return
 	}
+	retiredBinding := false
+	defer func() {
+		if retiredBinding {
+			s.requestOpenAICodexTicketHarvest(account, ticket.Model)
+		}
+	}()
 	mu := &s.openaiCodexTicketLocks[uint64(account.ID)%64]
 	mu.Lock()
 	defer mu.Unlock()
@@ -68,6 +74,7 @@ func (s *OpenAIGatewayService) invalidateOpenAICodexTicket(account *Account, tic
 		return
 	}
 	retired := *current
+	retiredBinding = true
 	retired.Invalidated = true
 	retired.InvalidReason = reason
 	retired.ExpiresAt = time.Now()
