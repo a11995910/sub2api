@@ -150,9 +150,6 @@ func (s *OpenAIGatewayService) QueryOpenAIVideoTask(ctx context.Context, account
 	}
 	if resp.StatusCode >= 400 {
 		message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
-		if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA {
-			message = sanitizeZYCAVideoClientMessage(message)
-		}
 		if message == "" {
 			message = fmt.Sprintf("video upstream returned status %d", resp.StatusCode)
 		}
@@ -171,7 +168,7 @@ func (s *OpenAIGatewayService) QueryOpenAIVideoTask(ctx context.Context, account
 		videoResult.TaskID = taskID
 	}
 	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && videoResult.TaskID != taskID {
-		return nil, fmt.Errorf("视频返回的任务 ID 与查询不一致")
+		return nil, fmt.Errorf("ZYCA 返回的任务 ID 与查询不一致")
 	}
 	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && videoResult.VideoURL != "" {
 		if _, err := validateOpenAIVideoContentURL(ctx, videoResult.VideoURL); err != nil {
@@ -362,7 +359,7 @@ func (s *OpenAIGatewayService) resolveOpenAIVideoStatusContentURL(
 		return "", err
 	}
 	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && (result.TaskID != taskID || result.Status != "completed") {
-		return "", fmt.Errorf("视频任务尚未完成或任务 ID 不匹配")
+		return "", fmt.Errorf("ZYCA 任务尚未完成或任务 ID 不匹配")
 	}
 	parsed, err := validateOpenAIVideoContentURL(ctx, result.VideoURL)
 	if err != nil {
@@ -613,9 +610,6 @@ func (s *OpenAIGatewayService) forwardOpenAIVideoCreateTask(
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
-		if requestProfile == OpenAIVideoRequestProfileZYCA {
-			upstreamMsg = sanitizeZYCAVideoClientMessage(upstreamMsg)
-		}
 		if failoverErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); failoverErr != nil {
 			stopUnifiedOpenAIVideoAccountFailover(failoverErr, requestProfile)
 			return nil, false, failoverErr

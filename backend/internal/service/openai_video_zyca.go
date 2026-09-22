@@ -16,10 +16,6 @@ type zycaVideoRejectedError struct {
 
 func (e *zycaVideoRejectedError) Error() string { return e.message }
 
-func sanitizeZYCAVideoClientMessage(message string) string {
-	return strings.NewReplacer("ZYCA", "视频服务", "zyca", "视频服务", "Zyca", "视频服务").Replace(message)
-}
-
 type zycaVideoModelProfile struct {
 	minSeconds                      int
 	maxSecondsByResolution          map[string]int
@@ -68,7 +64,7 @@ var zycaVideoModelProfiles = map[string]zycaVideoModelProfile{
 func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoRequest, mappedModel string) (OpenAIVideoPreparedRequest, error) {
 	for field := range payload {
 		if _, ok := openAIVideoUnifiedAcceptedFields[field]; !ok {
-			return OpenAIVideoPreparedRequest{}, fmt.Errorf("视频服务不支持字段 %q", field)
+			return OpenAIVideoPreparedRequest{}, fmt.Errorf("ZYCA 不支持视频字段 %q", field)
 		}
 	}
 	model := strings.TrimSpace(mappedModel)
@@ -77,12 +73,12 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 	}
 	profile, configured := zycaVideoModelProfiles[model]
 	if !configured {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("尚未配置视频模型 %q", model)
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("尚未配置 ZYCA 视频模型 %q", model)
 	}
 	resolution, knownResolution := LookupVideoBillingResolution(request.Resolution)
 	maxSeconds, supportedResolution := profile.maxSecondsByResolution[resolution]
 	if !knownResolution || !supportedResolution {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("请显式指定视频模型支持的清晰度")
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("请显式指定 ZYCA 模型支持的清晰度")
 	}
 	for _, field := range []string{"duration", "seconds"} {
 		if value, exists := payload[field]; exists {
@@ -98,13 +94,13 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 	referenceCount := len(request.ImageURLs) + len(request.VideoURLs) + len(request.AudioURLs)
 	if len(request.ImageURLs) > profile.maxImages || len(request.VideoURLs) > profile.maxVideos || len(request.AudioURLs) > profile.maxAudios ||
 		(profile.maxReferences > 0 && referenceCount > profile.maxReferences) {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("参考素材数量超过视频模型限制")
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("参考素材数量超过 ZYCA 模型限制")
 	}
 	if request.FirstImageURL != "" || request.LastImageURL != "" {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("视频首尾帧协议尚未支持")
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("ZYCA 首尾帧协议尚未支持")
 	}
 	if profile.requiresReference[resolution] && referenceCount == 0 {
-		return OpenAIVideoPreparedRequest{}, fmt.Errorf("2K 和 4K 视频至少需要一个参考素材")
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("ZYCA 2K 和 4K 视频至少需要一个参考素材")
 	}
 	request.Resolution = resolution
 	size, err := zycaVideoSize(payload, resolution)
@@ -173,7 +169,7 @@ func zycaVideoSize(payload map[string]any, resolution string) (string, error) {
 			}
 		}
 		if size == "" || (selected != "" && selected != size) {
-			return "", fmt.Errorf("画面比例、size 与清晰度不匹配")
+			return "", fmt.Errorf("ZYCA 画面比例、size 与清晰度不匹配")
 		}
 		selected = size
 	}
@@ -196,30 +192,30 @@ func parseZYCAVideoResult(body []byte) (OpenAIVideoResult, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		return OpenAIVideoResult{}, fmt.Errorf("视频响应格式无效")
+		return OpenAIVideoResult{}, fmt.Errorf("ZYCA 视频响应格式无效")
 	}
 	if envelope.Success == nil {
-		return OpenAIVideoResult{}, fmt.Errorf("视频响应缺少成功标志")
+		return OpenAIVideoResult{}, fmt.Errorf("ZYCA 视频响应缺少成功标志")
 	}
 	if !*envelope.Success {
 		// 拒绝响应同时携带任务 ID 时不能确定任务是否已创建，继续保留待核查。
 		if envelope.Data != nil && envelope.Data.ID != "" {
-			return OpenAIVideoResult{}, fmt.Errorf("视频拒绝响应包含任务 ID")
+			return OpenAIVideoResult{}, fmt.Errorf("ZYCA 拒绝响应包含任务 ID")
 		}
-		return OpenAIVideoResult{}, &zycaVideoRejectedError{message: "视频请求失败：" + zycaVideoErrorMessage(envelope.Message)}
+		return OpenAIVideoResult{}, &zycaVideoRejectedError{message: "ZYCA 视频请求失败：" + zycaVideoErrorMessage(envelope.Message)}
 	}
 	if envelope.Data == nil {
-		return OpenAIVideoResult{}, fmt.Errorf("视频响应缺少任务数据")
+		return OpenAIVideoResult{}, fmt.Errorf("ZYCA 视频响应缺少任务数据")
 	}
 	data := envelope.Data
 	if strings.TrimSpace(data.ID) == "" || len(data.ID) > 256 || strings.TrimSpace(data.ID) != data.ID {
-		return OpenAIVideoResult{}, fmt.Errorf("视频响应缺少有效任务 ID")
+		return OpenAIVideoResult{}, fmt.Errorf("ZYCA 视频响应缺少有效任务 ID")
 	}
 	result := OpenAIVideoResult{TaskID: data.ID, Model: data.Model, Status: NormalizeOpenAIVideoStatus(data.Status)}
 	switch result.Status {
 	case "queued", "in_progress", "completed", "failed":
 	default:
-		return OpenAIVideoResult{}, fmt.Errorf("视频响应包含未知任务状态")
+		return OpenAIVideoResult{}, fmt.Errorf("ZYCA 视频响应包含未知任务状态")
 	}
 	if data.Result != nil {
 		if data.Result.Progress != nil {
@@ -238,9 +234,9 @@ func parseZYCAVideoResult(body []byte) (OpenAIVideoResult, error) {
 func zycaVideoErrorMessage(message string) string {
 	message = strings.TrimSpace(sanitizeUpstreamErrorMessage(message))
 	if message == "" {
-		return "视频生成失败"
+		return "ZYCA 视频生成失败"
 	}
-	return truncateString(sanitizeZYCAVideoClientMessage(message), 1024)
+	return truncateString(message, 1024)
 }
 
 func parseOpenAIVideoResultForAccount(account *Account, body []byte) (OpenAIVideoResult, error) {

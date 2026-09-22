@@ -383,29 +383,6 @@ func TestZYCAFailureMessages(t *testing.T) {
 	require.NotContains(t, result.ErrorMessage, "secretvalue")
 	_, err = parseZYCAVideoResult([]byte(`{"success":false,"message":"模型不可用"}`))
 	require.ErrorContains(t, err, "模型不可用")
-	require.NotContains(t, err.Error(), "ZYCA")
-	require.NotContains(t, err.Error(), "zyca")
-}
-
-func TestZYCAClientErrorsHideProviderName(t *testing.T) {
-	for _, message := range []string{
-		"ZYCA upstream rejected request",
-		"zyca request failed",
-		"https://api.zyca.top/v1/generations",
-	} {
-		sanitized := sanitizeZYCAVideoClientMessage(message)
-		require.NotContains(t, strings.ToLower(sanitized), "zyca")
-	}
-	for _, payload := range []map[string]any{
-		{"model": "minimax-h3-903", "prompt": "视频", "duration": 5, "resolution": "768p"},
-		{"model": "unknown-video", "prompt": "视频", "duration": 5, "resolution": "720p"},
-	} {
-		body, err := json.Marshal(payload)
-		require.NoError(t, err)
-		err = ValidateOpenAIVideoCreateBodyForAccount(zycaTestAccount(), body)
-		require.Error(t, err)
-		require.NotContains(t, strings.ToLower(err.Error()), "zyca")
-	}
 }
 
 func TestZYCAMiniMaxCombinedReferenceLimit(t *testing.T) {
