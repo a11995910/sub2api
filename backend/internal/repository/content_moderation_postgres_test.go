@@ -80,6 +80,7 @@ func TestContentModerationPostgresMigrationAndInputRoundTrip(t *testing.T) {
 	}
 	applyMigration("135_content_moderation.sql")
 	applyMigration("156_content_moderation_matched_keyword.sql")
+	applyMigration("238b_content_moderation_engine_meta.sql")
 
 	var historicalID int64
 	err := db.QueryRowContext(ctx, `

@@ -25,7 +25,7 @@ export function mapChannelPricingToForm(entry: ChannelModelPricing): PricingForm
     cache_read_price: perTokenToMTok(entry.cache_read_price),
     fast_multiplier: entry.fast_multiplier,
     flex_multiplier: entry.flex_multiplier,
-    max_reasoning_effort_multiplier: entry.max_reasoning_effort_multiplier,
+    reasoning_effort_multipliers: entry.reasoning_effort_multipliers ? { ...entry.reasoning_effort_multipliers } : null,
     image_input_price: perTokenToMTok(entry.image_input_price),
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,

@@ -805,3 +805,9 @@ openssl pkey -in privkey.pem -pubout -outform DER | openssl dgst -sha256
 - `GEMINI_CLI_OAUTH_CLIENT_SECRET`
 - `ANTIGRAVITY_OAUTH_CLIENT_ID`
 - `ANTIGRAVITY_OAUTH_CLIENT_SECRET`
+
+### 思考等级计费配置与回退兼容性
+
+渠道售价、分组模型定价和账号统计定价使用 `reasoning_effort_multipliers` 配置各等级倍率，支持 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。倍率必须为有限正数；未配置等级按 1 倍计算，不再对 Fable 5.1 的 `max` 隐含应用 3 倍。计费使用实际转发给上游的最终等级。人民币原价、视频每秒定价和账号统计上下文区间倍率保持各自语义。
+
+迁移 `239_channel_reasoning_effort_multipliers.sql` 增加渠道及账号统计 JSONB 列，并将旧渠道、分组显式 `max_reasoning_effort_multiplier` 转入新映射。已有映射优先，清空后不应在重放迁移时恢复旧值。分组 JSON 中的旧键会移除，因此回退旧应用前应恢复发布前的分组定价；单纯切回旧镜像不能还原这部分配置。staging 更新前保存独立数据库快照和原镜像，涉及该迁移的 prod 发布需另外核实定价配置恢复方案。

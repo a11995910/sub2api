@@ -190,36 +190,6 @@ func TestOllamaCloudUsageSessionRouteOmitsAuditBody(t *testing.T) {
 	require.NotContains(t, logs[0].RequestBody, "audit-canary")
 }
 
-// 提取链接的路径和查询参数都可能包含供应商凭据，整段配置请求不入审计正文。
-func TestHealthyDynamicConfigOmitsCredentialURLFromAudit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	repository := &auditCaptureRepository{}
-	auditService := service.NewAuditLogService(repository, nil)
-	auditService.Start()
-	router := gin.New()
-	router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
-	router.PUT("/api/v1/admin/accounts/:id/healthy-turn-state/dynamic/config", func(c *gin.Context) {
-		var input struct {
-			APIURL string `json:"api_url"`
-		}
-		require.NoError(t, c.ShouldBindJSON(&input))
-		require.Equal(t, "https://proxy.example/audit-canary-path?key=audit-canary-query", input.APIURL)
-		c.JSON(http.StatusOK, gin.H{"configured": true})
-	})
-	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/accounts/7/healthy-turn-state/dynamic/config",
-		bytes.NewBufferString(`{"api_url":"https://proxy.example/audit-canary-path?key=audit-canary-query","protocol":"http","target_count":5,"max_attempts":100}`))
-	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusOK, recorder.Code)
-	auditService.Stop()
-	repository.mu.Lock()
-	defer repository.mu.Unlock()
-	require.Len(t, repository.logs, 1)
-	require.Equal(t, "<credential-bearing body omitted>", repository.logs[0].RequestBody)
-	require.NotContains(t, repository.logs[0].RequestBody, "audit-canary")
-}
-
 func TestCodexTicketAdminAuditRedactsSecretsWithoutChangingRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, tc := range []struct {

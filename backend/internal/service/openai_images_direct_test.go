@@ -40,7 +40,7 @@ func TestCodexDirectImagesRouting(t *testing.T) {
 			require.Equal(t, model, result.UpstreamModel)
 			require.Equal(t, "/backend-api/codex/images/generations", result.UpstreamEndpoint)
 			require.Equal(t, "https://chatgpt.com/backend-api/codex/images/generations", upstream.lastReq.URL.String())
-			require.NoError(t, upstream.lastReq.Context().Err())
+			require.NoError(t, upstream.requestContextErr)
 			require.Equal(t, "Bearer test-token", upstream.lastReq.Header.Get("Authorization"))
 			require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
 			require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))

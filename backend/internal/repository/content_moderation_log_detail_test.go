@@ -19,7 +19,7 @@ var moderationLogTestColumns = []string{
 	"id", "request_id", "user_id", "user_email", "api_key_id", "api_key_name", "group_id", "group_name",
 	"endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score",
 	"category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error",
-	"violation_count", "auto_banned", "email_sent", "user_status", "queue_delay_ms", "matched_keyword", "created_at",
+	"violation_count", "auto_banned", "email_sent", "user_status", "queue_delay_ms", "matched_keyword", "created_at", "engine_meta",
 }
 
 func moderationLogTestValues() []driver.Value {
@@ -27,7 +27,7 @@ func moderationLogTestValues() []driver.Value {
 		int64(42), "请求编号", nil, "", nil, "", nil, "",
 		"/v1/responses", "openai", "gpt-test", "pre_block", "keyword_block", true, "keyword", 1.0,
 		[]byte(`{"keyword":1}`), []byte(`{}`), "旧摘要", nil, "",
-		0, false, false, "", nil, "测试关键词", time.Now(),
+		0, false, false, "", nil, "测试关键词", time.Now(), nil,
 	}
 }
 
@@ -137,7 +137,7 @@ func TestContentModerationRepositoryCreateLogPersistsInput(t *testing.T) {
 			}
 			args := []driver.Value{
 				"", nil, "", nil, "", nil, "", "", "", "", "", "", false, "", float64(0),
-				"null", "null", "摘要", nil, "", 0, false, false, nil, "", inputRaw,
+				"null", "null", "摘要", nil, "", 0, false, false, nil, "", inputRaw, nil,
 			}
 			now := time.Now()
 			mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO content_moderation_logs") + `.*input_content.*\$26::jsonb`).

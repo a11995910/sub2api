@@ -18,6 +18,9 @@ export type BillingMode =
 export const PRICE_CURRENCY_USD = 'USD' as const
 export const PRICE_CURRENCY_CNY = 'CNY' as const
 export type PriceCurrency = typeof PRICE_CURRENCY_USD | typeof PRICE_CURRENCY_CNY
+/** Supported request reasoning effort levels, ordered from lowest to highest. */
+export const REASONING_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+export type ReasoningEffortLevel = typeof REASONING_EFFORT_LEVELS[number]
 
 /** Billing-model-source values (must match service.BillingModelSource* constants in Go). */
 export const BILLING_MODEL_SOURCE_REQUESTED = 'requested' as const

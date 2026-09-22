@@ -4,7 +4,7 @@
 
 ## 输入范围
 
-正文与审计复用同一套协议提取规则：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 和 Gemini 读取数组末尾的用户输入，不回溯历史用户消息，也不把系统提示、开发者指令或工具输出作为原始用户输入。OpenAI Images 和 OpenAI Video 提取当前提示词及关联图片。正文保留文本内部换行、空行和缩进，多段文本按换行连接；现有系统提醒过滤规则仍然生效。
+正文与审计复用同一套协议提取规则：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 和 Gemini 读取数组末尾的用户输入，不回溯历史用户消息，也不把系统提示、开发者指令或工具输出作为原始用户输入。OpenAI Images 和 OpenAI Video 提取当前提示词及关联图片。正文保留文本内部换行、空行和缩进，多段文本按换行连接；语义审核继续过滤系统提醒；关键词检查会把用户提供的提醒标签作为普通文本检查，防止绕过拦截，命中日志保留对应的脱敏原文。
 
 详情展示的是本次选中输入的文本，不是完整 HTTP 请求 JSON，也不包含整段历史会话。图片只保存去重后的数量，不保存图片 URL、base64 或图片文件。实际提交审核 API 的图片数量仍最多为 1 张。
 
@@ -44,3 +44,7 @@
 迁移 `244_content_moderation_input_content.sql` 为 `content_moderation_logs` 添加可空的 `input_content JSONB` 列，不修改或删除已有字段。历史记录只有摘要，新增列保持 `NULL`，无法恢复未曾保存的原始输入；详情中不能把旧摘要标为完整内容。
 
 正文随所属审计日志一起按现有命中和未命中保留期清理，不另建永久副本。只有原本需要记录且成功写入的审计事件保存正文；停用审计、范围外请求、未采样请求和队列丢弃等现有不落库场景不会额外生成正文记录。
+
+## 审核引擎
+
+OpenAI 与 TypeSafe AI 分别保存接口、密钥、模型和阈值配置；编辑或测试另一引擎的草稿不会切换当前生效引擎。日志的可选 `engine_meta` 记录审核引擎、模型、规则版本和跳过的图片数量，与 `input_content` 同时保存。迁移 `238b_content_moderation_engine_meta.sql` 仅添加可空 JSONB 列，历史记录保持为空。

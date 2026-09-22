@@ -91,7 +91,7 @@ describe('渠道视频定价兼容', () => {
       per_request_price: 2.1,
       fast_multiplier: undefined,
       flex_multiplier: undefined,
-      max_reasoning_effort_multiplier: undefined,
+      reasoning_effort_multipliers: null,
       intervals: [{
         min_tokens: 0,
         max_tokens: null,
