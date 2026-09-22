@@ -31,7 +31,7 @@ func (s *OpenAIGatewayService) observeOpenAICodexTicketRequestModel(c *gin.Conte
 	ticket, _ := req.Context().Value(openAICodexTicketBindingKey{}).(*openAICodexTicket)
 	if ticket != nil {
 		observer.codexTicketModelObserved = func(model string) {
-			if mismatch := upstreamModelMismatch(ticket.Model, model); mismatch != nil && *mismatch {
+			if mismatch := upstreamModelMismatch(ticket.Model, model); mismatch != nil && *mismatch && s.openAICodexTicketPolicy(req.Context()).ModelMismatchInvalidation {
 				s.invalidateOpenAICodexTicket(account, ticket, "model_mismatch")
 			}
 		}
@@ -116,7 +116,7 @@ func (s *OpenAIGatewayService) observeOpenAICodexTicketBinding(account *Account,
 	var once sync.Once
 	return func(ctx context.Context, status int, err error, payload []byte) {
 		reason := ""
-		if codexTicketResponseModelMismatch(ticket.Model, payload) {
+		if codexTicketResponseModelMismatch(ticket.Model, payload) && s.openAICodexTicketPolicy(ctx).ModelMismatchInvalidation {
 			reason = "model_mismatch"
 		} else if openAICodexTicketBindingFailed(ctx, status, err, payload) {
 			reason = "upstream_failure"

@@ -904,6 +904,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else if s.cfg != nil {
 		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
 	}
+	result.OpenAICodexTicketModelMismatchInvalidation = settings[SettingKeyOpenAICodexTicketModelMismatchInvalidation] != "false"
+	result.OpenAICodexTicketUseHarvestProxy = settings[SettingKeyOpenAICodexTicketUseHarvestProxy] != "false"
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	source := OpenAICodexTicketHarvestSource{}
 	if s.cfg != nil {

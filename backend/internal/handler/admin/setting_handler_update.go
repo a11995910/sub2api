@@ -255,25 +255,27 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	OpenAITTFTMode                          *string `json:"openai_ttft_mode"`
-	OpenAICodexTicketEnabled                *bool   `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketHarvestProxyURL        string  `json:"openai_codex_ticket_harvest_proxy_url"`
-	OpenAICodexTicketHarvestProxyMode       *string `json:"openai_codex_ticket_harvest_proxy_mode"`
-	OpenAICodexTicketHarvestExtractURL      string  `json:"openai_codex_ticket_harvest_extract_url"`
-	OpenAICodexTicketHarvestExtractProtocol *string `json:"openai_codex_ticket_harvest_extract_protocol"`
-	EnableFingerprintUnification            *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough               *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                        *bool   `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection  *bool   `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                 *string `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks           *string `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection      *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl              *bool   `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization       *bool   `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion             *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent                    *string `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion                *string `json:"openai_codex_client_version"`
-	OpenAICodexVersionAutoSyncEnabled       *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAITTFTMode                             *string `json:"openai_ttft_mode"`
+	OpenAICodexTicketEnabled                   *bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketModelMismatchInvalidation *bool   `json:"openai_codex_ticket_model_mismatch_invalidation"`
+	OpenAICodexTicketUseHarvestProxy           *bool   `json:"openai_codex_ticket_use_harvest_proxy"`
+	OpenAICodexTicketHarvestProxyURL           string  `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketHarvestProxyMode          *string `json:"openai_codex_ticket_harvest_proxy_mode"`
+	OpenAICodexTicketHarvestExtractURL         string  `json:"openai_codex_ticket_harvest_extract_url"`
+	OpenAICodexTicketHarvestExtractProtocol    *string `json:"openai_codex_ticket_harvest_extract_protocol"`
+	EnableFingerprintUnification               *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough                  *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                           *bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection     *bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                    *string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks              *string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection         *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl                 *bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization          *bool   `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion                *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                       *string `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion                   *string `json:"openai_codex_client_version"`
+	OpenAICodexVersionAutoSyncEnabled          *bool   `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1810,6 +1812,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketEnabled
 		}(),
+		OpenAICodexTicketModelMismatchInvalidation: func() bool {
+			if req.OpenAICodexTicketModelMismatchInvalidation != nil {
+				return *req.OpenAICodexTicketModelMismatchInvalidation
+			}
+			return previousSettings.OpenAICodexTicketModelMismatchInvalidation
+		}(),
+		OpenAICodexTicketUseHarvestProxy: func() bool {
+			if req.OpenAICodexTicketUseHarvestProxy != nil {
+				return *req.OpenAICodexTicketUseHarvestProxy
+			}
+			return previousSettings.OpenAICodexTicketUseHarvestProxy
+		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2486,6 +2500,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketModelMismatchInvalidation:             updatedSettings.OpenAICodexTicketModelMismatchInvalidation,
+		OpenAICodexTicketUseHarvestProxy:                       updatedSettings.OpenAICodexTicketUseHarvestProxy,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		OpenAICodexTicketHarvestProxyMode:                      updatedSettings.OpenAICodexTicketHarvestProxyMode,

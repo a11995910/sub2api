@@ -422,7 +422,7 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	}()
 	state = extractOpenAICodexTurnState(resp.Header)
 	if resp.StatusCode == http.StatusOK && validOpenAICodexTicketState(state, s.openAICodexTicketConfig().TargetLength) {
-		if err := validateCodexTicketProbeResponse(resp.Body, model); err != nil {
+		if err := validateCodexTicketProbeResponseWithPolicy(resp.Body, model, s.openAICodexTicketPolicy(attemptCtx).ModelMismatchInvalidation); err != nil {
 			return "", resp.StatusCode, err
 		}
 	}

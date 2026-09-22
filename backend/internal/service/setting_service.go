@@ -177,6 +177,8 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
+	openAICodexTicketPolicyMu                sync.Mutex
+	openAICodexTicketPolicyCache             *cachedOpenAICodexTicketPolicy
 	openAICodexTicketEnabledCache            atomic.Value
 	openAICodexTicketEnabledSF               singleflight.Group
 	openAICodexTicketHarvestProxyCache       atomic.Value

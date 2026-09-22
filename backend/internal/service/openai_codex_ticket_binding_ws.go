@@ -35,5 +35,12 @@ func (s *OpenAIGatewayService) openAICodexTicketLeaseMatches(account *Account, m
 	if bound == nil {
 		return !current.valid(time.Now(), s.openAICodexTicketConfig().TargetLength)
 	}
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	if lease.conn.codexTicketProxyURL != s.openAICodexTicketRequestProxy(context.Background(), bound, proxyURL) {
+		return false
+	}
 	return current.valid(time.Now(), s.openAICodexTicketConfig().TargetLength) && bound.Model == current.Model && bound.State == current.State && bound.ProxyURL == current.ProxyURL && bound.CapturedAt.Equal(current.CapturedAt)
 }

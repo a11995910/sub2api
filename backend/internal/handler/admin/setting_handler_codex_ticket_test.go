@@ -100,3 +100,33 @@ func TestSettingsCodexTicketExtractRejectsInvalidWithoutLeakingURL(t *testing.T)
 		require.Empty(t, repo.values[key])
 	}
 }
+
+func TestSettingsCodexTicketPolicyDefaultsAndPartialUpdates(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, nil)
+	ctx := context.Background()
+	require.True(t, h.settingService.GetOpenAICodexTicketPolicy(ctx).ModelMismatchInvalidation)
+	require.True(t, h.settingService.GetOpenAICodexTicketPolicy(ctx).UseHarvestProxy)
+	keys := []string{service.SettingKeyOpenAICodexTicketModelMismatchInvalidation, service.SettingKeyOpenAICodexTicketUseHarvestProxy}
+	for _, enabled := range []bool{false, true} {
+		for _, key := range keys {
+			rec := doUpdateSettings(t, h, map[string]any{key: enabled}, nil)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			require.Equal(t, enabled, repo.values[key] == "true")
+		}
+		policy := h.settingService.GetOpenAICodexTicketPolicy(ctx)
+		require.Equal(t, enabled, policy.ModelMismatchInvalidation)
+		require.Equal(t, enabled, policy.UseHarvestProxy)
+		rec := doUpdateSettings(t, h, map[string]any{"site_name": "保留门票策略"}, nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Equal(t, policy, h.settingService.GetOpenAICodexTicketPolicy(ctx))
+		get := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(get)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+		h.GetSettings(c)
+		require.Equal(t, http.StatusOK, get.Code)
+		for _, key := range keys {
+			require.Contains(t, get.Body.String(), `"`+key+`":`+repo.values[key])
+			require.Contains(t, rec.Body.String(), `"`+key+`":`+repo.values[key])
+		}
+	}
+}

@@ -768,6 +768,29 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("门票行为开关回显并独立保存", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_model_mismatch_invalidation: true,
+      openai_codex_ticket_use_harvest_proxy: false,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const mismatch = wrapper.get<HTMLInputElement>("#codex-ticket-model-mismatch-invalidation");
+    const proxy = wrapper.get<HTMLInputElement>("#codex-ticket-use-harvest-proxy");
+    expect(mismatch.element.checked).toBe(true);
+    expect(proxy.element.checked).toBe(false);
+    await mismatch.setValue(false);
+    await proxy.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0]).toMatchObject({
+      openai_codex_ticket_model_mismatch_invalidation: false,
+      openai_codex_ticket_use_harvest_proxy: true,
+    });
+    wrapper.unmount();
+  });
+
   it("回显已脱敏门票代理并保存替换地址", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

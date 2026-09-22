@@ -867,13 +867,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	accountProxyURL := proxyURL
 	ticket, ticketErr := s.bindOpenAICodexTicket(ctx, account, capturedSessionModel, headers)
 	if ticketErr != nil {
 		return ticketErr
 	}
 	observeTicket := s.observeOpenAICodexTicketBinding(account, ticket)
 	if ticket != nil {
-		proxyURL = ticket.ProxyURL
+		proxyURL = s.openAICodexTicketRequestProxy(ctx, ticket, proxyURL)
 	}
 
 	dialer := s.getOpenAIWSPassthroughDialer()
@@ -1119,7 +1120,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			if ticket != nil && (isResponseCreate || eventType == "session.update") {
 				current := s.lookupOpenAICodexTicket(account, model)
-				if !current.valid(time.Now(), s.openAICodexTicketConfig().TargetLength) || ticket.Model != model || current.State != ticket.State || current.ProxyURL != ticket.ProxyURL || !current.CapturedAt.Equal(ticket.CapturedAt) {
+				if proxyURL != s.openAICodexTicketRequestProxy(ctx, ticket, accountProxyURL) || !current.valid(time.Now(), s.openAICodexTicketConfig().TargetLength) || ticket.Model != model || current.State != ticket.State || current.ProxyURL != ticket.ProxyURL || !current.CapturedAt.Equal(ticket.CapturedAt) {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "门票或绑定出口已变化，请重新连接", ErrOpenAICodexTicketUnavailable)
 				}
 			}

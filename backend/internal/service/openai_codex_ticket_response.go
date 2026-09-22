@@ -116,6 +116,10 @@ func (p *codexTicketResponseParser) finish() {
 
 // 探测必须读到成功终态与一致的模型声明，单独的 HTTP 200 或 [DONE] 不算成功。
 func validateCodexTicketProbeResponse(body io.Reader, model string) error {
+	return validateCodexTicketProbeResponseWithPolicy(body, model, true)
+}
+
+func validateCodexTicketProbeResponseWithPolicy(body io.Reader, model string, rejectMismatch bool) error {
 	if body == nil {
 		return errCodexTicketUnverified
 	}
@@ -126,7 +130,7 @@ func validateCodexTicketProbeResponse(body io.Reader, model string) error {
 			return
 		}
 		if declared := codexTicketResponseModel(payload); declared != "" {
-			if !upstreamModelsMatchForAudit(model, declared) {
+			if rejectMismatch && !upstreamModelsMatchForAudit(model, declared) {
 				result = errCodexTicketModelMismatch
 				return
 			}

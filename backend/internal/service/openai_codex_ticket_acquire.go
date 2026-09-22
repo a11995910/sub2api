@@ -20,7 +20,7 @@ func (s *OpenAIGatewayService) acquireOpenAIWSWithCodexTicket(ctx context.Contex
 		return nil, ticketErr
 	}
 	if ticket != nil {
-		req.ProxyURL = ticket.ProxyURL
+		req.ProxyURL = s.openAICodexTicketRequestProxy(ctx, ticket, req.ProxyURL)
 		req.codexTicket = ticket
 		req.codexTicketUsable = func() bool { return s.openAICodexTicketBindingUsable(req.Account, ticket) }
 		req.observeCodexTicket = s.observeOpenAICodexTicketBinding(req.Account, ticket)

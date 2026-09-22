@@ -701,7 +701,7 @@ export default {
         turnStateModes: { off: '关闭', codex_ticket: '292/332 门票' },
         turnStateModeHints: {
           off: '关闭本账号的额外状态头采集与注入。客户端原有状态头仍按协议处理。',
-          codex_ticket: '兼容 292／332 字符门票，按账号与模型绑定门票和成功采集代理，业务请求持续走该代理直至失效。请在系统设置 → Codex 设置开启总开关并配置固定或粘性 IP 采集来源。'
+          codex_ticket: '兼容 292／332 字符门票，按账号与模型绑定门票和成功采集代理，业务请求默认持续走该代理直至失效，可在系统设置关闭复用打票代理。请在系统设置 → Codex 设置开启总开关并配置固定或粘性 IP 采集来源。'
         },
         codexTicketFailClosed: '无 292/332 门票时暂停该模型',
         codexTicketFailClosedHint: '默认开启：总开关生效后，缺少有效门票的模型暂停调度。关闭后允许无票请求。',

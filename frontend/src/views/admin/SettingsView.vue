@@ -4534,6 +4534,20 @@
                     :aria-label="t('admin.settings.gatewayForwarding.codexTicketEnabled')"
                   />
                 </div>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <label for="codex-ticket-model-mismatch-invalidation" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketModelMismatchInvalidation') }}</label>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketModelMismatchInvalidationDesc') }}</p>
+                  </div>
+                  <Toggle id="codex-ticket-model-mismatch-invalidation" v-model="form.openai_codex_ticket_model_mismatch_invalidation" :aria-label="t('admin.settings.gatewayForwarding.codexTicketModelMismatchInvalidation')" />
+                </div>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <label for="codex-ticket-use-harvest-proxy" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketUseHarvestProxy') }}</label>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketUseHarvestProxyDesc') }}</p>
+                  </div>
+                  <Toggle id="codex-ticket-use-harvest-proxy" v-model="form.openai_codex_ticket_use_harvest_proxy" :aria-label="t('admin.settings.gatewayForwarding.codexTicketUseHarvestProxy')" />
+                </div>
                 <div>
                   <label for="codex-ticket-harvest-mode" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestMode') }}</label>
                   <select id="codex-ticket-harvest-mode" v-model="form.openai_codex_ticket_harvest_proxy_mode" class="input mt-3 w-full">
@@ -10336,6 +10350,8 @@ const form = reactive<SettingsForm>({
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
   openai_codex_ticket_enabled: false,
+  openai_codex_ticket_model_mismatch_invalidation: true,
+  openai_codex_ticket_use_harvest_proxy: true,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   openai_codex_ticket_harvest_proxy_mode: 'proxy' as 'proxy' | 'extract',
@@ -12079,6 +12095,8 @@ async function saveSettings() {
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
       openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
+      openai_codex_ticket_model_mismatch_invalidation: form.openai_codex_ticket_model_mismatch_invalidation,
+      openai_codex_ticket_use_harvest_proxy: form.openai_codex_ticket_use_harvest_proxy,
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
       openai_codex_ticket_harvest_proxy_mode: form.openai_codex_ticket_harvest_proxy_mode,

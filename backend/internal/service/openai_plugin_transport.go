@@ -39,7 +39,7 @@ func (s *OpenAIGatewayService) doOpenAIUpstreamOnce(request *http.Request, proxy
 		if !s.openAICodexTicketBindingUsable(account, ticket) {
 			return nil, wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
 		}
-		proxyURL = ticket.ProxyURL
+		proxyURL = s.openAICodexTicketRequestProxy(request.Context(), ticket, proxyURL)
 		observe := s.observeOpenAICodexTicketBinding(account, ticket)
 		defer func() {
 			status := 0

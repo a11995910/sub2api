@@ -290,10 +290,11 @@ func (l *openAIWSConnLease) Release() {
 }
 
 type openAIWSConn struct {
-	codexTicket        *openAICodexTicket
-	observeCodexTicket openAICodexTicketObservation
-	id                 string
-	ws                 openAIWSClientConn
+	codexTicketProxyURL string
+	codexTicket         *openAICodexTicket
+	observeCodexTicket  openAICodexTicketObservation
+	id                  string
+	ws                  openAIWSClientConn
 
 	handshakeHeaders       http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
@@ -2196,6 +2197,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
 	pooledConn.codexTicket, pooledConn.observeCodexTicket = req.codexTicket, req.observeCodexTicket
+	pooledConn.codexTicketProxyURL = req.ProxyURL
 	pooledConn.handshakeCompatibility = normalizeOpenAIWSAcquireCompatibility(req, headers)
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
