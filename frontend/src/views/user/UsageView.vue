@@ -625,6 +625,7 @@ const escapeCSVValue = (value: unknown): string => {
   if (value == null) return ''
   const str = String(value)
   const escaped = str.replace(/"/g, '""')
+  if (str === '-') return str
   if (/^[=+\-@\t\r]/.test(str)) return `"\'${escaped}"`
   if (/[,"\n\r]/.test(str)) return `"${escaped}"`
   return str
@@ -690,7 +691,7 @@ const exportToCSV = async () => {
       headers.map(escapeCSVValue).join(','),
       ...rows.map((row) => row.join(',')),
     ].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

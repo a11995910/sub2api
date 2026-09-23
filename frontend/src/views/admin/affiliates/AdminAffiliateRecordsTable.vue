@@ -12,6 +12,15 @@
           <button class="btn btn-secondary px-2 md:px-3" :disabled="loading" :title="t('common.refresh')" @click="loadRecords">
             <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
           </button>
+          <button
+            v-if="props.type === 'transfers'"
+            type="button"
+            class="btn btn-primary ml-auto"
+            data-test="affiliate-withdraw-open"
+            @click="withdrawDialog = true"
+          >
+            {{ t('admin.affiliates.withdraw.button') }}
+          </button>
         </div>
       </template>
 
@@ -36,7 +45,9 @@
             />
           </template>
           <template #cell-invitee="{ row }">
+            <span v-if="row.invitee_id == null" class="text-sm text-gray-400 dark:text-dark-500">-</span>
             <UserCell
+              v-else
               :id="row.invitee_id"
               :email="row.invitee_email"
               :username="row.invitee_username"
@@ -67,21 +78,28 @@
           </template>
           <template #cell-order_status="{ row }">
             <OrderStatusBadge v-if="isPaymentOrder(row as AffiliateRebateRecord)" :status="(row as AffiliateRebateRecord).order_status as OrderStatus" />
-            <span v-else class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+            <span v-else-if="row.source_type === 'redeem_code'" class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
               {{ t('admin.affiliates.records.redeemedStatus') }}
             </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-total_rebate="{ row }">
             <AmountText :value="row.total_rebate" />
           </template>
           <template #cell-order_amount="{ row }">
-            <AmountText :value="row.order_amount" />
+            <NullableAmountText :value="row.order_amount" />
           </template>
           <template #cell-pay_amount="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">{{ formatAmount(row.pay_amount) }}</span>
+            <span v-if="row.pay_amount == null" class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-else class="text-sm text-gray-900 dark:text-white">{{ formatAmount(row.pay_amount) }}</span>
           </template>
           <template #cell-rebate_amount="{ row }">
             <AmountText :value="row.rebate_amount" strong />
+          </template>
+          <template #cell-action="{ row }">
+            <span :class="['badge whitespace-nowrap', row.action === 'withdraw' ? 'badge-warning' : 'badge-primary']">
+              {{ outflowTypeLabel(row.action) }}
+            </span>
           </template>
           <template #cell-amount="{ row }">
             <AmountText :value="row.amount" strong />
@@ -115,6 +133,13 @@
         />
       </template>
     </TablePageLayout>
+
+    <AffiliateOfflineWithdrawDialog
+      v-if="props.type === 'transfers'"
+      :show="withdrawDialog"
+      @close="withdrawDialog = false"
+      @success="handleWithdrawSuccess"
+    />
 
     <BaseDialog
       :show="overviewDialog"
@@ -154,6 +179,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
+import AffiliateOfflineWithdrawDialog from './AffiliateOfflineWithdrawDialog.vue'
 import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
 import { affiliatesAPI, type AffiliateInviteRecord, type AffiliateRebateRecord, type AffiliateTransferRecord, type AffiliateUserOverview, type ListAffiliateRecordsParams } from '@/api/admin/affiliates'
@@ -178,6 +204,7 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0 })
 const overviewDialog = ref(false)
 const overviewLoading = ref(false)
 const selectedOverview = ref<AffiliateUserOverview | null>(null)
+const withdrawDialog = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const columns = computed<Column[]>(() => {
@@ -205,6 +232,7 @@ const columns = computed<Column[]>(() => {
   }
   return [
     { key: 'user', label: t('admin.affiliates.records.user'), sortable: true },
+    { key: 'action', label: t('admin.affiliates.records.outflowType'), sortable: true },
     { key: 'amount', label: t('admin.affiliates.records.transferAmount'), sortable: true },
     { key: 'balance_after', label: t('admin.affiliates.records.balanceAfter'), sortable: true },
     { key: 'available_quota_after', label: t('admin.affiliates.records.availableQuotaAfter'), sortable: true },
@@ -307,6 +335,17 @@ function handleSort(key: string, order: 'asc' | 'desc') {
   void loadRecords()
 }
 
+function handleWithdrawSuccess() {
+  withdrawDialog.value = false
+  reloadFromFirstPage()
+}
+
+function outflowTypeLabel(action: string | null | undefined): string {
+  return action === 'withdraw'
+    ? t('admin.affiliates.outflowTypes.withdraw')
+    : t('admin.affiliates.outflowTypes.transfer')
+}
+
 function formatAmount(value: number | null | undefined): string {
   return formatSpiritStones(Number(value || 0))
 }
@@ -321,7 +360,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function isPaymentOrder(record: AffiliateRebateRecord): boolean {
-  return record.source_type === 'payment_order' && record.order_id > 0
+  return record.source_type === 'payment_order' && record.order_id != null && record.order_id > 0
 }
 
 function sourceTitle(record: AffiliateRebateRecord): string {
@@ -331,7 +370,8 @@ function sourceTitle(record: AffiliateRebateRecord): string {
   if (record.source_type === 'redeem_code' && record.redeem_code_id > 0) {
     return `${t('admin.affiliates.records.sourceRedeem')} #${record.redeem_code_id}`
   }
-  return `${t('admin.affiliates.records.sourceLegacy')} #${record.ledger_id || record.source_id}`
+  const sourceID = record.ledger_id || record.source_id
+  return sourceID ? `${t('admin.affiliates.records.sourceLegacy')} #${sourceID}` : '-'
 }
 
 function sourceSubtitle(record: AffiliateRebateRecord): string {
@@ -341,14 +381,15 @@ function sourceSubtitle(record: AffiliateRebateRecord): string {
   if (record.source_type === 'redeem_code') {
     return record.redeem_code || '-'
   }
-  return `ledger:${record.ledger_id || record.source_id || '-'}`
+  const sourceID = record.ledger_id || record.source_id
+  return sourceID ? `ledger:${sourceID}` : '-'
 }
 
 function paymentTypeLabel(record: AffiliateRebateRecord): string {
   if (record.source_type === 'redeem_code') {
     return t('payment.methods.redeem_code')
   }
-  return t('payment.methods.' + record.payment_type, record.payment_type || '-')
+  return record.payment_type ? t('payment.methods.' + record.payment_type, record.payment_type) : '-'
 }
 
 async function openUserOverview(userId: number) {
