@@ -1041,6 +1041,8 @@ export default {
     cacheHit: '缓存命中',
     cacheCreate: '缓存写入',
     cacheHitRate: '缓存命中率',
+    upstreamResponseServiceTier: '上游响应档位',
+    upstreamResponseServiceTierUnknown: '未记录 / 未返回',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
     serviceTierUltrafast: 'Ultrafast',

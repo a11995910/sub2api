@@ -77,8 +77,7 @@ func (o *upstreamResponseModelObserver) ObserveOpenAI(payload []byte, eventType 
 	}
 	terminal := isUpstreamResponseModelTerminalEvent(eventType)
 	o.Observe(model, terminal)
-	// Every payload that declares a service tier also declares a model, so
-	// model-free delta frames skip the extra lookups entirely.
+	// 上游 service_tier 与 model 同帧出现；无 model 时不记录，避免误把旁路字段当成结果。
 	if model == "" {
 		return
 	}
@@ -88,7 +87,8 @@ func (o *upstreamResponseModelObserver) ObserveOpenAI(payload []byte, eventType 
 	if !terminal && strings.TrimSpace(eventType) != "" {
 		return
 	}
-	tier := normalizeObservedOpenAIServiceTier(firstValidTrimmedGJSONString(payload, "response.service_tier", "service_tier"))
+	rawTier := firstValidTrimmedGJSONString(payload, "response.service_tier", "service_tier")
+	tier := normalizeObservedOpenAIServiceTier(rawTier)
 	o.ObserveServiceTier(tier, terminal)
 }
 

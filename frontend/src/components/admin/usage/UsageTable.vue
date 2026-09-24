@@ -532,6 +532,10 @@
             <span class="font-semibold text-cyan-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
           </div>
           <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.upstreamResponseServiceTier') }}</span>
+            <span class="font-mono font-semibold text-cyan-300">{{ tooltipData?.upstream_response_service_tier || t('usage.upstreamResponseServiceTierUnknown') }}</span>
+          </div>
+          <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
             <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span>
           </div>

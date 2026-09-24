@@ -89,7 +89,7 @@ func ApplyOpenAIServiceTierBillingResolution(account *Account, result *OpenAIFor
 	if result == nil {
 		return ServiceTierBillingResolution{}
 	}
-	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), result.UpstreamResponseServiceTier)
+	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), normalizeObservedOpenAIServiceTier(result.UpstreamResponseServiceTier))
 	if resolution.Downgraded {
 		billing := resolution.Billing
 		result.ServiceTier = &billing

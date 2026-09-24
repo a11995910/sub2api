@@ -1861,6 +1861,7 @@ export interface UsageLog {
   request_id: string
   model: string
   service_tier?: string | null
+  upstream_response_service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null
   upstream_endpoint?: string | null

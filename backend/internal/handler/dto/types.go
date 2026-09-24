@@ -675,6 +675,8 @@ type UsageLog struct {
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
+	// UpstreamResponseServiceTier 为上游响应声明的档位。
+	UpstreamResponseServiceTier *string `json:"upstream_response_service_tier,omitempty"`
 	// ReasoningEffort is the client-requested effort (mapping-hidden, like Model).
 	// OpenAI: "low"/"medium"/"high"/"xhigh"; Claude: "low"/"medium"/"high"/"max".
 	// Historical rows without requested_reasoning_effort fall back to the stored effective value.
