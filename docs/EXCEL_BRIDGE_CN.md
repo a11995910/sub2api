@@ -2,6 +2,16 @@
 
 Excel Bridge 以独立容器接入正式 VPS 的 Sub2API，不通过 `.s2plugin` 插件管理页安装。客户端仍访问 Sub2API，鉴权、分组限制、计费和使用记录由 Sub2API 处理。
 
+## 平台多账号改造
+
+原版单会话 Bridge 不适合批量复用平台 OAuth 账号。独立改造仓库为 `https://github.com/a11995910/sub2api-excel-oauth-bridge`（私有），基于 Bridge v0.5.3，设计参考相关维护项目 `zhu961212/sub2api-oai-basispoints` v0.6.9；该维护项目尚不能确认是用户原附件的官方更新来源。新插件 ID 为 `com.sub2api.plugin.excel-oauth-bridge`，版本 0.1.0。
+
+新方案通过 `.s2plugin` 接收宿主当前调度账号的身份与代理，交给独立内网服务；不复制账号池、不读取个人 Codex 登录态、不逐个登录 Excel，账号刷新、调度、使用记录及计费仍由宿主负责。支持明确全选现有及新增 OAuth 账号，也可按 ID 和模型限定测试范围。
+
+源码位于 VPS `/opt/excel-oauth-bridge/repo`，固定代码提交 `590d9ebb6a1c46852a893bc27582b66f2b6605a6` 的镜像为 `excel-oauth-bridge:590d9ebb6a1c`。已通过 281 项 Python 测试、101 子测试、Go 竞态/vet/子进程协议测试，以及隔离 Docker 的 12 账号并发身份与代理验证。测试仅使用合成凭据，临时网络和容器已清理。
+
+新插件尚未安装或绑定正式宿主，也未进行真实 OAuth 推理与端到端扣费验收。下方原版容器及停用测试账号仍是当前线上实际状态；不得把新镜像存在或隔离测试通过等同于已开放生产。后续安装、发布者公钥配置与恢复方法以独立仓库 `docs/PLATFORM_DEPLOY.md` 为准。
+
 ## 当前部署
 
 - 主机：正式 VPS `205.185.113.15`，SSH 别名 `sub2api-new-vps`。
