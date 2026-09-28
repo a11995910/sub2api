@@ -175,7 +175,6 @@ assert not c["services"]["sub2api"].get("network_mode"), "禁止覆盖隔离网�
   bootstrap_record="/opt/sub2api/state/prod-bootstrap-$staging_run_id.json"
   test ! -e "$bootstrap_record"
   umask 077
-  "$schema_compat" snapshot "$env_file" "/opt/sub2api/state/prod-bootstrap-schema-$staging_run_id.json"
   bootstrap_failed() {
     local rc="$?"
     trap - ERR
@@ -185,6 +184,8 @@ assert not c["services"]["sub2api"].get("network_mode"), "禁止覆盖隔离网�
   }
   trap bootstrap_failed ERR
   "$scripts_dir/update-sub2api-image" "$env_file" "$target_image" prod-bootstrap
+  compose_prod create --no-deps sub2api
+  "$schema_compat" snapshot "$env_file" "/opt/sub2api/state/prod-bootstrap-schema-$staging_run_id.json"
   compose_prod up -d --no-deps sub2api
   container_id="$(compose_prod ps -q sub2api)"
   "$release_gates" wait-container-healthy "$container_id" 300 2
