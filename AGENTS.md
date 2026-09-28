@@ -145,7 +145,7 @@ install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release
 ## Excel Bridge 独立上游
 
 - Excel Bridge 为独立附加上游，位于正式 VPS `/opt/excel-codex-bridge`，容器名 `excel-sub2api`，只连接 Sub2API 的 Docker 内网，不发布宿主机端口。其源码来自 `Kaixxrua/excel-codex-bridge` 的固定版本，与 `/opt/sub2api/repo` 主应用仓库分开管理。
-- Excel Bridge 使用独立 API Key 账号和独立测试分组；Excel 会话同步及真实调用、用量和计费验证完成前，账号与分组保持停用。部署与恢复步骤见 `docs/EXCEL_BRIDGE_CN.md`，主应用发布门禁保持不变。
+- Excel Bridge 使用独立 API Key 账号和独立测试分组；用户授权的 ChatGPT 会话（Codex 或 Excel 来源）同步及真实调用、用量和计费验证完成前，账号与分组保持停用。部署与恢复步骤见 `docs/EXCEL_BRIDGE_CN.md`，主应用发布门禁保持不变。
 
 ## 文档同步
 
