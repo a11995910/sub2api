@@ -10,8 +10,8 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   exit 1
 fi
 
-if [[ $# -ne 4 ]]; then
-  printf '用法：%s <prod.env> <target-image> <target-commit> <staging-run-id>\n' "$0" >&2
+if [[ $# -lt 4 || $# -gt 5 ]]; then
+  printf '用法：%s <prod.env> <target-image> <target-commit> <staging-run-id> [--bootstrap-isolated]\n' "$0" >&2
   exit 2
 fi
 
@@ -19,6 +19,11 @@ env_file="$1"
 target_image="$2"
 target_commit="$3"
 staging_run_id="$4"
+bootstrap_isolated=0
+if [[ $# -eq 5 ]]; then
+  [[ "$5" == --bootstrap-isolated ]]
+  bootstrap_isolated=1
+fi
 repo_dir=/opt/sub2api/repo
 base_compose="$repo_dir/deploy/docker-compose.yml"
 prod_override=/opt/sub2api/compose/prod/docker-compose.yml
@@ -147,6 +152,56 @@ ensure_target_image() {
 
 compose_prod config -q
 ensure_target_image
+
+# 首次迁移验收只允许隔离网络；数据库已单独恢复，失败时停止应用保留现场。
+# 此入口不承担正式接流、DNS 切换或旧站停写。
+if [[ "$bootstrap_isolated" -eq 1 ]]; then
+  test -z "$(compose_prod ps -aq sub2api)"
+  staging_image="sub2api:staging-$short_commit"
+  test "$(docker image inspect --format '{{.Id}}' "$target_image")" = \
+    "$(docker image inspect --format '{{.Id}}' "$staging_image")"
+  for service in postgres redis; do
+    service_id="$(compose_prod ps -q "$service")"
+    test -n "$service_id"
+    "$release_gates" wait-container-healthy "$service_id" 300 2
+  done
+  compose_prod config --format json | python3 -c '
+import json, sys
+c = json.load(sys.stdin)
+networks = c["services"]["sub2api"].get("networks", {})
+assert networks and all(c["networks"][n].get("internal") is True for n in networks), "首次验收必须禁用外部业务访问"
+assert not c["services"]["sub2api"].get("network_mode"), "禁止覆盖隔离网络"
+'
+  bootstrap_record="/opt/sub2api/state/prod-bootstrap-$staging_run_id.json"
+  test ! -e "$bootstrap_record"
+  umask 077
+  "$schema_compat" snapshot "$env_file" "/opt/sub2api/state/prod-bootstrap-schema-$staging_run_id.json"
+  bootstrap_failed() {
+    local rc="$?"
+    trap - ERR
+    compose_prod stop sub2api || true
+    printf '%s\n' '首次 prod 验收启动失败，应用已停止，保留数据库和快照供检查。' >&2
+    exit "$rc"
+  }
+  trap bootstrap_failed ERR
+  "$scripts_dir/update-sub2api-image" "$env_file" "$target_image" prod-bootstrap
+  compose_prod up -d --no-deps sub2api
+  container_id="$(compose_prod ps -q sub2api)"
+  "$release_gates" wait-container-healthy "$container_id" 300 2
+  # internal 网络在部分 Docker 版本上不提供宿主机端口映射，健康请求在容器内完成。
+  docker exec "$container_id" wget -q -O /dev/null http://127.0.0.1:8080/health
+  python3 - "$bootstrap_record" "$target_commit" "$staging_run_id" "$target_image" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+path, commit, run, image = sys.argv[1:]
+with open(path, 'x') as f:
+    json.dump(dict(status='verified', mode='isolated-bootstrap', commit=commit,
+                   staging_run_id=run, image=image, verified_at=datetime.now(timezone.utc).isoformat()), f, indent=2)
+PY
+  trap - ERR
+  printf '隔离 prod 首次启动通过：commit=%s staging_run_id=%s\n' "$target_commit" "$staging_run_id"
+  exit 0
+fi
 
 current_container_id="$(compose_prod ps -q sub2api)"
 test -n "$current_container_id"

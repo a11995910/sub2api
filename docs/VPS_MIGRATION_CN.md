@@ -65,6 +65,12 @@ staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 
 ## 构建与版本追溯
 
+### 新机 prod 数据副本验收
+
+新机尚无 prod 应用时，先把一致性快照恢复到独立的 prod PostgreSQL、Redis 和应用目录，再执行 `deploy/release-prod <prod.env> <target-image> <target-commit> <staging-run-id> --bootstrap-isolated`。该入口要求数据库与 Redis 健康、无现存 prod 应用、应用所用网络全部为 `internal: true`，并确认目标镜像与同提交 staging 镜像 ID 一致。保留资源、版本能力和迁移结构快照检查；应用健康验证通过后写入 root-only 首次启动回执。失败会停止应用并保留数据供检查，不覆盖旧站。
+
+隔离验收支持页面、登录及管理数据查看。外部模型、支付、邮件、OAuth 刷新等调用不可用；副本内发生的编辑不会合回旧站，正式同步会覆盖这些测试编辑。Nginx 可代理到隔离容器供人工查看，内部数据库与 Redis 不向公网开放。正式接流必须另行完成最终一致性同步、解除验收隔离和域名切换。
+
 镜像构建必须传入：
 
 - `COMMIT=$(git rev-parse --short=12 HEAD)`
