@@ -184,7 +184,7 @@ assert not c["services"]["sub2api"].get("network_mode"), "禁止覆盖隔离网�
   }
   trap bootstrap_failed ERR
   "$scripts_dir/update-sub2api-image" "$env_file" "$target_image" prod-bootstrap
-  compose_prod create --no-deps sub2api
+  compose_prod create sub2api
   "$schema_compat" snapshot "$env_file" "/opt/sub2api/state/prod-bootstrap-schema-$staging_run_id.json"
   compose_prod up -d --no-deps sub2api
   container_id="$(compose_prod ps -q sub2api)"
