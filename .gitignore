@@ -157,6 +157,7 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/CONTENT_MODERATION_CN.md
 !docs/PLUGIN_DEVELOPMENT.md
+!docs/EXCEL_BRIDGE_CN.md
 !docs/LOTTERY.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/codex-credits.md

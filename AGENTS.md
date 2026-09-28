@@ -142,6 +142,11 @@ install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release
 
 正式 VPS `sub2api` 验证通过后，还必须检查 Nginx/Caddy 反代、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/models`、容器日志和数据库连接。
 
+## Excel Bridge 独立上游
+
+- Excel Bridge 为独立附加上游，位于正式 VPS `/opt/excel-codex-bridge`，容器名 `excel-sub2api`，只连接 Sub2API 的 Docker 内网，不发布宿主机端口。其源码来自 `Kaixxrua/excel-codex-bridge` 的固定版本，与 `/opt/sub2api/repo` 主应用仓库分开管理。
+- Excel Bridge 使用独立 API Key 账号和独立测试分组；Excel 会话同步及真实调用、用量和计费验证完成前，账号与分组保持停用。部署与恢复步骤见 `docs/EXCEL_BRIDGE_CN.md`，主应用发布门禁保持不变。
+
 ## 文档同步
 
 - 涉及 API、部署流程、运行方式、配置项、数据库结构、业务流程或异常处理策略变化时，必须同步更新 `docs` 或 README 中的对应说明。
