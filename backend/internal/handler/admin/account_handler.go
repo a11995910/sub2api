@@ -50,6 +50,7 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 type AccountHandler struct {
 	codexTicketSettings     *service.SettingService
 	codexTicketGateway      *service.OpenAIGatewayService
+	claudeResetCredits      claudeResetReader
 	adminService            service.AdminService
 	oauthService            *service.OAuthService
 	openaiOAuthService      *service.OpenAIOAuthService

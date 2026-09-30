@@ -191,6 +191,7 @@ type SystemSettings struct {
 	DefaultUserRPMLimit                int
 	DefaultSubscriptions               []DefaultSubscriptionSetting
 	APIKeyDefaultGroupID               int64
+	CyberPolicyUserAllowlist           string
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

@@ -140,6 +140,12 @@ var (
 		CacheCreationInputTokenCostPriority: 10e-6, CacheReadInputTokenCostPriority: 0.4e-6,
 		SupportsServiceTier: true, LiteLLMProvider: "anthropic", Mode: "chat", SupportsPromptCaching: true,
 	}
+	claudeSonnet55FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken: 2e-6, OutputCostPerToken: 10e-6,
+		CacheCreationInputTokenCost: 2.5e-6, CacheCreationInputTokenCostAbove1hr: 4e-6,
+		CacheReadInputTokenCost: 0.2e-6,
+		LiteLLMProvider:         "anthropic", Mode: "chat", SupportsPromptCaching: true,
+	}
 	openAIGPT56SolFallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:                   4e-06,
 		InputCostPerTokenPriority:           8e-06,
@@ -1418,6 +1424,12 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 			return pricing
 		}
 		return claudeOpus55FallbackPricing
+	}
+	if claude.IsSonnet55(model) {
+		if pricing, ok := s.pricingData["claude-sonnet-5-5"]; ok {
+			return pricing
+		}
+		return claudeSonnet55FallbackPricing
 	}
 	// modelFamily 定义一个模型系列的匹配和定价查找规则。
 	type modelFamily struct {

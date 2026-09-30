@@ -556,13 +556,32 @@ function getRingOffset(ring: RingItem): number {
   return CIRCUMFERENCE - (Math.min(ring.pct, 100) / 100) * CIRCUMFERENCE
 }
 
+let ringAnimationVersion = 0
+let ringAnimationDisposed = false
+let ringAnimationFrame: number | undefined
+let ringAnimationTimer: ReturnType<typeof setTimeout> | undefined
+
+function cancelRingAnimation() {
+  ringAnimationVersion++
+  if (ringAnimationFrame !== undefined) cancelAnimationFrame(ringAnimationFrame)
+  if (ringAnimationTimer !== undefined) clearTimeout(ringAnimationTimer)
+  ringAnimationFrame = undefined
+  ringAnimationTimer = undefined
+}
+
 function triggerRingAnimation(items: RingItem[]) {
+  cancelRingAnimation()
+  const version = ringAnimationVersion
+  const active = () => !ringAnimationDisposed && version === ringAnimationVersion
   ringAnimated.value = false
   displayPcts.value = items.map(() => 0)
 
   nextTick(() => {
-    requestAnimationFrame(() => {
-      setTimeout(() => {
+    if (!active()) return
+    ringAnimationFrame = requestAnimationFrame(() => {
+      if (!active()) return
+      ringAnimationTimer = setTimeout(() => {
+        if (!active()) return
         ringAnimated.value = true
 
         // Animate percentage numbers
@@ -571,13 +590,14 @@ function triggerRingAnimation(items: RingItem[]) {
         const targets = items.map(item => item.isBalance ? 0 : item.pct)
 
         function tick() {
+          if (!active()) return
           const elapsed = performance.now() - startTime
           const p = Math.min(elapsed / duration, 1)
           const ease = 1 - Math.pow(1 - p, 3)
           displayPcts.value = targets.map(target => Math.round(ease * target))
-          if (p < 1) requestAnimationFrame(tick)
+          if (p < 1) ringAnimationFrame = requestAnimationFrame(tick)
         }
-        requestAnimationFrame(tick)
+        ringAnimationFrame = requestAnimationFrame(tick)
       }, 50)
     })
   })
@@ -940,6 +960,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  ringAnimationDisposed = true
+  cancelRingAnimation()
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>
