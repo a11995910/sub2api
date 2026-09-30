@@ -1037,6 +1037,8 @@ export default {
     cacheHit: 'Cache Hit',
     cacheCreate: 'Cache Write',
     cacheHitRate: 'Cache Hit Rate',
+    upstreamResponseServiceTier: 'Upstream response tier',
+    upstreamResponseServiceTierUnknown: 'Not recorded / not returned',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
     serviceTierUltrafast: 'Ultrafast',

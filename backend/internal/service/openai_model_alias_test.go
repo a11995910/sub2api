@@ -46,6 +46,8 @@ func TestResolveOpenAIFastModelPolicy_OfficialSKUs(t *testing.T) {
 		canonical string
 		ratio     float64
 	}{
+		"gpt-6-sol":         {canonical: "gpt-6-sol", ratio: 2},
+		"gpt-6-luna":        {canonical: "gpt-6-luna", ratio: 2},
 		"gpt-5.6-sol":       {canonical: "gpt-5.6-sol", ratio: 2},
 		"gpt-5.6-terra":     {canonical: "gpt-5.6-terra", ratio: 2},
 		"gpt-5.6-luna":      {canonical: "gpt-5.6-luna", ratio: 2},
@@ -79,6 +81,8 @@ func TestResolveOpenAIFastModelPolicy_OfficialSKUs(t *testing.T) {
 
 func TestResolveOpenAIFastModelPolicy_AcceptsOnlyKnownAliases(t *testing.T) {
 	positive := map[string]string{
+		"openai/gpt-6-sol-max":             "gpt-6-sol",
+		"gpt-6-luna-openai-compact":        "gpt-6-luna",
 		" OpenAI/GPT5.4_MINI-HIGH ":        "gpt-5.4-mini",
 		"openai/gpt-5.5-2026-08-31":        "gpt-5.5",
 		"gpt 5.3 codex openai compact":     "gpt-5.3-codex",
@@ -116,6 +120,8 @@ func TestResolveOpenAIFastModelPolicy_AcceptsOnlyKnownAliases(t *testing.T) {
 		"gpt-5.5-pro",
 		"gpt-5.6-cyber",
 		"gpt-5.6-sol-preview",
+		"gpt-6-sol-preview",
+		"gpt-6-luna-pro",
 		"gpt-5.4-mini-preview",
 		"gpt-4.1-turbo",
 		"o3-pro",

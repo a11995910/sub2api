@@ -369,12 +369,13 @@ func TestHandleStreamingResponse_AlignsTerminalUsageWithSingleAdjustment(t *test
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, 1, cache.callCount(), "completed 与 done 必须复用同一个请求级快照")
+	require.Equal(t, 1, cache.callCount(), "首个终态只调整一次，后续 done 不得再次推进 tracker")
 	require.Equal(t, 100, result.usage.InputTokens)
 	require.Equal(t, 90, result.usage.CacheReadInputTokens)
 	require.NotNil(t, result.cacheHitAdjustment)
 	require.Equal(t, 4, result.cacheHitAdjustment.ShiftedTokens)
-	require.Equal(t, 2, strings.Count(recorder.Body.String(), `"cached_tokens":90`))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"cached_tokens":90`))
+	require.NotContains(t, recorder.Body.String(), "event: response.done", "首个终态写出后应立即结束响应")
 	require.NotContains(t, recorder.Body.String(), `"cached_tokens":94`)
 }
 
@@ -440,8 +441,8 @@ func TestResponsesStreamingHandlersFreezeCanonicalAdjustedUsage(t *testing.T) {
 				`data: {"type":"response.done","response":{"id":"resp_conflicting_terminal","status":"completed","usage":{"attribution":{"request_fields":{"instructions":{"input_tokens":200,"cached_tokens":188}}},"input_tokens":200,"output_tokens":9,"total_tokens":209,"input_tokens_details":{"cached_tokens":188}}}}`,
 				``,
 			}, "\n"),
-			wantCacheCount:    2,
-			wantTerminalCount: 2,
+			wantCacheCount:    1,
+			wantTerminalCount: 1,
 			forbidden:         []string{`"input_tokens":200`, `"output_tokens":9`, `"total_tokens":209`, `"cached_tokens":188`, `"attribution"`},
 		},
 		{
@@ -457,8 +458,8 @@ func TestResponsesStreamingHandlersFreezeCanonicalAdjustedUsage(t *testing.T) {
 				`data: {"type":"response.done","response":{"id":"resp_mixed_terminal","status":"incomplete","usage":{"input_tokens":200,"output_tokens":9,"total_tokens":209,"input_tokens_details":{"cached_tokens":188}}}}`,
 				``,
 			}, "\n"),
-			wantCacheCount:    2,
-			wantTerminalCount: 2,
+			wantCacheCount:    1,
+			wantTerminalCount: 1,
 			forbidden:         []string{`"input_tokens":200`, `"output_tokens":9`, `"total_tokens":209`, `"cached_tokens":188`},
 		},
 	}
@@ -521,6 +522,7 @@ func TestResponsesStreamingHandlersFreezeCanonicalAdjustedUsage(t *testing.T) {
 					terminalCount++
 				}
 				require.Equal(t, scenario.wantTerminalCount, terminalCount)
+				require.NotContains(t, recorder.Body.String(), "event: response.done", "后续终态不能改写已结算 usage 或泄露给客户端")
 				for _, forbidden := range scenario.forbidden {
 					require.NotContains(t, recorder.Body.String(), forbidden)
 				}
@@ -1119,7 +1121,8 @@ func TestHandleStreamingResponsePassthrough_FirstTerminalSkipsAdjustment(t *test
 	require.Zero(t, cache.callCount())
 	require.Nil(t, result.cacheHitAdjustment)
 	require.Equal(t, 94, result.usage.CacheReadInputTokens)
-	require.Equal(t, 2, strings.Count(recorder.Body.String(), `"cached_tokens":94`))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"cached_tokens":94`))
+	require.NotContains(t, recorder.Body.String(), "event: response.done", "首个终态跳过调整的决定不应被后续终态改写")
 	require.NotContains(t, recorder.Body.String(), `"cached_tokens":90`)
 }
 
@@ -1161,7 +1164,8 @@ func TestHandleStreamingResponsePassthrough_DuplicateTerminalUsesOneAdjustment(t
 	require.NoError(t, err)
 	require.NotNil(t, result.cacheHitAdjustment)
 	require.Equal(t, 1, cache.callCount())
-	require.Equal(t, 2, strings.Count(recorder.Body.String(), `"cached_tokens":90`))
+	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"cached_tokens":90`))
+	require.NotContains(t, recorder.Body.String(), "event: response.done", "首个终态写出后应立即结束响应")
 	require.NotContains(t, recorder.Body.String(), `"cached_tokens":94`)
 }
 

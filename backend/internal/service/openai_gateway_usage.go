@@ -372,34 +372,35 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		imageSizeBreakdown["image_cache_read_tokens"] = result.Usage.ImageCacheReadTokens
 	}
 	usageLog := &UsageLog{
-		UserID:                   user.ID,
-		APIKeyID:                 apiKey.ID,
-		AccountID:                account.ID,
-		RequestID:                requestID,
-		UpstreamRequestID:        usageUpstreamRequestIDPtr(account, result.UpstreamHeaders, result.OpenAIWSMode),
-		Model:                    result.Model,
-		RequestedModel:           requestedModel,
-		UpstreamModel:            optionalTrimmedStringPtr(result.UpstreamModel),
-		UpstreamResponseModel:    optionalTrimmedStringPtr(result.UpstreamResponseModel),
-		UpstreamModelMismatch:    upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
-		ServiceTier:              result.ServiceTier,
-		ReasoningEffort:          result.ReasoningEffort,
-		RequestedReasoningEffort: coalesceRequestedReasoningEffort(result.RequestedReasoningEffort, result.ReasoningEffort),
-		InboundEndpoint:          optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:         optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:              tokens.InputTokens,
-		OutputTokens:             result.Usage.OutputTokens,
-		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:          tokens.CacheReadTokens,
-		ImageInputTokens:         result.Usage.ImageInputTokens,
-		ImageOutputTokens:        result.Usage.ImageOutputTokens,
-		ImageCount:               result.ImageCount,
-		ImageSize:                optionalTrimmedStringPtr(result.ImageSize),
-		ImageInputSize:           optionalTrimmedStringPtr(result.ImageInputSize),
-		ImageOutputSize:          optionalTrimmedStringPtr(result.ImageOutputSize),
-		ImageSizeSource:          optionalTrimmedStringPtr(result.ImageSizeSource),
-		ImageSizeBreakdown:       imageSizeBreakdown,
-		NativeCompactionV2:       input.NativeCompactionV2,
+		UserID:                      user.ID,
+		APIKeyID:                    apiKey.ID,
+		AccountID:                   account.ID,
+		RequestID:                   requestID,
+		UpstreamRequestID:           usageUpstreamRequestIDPtr(account, result.UpstreamHeaders, result.OpenAIWSMode),
+		Model:                       result.Model,
+		RequestedModel:              requestedModel,
+		UpstreamModel:               optionalTrimmedStringPtr(result.UpstreamModel),
+		UpstreamResponseModel:       optionalTrimmedStringPtr(result.UpstreamResponseModel),
+		UpstreamModelMismatch:       upstreamModelMismatch(sentModel, result.UpstreamResponseModel),
+		ServiceTier:                 result.ServiceTier,
+		UpstreamResponseServiceTier: optionalTrimmedStringPtr(result.UpstreamResponseServiceTier),
+		ReasoningEffort:             result.ReasoningEffort,
+		RequestedReasoningEffort:    coalesceRequestedReasoningEffort(result.RequestedReasoningEffort, result.ReasoningEffort),
+		InboundEndpoint:             optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:            optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		InputTokens:                 tokens.InputTokens,
+		OutputTokens:                result.Usage.OutputTokens,
+		CacheCreationTokens:         result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:             tokens.CacheReadTokens,
+		ImageInputTokens:            result.Usage.ImageInputTokens,
+		ImageOutputTokens:           result.Usage.ImageOutputTokens,
+		ImageCount:                  result.ImageCount,
+		ImageSize:                   optionalTrimmedStringPtr(result.ImageSize),
+		ImageInputSize:              optionalTrimmedStringPtr(result.ImageInputSize),
+		ImageOutputSize:             optionalTrimmedStringPtr(result.ImageOutputSize),
+		ImageSizeSource:             optionalTrimmedStringPtr(result.ImageSizeSource),
+		ImageSizeBreakdown:          imageSizeBreakdown,
+		NativeCompactionV2:          input.NativeCompactionV2,
 	}
 	applyCacheHitTargetAudit(usageLog, cacheHitAdjustment)
 	isVideoUsage := isVideoUsageResult(result, billingModels)
@@ -502,7 +503,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		)
 	}
 
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
@@ -516,22 +518,20 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		quotaPlatform = PlatformFromAPIKey(apiKey)
 	}
 
-	billingErr := func() error {
-		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			BalanceAlreadyHeld:    input.BalanceAlreadyHeld,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-			Platform:              quotaPlatform,
-		}, s.billingDeps(), s.usageBillingRepo)
-		return err
-	}()
+	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
+		Cost:                       cost,
+		User:                       user,
+		APIKey:                     apiKey,
+		Account:                    account,
+		Subscription:               subscription,
+		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
+		BalanceAlreadyHeld:         input.BalanceAlreadyHeld,
+		AccountRateMultiplier:      accountRateMultiplier,
+		APIKeyService:              input.APIKeyService,
+		Platform:                   quotaPlatform,
+		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
+	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0

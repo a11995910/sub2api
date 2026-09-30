@@ -39,7 +39,7 @@ describe('ccswitchImport utils', () => {
 
     expect(params.get('resource')).toBe('provider')
     expect(params.get('app')).toBe('codex')
-    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.get('endpoint')).toBe(`${baseInput.baseUrl}/v1`)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
     expect(params.get('configFormat')).toBe('json')
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
@@ -50,7 +50,7 @@ describe('ccswitchImport utils', () => {
     expect(configPayload.config).toContain(
       `model_reasoning_effort = "${OPENAI_CC_SWITCH_CODEX_REASONING_EFFORT}"`
     )
-    expect(configPayload.config).toContain(`base_url = "${baseInput.baseUrl}"`)
+    expect(configPayload.config).toContain(`base_url = "${baseInput.baseUrl}/v1"`)
   })
 
   it('encodes non-Latin1 usage scripts without throwing', () => {
@@ -67,6 +67,28 @@ describe('ccswitchImport utils', () => {
     const decoded = atob(params.get('usageScript') || '')
     expect(decoded).toContain('"\\u7075\\u77f3"')
     expect(new Function(decoded)()).toBe('灵石')
+  })
+
+  it.each([
+    'https://api.example.com',
+    'https://api.example.com/',
+    'https://api.example.com/v1',
+    'https://api.example.com/v1/'
+  ])('imports Codex with exactly one /v1 suffix for base URL %s', (baseUrl) => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        baseUrl,
+        platform: 'openai',
+        clientType: 'claude'
+      })
+    )
+
+    expect(params.get('endpoint')).toBe('https://api.example.com/v1')
+    if (params.get('app') === 'codex') {
+      const configPayload = JSON.parse(atob(params.get('config') || ''))
+      expect(configPayload.config).toContain('base_url = "https://api.example.com/v1"')
+    }
   })
 
   it.each([

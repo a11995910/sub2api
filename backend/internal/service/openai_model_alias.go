@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 type openAIFastModelPolicy struct {
@@ -16,6 +18,8 @@ type openAIFastModelPolicy struct {
 var openAIFastModelPolicies = func() []openAIFastModelPolicy {
 	policies := []openAIFastModelPolicy{
 		{CanonicalSKU: "gpt-6-astra", FallbackRatio: 2},
+		{CanonicalSKU: "gpt-6-sol", FallbackRatio: 2},
+		{CanonicalSKU: "gpt-6-luna", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-5.6-sol", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-5.6-terra", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-5.6-luna", FallbackRatio: 2},
@@ -160,6 +164,13 @@ func normalizeKnownOpenAICodexModel(model string) string {
 		}
 	}
 
+	if openai.IsGPT6SolOrLunaModelSpelling(normalized) {
+		if strings.HasPrefix(normalized, "gpt-6-sol") {
+			return "gpt-6-sol"
+		}
+		return "gpt-6-luna"
+	}
+
 	switch {
 	case normalized == "gpt-6" || normalized == "gpt-6-astra":
 		return "gpt-6-astra"
@@ -275,4 +286,8 @@ func firstUsageBillingModel(candidates []string) string {
 		}
 	}
 	return ""
+}
+
+func isOpenAIGPT6Model(model string) bool {
+	return isOpenAIGPT6AstraModel(model) || openai.IsGPT6SolOrLunaModelSpelling(model)
 }

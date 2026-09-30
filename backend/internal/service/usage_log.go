@@ -135,6 +135,8 @@ type UsageLog struct {
 	// ServiceTier records the billable request tier, e.g. OpenAI "priority" / "flex"
 	// or Anthropic "fast".
 	ServiceTier *string
+	// UpstreamResponseServiceTier 保存上游响应声明的档位，与最终计费档位独立。
+	UpstreamResponseServiceTier *string
 	// ReasoningEffort is the effective effort recorded for this request after
 	// group policy rewriting and model-family remapping (e.g. max -> xhigh).
 	// OpenAI: "low" / "medium" / "high" / "xhigh"; Claude: "low" / "medium" / "high" / "max".

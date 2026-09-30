@@ -7,25 +7,29 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
 fi
 
 if [[ $# -lt 1 || $# -gt 3 ]]; then
-  printf '用法：%s <target-commit> [staging-run-id] [--bootstrap-without-prod]\n' "$0" >&2
+  printf '用法：%s <target-commit> [staging-run-id] [--bootstrap-without-prod|--bootstrap-isolated-prod]\n' "$0" >&2
   exit 2
 fi
 
 target_commit="$1"
 staging_run_id="$(date -u +%Y%m%d%H%M%S)"
 bootstrap_without_prod=0
+bootstrap_isolated_prod=0
 case "${2:-}" in
   '')
     ;;
   --bootstrap-without-prod)
     bootstrap_without_prod=1
     ;;
+  --bootstrap-isolated-prod)
+    bootstrap_isolated_prod=1
+    ;;
   *)
     staging_run_id="$2"
     ;;
 esac
 if [[ $# -eq 3 ]]; then
-  [[ "$2" != --bootstrap-without-prod ]]
+  [[ "$2" != --bootstrap-without-prod && "$2" != --bootstrap-isolated-prod ]]
   [[ "$3" == --bootstrap-without-prod ]]
   bootstrap_without_prod=1
 fi
@@ -82,17 +86,18 @@ record_result() {
     recorded_status=verified
   fi
   python3 - "$result_tmp" "$recorded_status" "$staging_run_id" "$commit" \
-    "$short_commit" "$commit_date" "$target_image" "$bootstrap_without_prod" <<'PY'
+    "$short_commit" "$commit_date" "$target_image" "$bootstrap_without_prod" "$bootstrap_isolated_prod" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
-path, status, run_id, commit, short_commit, commit_date, image, bootstrap_raw = sys.argv[1:]
+path, status, run_id, commit, short_commit, commit_date, image, bootstrap_raw, isolated_raw = sys.argv[1:]
 payload = {
     "environment": "staging",
     "status": status,
     "workflow": "manual",
     "bootstrap_without_prod": bootstrap_raw == "1",
+    "bootstrap_isolated_prod": isolated_raw == "1",
     "run_id": run_id,
     "commit": commit,
     "short_commit": short_commit,
@@ -139,6 +144,20 @@ if [[ "$bootstrap_without_prod" -eq 1 ]]; then
   fi
   prod_status=bootstrap-absent
   printf '%s\n' 'staging bootstrap 门禁：已确认目标主机不存在 prod 配置、容器或数据文件。'
+elif [[ "$bootstrap_isolated_prod" -eq 1 ]]; then
+  # 迁移验收只恢复了隔离数据库、尚无应用时，允许重新验证发布脚本修订。
+  test -f "$prod_env_file"
+  test -f "$prod_override"
+  test -z "$(compose_prod ps -aq sub2api)"
+  compose_prod config --format json | python3 -c '
+import json, sys
+c = json.load(sys.stdin)
+for service in c["services"].values():
+    networks = service.get("networks", {})
+    assert networks and all(c["networks"][n].get("internal") is True for n in networks)
+    assert not service.get("network_mode")
+'
+  prod_status=bootstrap-isolated-database-only
 else
   test -f "$prod_env_file"
   test -f "$prod_override"
