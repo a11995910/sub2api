@@ -4519,81 +4519,6 @@
               </h2>
             </div>
             <div class="p-6 space-y-4">
-                <div class="flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <label for="codex-ticket-enabled" class="text-base font-semibold text-gray-900 dark:text-white">
-                      {{ t("admin.settings.gatewayForwarding.codexTicketEnabled") }}
-                    </label>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.gatewayForwarding.codexTicketEnabledDesc") }}
-                    </p>
-                  </div>
-                  <Toggle
-                    id="codex-ticket-enabled"
-                    v-model="form.openai_codex_ticket_enabled"
-                    :aria-label="t('admin.settings.gatewayForwarding.codexTicketEnabled')"
-                  />
-                </div>
-                <div class="flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <label for="codex-ticket-model-mismatch-invalidation" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketModelMismatchInvalidation') }}</label>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketModelMismatchInvalidationDesc') }}</p>
-                  </div>
-                  <Toggle id="codex-ticket-model-mismatch-invalidation" v-model="form.openai_codex_ticket_model_mismatch_invalidation" :aria-label="t('admin.settings.gatewayForwarding.codexTicketModelMismatchInvalidation')" />
-                </div>
-                <div class="flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <label for="codex-ticket-use-harvest-proxy" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketUseHarvestProxy') }}</label>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketUseHarvestProxyDesc') }}</p>
-                  </div>
-                  <Toggle id="codex-ticket-use-harvest-proxy" v-model="form.openai_codex_ticket_use_harvest_proxy" :aria-label="t('admin.settings.gatewayForwarding.codexTicketUseHarvestProxy')" />
-                </div>
-                <div>
-                  <label for="codex-ticket-harvest-mode" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestMode') }}</label>
-                  <select id="codex-ticket-harvest-mode" v-model="form.openai_codex_ticket_harvest_proxy_mode" class="input mt-3 w-full">
-                    <option value="proxy">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestModeProxy') }}</option>
-                    <option value="extract">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestModeExtract') }}</option>
-                  </select>
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestModeHint') }}</p>
-                </div>
-                <div v-if="form.openai_codex_ticket_harvest_proxy_mode === 'proxy'">
-                  <label for="codex-ticket-harvest-proxy" class="text-base font-semibold text-gray-900 dark:text-white">
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
-                  </label>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyDesc") }}
-                  </p>
-                  <input
-                    id="codex-ticket-harvest-proxy"
-                    v-model="form.openai_codex_ticket_harvest_proxy_url"
-                    type="text"
-                    class="input mt-3 w-full font-mono text-sm"
-                    :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestProxyPlaceholder')"
-                    autocomplete="off"
-                  />
-                  <p
-                    v-if="form.openai_codex_ticket_harvest_proxy_configured"
-                    class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
-                  >
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
-                  </p>
-                </div>
-                <div v-else class="space-y-4">
-                  <div>
-                    <label for="codex-ticket-harvest-extract" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtract') }}</label>
-                    <input id="codex-ticket-harvest-extract" v-model="form.openai_codex_ticket_harvest_extract_url" type="text" class="input mt-3 w-full font-mono text-sm" :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestExtractPlaceholder')" autocomplete="off" />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtractDesc') }}</p>
-                    <p v-if="form.openai_codex_ticket_harvest_extract_configured" class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtractConfigured') }}</p>
-                  </div>
-                  <div>
-                    <label for="codex-ticket-harvest-extract-protocol" class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestExtractProtocol') }}</label>
-                    <select id="codex-ticket-harvest-extract-protocol" v-model="form.openai_codex_ticket_harvest_extract_protocol" class="input mt-2 w-full sm:w-56">
-                      <option value="http">HTTP</option>
-                      <option value="https">HTTPS</option>
-                      <option value="socks5h">SOCKS5（{{ t('admin.settings.gatewayForwarding.codexTicketRemoteDNS') }}）</option>
-                    </select>
-                  </div>
-                </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexClientRestrictionTitle") }}
@@ -10185,6 +10110,7 @@ type SettingsForm = Omit<
   | "wechat_connect_mobile_enabled"
   | "smtp_fallbacks"
   | "openai_oauth_scheduling_rate_multiplier"
+  | `openai_codex_ticket_${string}`
 > & {
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
@@ -10508,15 +10434,6 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
-  openai_codex_ticket_enabled: false,
-  openai_codex_ticket_model_mismatch_invalidation: true,
-  openai_codex_ticket_use_harvest_proxy: true,
-  openai_codex_ticket_harvest_proxy_url: "",
-  openai_codex_ticket_harvest_proxy_configured: false,
-  openai_codex_ticket_harvest_proxy_mode: 'proxy' as 'proxy' | 'extract',
-  openai_codex_ticket_harvest_extract_url: '',
-  openai_codex_ticket_harvest_extract_configured: false,
-  openai_codex_ticket_harvest_extract_protocol: 'http' as 'http' | 'https' | 'socks5h',
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
@@ -11591,7 +11508,7 @@ async function loadSettings() {
       settings.payment_load_balance_strategy || "round-robin";
     // Only assign non-null values from backend (null means unconfigured, keep defaults)
     for (const [key, value] of Object.entries(settings)) {
-      if (value !== null && value !== undefined) {
+      if (!key.startsWith("openai_codex_ticket_") && value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
     }
@@ -12292,14 +12209,6 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
-      openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
-      openai_codex_ticket_model_mismatch_invalidation: form.openai_codex_ticket_model_mismatch_invalidation,
-      openai_codex_ticket_use_harvest_proxy: form.openai_codex_ticket_use_harvest_proxy,
-      openai_codex_ticket_harvest_proxy_url:
-        form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
-      openai_codex_ticket_harvest_proxy_mode: form.openai_codex_ticket_harvest_proxy_mode,
-      openai_codex_ticket_harvest_extract_url: form.openai_codex_ticket_harvest_extract_url?.trim() || '',
-      openai_codex_ticket_harvest_extract_protocol: form.openai_codex_ticket_harvest_extract_protocol,
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,

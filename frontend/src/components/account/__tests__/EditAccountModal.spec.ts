@@ -347,7 +347,7 @@ describe('EditAccountModal', () => {
     wrapper.unmount()
   })
 
-  it.each(['healthy_retry', 'healthy_preflight'])('旧模式 %s 回显关闭且保存不再携带健康头配置', async (mode) => {
+  it.each(['healthy_retry', 'healthy_preflight'])('旧模式 %s 不再展示策略且保存仍清理废弃健康头配置', async (mode) => {
     const account = { ...buildOpenAIOAuthParentAccount(), extra: {
       openai_turn_state_mode: mode,
       openai_healthy_turn_state_replace: true,
@@ -357,9 +357,7 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
-    const selector = wrapper.get('[data-testid="edit-turn-state-mode"]')
-    expect((selector.element as HTMLSelectElement).value).toBe('off')
-    expect(selector.findAll('option').map(option => option.attributes('value'))).toEqual(['off', 'codex_ticket'])
+    expect(wrapper.find('[data-testid="edit-turn-state-mode"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(false)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await flushPromises()
@@ -371,48 +369,23 @@ describe('EditAccountModal', () => {
     wrapper.unmount()
   })
 
-  it('旧替换开关不再启用采集，setup-token 可选择门票模式', async () => {
-    const account = { ...buildOpenAIOAuthParentAccount(), type: 'setup-token', extra: { openai_healthy_turn_state_replace: true } }
-    const wrapper = mountModal(account)
-    const selector = wrapper.get('[data-testid="edit-turn-state-mode"]')
-    expect((selector.element as HTMLSelectElement).value).toBe('off')
-    await selector.setValue('codex_ticket')
-    expect(wrapper.find('[data-testid="codex-ticket-status"]').exists()).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('门票模式默认缺票暂停且无需健康代理配置，保存时互斥旧健康头配置', async () => {
-    const account = { ...buildOpenAIOAuthParentAccount(), extra: { openai_healthy_turn_state_replace: true, openai_healthy_turn_state_fail_closed: true } }
+  it.each(['oauth', 'setup-token'])('%s 账号不再显示状态头策略，编辑其他字段保留已有门票配置', async (type) => {
+    const account = { ...buildOpenAIOAuthParentAccount(), type, extra: {
+      openai_turn_state_mode: 'codex_ticket',
+      openai_codex_ticket_fail_closed: false
+    } }
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
-    await wrapper.get('[data-testid="edit-turn-state-mode"]').setValue('codex_ticket')
-    expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(false)
-    expect(wrapper.get('#edit-codex-ticket-fail-closed').attributes('aria-checked')).toBe('true')
-    expect(wrapper.get('[data-testid="codex-ticket-status"]').text()).toContain('codexTurnTicketEmpty')
+    expect(wrapper.find('[data-testid="edit-turn-state-mode"]').exists()).toBe(false)
+    expect(wrapper.find('#edit-codex-ticket-fail-closed').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="codex-ticket-status"]').exists()).toBe(false)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await flushPromises()
-    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(saved).toMatchObject({ openai_turn_state_mode: 'codex_ticket', openai_codex_ticket_fail_closed: true })
-    expect(saved).not.toHaveProperty('openai_healthy_turn_state_fail_closed')
-    expect(saved).not.toHaveProperty('openai_healthy_turn_state_replace')
-    wrapper.unmount()
-  })
-
-  it('门票模式允许关闭缺票暂停，更新失败时保留选择和错误提示', async () => {
-    const account = buildOpenAIOAuthParentAccount()
-    updateAccountMock.mockReset().mockRejectedValue(new Error('状态头策略保存失败'))
-    showErrorMock.mockClear()
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    const wrapper = mountModal(account)
-    await wrapper.get('[data-testid="edit-turn-state-mode"]').setValue('codex_ticket')
-    await wrapper.get('#edit-codex-ticket-fail-closed').trigger('click')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra.openai_codex_ticket_fail_closed).toBe(false)
-    expect(showErrorMock).toHaveBeenLastCalledWith('状态头策略保存失败')
-    expect(wrapper.emitted('close')).toBeUndefined()
-    expect((wrapper.get('[data-testid="edit-turn-state-mode"]').element as HTMLSelectElement).value).toBe('codex_ticket')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      openai_turn_state_mode: 'codex_ticket',
+      openai_codex_ticket_fail_closed: false
+    })
     wrapper.unmount()
   })
 

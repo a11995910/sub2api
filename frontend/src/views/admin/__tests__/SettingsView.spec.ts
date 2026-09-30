@@ -754,91 +754,31 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
-  it("保存292门票总开关", async () => {
+  it("网关服务不再展示或提交门票配置，其他 Codex 设置可正常保存", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
-      openai_codex_ticket_enabled: false,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    const toggle = wrapper.get("#codex-ticket-enabled");
-    await toggle.setValue(true);
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_enabled).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("门票行为开关回显并独立保存", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
+      openai_codex_ticket_enabled: true,
       openai_codex_ticket_model_mismatch_invalidation: true,
       openai_codex_ticket_use_harvest_proxy: false,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    const mismatch = wrapper.get<HTMLInputElement>("#codex-ticket-model-mismatch-invalidation");
-    const proxy = wrapper.get<HTMLInputElement>("#codex-ticket-use-harvest-proxy");
-    expect(mismatch.element.checked).toBe(true);
-    expect(proxy.element.checked).toBe(false);
-    await mismatch.setValue(false);
-    await proxy.setValue(true);
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0]).toMatchObject({
-      openai_codex_ticket_model_mismatch_invalidation: false,
-      openai_codex_ticket_use_harvest_proxy: true,
-    });
-    wrapper.unmount();
-  });
-
-  it("回显已脱敏门票代理并保存替换地址", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_harvest_proxy_url: "http://user:***@old.example.com:8080",
+      openai_codex_ticket_harvest_proxy_url: "http://saved.example.com:8080",
       openai_codex_ticket_harvest_proxy_configured: true,
+      openai_codex_ticket_harvest_proxy_mode: "extract",
+      openai_codex_ticket_harvest_extract_url: "https://extract.example.com/••••",
+      openai_codex_ticket_harvest_extract_configured: true,
+      openai_codex_ticket_harvest_extract_protocol: "http",
+      min_codex_version: "0.120.0",
     });
     const wrapper = mountView();
     await flushPromises();
-    const input = wrapper.get<HTMLInputElement>("#codex-ticket-harvest-proxy");
-    expect(input.element.value).toBe("http://user:***@old.example.com:8080");
-    await input.setValue("socks5h://user:new-secret@new.example.com:1080");
+    expect(wrapper.find('[id^="codex-ticket-"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("admin.settings.gatewayForwarding.codexTicketEnabled");
+    expect(wrapper.text()).toContain("admin.settings.gatewayForwarding.codexClientRestrictionTitle");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_proxy_url)
-      .toBe("socks5h://user:new-secret@new.example.com:1080");
-    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_configured");
-    wrapper.unmount();
-  });
-
-  it("切换292批量提取来源保留固定代理，并只提交可写配置", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      openai_codex_ticket_harvest_proxy_mode: 'proxy',
-      openai_codex_ticket_harvest_proxy_url: 'http://saved.example.com:8080',
-      openai_codex_ticket_harvest_extract_url: 'https://extract.example.com/••••',
-      openai_codex_ticket_harvest_extract_configured: true,
-      openai_codex_ticket_harvest_extract_protocol: 'http',
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    await wrapper.get('#codex-ticket-harvest-mode').setValue('extract');
-    expect(wrapper.find('#codex-ticket-harvest-proxy').exists()).toBe(false);
-    expect(wrapper.get<HTMLInputElement>('#codex-ticket-harvest-extract').element.value).toBe('https://extract.example.com/••••');
-    await wrapper.get('#codex-ticket-harvest-extract').setValue('https://extract.example.com/batch?token=fixture');
-    await wrapper.get('#codex-ticket-harvest-extract-protocol').setValue('socks5h');
-    await wrapper.get('#codex-ticket-harvest-mode').setValue('proxy');
-    expect(wrapper.get<HTMLInputElement>('#codex-ticket-harvest-proxy').element.value).toBe('http://saved.example.com:8080');
-    await wrapper.get('#codex-ticket-harvest-mode').setValue('extract');
-    await wrapper.find('form').trigger('submit.prevent');
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0]).toMatchObject({
-      openai_codex_ticket_harvest_proxy_mode: 'extract',
-      openai_codex_ticket_harvest_proxy_url: 'http://saved.example.com:8080',
-      openai_codex_ticket_harvest_extract_url: 'https://extract.example.com/batch?token=fixture',
-      openai_codex_ticket_harvest_extract_protocol: 'socks5h',
-    });
-    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty('openai_codex_ticket_harvest_extract_configured');
+    const saved = updateSettings.mock.calls[0]?.[0];
+    expect(saved).toBeDefined();
+    expect(Object.keys(saved).filter(key => key.startsWith("openai_codex_ticket_"))).toEqual([]);
+    expect(saved.min_codex_version).toBe("0.120.0");
     wrapper.unmount();
   });
 
