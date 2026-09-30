@@ -52,6 +52,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
 
 	cleanup := provideCleanup(
+		service.NewAccountTimeRotationService(nil), // 验证未启动的轮候服务可安全停止
 		nil, // entClient
 		nil, // redis
 		&service.OpsMetricsCollector{},

@@ -924,8 +924,15 @@ func ProvideAPIKeyService(
 	return svc
 }
 
-// ProviderSet is the Wire provider set for all services
+// ProvideAccountTimeRotationService 启动每日时段轮候。
+func ProvideAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
+	svc := NewAccountTimeRotationService(repo)
+	svc.Start()
+	return svc
+}
+
 var ProviderSet = wire.NewSet(
+	ProvideAccountTimeRotationService,
 	// Core services
 	ProvideAuthService,
 	NewPasskeyService,

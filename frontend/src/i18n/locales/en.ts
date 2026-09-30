@@ -1,4 +1,7 @@
+import timeRotation from './en/timeRotation'
+
 export default {
+  timeRotation,
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',

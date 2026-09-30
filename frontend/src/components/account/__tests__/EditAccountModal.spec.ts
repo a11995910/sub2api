@@ -318,6 +318,7 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
         BaseDialog: BaseDialogStub,
         Select: SelectStub,
         Icon: true,
+        AccountTimeRotationHint: true,
         ProxySelector: true,
         GroupSelector: renderGroupSelector ? false : GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub
@@ -327,6 +328,25 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it.each([true, false])('轮候受管状态为 %s 时正确控制优先级编辑和提交', async (managed) => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    wrapper.getComponent({ name: 'AccountTimeRotationHint' }).vm.$emit('managed', managed)
+    await wrapper.vm.$nextTick()
+    // 同一账号对象刷新不应重置已读取的轮候状态。
+    await wrapper.setProps({ account: { ...account, name: '刷新后的账号' } })
+    expect((wrapper.get('[data-tour="account-form-priority"]').element as HTMLInputElement).disabled).toBe(managed)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const saved = updateAccountMock.mock.calls[0]?.[1]
+    expect(saved).toBeDefined()
+    if (managed) expect(saved).not.toHaveProperty('priority')
+    else expect(saved.priority).toBe(account.priority)
+    wrapper.unmount()
+  })
+
   it.each(['healthy_retry', 'healthy_preflight'])('旧模式 %s 回显关闭且保存不再携带健康头配置', async (mode) => {
     const account = { ...buildOpenAIOAuthParentAccount(), extra: {
       openai_turn_state_mode: mode,

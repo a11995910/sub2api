@@ -601,6 +601,23 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/intelligent-ops',
+    redirect: '/admin/intelligent-ops/time-rotation',
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/admin/intelligent-ops/time-rotation',
+    name: 'AdminTimeRotation',
+    component: () => import('@/views/admin/TimeRotationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '时段轮候',
+      titleKey: 'timeRotation.title',
+      descriptionKey: 'timeRotation.description'
+    }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),

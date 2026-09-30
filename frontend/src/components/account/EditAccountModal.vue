@@ -1679,8 +1679,15 @@
             min="1"
             class="input"
             data-tour="account-form-priority"
+            :disabled="timeRotationManaged"
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
+          <AccountTimeRotationHint
+            v-if="show && account?.platform === 'openai' && account?.type === 'oauth' && !account?.parent_account_id"
+            :account-id="account.id"
+            @managed="timeRotationManaged = $event"
+            @navigate="emit('close')"
+          />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
@@ -3197,6 +3204,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import AccountTimeRotationHint from '@/components/account/AccountTimeRotationHint.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
@@ -3270,6 +3278,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const timeRotationManaged = ref(false)
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
@@ -4632,6 +4641,10 @@ watch(
       return
     }
     if (!wasShow || newAccount !== previousAccount) {
+      const rotationEligible = newAccount.platform === 'openai' && newAccount.type === 'oauth' && !newAccount.parent_account_id
+      if (!rotationEligible || !wasShow || newAccount.id !== previousAccount?.id) {
+        timeRotationManaged.value = rotationEligible
+      }
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
     }
@@ -5218,6 +5231,7 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
+  if (timeRotationManaged.value) delete updatePayload.priority
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {

@@ -188,3 +188,5 @@ issues/
 /plugins/**/*.private
 /plugins/**/*.key
 /plugins/**/*.pem
+
+!docs/ACCOUNT_TIME_ROTATION_CN.md

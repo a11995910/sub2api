@@ -113,6 +113,10 @@ func RegisterAdminRoutes(
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
 
+		// 智能运维：时段轮候
+		admin.GET("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Get)
+		admin.PUT("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Save)
+
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
 
