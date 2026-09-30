@@ -1080,10 +1080,14 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(eligible, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
 	}
+	smartPlan := s.smartRotationPlanForAccounts(eligible, time.Now())
 	sort.SliceStable(eligible, func(i, j int) bool {
 		a, b := eligible[i], eligible[j]
 		if requireCompact && compactTiers[a.ID] != compactTiers[b.ID] {
 			return compactTiers[a.ID] > compactTiers[b.ID]
+		}
+		if better, decided := compareSmartRotationTier(smartPlan, a, b); decided {
+			return better
 		}
 		if rateCmp := rateOrder.compare(a, b); rateCmp != 0 {
 			return rateCmp < 0
@@ -1154,7 +1158,33 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			stickyAccountID = accountID
 		}
 	}
-	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
+	// 仅对本次请求确有智能池候选的场景启用容量探测，池外分组保持原路径。
+	var accounts []Account
+	accountsLoaded, useSmartLoad := false, false
+	if s.concurrencyService != nil && !cfg.LoadBatchEnabled && platform == PlatformOpenAI && s.smartRotationEnabled(time.Now()) {
+		var err error
+		accounts, err = s.listSchedulableAccounts(ctx, groupID, platform)
+		if err != nil {
+			return nil, err
+		}
+		accountsLoaded = true
+		eligible := make([]*Account, 0, len(accounts))
+		for i := range accounts {
+			account := &accounts[i]
+			if _, excluded := excludedIDs[account.ID]; excluded {
+				continue
+			}
+			if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) || s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+				continue
+			}
+			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
+				continue
+			}
+			eligible = append(eligible, account)
+		}
+		useSmartLoad = s.smartRotationPlanForRequest(eligible, requireCompact, time.Now()) != nil
+	}
+	if s.concurrencyService == nil || (!cfg.LoadBatchEnabled && !useSmartLoad) {
 		account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
 		if err != nil {
 			return nil, err
@@ -1185,9 +1215,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return markStickySessionHit(selection, stickyHit), selectErr
 	}
 
-	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
-	if err != nil {
-		return nil, err
+	if !accountsLoaded {
+		var err error
+		accounts, err = s.listSchedulableAccounts(ctx, groupID, platform)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(accounts) == 0 {
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, openAISelectionFilterStats{}.summary(""))
@@ -1361,6 +1394,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(candidates, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
 	}
+	smartPlan := s.smartRotationPlanForRequest(candidates, requireCompact, time.Now())
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
 	for _, acc := range candidates {
@@ -1412,6 +1446,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if rateOrder.enabled {
 			sort.SliceStable(available, func(i, j int) bool {
 				return rateOrder.compare(available[i].account, available[j].account) < 0
+			})
+		}
+
+		if smartPlan != nil {
+			sort.SliceStable(available, func(i, j int) bool {
+				return smartRotationTier(smartPlan, available[i].account) < smartRotationTier(smartPlan, available[j].account)
 			})
 		}
 
@@ -1470,6 +1510,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return rateOrder.compare(ordered[i], ordered[j]) < 0
 			})
 		}
+		if smartPlan != nil {
+			sort.SliceStable(ordered, func(i, j int) bool {
+				return smartRotationTier(smartPlan, ordered[i]) < smartRotationTier(smartPlan, ordered[j])
+			})
+		}
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
@@ -1518,6 +1563,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if rateOrder.enabled {
 		sort.SliceStable(candidates, func(i, j int) bool {
 			return rateOrder.compare(candidates[i], candidates[j]) < 0
+		})
+	}
+	if smartPlan != nil {
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return smartRotationTier(smartPlan, candidates[i]) < smartRotationTier(smartPlan, candidates[j])
 		})
 	}
 	if requireCompact {

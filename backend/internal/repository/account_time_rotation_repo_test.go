@@ -154,3 +154,84 @@ func TestAccountTimeRotationRejectsStaleRevisionAndInvalidAccounts(t *testing.T)
 		})
 	}
 }
+
+func TestAccountSmartRotationSaveDoesNotChangeAccountPriorities(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	existing := service.DefaultAccountTimeRotationConfig()
+	raw, err := json.Marshal(accountTimeRotationState{Config: *existing, OriginalPriorities: map[int64]int{}})
+	require.NoError(t, err)
+	next := service.DefaultAccountTimeRotationConfig()
+	next.Mode, next.Enabled = "smart", true
+	next.Smart.AccountIDs = []int64{1, 2}
+	// 智能客户端可以不携带手动模式的时段。
+	next.Slots = nil
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO settings").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WithArgs(accountTimeRotationKey).
+		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+	mock.ExpectQuery("SELECT id, priority.*FROM accounts.*FOR UPDATE").WithArgs("{1,2}").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "priority", "eligible"}).AddRow(1, 7, true).AddRow(2, 70, true))
+	mock.ExpectExec("UPDATE settings SET value").WithArgs(rotationStateArgument{check: func(state accountTimeRotationState) bool {
+		return state.Config.Mode == "smart" && state.Config.Revision == 1 && len(state.Config.Slots) == 3 && len(state.OriginalPriorities) == 0
+	}}, accountTimeRotationKey).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	// 没有账号 UPDATE 或 outbox 预期；出现任何优先级写入都会使测试失败。
+	result, err := NewAccountTimeRotationRepository(db).Apply(context.Background(), next, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.Revision)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAccountManualToSmartRotationRestoresOriginalPriorities(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	existing := service.DefaultAccountTimeRotationConfig()
+	existing.Enabled, existing.Revision = true, 4
+	existing.Slots[0].AccountIDs = []int64{1}
+	raw, err := json.Marshal(accountTimeRotationState{Config: *existing, OriginalPriorities: map[int64]int{1: 70}})
+	require.NoError(t, err)
+	next := service.DefaultAccountTimeRotationConfig()
+	next.Mode, next.Enabled, next.Revision = "smart", true, 4
+	next.Smart.AccountIDs = []int64{1, 2}
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO settings").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WithArgs(accountTimeRotationKey).
+		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+	mock.ExpectQuery("SELECT id, priority.*FROM accounts.*FOR UPDATE").WithArgs("{1,2}").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "priority", "eligible"}).AddRow(1, 1, true).AddRow(2, 3, true))
+	mock.ExpectExec("UPDATE accounts SET priority").WithArgs(70, int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO scheduler_outbox").
+		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(1), nil, nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE settings SET value").WithArgs(rotationStateArgument{check: func(state accountTimeRotationState) bool {
+		return state.Config.Mode == "smart" && state.Config.Revision == 5 && len(state.OriginalPriorities) == 0
+	}}, accountTimeRotationKey).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	result, err := NewAccountTimeRotationRepository(db).Apply(context.Background(), next, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(5), result.Revision)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAccountSmartRotationWorkerDoesNotLockOrUpdateAccounts(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	existing := service.DefaultAccountTimeRotationConfig()
+	existing.Mode, existing.Enabled, existing.Revision = "smart", true, 3
+	existing.Smart.AccountIDs = []int64{1, 2}
+	raw, err := json.Marshal(accountTimeRotationState{Config: *existing, OriginalPriorities: map[int64]int{}})
+	require.NoError(t, err)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WithArgs(accountTimeRotationKey).
+		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+	mock.ExpectCommit()
+	// 周期检查只读取受锁定的配置行，不触碰账号池，也不产生重复配置或 outbox 写入。
+	result, err := NewAccountTimeRotationRepository(db).Apply(context.Background(), nil, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(3), result.Revision)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

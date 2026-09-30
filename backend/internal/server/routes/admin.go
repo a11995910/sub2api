@@ -115,6 +115,7 @@ func RegisterAdminRoutes(
 
 		// 智能运维：时段轮候
 		admin.GET("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Get)
+		admin.GET("/intelligent-ops/time-rotation/status", h.Admin.TimeRotation.Status)
 		admin.PUT("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Save)
 
 		// 定时测试计划

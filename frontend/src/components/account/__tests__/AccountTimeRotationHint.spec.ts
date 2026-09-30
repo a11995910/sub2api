@@ -17,6 +17,10 @@ const config = (enabled = true, id = 7) => ({
   enabled, revision: 1,
   slots: [{ start: '22:00', end: '06:00', account_ids: [id], active_priority: 2, inactive_priority: 80 }]
 })
+const smartConfig = (enabled = true, id = 7) => ({
+  enabled, revision: 2, mode: 'smart' as const, slots: [],
+  smart: { account_ids: [id], periods: [], rotation_minutes: 60, quota_reserve_percent: 10 }
+})
 const render = () => mount(AccountTimeRotationHint, {
   props: { accountId: 7 },
   global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } }
@@ -61,6 +65,15 @@ describe('账号编辑时段轮候提示', () => {
     await flushPromises()
     expect(wrapper.find('[role="alert"]').text()).toContain('无法确认时段轮候状态')
     expect(wrapper.emitted('managed')?.at(-1)).toEqual([true])
+    wrapper.unmount()
+  })
+  it('智能模式显示受管提示但不锁定 priority', async () => {
+    get.mockResolvedValue(smartConfig())
+    const wrapper = render()
+    await flushPromises()
+    expect(wrapper.text()).toContain('智能轮候')
+    expect(wrapper.text()).toContain('可正常编辑账号优先级')
+    expect(wrapper.emitted('managed')?.at(-1)).toEqual([false])
     wrapper.unmount()
   })
 })

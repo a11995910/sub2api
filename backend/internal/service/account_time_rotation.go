@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -22,18 +23,49 @@ type AccountRotationSlot struct {
 	InactivePriority int     `json:"inactive_priority"`
 }
 
+// AccountSmartRotationPeriod 描述智能轮候在一天中的一个非跨午夜时段。
+type AccountSmartRotationPeriod struct {
+	Start        string `json:"start"`
+	End          string `json:"end"`
+	PrimaryCount int    `json:"primary_count"`
+}
+
+type AccountSmartRotationConfig struct {
+	AccountIDs          []int64                      `json:"account_ids"`
+	Periods             []AccountSmartRotationPeriod `json:"periods"`
+	RotationMinutes     int                          `json:"rotation_minutes"`
+	QuotaReservePercent int                          `json:"quota_reserve_percent"`
+}
+
 type AccountTimeRotationConfig struct {
-	Enabled  bool                  `json:"enabled"`
-	Revision int64                 `json:"revision"`
-	Slots    []AccountRotationSlot `json:"slots"`
+	Enabled  bool                        `json:"enabled"`
+	Revision int64                       `json:"revision"`
+	Slots    []AccountRotationSlot       `json:"slots"`
+	Mode     string                      `json:"mode"`
+	Smart    *AccountSmartRotationConfig `json:"smart,omitempty"`
 }
 
 func DefaultAccountTimeRotationConfig() *AccountTimeRotationConfig {
-	return &AccountTimeRotationConfig{Slots: []AccountRotationSlot{
+	return &AccountTimeRotationConfig{Mode: "manual", Smart: defaultSmartRotationConfig(), Slots: []AccountRotationSlot{
 		{Start: "00:00", End: "08:00", AccountIDs: []int64{}, ActivePriority: 1, InactivePriority: 50},
 		{Start: "08:00", End: "16:00", AccountIDs: []int64{}, ActivePriority: 1, InactivePriority: 50},
 		{Start: "16:00", End: "24:00", AccountIDs: []int64{}, ActivePriority: 1, InactivePriority: 50},
 	}}
+}
+
+func defaultSmartRotationConfig() *AccountSmartRotationConfig {
+	return &AccountSmartRotationConfig{
+		AccountIDs: []int64{},
+		Periods: []AccountSmartRotationPeriod{
+			{Start: "00:00", End: "08:00", PrimaryCount: 1},
+			{Start: "08:00", End: "10:00", PrimaryCount: 2},
+			{Start: "10:00", End: "14:00", PrimaryCount: 4},
+			{Start: "14:00", End: "18:00", PrimaryCount: 4},
+			{Start: "18:00", End: "22:00", PrimaryCount: 3},
+			{Start: "22:00", End: "24:00", PrimaryCount: 2},
+		},
+		RotationMinutes: 60, QuotaReservePercent: 10,
+	}
 }
 
 func rotationMinute(value string, allowEndOfDay bool) (int, error) {
@@ -58,6 +90,66 @@ func rotationMinute(value string, allowEndOfDay bool) (int, error) {
 
 func (c *AccountTimeRotationConfig) Validate() error {
 	invalid := func(message string) error { return infraerrors.BadRequest("INVALID_TIME_ROTATION", message) }
+	if c.Mode == "" {
+		c.Mode = "manual"
+	}
+	if c.Mode != "manual" && c.Mode != "smart" {
+		return invalid("轮候模式必须是 manual 或 smart")
+	}
+	if c.Smart == nil {
+		c.Smart = defaultSmartRotationConfig()
+	}
+	if c.Mode == "smart" {
+		// 智能配置可以独立提交；保留默认手动时段，便于后续切回手动模式。
+		if len(c.Slots) == 0 {
+			c.Slots = DefaultAccountTimeRotationConfig().Slots
+		}
+		if c.Enabled && len(c.Smart.AccountIDs) == 0 {
+			return invalid("智能轮候启用时必须选择至少一个账号")
+		}
+		seenSmart := make(map[int64]bool, len(c.Smart.AccountIDs))
+		for _, id := range c.Smart.AccountIDs {
+			if id <= 0 {
+				return invalid("智能轮候账号 ID 无效")
+			}
+			if seenSmart[id] {
+				return invalid(fmt.Sprintf("智能轮候账号 %d 重复选择", id))
+			}
+			seenSmart[id] = true
+		}
+		if len(c.Smart.Periods) < 1 || len(c.Smart.Periods) > 24 {
+			return invalid("智能轮候必须设置 1 至 24 个时段")
+		}
+		periods := append([]AccountSmartRotationPeriod(nil), c.Smart.Periods...)
+		sort.Slice(periods, func(i, j int) bool { return periods[i].Start < periods[j].Start })
+		cursor := 0
+		for i, period := range periods {
+			start, err := rotationMinute(period.Start, false)
+			if err != nil {
+				return invalid(fmt.Sprintf("智能时段 %d 开始时间无效：%s", i+1, err))
+			}
+			end, err := rotationMinute(period.End, true)
+			if err != nil {
+				return invalid(fmt.Sprintf("智能时段 %d 结束时间无效：%s", i+1, err))
+			}
+			if start != cursor || end <= start {
+				return invalid("智能轮候时段必须从 00:00 到 24:00 完整覆盖且不能重叠（不支持跨午夜）")
+			}
+			if period.PrimaryCount < 1 || period.PrimaryCount > 10000 {
+				return invalid("智能轮候主力账号数必须是 1 至 10000")
+			}
+			cursor = end
+		}
+		if cursor != 1440 {
+			return invalid("智能轮候时段必须完整覆盖 00:00 至 24:00")
+		}
+		if c.Smart.RotationMinutes < 15 || c.Smart.RotationMinutes > 240 || 1440%c.Smart.RotationMinutes != 0 {
+			return invalid("智能轮候轮换分钟数必须为 15 至 240 且能整除 1440")
+		}
+		if c.Smart.QuotaReservePercent < 1 || c.Smart.QuotaReservePercent > 50 {
+			return invalid("智能轮候额度保留比例必须为 1 至 50")
+		}
+	}
 	if len(c.Slots) != 3 {
 		return invalid("时段轮候必须设置 3 个时段")
 	}
@@ -96,7 +188,7 @@ func (c *AccountTimeRotationConfig) Validate() error {
 // Priorities 使用左闭右开区间，支持跨午夜；不同账号组的时段允许重叠。
 func (c *AccountTimeRotationConfig) Priorities(now time.Time) map[int64]int {
 	result := make(map[int64]int)
-	if !c.Enabled {
+	if !c.Enabled || c.Mode == "smart" {
 		return result
 	}
 	local := now.In(accountRotationLocation)
@@ -132,11 +224,14 @@ type AccountTimeRotationRepository interface {
 }
 
 type AccountTimeRotationService struct {
-	repo   AccountTimeRotationRepository
-	cancel context.CancelFunc
-	start  sync.Once
-	stop   sync.Once
-	wg     sync.WaitGroup
+	repo        AccountTimeRotationRepository
+	cancel      context.CancelFunc
+	start       sync.Once
+	stop        sync.Once
+	wg          sync.WaitGroup
+	snapshotMu  sync.RWMutex
+	snapshot    *AccountTimeRotationConfig
+	refreshedAt time.Time
 }
 
 func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
@@ -144,13 +239,64 @@ func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountT
 }
 
 func (s *AccountTimeRotationService) Get(ctx context.Context) (*AccountTimeRotationConfig, error) {
-	return s.repo.Get(ctx)
+	config, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cloneAccountTimeRotationConfig(config), nil
 }
 func (s *AccountTimeRotationService) Save(ctx context.Context, config *AccountTimeRotationConfig) (*AccountTimeRotationConfig, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	return s.repo.Apply(ctx, config, time.Now())
+	result, err := s.repo.Apply(ctx, config, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	s.publish(result, time.Now())
+	return cloneAccountTimeRotationConfig(result), nil
+}
+
+// Snapshot 返回最近一次成功应用的独立配置副本。读取配置不续期；超过 45 秒未成功应用时返回 nil。
+func (s *AccountTimeRotationService) Snapshot(now time.Time) (*AccountTimeRotationConfig, time.Time) {
+	s.snapshotMu.RLock()
+	defer s.snapshotMu.RUnlock()
+	if s.snapshot == nil || s.refreshedAt.IsZero() || now.Sub(s.refreshedAt) > 45*time.Second {
+		return nil, s.refreshedAt
+	}
+	return cloneAccountTimeRotationConfig(s.snapshot), s.refreshedAt
+}
+
+func (s *AccountTimeRotationService) publish(config *AccountTimeRotationConfig, refreshedAt time.Time) {
+	if config == nil {
+		return
+	}
+	s.snapshotMu.Lock()
+	defer s.snapshotMu.Unlock()
+	if s.snapshot != nil && config.Revision < s.snapshot.Revision {
+		return
+	}
+	s.snapshot = cloneAccountTimeRotationConfig(config)
+	s.refreshedAt = refreshedAt
+}
+
+func cloneAccountTimeRotationConfig(config *AccountTimeRotationConfig) *AccountTimeRotationConfig {
+	if config == nil {
+		return nil
+	}
+	copyConfig := *config
+	copyConfig.Slots = make([]AccountRotationSlot, len(config.Slots))
+	for i, slot := range config.Slots {
+		copyConfig.Slots[i] = slot
+		copyConfig.Slots[i].AccountIDs = append([]int64{}, slot.AccountIDs...)
+	}
+	if config.Smart != nil {
+		smart := *config.Smart
+		smart.AccountIDs = append([]int64{}, config.Smart.AccountIDs...)
+		smart.Periods = append([]AccountSmartRotationPeriod(nil), config.Smart.Periods...)
+		copyConfig.Smart = &smart
+	}
+	return &copyConfig
 }
 
 func (s *AccountTimeRotationService) Start() {
@@ -164,8 +310,11 @@ func (s *AccountTimeRotationService) Start() {
 			defer tick.Stop()
 			for {
 				runCtx, runCancel := context.WithTimeout(ctx, 30*time.Second)
-				_, err := s.repo.Apply(runCtx, nil, time.Now())
+				result, err := s.repo.Apply(runCtx, nil, time.Now())
 				runCancel()
+				if err == nil {
+					s.publish(result, time.Now())
+				}
 				if err != nil && ctx.Err() == nil {
 					slog.Error("时段轮候执行失败，将在下一轮重试", "error", err)
 				}

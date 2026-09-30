@@ -484,6 +484,7 @@ type OpenAIGatewayService struct {
 	settingService        *SettingService
 	generatedImageStore   *GeneratedImageStore
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountTimeRotation   *AccountTimeRotationService
 	videoTestTaskService  *VideoTestTaskService
 	videoTaskBilling      *VideoTaskBillingService
 	liveAttestation       liveattestation.Provider
@@ -540,6 +541,14 @@ type OpenAIGatewayService struct {
 	openaiCodexTicketProbeSlots  chan struct{}
 	openaiCodexTurnStateOrigins  sync.Map
 	openaiCodexTurnStateWrites   atomic.Uint64
+}
+
+// SetAccountTimeRotationService 注入智能时段轮候服务。采用 setter 保持现有测试和
+// 其他调用方对网关构造函数的兼容，生产 wire 会在两个服务都创建后完成注入。
+func (s *OpenAIGatewayService) SetAccountTimeRotationService(rotation *AccountTimeRotationService) {
+	if s != nil {
+		s.accountTimeRotation = rotation
+	}
 }
 
 func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore) {

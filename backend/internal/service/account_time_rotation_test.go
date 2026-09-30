@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -74,6 +75,107 @@ func TestAccountTimeRotationValidation(t *testing.T) {
 	require.NoError(t, DefaultAccountTimeRotationConfig().Validate())
 }
 
+func TestSmartRotationDefaultsAndValidation(t *testing.T) {
+	c := DefaultAccountTimeRotationConfig()
+	require.Equal(t, "manual", c.Mode)
+	require.Equal(t, 6, len(c.Smart.Periods))
+	require.Equal(t, 60, c.Smart.RotationMinutes)
+	c.Mode, c.Enabled = "smart", true
+	c.Smart.AccountIDs = []int64{1, 2}
+	require.NoError(t, c.Validate())
+	require.Empty(t, c.Priorities(time.Now()))
+
+	c.Smart.Periods[1].Start = "09:00"
+	require.Error(t, c.Validate())
+	c = DefaultAccountTimeRotationConfig()
+	c.Mode, c.Enabled = "smart", true
+	c.Smart.AccountIDs = []int64{1, 1}
+	require.Error(t, c.Validate())
+	c.Smart.AccountIDs = []int64{1}
+	c.Smart.RotationMinutes = 17
+	require.Error(t, c.Validate())
+}
+
+func TestSmartRotationAcceptsConfigurationWithoutManualSlots(t *testing.T) {
+	c := &AccountTimeRotationConfig{
+		Enabled: true,
+		Mode:    "smart",
+		Smart: &AccountSmartRotationConfig{
+			AccountIDs:          []int64{1},
+			Periods:             []AccountSmartRotationPeriod{{Start: "00:00", End: "24:00", PrimaryCount: 1}},
+			RotationMinutes:     60,
+			QuotaReservePercent: 10,
+		},
+	}
+	require.NoError(t, c.Validate())
+	require.Equal(t, DefaultAccountTimeRotationConfig().Slots, c.Slots)
+	require.Empty(t, c.Priorities(time.Now()))
+}
+
+type snapshotRepoStub struct{ config *AccountTimeRotationConfig }
+
+func (r *snapshotRepoStub) Get(context.Context) (*AccountTimeRotationConfig, error) {
+	return cloneAccountTimeRotationConfig(r.config), nil
+}
+func (r *snapshotRepoStub) Apply(context.Context, *AccountTimeRotationConfig, time.Time) (*AccountTimeRotationConfig, error) {
+	return cloneAccountTimeRotationConfig(r.config), nil
+}
+
+func TestAccountTimeRotationSnapshotIsFreshAndIsolated(t *testing.T) {
+	c := DefaultAccountTimeRotationConfig()
+	c.Revision = 2
+	c.Slots[0].AccountIDs = []int64{1}
+	c.Smart.AccountIDs = []int64{2}
+	svc := NewAccountTimeRotationService(&snapshotRepoStub{config: c})
+	got, err := svc.Save(context.Background(), c)
+	require.NoError(t, err)
+	got.Slots[0].AccountIDs[0] = 99
+	got.Smart.AccountIDs[0] = 99
+	got.Smart.Periods[0].PrimaryCount = 99
+	snap, refreshed := svc.Snapshot(time.Now().Add(30 * time.Second))
+	require.NotNil(t, snap)
+	require.Equal(t, int64(2), snap.Revision)
+	require.Equal(t, int64(1), snap.Slots[0].AccountIDs[0])
+	require.Equal(t, int64(2), snap.Smart.AccountIDs[0])
+	require.Equal(t, 1, snap.Smart.Periods[0].PrimaryCount)
+	require.False(t, refreshed.IsZero())
+	snap.Smart.AccountIDs[0] = 88
+	boundary, _ := svc.Snapshot(refreshed.Add(45 * time.Second))
+	require.NotNil(t, boundary)
+	require.Equal(t, int64(2), boundary.Smart.AccountIDs[0])
+	stale, last := svc.Snapshot(refreshed.Add(46 * time.Second))
+	require.Nil(t, stale)
+	require.Equal(t, refreshed, last)
+	// 低版本发布不能覆盖当前快照。
+	svc.publish(&AccountTimeRotationConfig{Revision: 1}, refreshed.Add(time.Second))
+	snap, last = svc.Snapshot(refreshed.Add(2 * time.Second))
+	require.Equal(t, int64(2), snap.Revision)
+	require.Equal(t, refreshed, last)
+}
+
+func TestAccountTimeRotationGetDoesNotRenewRuntimeSnapshot(t *testing.T) {
+	c := DefaultAccountTimeRotationConfig()
+	c.Revision = 2
+	svc := NewAccountTimeRotationService(&snapshotRepoStub{config: c})
+	_, err := svc.Get(context.Background())
+	require.NoError(t, err)
+	snap, refreshed := svc.Snapshot(time.Now())
+	require.Nil(t, snap)
+	require.True(t, refreshed.IsZero())
+
+	// 即使数据库读取得到更新版本，后台应用失败后的旧快照也不能被管理端访问续期。
+	lastApplied := time.Now().Add(-time.Minute)
+	previous := DefaultAccountTimeRotationConfig()
+	previous.Revision = 1
+	svc.publish(previous, lastApplied)
+	got, err := svc.Get(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(2), got.Revision)
+	snap, refreshed = svc.Snapshot(time.Now())
+	require.Nil(t, snap)
+	require.Equal(t, lastApplied, refreshed)
+}
+
 type rotationWorkerStub struct {
 	applied chan struct{}
 }
@@ -106,4 +208,28 @@ func TestAccountTimeRotationWorkerStartupAndShutdown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("停止时未取消进行中的操作")
 	}
+}
+
+// 前端会直接遍历账号数组，深拷贝不能把空数组变成 JSON null。
+func TestAccountTimeRotationEmptyAccountsRemainJSONArrays(t *testing.T) {
+	svc := NewAccountTimeRotationService(&snapshotRepoStub{config: DefaultAccountTimeRotationConfig()})
+	config, err := svc.Get(context.Background())
+	require.NoError(t, err)
+	raw, err := json.Marshal(config)
+	require.NoError(t, err)
+	var payload struct {
+		Slots []struct {
+			AccountIDs []int64 `json:"account_ids"`
+		} `json:"slots"`
+		Smart struct {
+			AccountIDs []int64 `json:"account_ids"`
+		} `json:"smart"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	for _, slot := range payload.Slots {
+		require.NotNil(t, slot.AccountIDs)
+		require.Empty(t, slot.AccountIDs)
+	}
+	require.NotNil(t, payload.Smart.AccountIDs)
+	require.Empty(t, payload.Smart.AccountIDs)
 }

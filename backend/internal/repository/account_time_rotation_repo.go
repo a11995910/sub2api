@@ -97,6 +97,7 @@ func (r *accountTimeRotationRepository) Apply(ctx context.Context, replacement *
 		state.Config = *replacement
 		state.Config.Revision++
 	}
+	// 智能模式只提供运行时偏好，不改写账号 priority。切入智能模式时，先在同一事务恢复手动模式留下的原值。
 	desired := state.Config.Priorities(now)
 	idsMap := make(map[int64]bool)
 	for id := range desired {
@@ -104,6 +105,13 @@ func (r *accountTimeRotationRepository) Apply(ctx context.Context, replacement *
 	}
 	for id := range state.OriginalPriorities {
 		idsMap[id] = true
+	}
+	// 仅在保存启用智能配置时校验账号；周期 worker 不锁定整个智能账号池。
+	validateSmartIDs := replacement != nil && state.Config.Mode == "smart" && state.Config.Enabled
+	if validateSmartIDs {
+		for _, id := range state.Config.Smart.AccountIDs {
+			idsMap[id] = true
+		}
 	}
 	ids := make([]int64, 0, len(idsMap))
 	for id := range idsMap {
@@ -136,7 +144,15 @@ func (r *accountTimeRotationRepository) Apply(ctx context.Context, replacement *
 		}
 	}
 	if replacement != nil && replacement.Enabled {
-		for id := range desired {
+		idsToValidate := make([]int64, 0)
+		if replacement.Mode == "smart" {
+			idsToValidate = replacement.Smart.AccountIDs
+		} else {
+			for id := range desired {
+				idsToValidate = append(idsToValidate, id)
+			}
+		}
+		for _, id := range idsToValidate {
 			a, exists := accounts[id]
 			if !exists || !a.eligible {
 				return nil, infraerrors.BadRequest("INVALID_ROTATION_ACCOUNT", fmt.Sprintf("账号 %d 不存在或不是独立 OpenAI OAuth 账号，请移除后重新选择", id))

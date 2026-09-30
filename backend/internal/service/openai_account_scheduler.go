@@ -147,6 +147,7 @@ type openAIAccountLoadPlan struct {
 	topK                      int
 	loadSkew                  float64
 	includeOverflowFallback   bool
+	smartRotation             *AccountSmartRotationPlan
 }
 
 type openAIAccountLoadSelectionAttempt struct {
@@ -896,7 +897,10 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		}
 	}
 
+	rotationPlan := s.service.smartRotationPlanForRequest(filtered, req.RequireCompact, time.Now())
 	plan := openAIAccountLoadPlan{
+		smartRotation:             rotationPlan,
+		includeOverflowFallback:   rotationPlan != nil,
 		allCandidates:             allCandidates,
 		candidates:                candidates,
 		staleSnapshotCompactRetry: staleSnapshotCompactRetry,
@@ -1055,7 +1059,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 	req OpenAIAccountScheduleRequest,
 	plan openAIAccountLoadPlan,
 ) []openAIAccountCandidateScore {
-	buildSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+	buildTierSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
 		if len(pool) == 0 || plan.topK <= 0 {
 			return nil
 		}
@@ -1065,7 +1069,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		}
 		ranked := selectTopKOpenAICandidates(pool, groupTopK)
 		var primary []openAIAccountCandidateScore
-		if req.StickyWeighted {
+		if req.StickyWeighted && plan.smartRotation == nil {
 			for _, stickyID := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
 				if stickyID <= 0 {
 					continue
@@ -1103,6 +1107,49 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			return isOpenAIAccountCandidateBetter(overflow[i], overflow[j])
 		})
 		return append(primary, overflow...)
+	}
+
+	// 各角色内部继续使用原评分与加权选择；逐层保留全部兜底候选，避免
+	// 全局 topK 截断备用账号，也避免加权随机把备用排到空闲主力前面。
+	buildSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if plan.smartRotation == nil {
+			return buildTierSelectionOrder(pool)
+		}
+		var tiers [4][]openAIAccountCandidateScore
+		var sticky *openAIAccountCandidateScore
+		if req.StickyWeighted {
+			// 仅保留原评分 topK 中允许优先的粘性，避免智能分层复活已降权的会话。
+			ranked := selectTopKOpenAICandidates(pool, plan.topK)
+			for _, id := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
+				if id <= 0 {
+					continue
+				}
+				for i := range ranked {
+					if ranked[i].account.ID == id {
+						sticky = &ranked[i]
+						break
+					}
+				}
+				if sticky != nil {
+					break
+				}
+			}
+		}
+		order := make([]openAIAccountCandidateScore, 0, len(pool))
+		if sticky != nil {
+			order = append(order, *sticky)
+		}
+		for _, candidate := range pool {
+			if sticky != nil && candidate.account.ID == sticky.account.ID {
+				continue
+			}
+			tier := smartRotationTier(plan.smartRotation, candidate.account)
+			tiers[tier] = append(tiers[tier], candidate)
+		}
+		for _, tier := range tiers {
+			order = append(order, buildTierSelectionOrder(tier)...)
+		}
+		return order
 	}
 
 	if req.RequireCompact {
