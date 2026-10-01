@@ -10,13 +10,12 @@
 
 ## VPS 连接
 
-- 当前正式 VPS：`205.185.113.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`，使用 SSH 密钥认证。
-- 迁移准备目标 VPS：`185.61.210.32`（主 IP），附加 IP 为 `185.61.210.33` 至 `185.61.210.36`，账户 `root`，本机 SSH 别名 `sub2api-migration-vps`，专用密钥路径 `~/.ssh/sub2api_185_61_210_32_ed25519`。密码只作运行时登录凭据，不保存到本文件。正式切换前，原正式 VPS 与 SSH 别名含义保持不变。
-- 新主机实测为 Ubuntu 24.04、40 个逻辑 CPU、约 62GiB 内存、1.8TiB 根磁盘；五个 IP 均已配置。本次授权包括搭建迁移环境、首次隔离 staging bootstrap、一致性数据基线复制和恢复验证，不包括切换 DNS、停止旧站或让新站承接生产请求。
-- 用户已将原定北京时间 2026-09-27 20:30 基线调整为本次实际一致性快照时间；必须记录实际快照时间。正式切换前补齐此后新增、修改、删除及余额、订单等状态，不得仅按 `created_at` 追加记录。迁移快照与运行配置仅保存于目标主机 root-only 目录；不得在原正式 VPS 创建全库 dump 文件。
-- 新机首次 prod 数据副本验收使用 `deploy/release-prod ... --bootstrap-isolated`：只允许无现存 prod 应用、数据库和 Redis 已健康、应用网络全部为 internal、同 commit/staging run/镜像验证通过的环境。失败停止新应用并保留恢复材料；此模式不切 DNS、不停止旧站，不代表正式接流完成。
-- 原备份机器：`192.220.36.75`，不再参与发布；除非用户另行要求，不连接该机器或执行异机备份。
-- 旧正式主机 `207.57.145.15` 不再作为 Sub2API 正式线上环境；除非用户明确要求，不对其执行发布或迁移操作。
+- 当前正式线上 VPS：`185.61.210.32`（主 IP），附加 IP 为 `185.61.210.33` 至 `185.61.210.36`，登录账户 `root`，本机 SSH 别名 `sub2api-migration-vps`，使用专用密钥 `~/.ssh/sub2api_185_61_210_32_ed25519`。
+- 旧正式 VPS：`205.185.113.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`；作为旧线上数据源和回滚参考，不作为当前正式接流机器。服务器密码只作运行时登录凭据，不保存到本文件。
+- shop 跳板机：`207.57.145.15`，本机 SSH 别名 `sub2api-jump-vps`；`fast.youkeduo.shop` 和 `fast.yukeduo.shop` 的 HTTPS 上游当前指向 `185.61.210.32`。修改跳板配置前必须备份、执行 `nginx -t` 并 reload 后验证域名请求。
+- 新正式主机实测为 Ubuntu 24.04、40 个逻辑 CPU、约 62GiB 内存、1.8TiB 根磁盘；五个 IP 均已配置。当前正式 prod、隔离 staging、数据库和 Redis 均位于该主机，发布只允许使用已推送 `origin/main` 的同一 commit。
+- 迁移数据同步必须记录实际快照时间和增量边界；正式线上切换后补齐此后新增、修改、删除及余额、订单等状态，不得仅按 `created_at` 追加记录。迁移快照与运行配置仅保存于新正式主机 root-only 目录；不得在旧正式 VPS 创建全库 dump 文件。
+- `deploy/release-prod ... --bootstrap-isolated` 仅用于迁移验收或隔离数据库首次启动；当前新正式主机已有 prod，正式升级必须走 staging 验证后再用同一 commit/run 执行普通 prod 发布。
 - 服务器密码不得写入规则、脚本、文档或代码；如需调整访问权限，优先更新密钥授权。
 
 ## 修改代码前的要求
@@ -40,12 +39,12 @@
 
 ## 正式 VPS staging 与 prod 操作
 
-- 项目只使用一台正式 VPS：`205.185.113.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`；不存在独立测试 VPS。
-- 预发布验证在正式 VPS 的隔离 staging 中完成。功能代码必须先在本地完成验证、合并并推送到 `main`，staging 只允许拉取和构建 `origin/main`，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
+- 项目当前正式 VPS 为 `185.61.210.32`，登录账户 `root`，本机 SSH 别名 `sub2api-migration-vps`；不存在独立测试 VPS。`205.185.113.15` 仅作为旧正式数据源和回滚参考。
+- 预发布验证在新正式 VPS 的隔离 staging 中完成。功能代码必须先在本地完成验证、合并并推送到 `main`，staging 只允许拉取和构建 `origin/main`，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
 - staging 验证通过后必须报告验证结果、目标 `main` commit 和风险点，并等待用户明确口头命令；prod 只能切换到 staging 已验证的同一个 `main` commit，不得在 staging 验证后再合并代码或更换 commit。
-- 新正式 VPS 迁移期首次启动 staging，若 prod 尚未迁移，只能在用户明确授权后使用 `deploy/release-staging <commit> --bootstrap-without-prod`。该模式必须确认目标主机不存在 prod `.env`、compose override、compose 容器和 prod 数据文件；任一 prod 状态已存在时必须失败，不得用该参数绕过正常 prod 健康门禁。
-- 正式 VPS 当前实测为 4 vCPU、约 16GiB 内存和 4GiB Swap，可用磁盘约 276GiB。构建前统一执行 `deploy/release-gates check-build-resources`：最低保留 20GiB 磁盘、12GiB 总内存和 4GiB 可用内存，通过 `/proc/stat` 间隔 1 秒采样整机 CPU 使用率，必须不超过 50%（等于 50% 放行），不再检查 load average；idle 和 iowait 不计入 CPU 占用，采样失败时拒绝发布。Go 编译 `GOMAXPROCS` 按在线 CPU、可用内存和配置上限动态取值（默认上限 8，每个并行编译槽按 2GiB 可用内存估算），当前线上机正常得到 4；仍需避免与线上请求争抢资源。
-- 正式 VPS 的 root 密码不得写入本文件、仓库、文档、提交记录或日志；如需密码登录，应使用运行时凭据或本机 Keychain 凭据引用，例如 `sub2api-new-vps-root`，并优先使用 SSH Key 免密登录。
+- 迁移期首次启动 staging 的 bootstrap 规则仅适用于历史准备阶段；当前 prod 已存在，不得使用 `--bootstrap-without-prod` 绕过正常 prod 健康门禁。
+- 新正式 VPS 当前实测为 40 vCPU、约 62GiB 内存和 1.8TiB 根磁盘。构建前统一执行 `deploy/release-gates check-build-resources`；仍需避免构建与线上请求争抢资源。
+- 正式 VPS 的 root 密码不得写入本文件、仓库、文档、提交记录或日志；如需密码登录，应使用运行时凭据或本机 Keychain 凭据引用，并优先使用 SSH Key 免密登录。
 - 国内腾讯云服务器：`118.89.91.26`，账户为 `ubuntu`，仅在用户明确要求相关操作时使用。
 - 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 等敏感信息不得写入仓库、文档、提交记录或日志；如需使用，只能通过运行时凭据或环境变量临时注入。
 
@@ -58,7 +57,7 @@
 
 ## Sub2API 正式 VPS Git 拉取与镜像化部署规范
 
-正式 VPS `205.185.113.15` 采用“VPS 拉取 Git 源码 -> VPS 本机构建 Docker 镜像 -> staging 验证 -> prod 切换镜像”的部署方式。除非 Docker 构建链路不可用且用户明确同意应急 fallback，否则禁止直接覆盖挂载二进制。
+正式 VPS `185.61.210.32` 采用“VPS 拉取 Git 源码 -> VPS 本机构建 Docker 镜像 -> staging 验证 -> prod 切换镜像”的部署方式。除非 Docker 构建链路不可用且用户明确同意应急 fallback，否则禁止直接覆盖挂载二进制。
 
 推荐目录结构：
 
@@ -81,7 +80,7 @@
 
 正式 VPS 部署硬性要求：
 
-- 本地开发完成后必须先提交并推送到 GitHub；正式 VPS 只从 GitHub 拉取已推送 commit，不接收本地未提交源码或本地构建产物。
+- 本地开发完成后必须先提交并推送到 GitHub；新正式 VPS 只从 GitHub 拉取已推送 commit，不接收本地未提交源码或本地构建产物。旧正式 VPS 不执行新版本发布。
 - 正式 VPS 源码目录必须保持干净：每次构建前执行 `git status --short`，若存在未确认改动，必须先核实来源，不得直接覆盖。
 - `/opt/sub2api/repo` 必须始终检出 `main`，staging 和 prod 都只允许使用 `origin/main`。任何功能分支或同步分支都必须在本地验证并合并、推送到 `main` 后，才允许进入 VPS staging；VPS 上禁止检出或构建其他分支。prod 切换仍必须等待用户明确口头确认。
 - 每次构建必须使用 `deploy/Dockerfile` 在正式 VPS 本机构建完整镜像，镜像 tag 必须包含 Git commit，例如 `sub2api:<commit>` 或 `sub2api:staging-<commit>`。
@@ -111,7 +110,7 @@
 正式 VPS staging 必须手工执行受版本控制的脚本：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 cd /opt/sub2api/repo
 git status --short
 git fetch origin
