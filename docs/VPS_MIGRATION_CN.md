@@ -6,7 +6,7 @@
 
 当前正式线上主机为 `185.61.210.32`，附加地址为 `185.61.210.33` 至 `185.61.210.36`。prod、隔离 staging、各自的 PostgreSQL 和 Redis 均位于该主机。本机通过 `ssh sub2api-migration-vps` 使用专用密钥 `~/.ssh/sub2api_185_61_210_32_ed25519` 登录 root；服务器密码与私钥不进入 Git。
 
-`205.185.113.15`（别名 `sub2api-new-vps`）为旧正式数据源和回滚参考，不执行新版本发布。`207.57.145.15`（别名 `sub2api-jump-vps`）为 shop 域名跳板，角色与主应用发布主机分开管理。
+`205.185.113.15`（别名 `sub2api-new-vps`）为旧正式数据源和回滚参考，不执行新版本发布。新 shop 跳板为 `166.88.36.223`（别名 `sub2api-shop-vps`），已完成 Caddy 反代和证书迁入，等待用户切换 DNS；旧跳板 `207.57.145.15`（别名 `sub2api-jump-vps`）保留用于过渡和回滚。跳板角色与主应用发布主机分开管理，DNS 记录、证书续期、验收和回滚见 [shop 跳板运行说明](SHOP_JUMP_CN.md)。
 
 当前正式机已承接生产，升级必须走普通 staging 验证和经用户确认的 prod 发布，不得通过 bootstrap 参数绕过健康门禁。迁移隔离数据库副本不得另行启动会刷新 OAuth、处理支付或执行后台任务的第二套生产应用。
 
@@ -28,6 +28,16 @@
 当前正式 VPS 实测资源为 40 vCPU、约 62GiB 内存、1.8TiB 根磁盘。staging 和 prod 构建共用 `deploy/release-gates check-build-resources` 门禁：至少保留 20GiB 磁盘、12GiB 总内存、4GiB 可用内存；通过 `/proc/stat` 间隔 1 秒采样的整机 CPU 使用率必须不超过 50%，idle 和 iowait 不计入占用，采样失败拒绝发布，不检查 load average。`GOMAXPROCS` 根据在线 CPU、可用内存和默认上限 8 动态计算，按每个编译并行槽 2GiB 可用内存估算；在该主机资源充足时为 8。门禁失败时禁止继续 Docker 构建。
 
 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 不得写入仓库、文档、镜像 tag 或日志。登录优先使用 SSH Key；运行配置只保存在服务器 root-only 文件中。
+
+## 主 IP HTTP API 入口
+
+`http://185.61.210.32` 可直接调用正式 API；要求 OpenAI 兼容 Base URL 的客户端使用 `http://185.61.210.32/v1`。该入口不跳转 HTTPS，API Key 鉴权由正式应用处理。HTTP 会明文传输密钥与请求内容；支持域名的客户端优先使用 `https://fast.youkeduo.xyz`，现有 HTTPS 证书不覆盖主 IP。
+
+Nginx 配置位于 `/etc/nginx/conf.d/sub2api-ip-http.conf`，只监听 `185.61.210.32:80`，上游固定为 `http://127.0.0.1:8080`。配置关闭响应缓冲，保留 WebSocket Upgrade，读写超时为 3600 秒，请求体上限为 200MiB；`X-Forwarded-Proto` 使用实际请求协议。连接升级使用现有 `/etc/nginx/conf.d/youkeduo-ssl-local.conf` 中的 `$sub2api_connection_upgrade` 映射。既有域名仍由各自 HTTPS 入口处理。
+
+维护前将 Nginx 配置备份到服务器 root-only 目录；执行 `nginx -t` 后平滑 reload，并等待新监听生效。验证公网 `/health` 返回 200，未带密钥的 `/v1/models` 和 POST `/v1/responses` 返回 `API_KEY_REQUIRED`（401），同时回归两个 fast 域名和两个画布域名的 HTTPS。401 仅证明入口及鉴权链路可达，真实模型响应仍需客户端携带有效密钥测试。
+
+首次启用前的配置备份位于 `/root/sub2api-ip-http-20261002-045701/nginx`，同目录 `prod-before.txt` 记录正式镜像和启动时间。撤销此 HTTP 入口时，仅将 `sub2api-ip-http.conf` 移出 Nginx 加载目录，通过 `nginx -t` 后平滑 reload；不回退其他站点配置，也不重建应用或数据库。
 
 ## 环境隔离
 
@@ -90,5 +100,7 @@ prod 切换前必须：
 应用异常时由发布脚本把 prod `SUB2API_IMAGE` 恢复为发布前原镜像 tag，再通过 compose 只重建应用容器，依次等待 Docker health 和宿主机 HTTP 健康检查通过。临时回滚 tag 只能在恢复成功后删除。数据库迁移为前向迁移，默认保留新增列、索引和约束；只有确认旧镜像不兼容且已有经过验证的反向迁移时，才允许修改数据库结构。staging 涉及数据清理的升级先保存其独立数据库备份，并核对恢复方式。
 
 ## 资源与其他服务
+
+Infinite Canvas 和 Team Manage 也运行于该新正式机，分别使用独立 SQLite 数据和运行配置。画布由 Nginx 转发至 `127.0.0.1:13000`，Team Manage 使用 `8008` 端口；旧机对应应用已停止，仅保留入口转发和恢复数据。启动、验收、最终快照边界及回滚见 [画布与账号管理运行说明](AUXILIARY_APPS_CN.md)。
 
 构建前必须检查磁盘、内存、CPU 和当前容器负载。正式 VPS 同时运行的其他服务不得因 Sub2API 构建或清理被停止、重建或删除。Docker 清理必须保护所有运行中镜像、Sub2API 当前/回滚镜像以及全部业务数据卷。
