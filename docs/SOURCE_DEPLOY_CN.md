@@ -128,6 +128,7 @@ git log -1 --oneline
 | SSH 别名 | `sub2api-migration-vps` |
 | Git 分支 | `/opt/sub2api/repo`、staging、prod 都只使用 `main` |
 | 源码目录 | `/opt/sub2api/repo` |
+| 固定 staging 测试站 | `http://185.61.210.32:18080`，仅连接隔离 staging |
 | 构建策略 | VPS 拉取已推送源码并使用 `deploy/Dockerfile` 本机构建镜像 |
 | 发布恢复材料 | 本机 `/opt/sub2api/state` 中的原镜像记录与必要的定向配置快照 |
 
@@ -452,7 +453,7 @@ chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 
 ### staging 构建与发布
 
-staging 只承接已经合并并推送到 `main` 的 commit。用户手工登录正式 VPS 后，安装并调用受版本控制的 staging 脚本：
+staging 只承接已经合并并推送到 `main` 的 commit。固定公网测试站为 `http://185.61.210.32:18080`，使用 staging 独立账号登录；入口安装、配置备份与回滚见 [VPS 运行架构说明](VPS_MIGRATION_CN.md#固定-staging-测试站)。入口必须在发布验收前接通，不能用本机隧道替代。用户手工登录正式 VPS 后，安装并调用受版本控制的 staging 脚本：
 
 ```bash
 ssh sub2api-migration-vps

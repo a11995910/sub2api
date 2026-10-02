@@ -22,7 +22,7 @@
 | 源码目录 | `/opt/sub2api/repo` |
 | 源码分支 | 只允许 `main` |
 | 部署方式 | VPS 拉取 Git、VPS 本机构建 Docker 镜像 |
-| 预发布入口 | staging，宿主机端口 `18080` |
+| 预发布入口 | `http://185.61.210.32:18080`，上游 `127.0.0.1:18080` |
 | 正式入口 | prod，宿主机端口 `8080` |
 
 当前正式 VPS 实测资源为 40 vCPU、约 62GiB 内存、1.8TiB 根磁盘。staging 和 prod 构建共用 `deploy/release-gates check-build-resources` 门禁：至少保留 20GiB 磁盘、12GiB 总内存、4GiB 可用内存；通过 `/proc/stat` 间隔 1 秒采样的整机 CPU 使用率必须不超过 50%，idle 和 iowait 不计入占用，采样失败拒绝发布，不检查 load average。`GOMAXPROCS` 根据在线 CPU、可用内存和默认上限 8 动态计算，按每个编译并行槽 2GiB 可用内存估算；在该主机资源充足时为 8。门禁失败时禁止继续 Docker 构建。
@@ -38,6 +38,22 @@ Nginx 配置位于 `/etc/nginx/conf.d/sub2api-ip-http.conf`，只监听 `185.61.
 维护前将 Nginx 配置备份到服务器 root-only 目录；执行 `nginx -t` 后平滑 reload，并等待新监听生效。验证公网 `/health` 返回 200，未带密钥的 `/v1/models` 和 POST `/v1/responses` 返回 `API_KEY_REQUIRED`（401），同时回归两个 fast 域名和两个画布域名的 HTTPS。401 仅证明入口及鉴权链路可达，真实模型响应仍需客户端携带有效密钥测试。
 
 首次启用前的配置备份位于 `/root/sub2api-ip-http-20261002-045701/nginx`，同目录 `prod-before.txt` 记录正式镜像和启动时间。撤销此 HTTP 入口时，仅将 `sub2api-ip-http.conf` 移出 Nginx 加载目录，通过 `nginx -t` 后平滑 reload；不回退其他站点配置，也不重建应用或数据库。
+
+## 固定 staging 测试站
+
+预发布站点为 `http://185.61.210.32:18080`，智能轮候页面为 `/admin/intelligent-ops/time-rotation`。该地址通过主 IP 直达新正式 VPS，不依赖域名解析或用户电脑上的 SSH 隧道。公网端口 18080 只承接 staging；默认 443 仍承接 prod。使用 staging 独立账号登录，浏览器按不同端口隔离本地登录存储。
+
+配置来源为仓库 `deploy/nginx-staging.conf`，部署到 `/etc/nginx/conf.d/sub2api-staging.conf`，只监听主 IP 的 18080 端口，全部页面及 API 固定转发到 `127.0.0.1:18080`，支持流式响应和 WebSocket。不能引用指向正式 8080 端口的 Responses 配置片段。公网 Nginx 绑定 `185.61.210.32:18080`，容器只绑定 `127.0.0.1:18080`，两者地址不同且不冲突；响应包含 `X-Sub2API-Environment: staging` 和禁止索引标识。
+
+安装或更新前，在 root-only 目录备份现有 Nginx 配置，并记录 prod/staging 镜像。只从已推送的 `origin/main` 安装配置：
+
+```bash
+install -o root -g root -m 0644 /opt/sub2api/repo/deploy/nginx-staging.conf /etc/nginx/conf.d/sub2api-staging.conf
+nginx -t
+systemctl reload nginx
+```
+
+等待新监听生效后，从公网验证 HTTP、登录页、轮候页、静态资源与 staging 一致，以及未认证管理接口和模型接口返回 401；同时回归现有 fast、canvas 域名和正式镜像健康状态。`release-staging` 将公网健康、环境标识、版本和页面入口资源一致性作为成功条件，回执记录 `public_url`。若维护失败，恢复该配置的备份（首次安装则移出新增文件），通过 `nginx -t` 后 reload；不回退应用数据或其他站点。
 
 ## 环境隔离
 

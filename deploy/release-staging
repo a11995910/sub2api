@@ -42,6 +42,7 @@ prod_override=/opt/sub2api/compose/prod/docker-compose.yml
 prod_data_dir=/opt/sub2api/data/prod
 state_dir=/opt/sub2api/state
 staging_result="$state_dir/staging-result.json"
+staging_public_url=http://185.61.210.32:18080
 release_gates="$repo_dir/deploy/release-gates"
 update_image=/opt/sub2api/scripts/update-sub2api-image
 
@@ -86,12 +87,12 @@ record_result() {
     recorded_status=verified
   fi
   python3 - "$result_tmp" "$recorded_status" "$staging_run_id" "$commit" \
-    "$short_commit" "$commit_date" "$target_image" "$bootstrap_without_prod" "$bootstrap_isolated_prod" <<'PY'
+    "$short_commit" "$commit_date" "$target_image" "$bootstrap_without_prod" "$bootstrap_isolated_prod" "$staging_public_url" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
-path, status, run_id, commit, short_commit, commit_date, image, bootstrap_raw, isolated_raw = sys.argv[1:]
+path, status, run_id, commit, short_commit, commit_date, image, bootstrap_raw, isolated_raw, public_url = sys.argv[1:]
 payload = {
     "environment": "staging",
     "status": status,
@@ -103,6 +104,7 @@ payload = {
     "short_commit": short_commit,
     "date": commit_date,
     "image": image,
+    "public_url": public_url,
     "verified_at": datetime.now(timezone.utc).isoformat(),
 }
 with open(path, "w", encoding="utf-8") as handle:
@@ -212,6 +214,45 @@ compose_staging ps
 expected_version="$(tr -d '[:space:]' < "$repo_dir/backend/cmd/server/VERSION")"
 test "$(curl -fsS http://127.0.0.1:18080/api/v1/settings/public | jq -r '.data.version')" = "$expected_version"
 curl -fsS http://127.0.0.1:18080/ | grep -Fq "\"version\":\"$expected_version\""
+# 公网入口必须提供同一套页面资源，避免容器健康但用户访问了旧站或正式站。
+python3 - "$staging_public_url" "$expected_version" <<'PY'
+import json
+import sys
+import urllib.request
+from html.parser import HTMLParser
+
+public_url, expected_version = sys.argv[1:]
+local_url = "http://127.0.0.1:18080"
+
+def fetch(base, path):
+    with urllib.request.urlopen(base + path, timeout=30) as response:
+        assert response.status == 200, "预发布入口返回非 200"
+        assert response.geturl() == base + path, "预发布入口不应跳转到其他地址"
+        if base == public_url:
+            assert response.headers.get("X-Sub2API-Environment") == "staging", "缺少 staging 入口标识"
+        return response.read()
+
+class EntryScripts(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.sources = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "script" and attrs.get("type") == "module" and attrs.get("src"):
+            self.sources.append(attrs["src"])
+
+assert json.loads(fetch(public_url, "/health"))["status"] == "ok", "公网健康检查失败"
+assert json.loads(fetch(public_url, "/api/v1/settings/public"))["data"]["version"] == expected_version, "公网版本不一致"
+local_page, public_page = EntryScripts(), EntryScripts()
+local_page.feed(fetch(local_url, "/").decode())
+public_page.feed(fetch(public_url, "/admin/intelligent-ops/time-rotation").decode())
+assert local_page.sources and local_page.sources == public_page.sources, "公网入口页面资源与 staging 不一致"
+for path in local_page.sources:
+    assert path.startswith("/assets/"), "页面入口资源路径异常"
+    assert fetch(local_url, path) == fetch(public_url, path), "公网入口资源内容与 staging 不一致"
+print("staging 公网 HTTP、健康、版本及页面资源验证通过：" + public_url)
+PY
 compose_staging logs --tail=200 sub2api
 
 result_status=verified

@@ -45,6 +45,7 @@
 
 - 项目当前正式 VPS 为 `185.61.210.32`，登录账户 `root`，本机 SSH 别名 `sub2api-migration-vps`；不存在独立测试 VPS。`205.185.113.15` 仅作为旧正式数据源和回滚参考。
 - 预发布验证在新正式 VPS 的隔离 staging 中完成。功能代码必须先在本地完成验证、合并并推送到 `main`，staging 只允许拉取和构建 `origin/main`，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
+- staging 固定公网测试站为 `http://185.61.210.32:18080`，Nginx 配置由仓库 `deploy/nginx-staging.conf` 安装至 `/etc/nginx/conf.d/sub2api-staging.conf`，只转发 `127.0.0.1:18080`。修改前备份配置，`nginx -t` 通过后平滑 reload，并回归既有站点。`release-staging` 必须校验公网 HTTP、环境标识、版本及页面资源与隔离容器一致，不能以本机隧道代替固定测试站验收。
 - staging 验证通过后必须报告验证结果、目标 `main` commit 和风险点，并等待用户明确口头命令；prod 只能切换到 staging 已验证的同一个 `main` commit，不得在 staging 验证后再合并代码或更换 commit。
 - 迁移期首次启动 staging 的 bootstrap 规则仅适用于历史准备阶段；当前 prod 已存在，不得使用 `--bootstrap-without-prod` 绕过正常 prod 健康门禁。
 - 新正式 VPS 当前实测为 40 vCPU、约 62GiB 内存和 1.8TiB 根磁盘。构建前统一执行 `deploy/release-gates check-build-resources`；仍需避免构建与线上请求争抢资源。
