@@ -17,6 +17,7 @@ type openAIFastModelPolicy struct {
 // 被较短的基础型号提前匹配。
 var openAIFastModelPolicies = func() []openAIFastModelPolicy {
 	policies := []openAIFastModelPolicy{
+		{CanonicalSKU: "gpt-6.1-sol", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-6-astra", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-6-sol", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-6-luna", FallbackRatio: 2},
@@ -164,6 +165,9 @@ func normalizeKnownOpenAICodexModel(model string) string {
 		}
 	}
 
+	if openai.IsGPT61SolModelSpelling(normalized) {
+		return "gpt-6.1-sol"
+	}
 	if openai.IsGPT6SolOrLunaModelSpelling(normalized) {
 		if strings.HasPrefix(normalized, "gpt-6-sol") {
 			return "gpt-6-sol"
@@ -289,5 +293,5 @@ func firstUsageBillingModel(candidates []string) string {
 }
 
 func isOpenAIGPT6Model(model string) bool {
-	return isOpenAIGPT6AstraModel(model) || openai.IsGPT6SolOrLunaModelSpelling(model)
+	return isOpenAIGPT6AstraModel(model) || openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model)
 }
