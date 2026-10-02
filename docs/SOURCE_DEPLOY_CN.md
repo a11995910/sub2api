@@ -1,6 +1,6 @@
 # Sub2API 源码定制上线说明
 
-本文档记录当前源码仓库与正式 VPS 的固定上线流程。项目只使用正式 VPS `205.185.113.15`，在同一台服务器上通过相互隔离的 staging 和 prod 完成预发布验证与正式切换。
+本文档记录当前源码仓库与正式 VPS 的固定上线流程。项目当前使用正式 VPS `185.61.210.32`（SSH 别名 `sub2api-migration-vps`，账户 `root`），在同一台服务器上通过相互隔离的 staging 和 prod 完成预发布验证与正式切换。
 
 ## 强制原则
 
@@ -9,7 +9,7 @@
 - staging 验证前，目标代码必须已经合并并推送到 `main`；验证通过后只能在用户明确口头命令下把同一个已验证 commit 切换到 prod，不得再合并代码或更换 commit。
 - 生产构建前必须先提交并推送 Git，严禁使用未提交工作区构建线上产物。
 - 正式 VPS 的 `/opt/sub2api/repo` 必须保持在 `main` 并拉取到本次构建对应的已推送 `origin/main` commit，确保运行镜像有可追溯源码。
-- 正式 VPS 登录账户为 `root`，本机 SSH 别名为 `sub2api-new-vps`。
+- 正式 VPS 登录账户为 `root`，本机 SSH 别名为 `sub2api-migration-vps`。
 - 正式 VPS 使用 `deploy/Dockerfile` 构建完整 Docker 镜像；构建前统一执行资源门禁，根据在线 CPU、可用内存和配置上限动态设置 `GOMAXPROCS`。
 - 镜像化流程必须执行 `docker buildx build -f deploy/Dockerfile ... --load .`，由 Dockerfile 先构建前端，再把前端资源嵌入 Go 后端镜像。
 - 不允许只执行 `go build -tags embed` 就覆盖线上；必须确认前端资源、后端二进制、资源文件和源码 commit 属于同一次构建。
@@ -25,7 +25,7 @@
 
 仓库的 GitHub Actions 已关闭，当前没有 Environment、自托管 Runner、分支保护或规则集，也不使用 PR。GitHub 只保存 `main` 和 tag，不承担代码验证、上游同步、构建或部署。
 
-用户先在本地检查、合并、提交并普通推送 `main`，再使用 `ssh sub2api-new-vps` 登录正式 VPS。staging 必须手工调用 `/opt/sub2api/scripts/release-staging`；prod 在 staging 验收和用户明确确认后直接调用 `/opt/sub2api/scripts/release-prod`。脚本保留资源、版本、健康和回滚门禁，但不会自行定时运行。
+用户先在本地检查、合并、提交并普通推送 `main`，再使用 `ssh sub2api-migration-vps` 登录正式 VPS。staging 必须手工调用 `/opt/sub2api/scripts/release-staging`；prod 在 staging 验收和用户明确确认后直接调用 `/opt/sub2api/scripts/release-prod`。脚本保留资源、版本、健康和回滚门禁，但不会自行定时运行。
 
 ## 图片 URL 本地存储
 
@@ -123,9 +123,9 @@ git log -1 --oneline
 
 | 项目 | 当前值 |
 | --- | --- |
-| 正式 VPS | `205.185.113.15` |
+| 正式 VPS | `185.61.210.32` |
 | 登录账户 | `root` |
-| SSH 别名 | `sub2api-new-vps` |
+| SSH 别名 | `sub2api-migration-vps` |
 | Git 分支 | `/opt/sub2api/repo`、staging、prod 都只使用 `main` |
 | 源码目录 | `/opt/sub2api/repo` |
 | 构建策略 | VPS 拉取已推送源码并使用 `deploy/Dockerfile` 本机构建镜像 |
@@ -166,7 +166,7 @@ sha256sum deploy/release-prod /opt/sub2api/scripts/release-prod
 
 ## 正式 VPS 镜像化部署流程
 
-正式 VPS `205.185.113.15` 默认目录结构如下：
+正式 VPS `185.61.210.32` 默认目录结构如下：
 
 ```bash
 /opt/sub2api/
@@ -225,7 +225,7 @@ services:
 每个 `.env` 必须预先且仅有一行 `SUB2API_IMAGE=`。下面的 root-only 脚本先保留带权限和属主的备份，再在原文件同目录生成临时文件，核对唯一目标值后用 `mv` 原子替换。staging、prod 更新和回滚都必须调用该脚本；备份目录含敏感配置，只允许 root 读取，不得输出内容或写入 Git：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 install -d -m 0700 /opt/sub2api/backups /opt/sub2api/scripts
 umask 077
 tee /opt/sub2api/scripts/update-sub2api-image >/dev/null <<'SCRIPT'
@@ -455,7 +455,7 @@ chmod 0700 /opt/sub2api/scripts/restore-openai-fast-policy
 staging 只承接已经合并并推送到 `main` 的 commit。用户手工登录正式 VPS 后，安装并调用受版本控制的 staging 脚本：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 set -Eeuo pipefail
 cd /opt/sub2api/repo
 git status --short
@@ -470,14 +470,14 @@ install -o root -g root -m 0700 deploy/release-staging /opt/sub2api/scripts/rele
 /opt/sub2api/scripts/release-staging "$expected_commit"
 ```
 
-脚本先检查磁盘、总内存、可用内存、当前整机 CPU 使用率和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 4 vCPU、约 16GiB 内存、4GiB Swap、约 276GiB 可用磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，通过 `/proc/stat` 间隔 1 秒采样整机 CPU 使用率，不超过 50% 才放行（等于 50% 允许）；idle 和 iowait 不计入 CPU 占用，不再使用 load average，采样失败时拒绝发布，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，新机通常为 4）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。prod 必须使用这次输出的同一 commit 与 run ID。
+脚本先检查磁盘、总内存、可用内存、当前整机 CPU 使用率和 prod 健康状态，再用构建锁和资源门禁计算出的 `GOMAXPROCS` 构建目标 commit。当前正式 VPS 实测为 40 vCPU、约 62GiB 内存、1.8TiB 根磁盘；门禁默认要求至少 20GiB 磁盘、12GiB 总内存、4GiB 可用内存，通过 `/proc/stat` 间隔 1 秒采样整机 CPU 使用率，不超过 50% 才放行（等于 50% 允许）；idle 和 iowait 不计入 CPU 占用，不再使用 load average，采样失败时拒绝发布，并按每个并行编译槽 2GiB 可用内存估算并行度（默认上限 8，当前正式机资源充足时为 8）。随后它验证镜像版本、compose 引用、实际运行 tag、Docker health、宿主机 HTTP、公开版本接口和首页版本。全部通过后写入 `/opt/sub2api/state/staging-result.json`，并输出数字 `run_id`；失败时结果状态写为 `failed`，禁止继续 prod。prod 必须使用这次输出的同一 commit 与 run ID。
 
-新正式 VPS 迁移期的首次 staging 发布可能早于 prod 迁移。经用户明确授权后，可在目标主机调用 `/opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod`。该模式会 fail-closed 核对 prod `.env`、compose override、compose 容器和 prod 数据文件均不存在，并在 `staging-result.json` 记录 `bootstrap_without_prod: true`。只要目标主机出现任一 prod 状态，该模式必须拒绝执行；正常发布继续要求同机 prod 健康。
+当前正式机已有 prod，正常发布不得使用 bootstrap 参数。以下规则仅适用于尚未承接生产的新迁移目标：首次 staging 发布可能早于 prod 迁移。经用户明确授权后，可在目标主机调用 `/opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod`。该模式会 fail-closed 核对 prod `.env`、compose override、compose 容器和 prod 数据文件均不存在，并在 `staging-result.json` 记录 `bootstrap_without_prod: true`。只要目标主机出现任一 prod 状态，该模式必须拒绝执行；正常发布继续要求同机 prod 健康。
 
 staging 功能验收必须使用隔离测试账号、渠道、分组、API Key 和唯一请求 ID，开始前记录所有测试对象 ID 及余额基线。快照与验收命令必须显式定义 `env_file` 和 `compose_staging()`。测试前先确认 PostgreSQL 容器确实属于 `sub2api-staging` compose project，并生成可读的完整数据库快照：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 cd /opt/sub2api/repo/deploy
 env_file=/opt/sub2api/env/staging/.env
 compose_staging() {
@@ -503,7 +503,7 @@ chmod 0600 "$staging_snapshot"
 验收后优先通过对应管理接口删除测试对象，并核对测试请求、余额和定价记录已清理；不能只删除渠道而保留用量或余额副作用。若接口无法完整清理，只能在确认无人并行使用 staging 后恢复上述快照：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 cd /opt/sub2api/repo/deploy
 env_file=/opt/sub2api/env/staging/.env
 compose_staging() {
@@ -556,7 +556,7 @@ staging 和 prod 发布不执行或要求异机备份，不要求 `prod-backup-r
 生产发布只手工调用受版本控制的 root-only 脚本，不复制内部实现。脚本会验证 staging 结果、检查资源、目标镜像能力与定价策略、记录原正式镜像 tag、创建专用回滚 tag，然后执行切换。涉及数据库结构变化时必须核实迁移和回滚兼容性，不能把切回旧镜像视为数据库回滚：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 set -Eeuo pipefail
 cd /opt/sub2api/repo
 git status --short
@@ -584,7 +584,7 @@ commit="$(git rev-parse --short=12 HEAD)"
 prod 更新完成后进入观察窗口。回滚时必须先保持账号统计定价表无 `video`；如果发布记录证明 `previous_image` 支持显式视频每秒计费，主渠道表中的合法 `video` 记录可以原样保留，否则主渠道表也必须通过零计数门禁。满足对应能力门禁后，才可以把发布前记录的 `previous_image` 原子写回 `.env`：
 
 ```bash
-ssh sub2api-new-vps
+ssh sub2api-migration-vps
 set -Eeuo pipefail
 cd /opt/sub2api/repo/deploy
 env_file=/opt/sub2api/env/prod/.env
