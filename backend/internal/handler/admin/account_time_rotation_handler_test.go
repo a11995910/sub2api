@@ -104,8 +104,8 @@ func TestAccountTimeRotationStatus_AllAndGroupScope(t *testing.T) {
 	require.True(t, status.Ready)
 	require.Equal(t, "all", status.Scope)
 	require.Equal(t, []int64{1, 2, 3}, accounts.ids)
-	require.NotNil(t, status.Period)
-	require.NotNil(t, status.NextRotationAt)
+	require.Nil(t, status.Period)
+	require.Nil(t, status.NextRotationAt)
 	require.NotNil(t, status.UpdatedAt)
 	roles := map[int64]string{}
 	for _, account := range status.Accounts {

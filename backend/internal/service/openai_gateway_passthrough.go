@@ -358,6 +358,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var resp *http.Response
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var clientDisconnected bool
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
@@ -471,6 +472,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			usage = result.usage
 			cacheHitAdjustment = result.cacheHitAdjustment
 			firstTokenMs = result.firstTokenMs
+			clientDisconnected = result.clientDisconnected
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
 			imageOutputSizes = result.imageOutputSizes
@@ -537,6 +539,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		OpenAIWSMode:                  false,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		ClientDisconnect:              clientDisconnected,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -1051,6 +1054,7 @@ type openaiStreamingResultPassthrough struct {
 	usage              *OpenAIUsage
 	cacheHitAdjustment *CacheHitTargetAdjustment
 	firstTokenMs       *int
+	clientDisconnected bool
 	responseID         string
 	imageCount         int
 	imageOutputSizes   []string
@@ -1890,6 +1894,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	ttftMode := s.openAITTFTMode(ctx)
+	if s.smartRotationMeasuresVisibleTTFT(account) {
+		ttftMode = OpenAITTFTModeVisible
+	}
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
@@ -2010,6 +2017,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			usage:              usage,
 			cacheHitAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
 			firstTokenMs:       firstTokenMs,
+			clientDisconnected: clientDisconnected,
 			responseID:         responseID,
 			imageCount:         imageCounter.Count(),
 			imageOutputSizes:   imageCounter.Sizes(),

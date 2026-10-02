@@ -30,6 +30,7 @@ type openaiStreamingResult struct {
 	usage              *OpenAIUsage
 	cacheHitAdjustment *CacheHitTargetAdjustment
 	firstTokenMs       *int
+	clientDisconnected bool
 	responseID         string
 	imageCount         int
 	imageOutputSizes   []string
@@ -121,6 +122,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	}
 	var firstTokenMs *int
 	ttftMode := s.openAITTFTMode(ctx)
+	if s.smartRotationMeasuresVisibleTTFT(account) {
+		ttftMode = OpenAITTFTModeVisible
+	}
 	firstOutputProgressObserved := false
 	bufferedWriter := bufio.NewWriterSize(w, 4*1024)
 	var firstOutputStage *openAIFirstOutputStage
@@ -358,6 +362,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			usage:              usage,
 			cacheHitAdjustment: OpenAIStreamCacheHitAdjustmentFromContext(c),
 			firstTokenMs:       firstTokenMs,
+			clientDisconnected: clientDisconnected,
 			responseID:         responseID,
 			imageCount:         imageCounter.Count(),
 			imageOutputSizes:   imageCounter.Sizes(),

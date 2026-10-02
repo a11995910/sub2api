@@ -80,14 +80,16 @@ describe('时段轮候配置', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
     wrapper.unmount()
   })
-  it('智能模式加载默认六段、可选择独立账号池，并在预览失败时仍允许保存', async () => {
+  it('历史智能配置补齐健康规则，可选择账号池，并在预览失败时仍允许保存', async () => {
     get.mockResolvedValue({ enabled: true, revision: 8, mode: 'smart', slots: [], smart: { account_ids: [], periods: [
       { start: '00:00', end: '08:00', primary_count: 1 }, { start: '08:00', end: '10:00', primary_count: 2 }, { start: '10:00', end: '14:00', primary_count: 4 }, { start: '14:00', end: '18:00', primary_count: 4 }, { start: '18:00', end: '22:00', primary_count: 3 }, { start: '22:00', end: '24:00', primary_count: 2 }
     ], rotation_minutes: 60, quota_reserve_percent: 10 } })
     status.mockRejectedValue(new Error('预览不可用'))
     const wrapper = render()
     await flushPromises()
-    expect(wrapper.findAll('[data-testid^="smart-period-"]')).toHaveLength(6)
+    expect(wrapper.findAll('[data-testid^="smart-period-"]')).toHaveLength(0)
+    expect((wrapper.find('[data-testid="ttft_threshold_seconds"]').element as HTMLInputElement).value).toBe('20')
+    expect((wrapper.find('[data-testid="cooldown_minutes"]').element as HTMLInputElement).value).toBe('30')
     await wrapper.find('[data-smart-account-id="1"]').setValue(true)
     await wrapper.find('[data-testid="rotation-save"]').trigger('click')
     await flushPromises()
@@ -111,15 +113,15 @@ const runningStatus = (revision = 4) => ({
   updated_at: '2026-09-30T01:00:00Z',
   period: { start: '00:00', end: '24:00', primary_count: 1 },
   next_rotation_at: '2026-09-30T02:00:00Z', scope: 'all',
-  accounts: [{ account_id: 1, name: '账号甲', role: 'primary', reason: '主力', quota_7d_remaining: 0 }]
+  accounts: [{ account_id: 1, name: '账号甲', role: 'cooling', reason: '连续首字变慢', original_priority: 7, effective_priority: 50, slow_streak: 3, healthy_streak: 0, last_ttft_ms: 0, last_duration_ms: null, cooldown_until: '2026-09-30T02:00:00Z' }]
 })
 
 describe('智能轮候状态与编辑边界', () => {
-  it('允许保存非六段配置，缺失账号可以移除', async () => {
+  it('历史时段不再显示，缺失账号可以移除', async () => {
     get.mockResolvedValue(smartDefaults())
     const wrapper = render()
     await flushPromises()
-    expect(wrapper.findAll('[data-testid^="smart-period-"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid^="smart-period-"]')).toHaveLength(0)
     expect(wrapper.text()).toContain('账号 #999（已删除或不再符合条件）')
     await wrapper.find('[data-smart-remove-id="999"]').trigger('click')
     await wrapper.find('[data-testid="rotation-save"]').trigger('click')
@@ -130,7 +132,7 @@ describe('智能轮候状态与编辑边界', () => {
     wrapper.unmount()
   })
 
-  it('显示已保存状态、北京时间、未知额度，零额度不能显示为未知', async () => {
+  it('显示等待状态、优先级、北京时间及耗时，零毫秒不能显示为未知', async () => {
     get.mockResolvedValue(smartDefaults())
     status.mockResolvedValue(runningStatus())
     const wrapper = render()
@@ -140,7 +142,10 @@ describe('智能轮候状态与编辑边界', () => {
     expect(preview.text()).toContain('09:00:00')
     expect(preview.text()).toContain('10:00:00')
     expect(preview.text()).toContain('未知')
-    expect(preview.text()).toContain('0%')
+    expect(preview.text()).toContain('0.00s')
+    expect(preview.text()).toContain('轮候等待')
+    expect(preview.text()).toContain('50')
+    expect(preview.text()).toContain('原 7')
     await wrapper.find('[data-testid="rotation-enabled"]').setValue(false)
     expect(wrapper.find('[data-testid="status-state"]').text()).toContain('智能轮候已生效')
     wrapper.unmount()
@@ -174,6 +179,28 @@ describe('智能轮候状态与编辑边界', () => {
     resolveOld(runningStatus(4))
     await flushPromises()
     expect(wrapper.find('[data-testid="rotation-status"]').text()).toContain('已保存版本 5')
+    wrapper.unmount()
+  })
+})
+
+
+describe('智能健康规则校验', () => {
+  it('拒绝单次慢请求触发和无法完成恢复的观察窗口，修正后保存新规则', async () => {
+    get.mockResolvedValue(smartDefaults())
+    const wrapper = render()
+    await flushPromises()
+    await wrapper.find('[data-testid="slow_request_count"]').setValue(1)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
+    expect(save).not.toHaveBeenCalled()
+    await wrapper.find('[data-testid="slow_request_count"]').setValue(4)
+    await wrapper.find('[data-testid="sample_window_minutes"]').setValue(1)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
+    expect(save).not.toHaveBeenCalled()
+    await wrapper.find('[data-testid="sample_window_minutes"]').setValue(10)
+    await wrapper.find('[data-testid="cooldown_minutes"]').setValue(45)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ smart: expect.objectContaining({ slow_request_count: 4, cooldown_minutes: 45 }) }))
     wrapper.unmount()
   })
 })

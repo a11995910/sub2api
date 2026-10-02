@@ -733,6 +733,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	firstChunk := true
+	healthVisibleTTFT := s.smartRotationMeasuresVisibleTTFT(account)
 	clientDisconnected := false
 	clientOutputStarted := false
 	pendingSSE := make([]string, 0, 4)
@@ -781,6 +782,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              clientDisconnected,
 			CacheHitTargetAdjustment:      cacheHitAdjustment,
 		}
 		if searchCount > 0 {
@@ -791,7 +793,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	processDataLine := func(payload string) bool {
 		payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
-		if firstChunk {
+		if firstChunk && (!healthVisibleTTFT || openAIStreamDataStartsVisibleOutput(payload, "")) {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms

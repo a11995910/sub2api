@@ -203,3 +203,52 @@ func (r *accountTimeRotationRepository) Apply(ctx context.Context, replacement *
 	}
 	return &state.Config, nil
 }
+
+// 独立健康快照不写账号表；保存时校验配置版本，旧执行器不能覆盖新配置的状态。
+func (r *accountTimeRotationRepository) LoadHealth(ctx context.Context) (*service.AccountSmartRotationHealthSnapshot, error) {
+	var raw string
+	err := r.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'account_smart_rotation_health'`).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var state service.AccountSmartRotationHealthSnapshot
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
+
+func (r *accountTimeRotationRepository) SaveHealth(ctx context.Context, state *service.AccountSmartRotationHealthSnapshot) error {
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var configRaw string
+	err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = $1 FOR UPDATE`, accountTimeRotationKey).Scan(&configRaw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	config, err := decodeAccountTimeRotation(configRaw)
+	if err != nil {
+		return err
+	}
+	if config.Config.Revision != state.Revision {
+		return nil
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES ('account_smart_rotation_health', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, string(raw))
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}

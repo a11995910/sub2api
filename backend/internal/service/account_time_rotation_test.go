@@ -78,21 +78,21 @@ func TestAccountTimeRotationValidation(t *testing.T) {
 func TestSmartRotationDefaultsAndValidation(t *testing.T) {
 	c := DefaultAccountTimeRotationConfig()
 	require.Equal(t, "manual", c.Mode)
-	require.Equal(t, 6, len(c.Smart.Periods))
-	require.Equal(t, 60, c.Smart.RotationMinutes)
+	require.Equal(t, 20, c.Smart.TTFTThresholdSeconds)
+	require.Equal(t, 30, c.Smart.CooldownMinutes)
 	c.Mode, c.Enabled = "smart", true
 	c.Smart.AccountIDs = []int64{1, 2}
 	require.NoError(t, c.Validate())
 	require.Empty(t, c.Priorities(time.Now()))
 
-	c.Smart.Periods[1].Start = "09:00"
+	c.Smart.SlowRequestCount = 1
 	require.Error(t, c.Validate())
 	c = DefaultAccountTimeRotationConfig()
 	c.Mode, c.Enabled = "smart", true
 	c.Smart.AccountIDs = []int64{1, 1}
 	require.Error(t, c.Validate())
 	c.Smart.AccountIDs = []int64{1}
-	c.Smart.RotationMinutes = 17
+	c.Smart.SampleWindowMinutes = 1
 	require.Error(t, c.Validate())
 }
 
@@ -131,13 +131,13 @@ func TestAccountTimeRotationSnapshotIsFreshAndIsolated(t *testing.T) {
 	require.NoError(t, err)
 	got.Slots[0].AccountIDs[0] = 99
 	got.Smart.AccountIDs[0] = 99
-	got.Smart.Periods[0].PrimaryCount = 99
+	got.Smart.HealthyRequestCount = 99
 	snap, refreshed := svc.Snapshot(time.Now().Add(30 * time.Second))
 	require.NotNil(t, snap)
 	require.Equal(t, int64(2), snap.Revision)
 	require.Equal(t, int64(1), snap.Slots[0].AccountIDs[0])
 	require.Equal(t, int64(2), snap.Smart.AccountIDs[0])
-	require.Equal(t, 1, snap.Smart.Periods[0].PrimaryCount)
+	require.Equal(t, 3, snap.Smart.HealthyRequestCount)
 	require.False(t, refreshed.IsZero())
 	snap.Smart.AccountIDs[0] = 88
 	boundary, _ := svc.Snapshot(refreshed.Add(45 * time.Second))

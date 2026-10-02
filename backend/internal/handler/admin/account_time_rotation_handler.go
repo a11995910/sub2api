@@ -83,9 +83,7 @@ func (h *AccountTimeRotationHandler) Status(c *gin.Context) {
 		accounts = filtered
 		config.Smart.AccountIDs = ids
 	}
-	if plan := service.BuildAccountSmartRotationPlan(config, accounts, now); plan != nil {
-		result.Period = plan.Period
-		result.NextRotationAt = &plan.NextRotationAt
+	if plan := h.svc.HealthPlan(config, accounts, now); plan != nil {
 		if plan.Accounts != nil {
 			result.Accounts = plan.Accounts
 		}

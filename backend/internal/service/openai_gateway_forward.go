@@ -1247,6 +1247,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var clientDisconnected bool
 		responseID := ""
 		imageCount := 0
 		searchCount := 0
@@ -1296,6 +1297,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = streamResult.usage
 			cacheHitAdjustment = streamResult.cacheHitAdjustment
 			firstTokenMs = streamResult.firstTokenMs
+			clientDisconnected = streamResult.clientDisconnected
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
@@ -1357,6 +1359,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:                  false,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              clientDisconnected,
 		}
 		if reqStream {
 			forwardResult.CacheHitTargetAdjustment = cacheHitAdjustment

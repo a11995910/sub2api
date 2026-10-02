@@ -13,15 +13,9 @@ func (s *OpenAIGatewayService) smartRotationPlanForAccounts(accounts []*Account,
 	if config == nil || !config.Enabled || config.Mode != "smart" || config.Smart == nil {
 		return nil
 	}
-	plan := BuildAccountSmartRotationPlan(config, accounts, now)
+	plan := s.accountTimeRotation.HealthPlan(config, accounts, now)
 	if plan == nil {
 		return nil
-	}
-	// 类型变更等失效配置只用于状态展示，不给合法的池外请求增加惩罚。
-	for id, tier := range plan.Tiers {
-		if tier >= 3 {
-			delete(plan.Tiers, id)
-		}
 	}
 	if len(plan.Tiers) == 0 {
 		return nil
@@ -29,8 +23,7 @@ func (s *OpenAIGatewayService) smartRotationPlanForAccounts(accounts []*Account,
 	return plan
 }
 
-// smartRotationTier 将池外账号置于普通备用层。同层仍按原有优先级和负载
-// 排序；使用完整层级保证比较关系可传递，避免部分候选入池时排序不稳定。
+// smartRotationTier 将池外账号与正常账号放在同层；观察机会先行，等待账号兜底。
 func smartRotationTier(plan *AccountSmartRotationPlan, account *Account) int {
 	if plan != nil && account != nil {
 		if tier, ok := plan.Tiers[account.ID]; ok {
@@ -41,8 +34,15 @@ func smartRotationTier(plan *AccountSmartRotationPlan, account *Account) int {
 }
 
 func compareSmartRotationTier(plan *AccountSmartRotationPlan, a, b *Account) (bool, bool) {
+	if plan == nil {
+		return false, false
+	}
 	ta, tb := smartRotationTier(plan, a), smartRotationTier(plan, b)
-	return ta < tb, ta != tb
+	if ta != tb {
+		return ta < tb, true
+	}
+	pa, pb := smartRotationPriority(plan, a), smartRotationPriority(plan, b)
+	return pa < pb, pa != pb
 }
 
 // smartRotationEnabled 使智能模式在旧的批量负载开关关闭时仍能探测备用容量。
@@ -54,7 +54,7 @@ func (s *OpenAIGatewayService) smartRotationEnabled(now time.Time) bool {
 	return config != nil && config.Enabled && config.Mode == "smart" && config.Smart != nil
 }
 
-// compact 的已知不支持候选保留原有陈旧快照复查兜底，但不占用主力名额。
+// compact 的已知不支持候选保留原有陈旧快照复查兜底，但不授予观察优先。
 func (s *OpenAIGatewayService) smartRotationPlanForRequest(accounts []*Account, requireCompact bool, now time.Time) *AccountSmartRotationPlan {
 	if !requireCompact {
 		return s.smartRotationPlanForAccounts(accounts, now)
@@ -66,4 +66,61 @@ func (s *OpenAIGatewayService) smartRotationPlanForRequest(accounts []*Account, 
 		}
 	}
 	return s.smartRotationPlanForAccounts(eligible, now)
+}
+
+func smartRotationPriority(plan *AccountSmartRotationPlan, account *Account) int {
+	if account == nil {
+		return 0
+	}
+	if plan != nil {
+		if priority, ok := plan.Priorities[account.ID]; ok {
+			return priority
+		}
+	}
+	return account.Priority
+}
+
+func smartRotationHasProbe(plan *AccountSmartRotationPlan) bool {
+	if plan != nil {
+		for _, tier := range plan.Tiers {
+			if tier == 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// 有待观察账号时让可迁移粘性进入候选筛选，避免恢复账号永久没有真实请求。
+func (s *OpenAIGatewayService) shouldYieldSmartSticky(id int64, now time.Time) bool {
+	if s == nil || s.accountTimeRotation == nil {
+		return false
+	}
+	rotation := s.accountTimeRotation
+	if rotation.IsDegraded(id, now) {
+		return true
+	}
+	rotation.snapshotMu.Lock()
+	defer rotation.snapshotMu.Unlock()
+	if rotation.snapshot == nil || !rotation.snapshot.Enabled || rotation.snapshot.Mode != "smart" || now.Sub(rotation.refreshedAt) > 45*time.Second {
+		return false
+	}
+	for accountID := range rotation.health {
+		h := rotation.healthLocked(accountID, now)
+		if h.State == "recovering" && !h.ProbeInFlight && !now.Before(h.NextProbeAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// 智能轮候账号统一按实际内容输出计首字，避免初始化事件掩盖真实等待时间。
+func (s *OpenAIGatewayService) smartRotationMeasuresVisibleTTFT(account *Account) bool {
+	if s == nil || s.accountTimeRotation == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.ParentAccountID != nil {
+		return false
+	}
+	rotation := s.accountTimeRotation
+	rotation.snapshotMu.RLock()
+	defer rotation.snapshotMu.RUnlock()
+	return rotation.healthPolicyLocked(account.ID, time.Now()) != nil
 }

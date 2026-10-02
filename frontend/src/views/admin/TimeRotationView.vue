@@ -91,51 +91,11 @@
           </section>
 
           <section class="card p-5">
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.smartPeriods') }}</h2>
-              <span class="text-xs text-gray-500">{{ t('timeRotation.smartImmediate') }}</span>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div v-for="(period, index) in smart.periods" :key="index" class="rounded-xl border border-gray-100 p-4 dark:border-dark-600" :data-testid="`smart-period-${index}`">
-                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('timeRotation.slot', { n: index + 1 }) }}</span>
-                  <div class="flex gap-3 text-xs">
-                    <button type="button" class="text-primary-600 disabled:opacity-40" :disabled="saving || !canSplitPeriod(index)" @click="splitPeriod(index)">
-                      {{ t('timeRotation.splitPeriod') }}
-                    </button>
-                    <button type="button" class="text-red-600 disabled:opacity-40" :disabled="saving || smart.periods.length <= 1" @click="removePeriod(index)">
-                      {{ t('timeRotation.removePeriod') }}
-                    </button>
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <label class="input-label">
-                    {{ t('timeRotation.start') }}
-                    <input v-model="period.start" type="time" class="input mt-1" :disabled="saving" />
-                  </label>
-                  <label class="input-label">
-                    {{ t('timeRotation.end') }}
-                    <input v-model="period.end" type="text" inputmode="numeric" placeholder="24:00" class="input mt-1" :disabled="saving" />
-                  </label>
-                  <label class="input-label col-span-2">
-                    {{ t('timeRotation.primaryCount') }}
-                    <input v-model.number="period.primary_count" type="number" min="1" max="10000" step="1" class="input mt-1" :disabled="saving" />
-                  </label>
-                </div>
-              </div>
-            </div>
-            <p class="mt-3 text-xs text-gray-500">{{ t('timeRotation.smartPeriodHint') }}</p>
-          </section>
-
-          <section class="card p-5">
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="input-label">
-                {{ t('timeRotation.rotationMinutes') }}
-                <input v-model.number="smart.rotation_minutes" type="number" min="15" max="240" step="1" class="input mt-1" :disabled="saving" data-testid="rotation-minutes" />
-              </label>
-              <label class="input-label">
-                {{ t('timeRotation.quotaReserve') }}
-                <input v-model.number="smart.quota_reserve_percent" type="number" min="1" max="50" step="1" class="input mt-1" data-testid="quota-reserve" :disabled="saving" />
+            <h2 class="mb-4 font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.healthPolicy') }}</h2>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <label v-for="field in healthFields" :key="field.key" class="input-label">
+                {{ t(`timeRotation.${field.key}`) }}
+                <input v-model.number="smart[field.key]" type="number" :min="field.min" :max="field.max" step="1" class="input mt-1" :disabled="saving" :data-testid="field.key" />
               </label>
             </div>
             <p class="mt-3 text-xs text-gray-500">{{ t('timeRotation.smartSafetyHint') }}</p>
@@ -159,27 +119,30 @@
                 <span v-if="status.updated_at"> · {{ t('timeRotation.updatedAt') }} {{ formatBeijingTime(status.updated_at) }}</span>
               </p>
               <template v-if="status.enabled && status.mode === 'smart' && status.ready">
-                <p class="mb-3 text-sm text-gray-500">
-                  {{ status.period ? `${status.period.start}–${status.period.end} · ${t('timeRotation.primaryCount')}: ${periodPrimaryCount(status.period)}` : t('timeRotation.noCurrentPeriod') }}
-                  <span v-if="status.next_rotation_at"> · {{ t('timeRotation.nextRotation') }} {{ formatBeijingTime(status.next_rotation_at) }}</span>
-                </p>
                 <div class="overflow-x-auto">
                   <table class="w-full text-left text-sm">
                     <thead>
                       <tr class="border-b border-gray-100 text-xs text-gray-500 dark:border-dark-600">
                         <th class="p-2">{{ t('timeRotation.accountName') }}</th>
                         <th class="p-2">{{ t('timeRotation.accountRole') }}</th>
-                        <th class="p-2">{{ t('timeRotation.quota7d') }}</th>
-                        <th class="p-2">{{ t('timeRotation.quota5h') }}</th>
+                        <th class="p-2">{{ t('timeRotation.effectivePriority') }}</th>
+                        <th class="p-2">{{ t('timeRotation.latestLatency') }}</th>
+                        <th class="p-2">{{ t('timeRotation.streaks') }}</th>
+                        <th class="p-2">{{ t('timeRotation.recoveryAt') }}</th>
                         <th class="p-2">{{ t('timeRotation.accountReason') }}</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="account in status.accounts" :key="account.account_id" class="border-b border-gray-50 dark:border-dark-700">
                         <td class="p-2">{{ account.name || accountName(account.account_id) }} <span class="text-xs text-gray-500">#{{ account.account_id }}</span></td>
-                        <td class="p-2">{{ t(`timeRotation.role.${account.role}`) }}</td>
-                        <td class="p-2">{{ formatQuota(account.quota_7d_remaining) }}</td>
-                        <td class="p-2">{{ formatQuota(account.quota_5h_remaining) }}</td>
+                        <td class="p-2" :class="{ 'text-green-600 dark:text-green-400': account.role === 'normal', 'text-amber-600 dark:text-amber-400': account.role === 'cooling', 'text-blue-600 dark:text-blue-400': account.role === 'recovering' }">{{ t(`timeRotation.role.${account.role}`) }}</td>
+                        <td class="p-2">{{ account.effective_priority }} <span class="text-xs text-gray-500">({{ t('timeRotation.originalPriority') }} {{ account.original_priority }})</span></td>
+                        <td class="p-2">
+                          {{ formatLatency(account.last_ttft_ms) }} / {{ formatLatency(account.last_duration_ms) }}
+                          <span v-if="account.last_sample_at" class="block text-xs text-gray-500">{{ formatBeijingTime(account.last_sample_at) }}</span>
+                        </td>
+                        <td class="p-2">{{ account.slow_streak ?? 0 }} / {{ account.healthy_streak ?? 0 }}</td>
+                        <td class="p-2">{{ account.cooldown_until ? formatBeijingTime(account.cooldown_until) : account.next_probe_at ? formatBeijingTime(account.next_probe_at) : '—' }}</td>
                         <td class="p-2 text-gray-500">{{ account.reason }}</td>
                       </tr>
                     </tbody>
@@ -285,18 +248,19 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const healthFields = [
+  { key: 'ttft_threshold_seconds', min: 1, max: 300 },
+  { key: 'slow_request_count', min: 2, max: 20 },
+  { key: 'healthy_request_count', min: 2, max: 20 },
+  { key: 'sample_window_minutes', min: 1, max: 120 },
+  { key: 'cooldown_minutes', min: 1, max: 1440 },
+  { key: 'waiting_priority', min: 1, max: 2147483647 },
+  { key: 'probe_interval_seconds', min: 1, max: 600 }
+] as const
 const defaultSmart = (): SmartTimeRotationConfig => ({
-  account_ids: [],
-  periods: [
-    { start: '00:00', end: '08:00', primary_count: 1 },
-    { start: '08:00', end: '10:00', primary_count: 2 },
-    { start: '10:00', end: '14:00', primary_count: 4 },
-    { start: '14:00', end: '18:00', primary_count: 4 },
-    { start: '18:00', end: '22:00', primary_count: 3 },
-    { start: '22:00', end: '24:00', primary_count: 2 }
-  ],
-  rotation_minutes: 60,
-  quota_reserve_percent: 10
+  account_ids: [], ttft_threshold_seconds: 20, slow_request_count: 3,
+  healthy_request_count: 3, sample_window_minutes: 10, cooldown_minutes: 30,
+  waiting_priority: 50, probe_interval_seconds: 60
 })
 
 const config = ref<AccountTimeRotationConfig>({ enabled: false, revision: 0, slots: [], mode: 'manual' })
@@ -312,8 +276,10 @@ const statusLoading = ref(false)
 const status = ref<TimeRotationStatus | null>(null)
 const controller = new AbortController()
 let statusRequest = 0
+let statusTimer: ReturnType<typeof setInterval> | undefined
 
 onBeforeUnmount(() => {
+  if (statusTimer) clearInterval(statusTimer)
   controller.abort()
   statusRequest++
 })
@@ -365,34 +331,9 @@ function parseTime(value: string, end = false) {
   return Number(match[1]) * 60 + Number(match[2])
 }
 
-function canSplitPeriod(index: number) {
-  const period = smart.value.periods[index]
-  return smart.value.periods.length < 24 && parseTime(period.start) >= 0 && parseTime(period.end, true) - parseTime(period.start) > 1
-}
-
-function splitPeriod(index: number) {
-  if (!canSplitPeriod(index)) return
-  const period = smart.value.periods[index]
-  const minute = Math.floor((parseTime(period.start) + parseTime(period.end, true)) / 2)
-  const boundary = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
-  smart.value.periods.splice(index, 1, { ...period, end: boundary }, { ...period, start: boundary })
-}
-
-function removePeriod(index: number) {
-  const periods = smart.value.periods
-  if (periods.length <= 1) return
-  if (index > 0) periods[index - 1].end = periods[index].end
-  else periods[1].start = periods[0].start
-  periods.splice(index, 1)
-}
-
 function validManualSlot(slot: AccountRotationSlot) {
   return parseTime(slot.start) >= 0 && parseTime(slot.end, true) >= 0 && slot.start !== slot.end &&
     [slot.active_priority, slot.inactive_priority].every(n => Number.isInteger(n) && n >= 1 && n <= 2147483647)
-}
-
-function periodPrimaryCount(period: TimeRotationStatus['period']) {
-  return period && 'primary_count' in period ? period.primary_count : null
 }
 
 function formatBeijingTime(value: string) {
@@ -404,25 +345,19 @@ function formatBeijingTime(value: string) {
   }).format(date)
 }
 
-function formatQuota(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) ? t('timeRotation.unknown') : `${Math.round(value * 10) / 10}%`
+function formatLatency(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? t('timeRotation.unknown') : `${(value / 1000).toFixed(2)}s`
 }
 
 function validSmart() {
   const value = smart.value
   if (config.value.enabled && value.account_ids.length === 0) return false
   if (!value.account_ids.every(id => Number.isSafeInteger(id) && id > 0) || new Set(value.account_ids).size !== value.account_ids.length) return false
-  if (!Number.isInteger(value.rotation_minutes) || value.rotation_minutes < 15 || value.rotation_minutes > 240 || 1440 % value.rotation_minutes !== 0) return false
-  if (!Number.isInteger(value.quota_reserve_percent) || value.quota_reserve_percent < 1 || value.quota_reserve_percent > 50) return false
-  if (value.periods.length < 1 || value.periods.length > 24) return false
-  let cursor = 0
-  return value.periods.every(period => {
-    const start = parseTime(period.start)
-    const end = parseTime(period.end, true)
-    const valid = start === cursor && end > start && Number.isInteger(period.primary_count) && period.primary_count >= 1 && period.primary_count <= 10000
-    cursor = end
-    return valid
-  }) && cursor === 1440
+  if (!healthFields.every(field => {
+    const n = value[field.key]
+    return n != null && Number.isInteger(n) && n >= field.min && n <= field.max
+  })) return false
+  return (Math.max(value.healthy_request_count ?? 0, value.slow_request_count ?? 0) - 1) * (value.probe_interval_seconds ?? 0) < (value.sample_window_minutes ?? 0) * 60
 }
 
 async function loadStatus() {
@@ -444,7 +379,7 @@ async function loadStatus() {
 
 function applySavedConfig(saved: AccountTimeRotationConfig) {
   config.value = { ...saved, mode: saved.mode || 'manual' }
-  if (config.value.mode === 'smart' && !config.value.smart) config.value.smart = defaultSmart()
+  config.value.smart = { ...defaultSmart(), ...saved.smart }
 }
 
 async function load() {
@@ -498,5 +433,11 @@ async function save() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  if (controller.signal.aborted) return
+  statusTimer = setInterval(() => {
+    if (ready.value && !loading.value && !saving.value && !statusLoading.value && config.value.mode === 'smart' && !document.hidden) void loadStatus()
+  }, 15000)
+})
 </script>

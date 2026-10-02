@@ -562,6 +562,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
+	if !req.DisableStickyEscape && s.service.shouldYieldSmartSticky(accountID, time.Now()) {
+		return nil, true, nil
+	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape && !req.DisableStickyEscape {
 		slog.Info("sticky_escape_triggered",
@@ -572,7 +575,13 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		)
 		return nil, true, nil
 	}
-	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+	var result *AcquireResult
+	var acquireErr error
+	if req.DisableStickyEscape {
+		result, acquireErr = s.service.acquirePinnedAccountSlot(ctx, accountID, account.Concurrency)
+	} else {
+		result, acquireErr = s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+	}
 	if acquireErr != nil && req.DisableStickyEscape {
 		return nil, false, acquireErr
 	}
@@ -589,7 +598,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
-	if s.service.concurrencyService != nil {
+	if s.service.concurrencyService != nil && (req.DisableStickyEscape || !s.service.accountTimeRotation.IsRecovering(accountID, time.Now())) {
 		if escapeCfg.enabled && !req.DisableStickyEscape && acquireErr == nil && result != nil && !result.Acquired {
 			errorRate, ttft, _ := s.stats.snapshot(accountID)
 			slog.Info("sticky_escape_triggered",
@@ -911,7 +920,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		return plan
 	}
 
-	minPriority, maxPriority := openAIAccountSchedulingPriority(candidates[0].account), openAIAccountSchedulingPriority(candidates[0].account)
+	minPriority, maxPriority := smartRotationPriority(rotationPlan, candidates[0].account), smartRotationPriority(rotationPlan, candidates[0].account)
 	maxWaiting := 1
 	loadRateSum := 0.0
 	loadRateSumSquares := 0.0
@@ -919,7 +928,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	hasTTFTSample := false
 	for i := range candidates {
 		candidate := &candidates[i]
-		candidate.priority = openAIAccountSchedulingPriority(candidate.account)
+		candidate.priority = smartRotationPriority(rotationPlan, candidate.account)
 		if candidate.priority < minPriority {
 			minPriority = candidate.priority
 		}
@@ -1117,7 +1126,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		}
 		var tiers [4][]openAIAccountCandidateScore
 		var sticky *openAIAccountCandidateScore
-		if req.StickyWeighted {
+		if req.StickyWeighted && !smartRotationHasProbe(plan.smartRotation) {
 			// 仅保留原评分 topK 中允许优先的粘性，避免智能分层复活已降权的会话。
 			ranked := selectTopKOpenAICandidates(pool, plan.topK)
 			for _, id := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
@@ -1125,7 +1134,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 					continue
 				}
 				for i := range ranked {
-					if ranked[i].account.ID == id {
+					if ranked[i].account.ID == id && smartRotationTier(plan.smartRotation, ranked[i].account) == 1 {
 						sticky = &ranked[i]
 						break
 					}
@@ -1321,7 +1330,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		return nil, nil
 	}
 	for _, accountID := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
-		if accountID <= 0 {
+		if accountID <= 0 || s.service.accountTimeRotation.IsDegraded(accountID, time.Now()) {
 			continue
 		}
 		if req.ExcludedIDs != nil {
@@ -1744,7 +1753,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 		wantAttempted := pass == 1 || pass == 3
 		wantKnownFull := pass >= 2
 		for _, candidate := range attempt.selectionOrder {
-			if candidate.account == nil {
+			if candidate.account == nil || s.service.accountTimeRotation.IsRecovering(candidate.account.ID, time.Now()) {
 				continue
 			}
 			if budget != nil && budget.limited {
@@ -2609,8 +2618,23 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
+	return s.reportOpenAIAccountScheduleResult(account, model, success, success, firstTokenMs, 0, observedErr...)
+}
+
+// ReportOpenAIAccountForwardResult 同时记录首字和整次返回耗时；长回复不单凭总耗时判慢。
+func (s *OpenAIGatewayService) ReportOpenAIAccountForwardResult(account *Account, model string, success bool, result *OpenAIForwardResult) bool {
+	if result == nil {
+		return s.ReportOpenAIAccountScheduleResult(account, model, success, nil)
+	}
+	return s.reportOpenAIAccountScheduleResult(account, model, success, success && !result.ClientDisconnect, result.FirstTokenMs, result.Duration)
+}
+
+func (s *OpenAIGatewayService) reportOpenAIAccountScheduleResult(account *Account, model string, success, healthSuccess bool, firstTokenMs *int, duration time.Duration, observedErr ...error) bool {
 	if account == nil {
 		return false
+	}
+	if s != nil {
+		s.accountTimeRotation.ObserveHealth(account, healthSuccess, firstTokenMs, duration, time.Now())
 	}
 	accountID := account.ID
 	healthTripped := false
@@ -2636,6 +2660,9 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 // ObserveOpenAIAccountHealthFailure records failures that cannot reach the
 // scheduler-result path, for example after semantic response bytes were sent.
 func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Context, account *Account, observedErr error) bool {
+	if s != nil && account != nil && observedErr != nil {
+		s.accountTimeRotation.ObserveHealth(account, false, nil, 0, time.Now())
+	}
 	if s == nil || s.rateLimitService == nil || account == nil || observedErr == nil {
 		return false
 	}

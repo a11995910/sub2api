@@ -968,6 +968,9 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		}
 	}
 
+	if s.shouldYieldSmartSticky(accountID, time.Now()) {
+		return nil
+	}
 	if _, excluded := excludedIDs[accountID]; excluded {
 		return nil
 	}
@@ -1304,7 +1307,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	stickySpillover := false
 	if sessionHash != "" {
 		accountID := stickyAccountID
-		if accountID > 0 && !isExcluded(accountID) {
+		if accountID > 0 && !isExcluded(accountID) && !s.shouldYieldSmartSticky(accountID, time.Now()) {
 			account, err := s.getSchedulableAccount(ctx, accountID)
 			if err == nil {
 				clearSticky := shouldClearStickySession(account, requestedModel)
@@ -1451,7 +1454,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 		if smartPlan != nil {
 			sort.SliceStable(available, func(i, j int) bool {
-				return smartRotationTier(smartPlan, available[i].account) < smartRotationTier(smartPlan, available[j].account)
+				better, _ := compareSmartRotationTier(smartPlan, available[i].account, available[j].account)
+				return better
 			})
 		}
 
@@ -1512,7 +1516,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		if smartPlan != nil {
 			sort.SliceStable(ordered, func(i, j int) bool {
-				return smartRotationTier(smartPlan, ordered[i]) < smartRotationTier(smartPlan, ordered[j])
+				better, _ := compareSmartRotationTier(smartPlan, ordered[i], ordered[j])
+				return better
 			})
 		}
 		if requireCompact {
@@ -1567,13 +1572,17 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 	if smartPlan != nil {
 		sort.SliceStable(candidates, func(i, j int) bool {
-			return smartRotationTier(smartPlan, candidates[i]) < smartRotationTier(smartPlan, candidates[j])
+			better, _ := compareSmartRotationTier(smartPlan, candidates[i], candidates[j])
+			return better
 		})
 	}
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
 	for _, acc := range candidates {
+		if s.accountTimeRotation.IsRecovering(acc.ID, time.Now()) {
+			continue
+		}
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
 		if fresh == nil {
 			continue
@@ -1632,6 +1641,27 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	releaseProbe, allowed := s.accountTimeRotation.acquireProbe(accountID, time.Now())
+	if !allowed {
+		return &AcquireResult{Acquired: false}, nil
+	}
+	result, err := s.acquirePinnedAccountSlot(ctx, accountID, maxConcurrency)
+	if err != nil || result == nil || !result.Acquired {
+		releaseProbe()
+		return result, err
+	}
+	release := result.ReleaseFunc
+	result.ReleaseFunc = func() {
+		if release != nil {
+			release()
+		}
+		releaseProbe()
+	}
+	return result, nil
+}
+
+// 不可迁移的上下文仍使用原账号与原并发限制，不能因观察限额丢失会话归属。
+func (s *OpenAIGatewayService) acquirePinnedAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
@@ -1837,6 +1867,9 @@ func (s *OpenAIGatewayService) hydrateSelectedAccount(ctx context.Context, accou
 }
 
 func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	if waitPlan != nil && account != nil && s.accountTimeRotation.IsRecovering(account.ID, time.Now()) {
+		return nil, ErrNoAvailableAccounts
+	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
 		return nil, err
