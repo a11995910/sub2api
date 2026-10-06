@@ -81,6 +81,14 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		slog.Error("order not found", "orderID", oid)
 		return nil
 	}
+	tradeNo = strings.TrimSpace(tradeNo)
+	if tradeNo == "" {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_TRADE_NO", pk, map[string]any{
+			"expected": "non-empty provider trade number",
+			"paid":     paid,
+		})
+		return fmt.Errorf("missing provider trade number")
+	}
 	instanceProviderKey := ""
 	if inst, instErr := s.getOrderProviderInstance(ctx, o); instErr == nil && inst != nil {
 		instanceProviderKey = inst.ProviderKey
