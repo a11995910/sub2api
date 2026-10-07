@@ -29,10 +29,23 @@ services:
       - DATABASE_SSLMODE=disable
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_DB=0
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - SETUP_MIGRATION_TIMEOUT_SECONDS=${SETUP_MIGRATION_TIMEOUT_SECONDS:-0}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
       - IMAGE_STORAGE_PATH=/app/data/generated-images
       - VIDEO_STORAGE_PATH=/app/data/generated-videos
-      - TZ=Asia/Shanghai
+      - TZ=${TZ:-Asia/Shanghai}
+      # Local mainland-China development proxy. Containers cannot use
+      # 127.0.0.1 for the host proxy, so default to Docker Desktop's host name.
+      - HTTP_PROXY=${SUB2API_DEV_HTTP_PROXY:-http://host.docker.internal:7897}
+      - HTTPS_PROXY=${SUB2API_DEV_HTTPS_PROXY:-http://host.docker.internal:7897}
+      - ALL_PROXY=${SUB2API_DEV_ALL_PROXY:-socks5://host.docker.internal:7897}
+      - NO_PROXY=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
       # Gateway values come from Compose .env or the shell.
       # Fallbacks mirror Sub2API backend defaults so omitted values preserve behavior.
       - GATEWAY_FORCE_CODEX_CLI=${GATEWAY_FORCE_CODEX_CLI:-false}
