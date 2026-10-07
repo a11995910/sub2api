@@ -77,5 +77,18 @@ export default {
   "quota7d": "周额度剩余",
   "quota5h": "短窗口额度剩余",
   "unknown": "未知",
-  "invalidSmart": "请检查账号池、1–24 个连续覆盖全天的时段、主力数（1–10000）、轮换间隔（15–240 且整除 1440）和额度阈值（1–50）。"
+  "unsaved": "未保存",
+  "invalidSmart": "请检查账号池、1–24 个连续覆盖全天的时段、主力数（1–10000）、轮换间隔（15–240 且整除 1440）和额度阈值（1–50）。",
+  "refreshUnsaved": "存在未保存的编辑，请先保存或放弃编辑后再刷新。",
+  "saveConflict": "配置已被其他操作更新，请重新加载后再保存。",
+  "reloadAfterConflict": "重新加载",
+  "accountSchedulable": "可调度",
+  "accountUnschedulable": "已禁止调度",
+  "accountTemporarilyUnavailable": "临时不可调度",
+  "accountOverloaded": "负载保护中",
+  "accountRateLimited": "限流中",
+  "accountError": "错误状态",
+  "accountInactive": "已停用",
+  "accountExpired": "已过期",
+  "accountUntil": "恢复于 {time}"
 }

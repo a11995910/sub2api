@@ -15,9 +15,10 @@
           <p class="mt-2 text-sm text-gray-500">{{ t('timeRotation.description') }}</p>
         </div>
         <div class="flex gap-2">
-          <button type="button" class="btn btn-secondary" :disabled="loading || saving" @click="load">
+          <button type="button" class="btn btn-secondary" :disabled="loading || saving" @click="load()">
             {{ t('common.refresh') }}
           </button>
+          <span v-if="dirty" class="self-center text-xs text-amber-700 dark:text-amber-300">{{ t('timeRotation.unsaved') }}</span>
           <button type="button" class="btn btn-primary" :disabled="!ready || saving" data-testid="rotation-save" @click="save">
             {{ saving ? t('common.saving') : t('common.save') }}
           </button>
@@ -25,6 +26,9 @@
       </div>
       <p v-if="error" role="alert" class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
         {{ error }}
+        <button v-if="saveConflict" type="button" class="ml-2 font-medium underline" @click="reloadAfterConflict">
+          {{ t('timeRotation.reloadAfterConflict') }}
+        </button>
       </p>
       <p v-if="loading" class="py-8 text-center text-gray-500">{{ t('common.loading') }}</p>
       <template v-else-if="ready">
@@ -82,7 +86,8 @@
                 <input v-model="smart.account_ids" type="checkbox" :value="account.id" class="mt-1 h-4 w-4" :disabled="saving" :data-smart-account-id="account.id" />
                 <span class="min-w-0 text-sm">
                   <span class="block break-all text-gray-900 dark:text-gray-100">{{ account.name }}</span>
-                  <span class="text-xs text-gray-500">#{{ account.id }}</span>
+                  <span class="block text-xs text-gray-500">#{{ account.id }} · {{ smartAccountStatus(account) }}</span>
+                  <span v-if="smartAccountReason(account)" class="block text-xs text-amber-700 dark:text-amber-300">{{ smartAccountReason(account) }}</span>
                 </span>
               </label>
               <p v-if="!smartCandidates.length" class="py-6 text-center text-sm text-gray-500 sm:col-span-2 lg:col-span-3">{{ t('timeRotation.empty') }}</p>
@@ -312,10 +317,16 @@ const statusLoading = ref(false)
 const status = ref<TimeRotationStatus | null>(null)
 const controller = new AbortController()
 let statusRequest = 0
+let statusRefreshTimer: ReturnType<typeof setInterval> | undefined
+const loadedConfigSnapshot = ref('')
+const saveConflict = ref(false)
+let mounted = true
 
 onBeforeUnmount(() => {
+  mounted = false
   controller.abort()
   statusRequest++
+  if (statusRefreshTimer) clearInterval(statusRefreshTimer)
 })
 
 const smart = computed(() => config.value.smart || defaultSmart())
@@ -324,6 +335,7 @@ watch(() => config.value.mode, mode => {
 }, { immediate: true })
 
 const smartCandidates = computed(() => filterAccounts(smartQuery.value))
+const dirty = computed(() => ready.value && loadedConfigSnapshot.value !== JSON.stringify(config.value))
 const statusMessage = computed(() => {
   if (!status.value) return ''
   if (!status.value.enabled) return t('timeRotation.statusDisabled')
@@ -338,6 +350,29 @@ function filterAccounts(query: string) {
 
 function accountName(id: number) {
   return accounts.value.find(account => account.id === id)?.name || t('timeRotation.missingAccount', { id })
+}
+
+function isFuture(value: string | null | undefined) {
+  return Boolean(value && Number.isFinite(new Date(value).getTime()) && new Date(value).getTime() > Date.now())
+}
+
+function smartAccountStatus(account: AccountListItem) {
+  if (account.status !== 'active') return account.status === 'error' ? t('timeRotation.accountError') : t('timeRotation.accountInactive')
+  if (!account.schedulable) return t('timeRotation.accountUnschedulable')
+  if (isFuture(account.temp_unschedulable_until)) return t('timeRotation.accountTemporarilyUnavailable')
+  if (isFuture(account.overload_until)) return t('timeRotation.accountOverloaded')
+  if (isFuture(account.rate_limit_reset_at)) return t('timeRotation.accountRateLimited')
+  if (account.auto_pause_on_expired && account.expires_at && account.expires_at * 1000 <= Date.now()) return t('timeRotation.accountExpired')
+  return t('timeRotation.accountSchedulable')
+}
+
+function smartAccountReason(account: AccountListItem) {
+  if (account.temp_unschedulable_until && isFuture(account.temp_unschedulable_until)) return t('timeRotation.accountUntil', { time: formatBeijingTime(account.temp_unschedulable_until) })
+  if (account.overload_until && isFuture(account.overload_until)) return t('timeRotation.accountUntil', { time: formatBeijingTime(account.overload_until) })
+  if (account.rate_limit_reset_at && isFuture(account.rate_limit_reset_at)) return t('timeRotation.accountUntil', { time: formatBeijingTime(account.rate_limit_reset_at) })
+  if (account.temp_unschedulable_reason) return account.temp_unschedulable_reason
+  if (account.auto_pause_on_expired && account.expires_at && account.expires_at * 1000 <= Date.now()) return t('timeRotation.accountExpired')
+  return ''
 }
 
 function assignedElsewhere(index: number, id: number) {
@@ -447,7 +482,11 @@ function applySavedConfig(saved: AccountTimeRotationConfig) {
   if (config.value.mode === 'smart' && !config.value.smart) config.value.smart = defaultSmart()
 }
 
-async function load() {
+async function load(force = false) {
+  if (!force && dirty.value) {
+    error.value = t('timeRotation.refreshUnsaved')
+    return
+  }
   loading.value = true
   ready.value = false
   error.value = ''
@@ -465,6 +504,7 @@ async function load() {
     }
     if (controller.signal.aborted) return
     applySavedConfig(saved)
+    loadedConfigSnapshot.value = JSON.stringify(config.value)
     accounts.value = all
     ready.value = true
     void loadStatus()
@@ -477,6 +517,7 @@ async function load() {
 
 async function save() {
   error.value = ''
+  saveConflict.value = false
   const isSmart = config.value.mode === 'smart'
   if (isSmart ? !validSmart() : config.value.slots.some(slot => !validManualSlot(slot))) {
     error.value = t(isSmart ? 'timeRotation.invalidSmart' : 'timeRotation.invalid')
@@ -489,14 +530,33 @@ async function save() {
   try {
     const saved = await timeRotationAPI.save(config.value)
     applySavedConfig(saved)
+    loadedConfigSnapshot.value = JSON.stringify(config.value)
     appStore.showSuccess(t('timeRotation.saved'))
     void loadStatus()
   } catch (err) {
-    error.value = extractApiErrorMessage(err, t('timeRotation.saveFailed'))
+    const statusCode = (err as { response?: { status?: number } })?.response?.status
+    if (statusCode === 409) {
+      saveConflict.value = true
+      error.value = extractApiErrorMessage(err, t('timeRotation.saveConflict'))
+    } else {
+      error.value = extractApiErrorMessage(err, t('timeRotation.saveFailed'))
+    }
   } finally {
     saving.value = false
   }
 }
 
-onMounted(load)
+async function reloadAfterConflict() {
+  saveConflict.value = false
+  await load(true)
+}
+
+function refreshSmartStatus() {
+  if (ready.value && config.value.mode === 'smart' && !statusLoading.value) void loadStatus()
+}
+
+onMounted(async () => {
+  await load()
+  if (mounted) statusRefreshTimer = setInterval(refreshSmartStatus, 20_000)
+})
 </script>

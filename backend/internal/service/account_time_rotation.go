@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -11,6 +12,8 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+var errAccountTimeRotationRepositoryUnavailable = errors.New("account time rotation repository is unavailable")
 
 // 时段轮候固定按北京时间每日循环，不依赖服务器时区或系统时区数据库。
 var accountRotationLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -239,6 +242,9 @@ func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountT
 }
 
 func (s *AccountTimeRotationService) Get(ctx context.Context) (*AccountTimeRotationConfig, error) {
+	if s == nil || s.repo == nil {
+		return nil, errAccountTimeRotationRepositoryUnavailable
+	}
 	config, err := s.repo.Get(ctx)
 	if err != nil {
 		return nil, err
@@ -246,6 +252,12 @@ func (s *AccountTimeRotationService) Get(ctx context.Context) (*AccountTimeRotat
 	return cloneAccountTimeRotationConfig(config), nil
 }
 func (s *AccountTimeRotationService) Save(ctx context.Context, config *AccountTimeRotationConfig) (*AccountTimeRotationConfig, error) {
+	if config == nil {
+		return nil, infraerrors.BadRequest("INVALID_TIME_ROTATION", "轮候配置不能为空")
+	}
+	if s == nil || s.repo == nil {
+		return nil, errAccountTimeRotationRepositoryUnavailable
+	}
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
@@ -300,6 +312,10 @@ func cloneAccountTimeRotationConfig(config *AccountTimeRotationConfig) *AccountT
 }
 
 func (s *AccountTimeRotationService) Start() {
+	if s == nil || s.repo == nil {
+		slog.Error("时段轮候启动失败：repository 不可用")
+		return
+	}
 	s.start.Do(func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		s.cancel = cancel

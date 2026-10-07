@@ -33,6 +33,17 @@ beforeEach(() => {
   list.mockResolvedValue({ items: [{ id: 1, name: '账号甲', priority: 70 }, { id: 2, name: '影子账号', parent_account_id: 1, priority: 70 }], pages: 1 })
 })
 describe('时段轮候配置', () => {
+  it('有未保存编辑时点击刷新不会覆盖编辑内容', async () => {
+    const wrapper = render()
+    await flushPromises()
+    await wrapper.find('[data-testid="rotation-enabled"]').setValue(true)
+    await wrapper.find('button.btn-secondary').trigger('click')
+    await flushPromises()
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[role="alert"]').text()).toContain('存在未保存的编辑')
+    wrapper.unmount()
+  })
+
   it('加载三个时段、排除影子账号，并防止跨时段重复选择', async () => {
     const wrapper = render()
     await flushPromises()
@@ -115,6 +126,25 @@ const runningStatus = (revision = 4) => ({
 })
 
 describe('智能轮候状态与编辑边界', () => {
+  it('智能模式每 20 秒自动刷新状态', async () => {
+    vi.useFakeTimers()
+    let wrapper: ReturnType<typeof render> | undefined
+    try {
+      get.mockResolvedValue(smartDefaults())
+      status.mockResolvedValue(runningStatus())
+      wrapper = render()
+      await flushPromises()
+      status.mockClear()
+      status.mockResolvedValue(runningStatus(6))
+      await vi.advanceTimersByTimeAsync(20_000)
+      await flushPromises()
+      expect(status).toHaveBeenCalledTimes(1)
+    } finally {
+      wrapper?.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('允许保存非六段配置，缺失账号可以移除', async () => {
     get.mockResolvedValue(smartDefaults())
     const wrapper = render()

@@ -77,5 +77,18 @@ export default {
   "quota7d": "Weekly quota remaining",
   "quota5h": "Short-window quota remaining",
   "unknown": "Unknown",
-  "invalidSmart": "Check the account pool, 1–24 periods covering the full day continuously, primary counts (1–10000), rotation interval (15–240 and a divisor of 1440), and quota threshold (1–50)."
+  "unsaved": "Unsaved",
+  "invalidSmart": "Check the account pool, 1–24 periods covering the full day continuously, primary counts (1–10000), rotation interval (15–240 and a divisor of 1440), and quota threshold (1–50).",
+  "refreshUnsaved": "You have unsaved edits. Save or discard them before refreshing.",
+  "saveConflict": "The configuration changed elsewhere. Reload it before saving again.",
+  "reloadAfterConflict": "Reload",
+  "accountSchedulable": "Schedulable",
+  "accountUnschedulable": "Scheduling disabled",
+  "accountTemporarilyUnavailable": "Temporarily unavailable",
+  "accountOverloaded": "Load protected",
+  "accountRateLimited": "Rate limited",
+  "accountError": "Error status",
+  "accountInactive": "Inactive",
+  "accountExpired": "Expired",
+  "accountUntil": "Available at {time}"
 }

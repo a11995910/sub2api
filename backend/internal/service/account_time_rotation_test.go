@@ -176,6 +176,20 @@ func TestAccountTimeRotationGetDoesNotRenewRuntimeSnapshot(t *testing.T) {
 	require.Equal(t, lastApplied, refreshed)
 }
 
+func TestAccountTimeRotationNilInputsAreHandledSafely(t *testing.T) {
+	var svc *AccountTimeRotationService
+	_, err := svc.Get(context.Background())
+	require.Error(t, err)
+
+	svc = NewAccountTimeRotationService(nil)
+	_, err = svc.Get(context.Background())
+	require.Error(t, err)
+	_, err = svc.Save(context.Background(), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "轮候配置不能为空")
+	svc.Start()
+}
+
 type rotationWorkerStub struct {
 	applied chan struct{}
 }

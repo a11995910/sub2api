@@ -904,6 +904,10 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 // selectAccountForModelWithExclusionsStickyHit 与 selectAccountForModelWithExclusions 相同，
 // 另返回账号是否来自粘性会话命中。
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, bool, error) {
+	return s.selectAccountForModelWithExclusionsStickyHitFromAccounts(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate, nil, false)
+}
+
+func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHitFromAccounts(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool, preloadedAccounts []Account, accountsLoaded bool) (*Account, bool, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -920,9 +924,13 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx 
 
 	// 2. 获取可调度的 OpenAI 账号
 	// Get schedulable OpenAI accounts
-	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
-	if err != nil {
-		return nil, false, fmt.Errorf("query accounts failed: %w", err)
+	accounts := preloadedAccounts
+	if !accountsLoaded {
+		var err error
+		accounts, err = s.listSchedulableAccounts(ctx, groupID, platform)
+		if err != nil {
+			return nil, false, fmt.Errorf("query accounts failed: %w", err)
+		}
 	}
 
 	// 3. 按优先级 + LRU 选择最佳账号
@@ -1185,7 +1193,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		useSmartLoad = s.smartRotationPlanForRequest(eligible, requireCompact, time.Now()) != nil
 	}
 	if s.concurrencyService == nil || (!cfg.LoadBatchEnabled && !useSmartLoad) {
-		account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
+		account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHitFromAccounts(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate, accounts, accountsLoaded)
 		if err != nil {
 			return nil, err
 		}
