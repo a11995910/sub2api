@@ -2,34 +2,58 @@
 
 本文档描述 Sub2API 当前正式 VPS 的运行拓扑、目录、发布顺序和回滚边界。项目只有一台正式 VPS，不存在独立测试 VPS；旧主机不再作为 Sub2API 正式线上环境。
 
-## 迁移准备目标
+## 主机角色与迁移边界
 
-当前生产入口仍在 `205.185.113.15`。准备迁往 `185.61.210.32`，附加地址为 `185.61.210.33` 至 `185.61.210.36`；本机通过 `ssh sub2api-migration-vps` 使用独立 Ed25519 密钥登录 root。新主机为 Ubuntu 24.04、40 个逻辑 CPU、约 62GiB 内存、1.8TiB 根磁盘。服务器密码与私钥不进入 Git。
+当前正式线上主机为 `185.61.210.32`，附加地址为 `185.61.210.33` 至 `185.61.210.36`。prod、隔离 staging、各自的 PostgreSQL 和 Redis 均位于该主机。本机通过 `ssh sub2api-migration-vps` 使用专用密钥 `~/.ssh/sub2api_185_61_210_32_ed25519` 登录 root；服务器密码与私钥不进入 Git。
 
-迁移准备包含 Docker、Compose、Buildx、Nginx、隔离 staging、运行配置及业务数据恢复验证。正式入口切换需用户另行明确授权；准备阶段不修改 DNS、不停止旧站。目标主机上的生产数据副本不得启动会刷新 OAuth、处理支付或执行后台任务的第二套生产应用。
+`205.185.113.15`（别名 `sub2api-new-vps`）为旧正式数据源和回滚参考，不执行新版本发布。新 shop 跳板为 `166.88.36.223`（别名 `sub2api-shop-vps`），已完成 Caddy 反代和证书迁入，等待用户切换 DNS；旧跳板 `207.57.145.15`（别名 `sub2api-jump-vps`）保留用于过渡和回滚。跳板角色与主应用发布主机分开管理，DNS 记录、证书续期、验收和回滚见 [shop 跳板运行说明](SHOP_JUMP_CN.md)。
 
-原定北京时间 2026-09-27 20:30 已由用户调整为本次实际一致性快照时间。PostgreSQL 使用一致性逻辑快照，经加密 SSH 传输直接写入目标主机 `/opt/sub2api/migration/`，记录快照时间、源版本、校验值及恢复结果。原服务器不落地全库 dump；不得直接复制运行中的 PostgreSQL 数据目录。目标恢复使用与源端一致的 PostgreSQL 主版本和扩展。
+当前正式机已承接生产，升级必须走普通 staging 验证和经用户确认的 prod 发布，不得通过 bootstrap 参数绕过健康门禁。迁移隔离数据库副本不得另行启动会刷新 OAuth、处理支付或执行后台任务的第二套生产应用。
 
-正式切换采用短暂停写后的最终一致性快照替换目标副本，同时最终同步应用文件及 Redis 状态；这样覆盖基线后全部新增、更新、删除和序列变化。此方式属于最终全量追平，不是按时间戳筛选的增量导入。切换前先测量导出、传输和恢复耗时并报告维护窗口；旧站保持唯一写入源，直到最终同步完成。若维护窗口不可接受，应先单独验证物理复制方案，不能临场跳过一致性检查。
-
-准备阶段的 staging 使用全新独立数据库及密钥。生产基线保存在隔离、无应用写入的恢复数据库中；恢复核对表数量、关键表行数、迁移账本及数据库完整性。Redis 与文件快照单独记录采集时间，不能声称它们和数据库构成跨服务原子快照。正式切换前需在暂停写入后再同步这些状态。
+后续如需迁移或恢复，必须单独确认数据真值来源、停写窗口和回滚方式。一致性快照记录实际采集时间、源版本、校验值与恢复结果，只保存于目标主机 root-only 目录；不得直接复制运行中的 PostgreSQL 数据目录。追平必须覆盖新增、修改、删除、序列及余额、订单等状态，不能仅按 `created_at` 追加。Redis 与文件快照分别记录采集时间，不视为跨服务原子快照。
 
 ## 正式 VPS
 
 | 项目 | 当前值 |
 | --- | --- |
-| 地址 | `205.185.113.15` |
+| 地址 | `185.61.210.32` |
 | 登录账户 | `root` |
-| 本机 SSH 别名 | `sub2api-new-vps` |
+| 本机 SSH 别名 | `sub2api-migration-vps` |
 | 源码目录 | `/opt/sub2api/repo` |
 | 源码分支 | 只允许 `main` |
 | 部署方式 | VPS 拉取 Git、VPS 本机构建 Docker 镜像 |
-| 预发布入口 | staging，宿主机端口 `18080` |
+| 预发布入口 | `http://185.61.210.32:18080`，上游 `127.0.0.1:18080` |
 | 正式入口 | prod，宿主机端口 `8080` |
 
-当前正式 VPS 实测资源为 4 vCPU、约 16GiB 内存、4GiB Swap，可用磁盘约 276GiB。staging 和 prod 构建共用 `deploy/release-gates check-build-resources` 门禁：至少保留 20GiB 磁盘、12GiB 总内存、4GiB 可用内存；通过 `/proc/stat` 间隔 1 秒采样的整机 CPU 使用率必须不超过 50%，idle 和 iowait 不计入占用，采样失败拒绝发布，不检查 load average。`GOMAXPROCS` 根据在线 CPU、可用内存和默认上限 8 动态计算，按每个编译并行槽 2GiB 可用内存估算；在该主机基线下通常为 4。门禁失败时禁止继续 Docker 构建。
+当前正式 VPS 实测资源为 40 vCPU、约 62GiB 内存、1.8TiB 根磁盘。staging 和 prod 构建共用 `deploy/release-gates check-build-resources` 门禁：至少保留 20GiB 磁盘、12GiB 总内存、4GiB 可用内存；通过 `/proc/stat` 间隔 1 秒采样的整机 CPU 使用率必须不超过 50%，idle 和 iowait 不计入占用，采样失败拒绝发布，不检查 load average。`GOMAXPROCS` 根据在线 CPU、可用内存和默认上限 8 动态计算，按每个编译并行槽 2GiB 可用内存估算；在该主机资源充足时为 8。门禁失败时禁止继续 Docker 构建。
 
 服务器密码、SSH 私钥、Token、数据库密码、OAuth 密钥和 Cookie 不得写入仓库、文档、镜像 tag 或日志。登录优先使用 SSH Key；运行配置只保存在服务器 root-only 文件中。
+
+## 主 IP HTTP API 入口
+
+`http://185.61.210.32` 可直接调用正式 API；要求 OpenAI 兼容 Base URL 的客户端使用 `http://185.61.210.32/v1`。该入口不跳转 HTTPS，API Key 鉴权由正式应用处理。HTTP 会明文传输密钥与请求内容；支持域名的客户端优先使用 `https://fast.youkeduo.xyz`，现有 HTTPS 证书不覆盖主 IP。
+
+Nginx 配置位于 `/etc/nginx/conf.d/sub2api-ip-http.conf`，只监听 `185.61.210.32:80`，上游固定为 `http://127.0.0.1:8080`。配置关闭响应缓冲，保留 WebSocket Upgrade，读写超时为 3600 秒，请求体上限为 200MiB；`X-Forwarded-Proto` 使用实际请求协议。连接升级使用现有 `/etc/nginx/conf.d/youkeduo-ssl-local.conf` 中的 `$sub2api_connection_upgrade` 映射。既有域名仍由各自 HTTPS 入口处理。
+
+维护前将 Nginx 配置备份到服务器 root-only 目录；执行 `nginx -t` 后平滑 reload，并等待新监听生效。验证公网 `/health` 返回 200，未带密钥的 `/v1/models` 和 POST `/v1/responses` 返回 `API_KEY_REQUIRED`（401），同时回归两个 fast 域名和两个画布域名的 HTTPS。401 仅证明入口及鉴权链路可达，真实模型响应仍需客户端携带有效密钥测试。
+
+首次启用前的配置备份位于 `/root/sub2api-ip-http-20261002-045701/nginx`，同目录 `prod-before.txt` 记录正式镜像和启动时间。撤销此 HTTP 入口时，仅将 `sub2api-ip-http.conf` 移出 Nginx 加载目录，通过 `nginx -t` 后平滑 reload；不回退其他站点配置，也不重建应用或数据库。
+
+## 固定 staging 测试站
+
+预发布站点为 `http://185.61.210.32:18080`，智能轮候页面为 `/admin/intelligent-ops/time-rotation`。该地址通过主 IP 直达新正式 VPS，不依赖域名解析或用户电脑上的 SSH 隧道。公网端口 18080 只承接 staging；默认 443 仍承接 prod。使用 staging 独立账号登录，浏览器按不同端口隔离本地登录存储。
+
+配置来源为仓库 `deploy/nginx-staging.conf`，部署到 `/etc/nginx/conf.d/sub2api-staging.conf`，只监听主 IP 的 18080 端口，全部页面及 API 固定转发到 `127.0.0.1:18080`，支持流式响应和 WebSocket。不能引用指向正式 8080 端口的 Responses 配置片段。公网 Nginx 绑定 `185.61.210.32:18080`，容器只绑定 `127.0.0.1:18080`，两者地址不同且不冲突；响应包含 `X-Sub2API-Environment: staging` 和禁止索引标识。
+
+安装或更新前，在 root-only 目录备份现有 Nginx 配置，并记录 prod/staging 镜像。只从已推送的 `origin/main` 安装配置：
+
+```bash
+install -o root -g root -m 0644 /opt/sub2api/repo/deploy/nginx-staging.conf /etc/nginx/conf.d/sub2api-staging.conf
+nginx -t
+systemctl reload nginx
+```
+
+等待新监听生效后，从公网验证 HTTP、登录页、轮候页、静态资源与 staging 一致，以及未认证管理接口和模型接口返回 401；同时回归现有 fast、canvas 域名和正式镜像健康状态。`release-staging` 将公网健康、环境标识、版本和页面入口资源一致性作为成功条件，回执记录 `public_url`。若维护失败，恢复该配置的备份（首次安装则移出新增文件），通过 `nginx -t` 后 reload；不回退应用数据或其他站点。
 
 ## 环境隔离
 
@@ -55,7 +79,7 @@ staging 和 prod 位于同一台服务器，但必须保持以下隔离：
 
 ### 新主机首次 staging bootstrap
 
-迁移到新正式 VPS 时，staging 必须先于 prod 验证。仅在用户已明确授权、且目标主机完全没有 prod 配置、compose 容器和数据文件时，可以执行：
+以下首次启动规则仅适用于尚未接流的新迁移目标，不适用于当前已有 prod 的正式机。迁移到新正式 VPS 时，staging 必须先于 prod 验证。仅在用户已明确授权、且目标主机完全没有 prod 配置、compose 容器和数据文件时，可以执行：
 
 ```bash
 /opt/sub2api/scripts/release-staging "$expected_commit" --bootstrap-without-prod
@@ -92,5 +116,7 @@ prod 切换前必须：
 应用异常时由发布脚本把 prod `SUB2API_IMAGE` 恢复为发布前原镜像 tag，再通过 compose 只重建应用容器，依次等待 Docker health 和宿主机 HTTP 健康检查通过。临时回滚 tag 只能在恢复成功后删除。数据库迁移为前向迁移，默认保留新增列、索引和约束；只有确认旧镜像不兼容且已有经过验证的反向迁移时，才允许修改数据库结构。staging 涉及数据清理的升级先保存其独立数据库备份，并核对恢复方式。
 
 ## 资源与其他服务
+
+Infinite Canvas 和 Team Manage 也运行于该新正式机，分别使用独立 SQLite 数据和运行配置。画布由 Nginx 转发至 `127.0.0.1:13000`，Team Manage 使用 `8008` 端口；旧机对应应用已停止，仅保留入口转发和恢复数据。启动、验收、最终快照边界及回滚见 [画布与账号管理运行说明](AUXILIARY_APPS_CN.md)。
 
 构建前必须检查磁盘、内存、CPU 和当前容器负载。正式 VPS 同时运行的其他服务不得因 Sub2API 构建或清理被停止、重建或删除。Docker 清理必须保护所有运行中镜像、Sub2API 当前/回滚镜像以及全部业务数据卷。

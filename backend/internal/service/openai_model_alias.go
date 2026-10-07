@@ -17,6 +17,7 @@ type openAIFastModelPolicy struct {
 // 被较短的基础型号提前匹配。
 var openAIFastModelPolicies = func() []openAIFastModelPolicy {
 	policies := []openAIFastModelPolicy{
+		{CanonicalSKU: "gpt-6.1-sol", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-6-astra", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-6-sol", FallbackRatio: 2},
 		{CanonicalSKU: "gpt-6-luna", FallbackRatio: 2},

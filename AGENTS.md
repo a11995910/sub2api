@@ -11,8 +11,12 @@
 ## VPS 连接
 
 - 当前正式线上 VPS：`185.61.210.32`（主 IP），附加 IP 为 `185.61.210.33` 至 `185.61.210.36`，登录账户 `root`，本机 SSH 别名 `sub2api-migration-vps`，使用专用密钥 `~/.ssh/sub2api_185_61_210_32_ed25519`。
+- 主 IP 支持 `http://185.61.210.32` 调用 API：Nginx `/etc/nginx/conf.d/sub2api-ip-http.conf` 仅监听 `185.61.210.32:80`，转发至 `127.0.0.1:8080`，支持流式响应与 WebSocket。HTTP 为明文传输；HTTPS 调用使用域名，现有证书不覆盖 IP。入口维护与回滚见 `docs/VPS_MIGRATION_CN.md`。
 - 旧正式 VPS：`205.185.113.15`，登录账户 `root`，本机 SSH 别名 `sub2api-new-vps`；作为旧线上数据源和回滚参考，不作为当前正式接流机器。服务器密码只作运行时登录凭据，不保存到本文件。
-- shop 跳板机：`207.57.145.15`，本机 SSH 别名 `sub2api-jump-vps`；`fast.youkeduo.shop` 和 `fast.yukeduo.shop` 的 HTTPS 上游当前指向 `185.61.210.32`。修改跳板配置前必须备份、执行 `nginx -t` 并 reload 后验证域名请求。
+- 新 shop 跳板机：`166.88.36.223`，登录账户 `root`，本机 SSH 别名 `sub2api-shop-vps`，专用密钥 `~/.ssh/sub2api_166_88_36_223_ed25519`。使用现有 Caddy，配置为 `/etc/caddy/Caddyfile`；已准备 `fast.youkeduo.shop`、`fast.yukeduo.shop` 和 `canvas.youkeduo.shop` 到 `185.61.210.32` 的 HTTPS 反代，并迁入证书交由 Caddy 自动续期。新机另有 `mogai.youkeduo.shop` 和其他容器，禁止覆盖其配置、占用既有端口或重建无关服务。
+- 旧 shop 跳板机：`207.57.145.15`，本机 SSH 别名 `sub2api-jump-vps`，使用 `~/.ssh/id_ed25519`，保留作 DNS 过渡和回滚。2026-10-02 核实时，上述三个域名仍各有 `207.57.145.15` 和 `192.220.36.75` 两条 A 记录；DNS 由用户切换，需要同时替换两条旧记录。两个 fast 域名已通过新机 HTTPS 验证；画布迁入新正式机后，其正式上游、新旧跳板及两个现有 DNS 入口均已通过 HTTP 200 验证。详见 `docs/SHOP_JUMP_CN.md`。
+- 另一个现有 shop 入口 `192.220.36.75` 使用 Nginx；两个 fast 域名的 HTTPS 业务上游均为 `https://fast.youkeduo.xyz`，TLS 校验名称同为 `fast.youkeduo.xyz`，保留原始 Host，不写死正式机 IP。该机通过现有 root SSH 密钥访问；还运行其他站点和账号管理容器，只允许按授权修改对应站点，不参与主应用发布或异机备份。
+- 修改跳板配置前必须备份；旧机使用 `nginx -t`，新机使用 `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`，平滑 reload 后等待新配置生效，再逐入口验证版本、目标域名和同机既有域名，不能仅用健康接口判断版本一致。证书、私钥和备份只保存在服务器受限目录，不得进入仓库；不将 shop 跳板迁移当作主应用 prod 发布。
 - 新正式主机实测为 Ubuntu 24.04、40 个逻辑 CPU、约 62GiB 内存、1.8TiB 根磁盘；五个 IP 均已配置。当前正式 prod、隔离 staging、数据库和 Redis 均位于该主机，发布只允许使用已推送 `origin/main` 的同一 commit。
 - 迁移数据同步必须记录实际快照时间和增量边界；正式线上切换后补齐此后新增、修改、删除及余额、订单等状态，不得仅按 `created_at` 追加记录。迁移快照与运行配置仅保存于新正式主机 root-only 目录；不得在旧正式 VPS 创建全库 dump 文件。
 - `deploy/release-prod ... --bootstrap-isolated` 仅用于迁移验收或隔离数据库首次启动；当前新正式主机已有 prod，正式升级必须走 staging 验证后再用同一 commit/run 执行普通 prod 发布。
@@ -41,6 +45,7 @@
 
 - 项目当前正式 VPS 为 `185.61.210.32`，登录账户 `root`，本机 SSH 别名 `sub2api-migration-vps`；不存在独立测试 VPS。`205.185.113.15` 仅作为旧正式数据源和回滚参考。
 - 预发布验证在新正式 VPS 的隔离 staging 中完成。功能代码必须先在本地完成验证、合并并推送到 `main`，staging 只允许拉取和构建 `origin/main`，并使用独立 compose project、运行配置、数据库、Redis、数据目录和 `18080` 端口。
+- staging 固定公网测试站为 `http://185.61.210.32:18080`，Nginx 配置由仓库 `deploy/nginx-staging.conf` 安装至 `/etc/nginx/conf.d/sub2api-staging.conf`，只转发 `127.0.0.1:18080`。修改前备份配置，`nginx -t` 通过后平滑 reload，并回归既有站点。`release-staging` 必须校验公网 HTTP、环境标识、版本及页面资源与隔离容器一致，不能以本机隧道代替固定测试站验收。
 - staging 验证通过后必须报告验证结果、目标 `main` commit 和风险点，并等待用户明确口头命令；prod 只能切换到 staging 已验证的同一个 `main` commit，不得在 staging 验证后再合并代码或更换 commit。
 - 迁移期首次启动 staging 的 bootstrap 规则仅适用于历史准备阶段；当前 prod 已存在，不得使用 `--bootstrap-without-prod` 绕过正常 prod 健康门禁。
 - 新正式 VPS 当前实测为 40 vCPU、约 62GiB 内存和 1.8TiB 根磁盘。构建前统一执行 `deploy/release-gates check-build-resources`；仍需避免构建与线上请求争抢资源。
@@ -145,10 +150,12 @@ install -o root -g root -m 0700 deploy/release-prod /opt/sub2api/scripts/release
 
 正式 VPS `sub2api` 验证通过后，还必须检查 Nginx/Caddy 反代、HTTPS、管理端账号页、`/api/v1/admin/accounts`、`/purchase`、`/models`、容器日志和数据库连接。
 
-## Excel Bridge 独立上游
+## 画布与账号管理
 
-- Excel Bridge 为独立附加上游，位于正式 VPS `/opt/excel-codex-bridge`，容器名 `excel-sub2api`，只连接 Sub2API 的 Docker 内网，不发布宿主机端口。其源码来自 `Kaixxrua/excel-codex-bridge` 的固定版本，与 `/opt/sub2api/repo` 主应用仓库分开管理。
-- Excel Bridge 使用独立 API Key 账号和独立测试分组；用户授权的 ChatGPT 会话（Codex 或 Excel 来源）同步及真实调用、用量和计费验证完成前，账号与分组保持停用。部署与恢复步骤见 `docs/EXCEL_BRIDGE_CN.md`，主应用发布门禁保持不变。
+- Infinite Canvas 与 Team Manage 已迁至新正式 VPS `185.61.210.32`，分别使用独立 SQLite 数据库；运行目录、入口、校验记录和回滚边界见 `docs/AUXILIARY_APPS_CN.md`。
+- 画布容器 `infinite-canvas` 通过 `127.0.0.1:13000` 提供服务，Nginx 必须使用该固定宿主机端口，不得依赖容器动态 IP。
+- `team-manage.service` 使用 `/opt/team-manage/current`、独立运行配置和 `8008` 端口；启动会执行账号同步及自动化，同一份业务数据只允许一侧应用运行。
+- 旧正式 VPS 的两个应用已停止并取消自动启动，旧 Nginx 仅转发相关入口到新机。旧机仍承担转发及 Excel Bridge，不能直接停机；回滚须先同步新机最新数据，不能重启冻结的旧数据副本。
 
 ## 文档同步
 

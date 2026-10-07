@@ -235,3 +235,45 @@ func TestAccountSmartRotationWorkerDoesNotLockOrUpdateAccounts(t *testing.T) {
 	require.Equal(t, int64(3), result.Revision)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestSmartRotationHealthSnapshotVersionGuard(t *testing.T) {
+	for _, stale := range []bool{false, true} {
+		t.Run(map[bool]string{false: "同版本保存独立状态", true: "拒绝旧版本覆盖"}[stale], func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer db.Close()
+			cfg := service.DefaultAccountTimeRotationConfig()
+			cfg.Revision = 9
+			raw, err := json.Marshal(accountTimeRotationState{Config: *cfg})
+			require.NoError(t, err)
+			snapshot := &service.AccountSmartRotationHealthSnapshot{Revision: 9, Accounts: map[int64]service.AccountSmartRotationHealth{1: {State: "cooling", CooldownUntil: time.Now().Add(time.Hour)}}}
+			if stale {
+				snapshot.Revision = 8
+			}
+			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WithArgs(accountTimeRotationKey).WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+			if stale {
+				mock.ExpectRollback()
+			} else {
+				mock.ExpectExec("INSERT INTO settings.*account_smart_rotation_health").WithArgs(sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			}
+			repo := NewAccountTimeRotationRepository(db).(service.AccountSmartRotationHealthRepository)
+			require.NoError(t, repo.SaveHealth(context.Background(), snapshot))
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestSmartRotationLoadHealthSnapshot(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectQuery("SELECT value FROM settings WHERE key = 'account_smart_rotation_health'").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(`{"revision":4,"accounts":{"1":{"state":"recovering","healthy_streak":2}}}`))
+	repo := NewAccountTimeRotationRepository(db).(service.AccountSmartRotationHealthRepository)
+	state, err := repo.LoadHealth(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(4), state.Revision)
+	require.Equal(t, 2, state.Accounts[1].HealthyStreak)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

@@ -25,18 +25,33 @@ export interface SmartRotationPeriod {
 
 export interface SmartTimeRotationConfig {
   account_ids: number[]
-  periods: SmartRotationPeriod[]
-  rotation_minutes: number
-  quota_reserve_percent: number
+  ttft_threshold_seconds?: number
+  slow_request_count?: number
+  healthy_request_count?: number
+  sample_window_minutes?: number
+  cooldown_minutes?: number
+  waiting_priority?: number
+  probe_interval_seconds?: number
+  /** 兼容历史日程配置，智能模式不再使用。 */
+  periods?: SmartRotationPeriod[]
+  rotation_minutes?: number
+  quota_reserve_percent?: number
 }
 
 export interface TimeRotationStatusAccount {
   account_id: number
   name: string
-  role: 'primary' | 'standby' | 'protected' | 'unavailable'
+  role: 'normal' | 'cooling' | 'recovering' | 'unavailable'
   reason: string
-  quota_7d_remaining?: number | null
-  quota_5h_remaining?: number | null
+  original_priority: number
+  effective_priority: number
+  slow_streak: number
+  healthy_streak: number
+  last_ttft_ms?: number | null
+  last_duration_ms?: number | null
+  last_sample_at?: string | null
+  cooldown_until?: string | null
+  next_probe_at?: string | null
 }
 
 export interface TimeRotationStatus {

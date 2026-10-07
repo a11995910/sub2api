@@ -96,7 +96,7 @@ type BillingCache interface {
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
-	// UltrafastMultiplier is model-owned and independent of operator Fast pricing.
+	// UltrafastMultiplier 由模型定义，独立于运营者配置的 Fast 倍率。
 	UltrafastMultiplier                float64
 	InputPricePerToken                 float64            // 每token输入价格 (USD)
 	InputPricePerTokenPriority         float64            // priority service tier 下每token输入价格 (USD)
@@ -1912,7 +1912,12 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
 	needsOpus55FastMultiplier := claude.IsOpus55(model) && pricing.FastMultiplier == nil
 	needsFastFallback := supportsFast && hasMissingPriorityPricing(pricing)
-	if !clearUnsupportedFast && !needsCacheCreationPolicy && !needsFastFallback && !needsOpus55FastMultiplier {
+	needsUltrafastMultiplier := isOpenAIGPT6AstraModel(normalized) && pricing.UltrafastMultiplier != 6
+	// 默认目录中 GPT-6 Sol/Luna 与 GPT-6.1 Sol 的显式免费缓存写入覆盖旧 priority 价。
+	// 渠道独立档位报价仍保留运营者配置。
+	needsFreeCacheWritePriority := defaultCatalog && (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized)) &&
+		pricing.CacheCreationPriceExplicit && pricing.CacheCreationPricePerToken == 0 && pricing.CacheCreationPricePerTokenPriority != 0
+	if !clearUnsupportedFast && !needsCacheCreationPolicy && !needsFastFallback && !needsOpus55FastMultiplier && !needsUltrafastMultiplier && !needsFreeCacheWritePriority {
 		return pricing
 	}
 	cloned := *pricing
@@ -1937,6 +1942,9 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 		cloned.FastMultiplier = &standardOnly
 	} else if supportsFast {
 		fillMissingOpenAIFastPricing(&cloned, fastPolicy.FallbackRatio)
+	}
+	if needsFreeCacheWritePriority {
+		cloned.CacheCreationPricePerTokenPriority = 0
 	}
 	return &cloned
 }

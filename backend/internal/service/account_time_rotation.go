@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -34,7 +33,15 @@ type AccountSmartRotationPeriod struct {
 }
 
 type AccountSmartRotationConfig struct {
-	AccountIDs          []int64                      `json:"account_ids"`
+	TTFTThresholdSeconds int     `json:"ttft_threshold_seconds"`
+	SlowRequestCount     int     `json:"slow_request_count"`
+	HealthyRequestCount  int     `json:"healthy_request_count"`
+	SampleWindowMinutes  int     `json:"sample_window_minutes"`
+	CooldownMinutes      int     `json:"cooldown_minutes"`
+	WaitingPriority      int     `json:"waiting_priority"`
+	ProbeIntervalSeconds int     `json:"probe_interval_seconds"`
+	AccountIDs           []int64 `json:"account_ids"`
+	// 以下字段只用于读取历史配置，不再参与智能调度。
 	Periods             []AccountSmartRotationPeriod `json:"periods"`
 	RotationMinutes     int                          `json:"rotation_minutes"`
 	QuotaReservePercent int                          `json:"quota_reserve_percent"`
@@ -58,16 +65,9 @@ func DefaultAccountTimeRotationConfig() *AccountTimeRotationConfig {
 
 func defaultSmartRotationConfig() *AccountSmartRotationConfig {
 	return &AccountSmartRotationConfig{
-		AccountIDs: []int64{},
-		Periods: []AccountSmartRotationPeriod{
-			{Start: "00:00", End: "08:00", PrimaryCount: 1},
-			{Start: "08:00", End: "10:00", PrimaryCount: 2},
-			{Start: "10:00", End: "14:00", PrimaryCount: 4},
-			{Start: "14:00", End: "18:00", PrimaryCount: 4},
-			{Start: "18:00", End: "22:00", PrimaryCount: 3},
-			{Start: "22:00", End: "24:00", PrimaryCount: 2},
-		},
-		RotationMinutes: 60, QuotaReservePercent: 10,
+		AccountIDs:           []int64{},
+		TTFTThresholdSeconds: 20, SlowRequestCount: 3, HealthyRequestCount: 3,
+		SampleWindowMinutes: 10, CooldownMinutes: 30, WaitingPriority: 50, ProbeIntervalSeconds: 60,
 	}
 }
 
@@ -102,6 +102,7 @@ func (c *AccountTimeRotationConfig) Validate() error {
 	if c.Smart == nil {
 		c.Smart = defaultSmartRotationConfig()
 	}
+	c.Smart.fillLegacyHealthPolicy()
 	if c.Mode == "smart" {
 		// 智能配置可以独立提交；保留默认手动时段，便于后续切回手动模式。
 		if len(c.Slots) == 0 {
@@ -120,37 +121,8 @@ func (c *AccountTimeRotationConfig) Validate() error {
 			}
 			seenSmart[id] = true
 		}
-		if len(c.Smart.Periods) < 1 || len(c.Smart.Periods) > 24 {
-			return invalid("智能轮候必须设置 1 至 24 个时段")
-		}
-		periods := append([]AccountSmartRotationPeriod(nil), c.Smart.Periods...)
-		sort.Slice(periods, func(i, j int) bool { return periods[i].Start < periods[j].Start })
-		cursor := 0
-		for i, period := range periods {
-			start, err := rotationMinute(period.Start, false)
-			if err != nil {
-				return invalid(fmt.Sprintf("智能时段 %d 开始时间无效：%s", i+1, err))
-			}
-			end, err := rotationMinute(period.End, true)
-			if err != nil {
-				return invalid(fmt.Sprintf("智能时段 %d 结束时间无效：%s", i+1, err))
-			}
-			if start != cursor || end <= start {
-				return invalid("智能轮候时段必须从 00:00 到 24:00 完整覆盖且不能重叠（不支持跨午夜）")
-			}
-			if period.PrimaryCount < 1 || period.PrimaryCount > 10000 {
-				return invalid("智能轮候主力账号数必须是 1 至 10000")
-			}
-			cursor = end
-		}
-		if cursor != 1440 {
-			return invalid("智能轮候时段必须完整覆盖 00:00 至 24:00")
-		}
-		if c.Smart.RotationMinutes < 15 || c.Smart.RotationMinutes > 240 || 1440%c.Smart.RotationMinutes != 0 {
-			return invalid("智能轮候轮换分钟数必须为 15 至 240 且能整除 1440")
-		}
-		if c.Smart.QuotaReservePercent < 1 || c.Smart.QuotaReservePercent > 50 {
-			return invalid("智能轮候额度保留比例必须为 1 至 50")
+		if err := c.Smart.validateHealthPolicy(); err != nil {
+			return invalid(err.Error())
 		}
 	}
 	if len(c.Slots) != 3 {
@@ -235,6 +207,8 @@ type AccountTimeRotationService struct {
 	snapshotMu  sync.RWMutex
 	snapshot    *AccountTimeRotationConfig
 	refreshedAt time.Time
+	health      map[int64]*AccountSmartRotationHealth
+	persistMu   sync.Mutex
 }
 
 func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
@@ -288,6 +262,7 @@ func (s *AccountTimeRotationService) publish(config *AccountTimeRotationConfig, 
 	if s.snapshot != nil && config.Revision < s.snapshot.Revision {
 		return
 	}
+	s.reconcileHealthLocked(config)
 	s.snapshot = cloneAccountTimeRotationConfig(config)
 	s.refreshedAt = refreshedAt
 }
@@ -329,7 +304,14 @@ func (s *AccountTimeRotationService) Start() {
 				result, err := s.repo.Apply(runCtx, nil, time.Now())
 				runCancel()
 				if err == nil {
-					s.publish(result, time.Now())
+					if loadErr := s.restoreHealth(ctx, result); loadErr != nil {
+						slog.Error("智能轮候状态恢复失败", "error", loadErr)
+					} else {
+						s.publish(result, time.Now())
+						if saveErr := s.persistHealth(ctx); saveErr != nil {
+							slog.Error("智能轮候状态保存失败", "error", saveErr)
+						}
+					}
 				}
 				if err != nil && ctx.Err() == nil {
 					slog.Error("时段轮候执行失败，将在下一轮重试", "error", err)
@@ -350,5 +332,10 @@ func (s *AccountTimeRotationService) Stop() {
 			s.cancel()
 		}
 		s.wg.Wait()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.persistHealth(ctx); err != nil {
+			slog.Error("智能轮候退出时保存失败", "error", err)
+		}
 	})
 }

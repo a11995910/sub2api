@@ -54,6 +54,9 @@ const (
 // UpstreamBillingProbeMaxBatchSize limits one manual batch and one runner cycle.
 const UpstreamBillingProbeMaxBatchSize = upstreamBillingProbeMaxPerCycle
 
+// BillingPromoCapabilityHeader 值为 1 时声明客户端支持独立活动折扣字段。
+const BillingPromoCapabilityHeader = "X-Sub2API-Billing-Promo"
+
 // upstreamBillingRateSyncMaxMultiplier bounds the value the automatic
 // write-back may push into accounts.rate_multiplier.
 //
@@ -677,6 +680,10 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	account.ApplyHeaderOverrides(req.Header)
+	// 能力声明必须在账号请求头覆写之后设置，避免拿到已折扣的基准后重复乘活动因子。
+	// 覆写会保留小写键，先清理同名头，防止与 Header.Set 生成的规范键同时发送。
+	deleteHeaderAllForms(req.Header, strings.ToLower(BillingPromoCapabilityHeader))
+	req.Header.Set(BillingPromoCapabilityHeader, "1")
 	var tlsProfile *tlsfingerprint.Profile
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(account)

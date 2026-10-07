@@ -372,6 +372,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	healthVisibleTTFT := s.smartRotationMeasuresVisibleTTFT(account)
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
@@ -652,7 +653,7 @@ readLoop:
 		if isTerminalEvent {
 			terminalEventCount++
 		}
-		if firstTokenMs == nil && isTokenEvent {
+		if firstTokenMs == nil && isTokenEvent && (!healthVisibleTTFT || openAIStreamDataStartsVisibleOutput(string(message), eventType)) {
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}

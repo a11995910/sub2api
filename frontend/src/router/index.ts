@@ -612,7 +612,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: '时段轮候',
+      title: '账号轮候',
       titleKey: 'timeRotation.title',
       descriptionKey: 'timeRotation.description'
     }

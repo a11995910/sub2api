@@ -14,6 +14,10 @@
 
 账号成本与用户售价使用同一请求的定价时刻，保留高峰、低峰、推理等级、视频成本和 Fast SKU 策略。认证快照同时保存上游白名单和定制授权、计费字段；版本变化后旧缓存重新加载。
 
+`GET /v1/sub2api/billing` 通过请求头 `X-Sub2API-Billing-Promo: 1` 协商活动折扣能力。携带该值时，`group_rate_multiplier`、`user_rate_multiplier`（如有）与 `resolved_rate_multiplier` 返回折前基准，`effective_rate_multiplier = resolved × applied_peak × applied_promo`。未携带或值不为 `1` 时，三项基准均折入查询时刻的活动折扣，保持 `resolved = user ?? group` 和 `effective = resolved × applied_peak`，兼容不认识活动字段的官方下游探针。活动信息字段仍保留；关闭活动或处于窗口外时活动因子为 `1`。
+
+本定制版探针在应用账号自定义请求头之后设置上述能力声明，按窗口现算高峰与活动因子，并仅将折前 `resolved` 同步到账号静态倍率列，避免冻结短期折扣或重复计算。旧客户端看到的活动倍率随重新探测更新，无法仅凭旧协议在活动边界自动恢复折前基准。
+
 Chat Completions 共享发送层统一处理传输错误，调用方直接返回该错误，避免重复记录或重复执行账号处理。客户端错误消息保留 `reasoning.mode` 和 `reasoning.effort` 参数路径，上游 URL、其他域名和 IP 继续脱敏。
 
 ## 图片端点与用户功能
