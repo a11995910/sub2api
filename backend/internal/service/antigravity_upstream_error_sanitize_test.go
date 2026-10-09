@@ -44,6 +44,7 @@ func TestBuildAntigravityClientErrorBody_ScrubsPoolIdentity(t *testing.T) {
 func TestBuildAntigravityClientErrorBody_NonJSONBody(t *testing.T) {
 	out := string(buildAntigravityClientErrorBody(http.StatusTooManyRequests, []byte("quota exceeded for consumer 987654321 sa@x.iam.gserviceaccount.com")))
 	require.NotContains(t, out, "987654321")
+	require.NotContains(t, out, "sa@")
 	require.NotContains(t, out, "gserviceaccount")
 	require.Contains(t, out, `"status":"RESOURCE_EXHAUSTED"`)
 	require.Contains(t, out, `"code":429`)

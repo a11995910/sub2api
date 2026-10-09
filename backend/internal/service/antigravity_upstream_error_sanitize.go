@@ -18,11 +18,11 @@ func sanitizeAntigravityErrorText(msg string) string {
 	if msg == "" {
 		return msg
 	}
-	msg = sanitizeUpstreamErrorMessage(msg)
+	// 先匹配完整身份，避免通用域名脱敏破坏邮箱后留下账号名前缀。
 	msg = antigravityProjectRefRegex.ReplaceAllString(msg, "projects/***")
 	msg = antigravityEmailRegex.ReplaceAllString(msg, "***")
 	msg = antigravityConsumerRegex.ReplaceAllString(msg, "$1$2***")
-	return msg
+	return sanitizeUpstreamErrorMessage(msg)
 }
 
 // buildAntigravityClientErrorBody 为客户端构造 Gemini 风格的错误体：

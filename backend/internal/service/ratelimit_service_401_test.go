@@ -19,7 +19,9 @@ type rateLimitAccountRepoStub struct {
 	tempCalls              int
 	rateLimitedCalls       int
 	updateCredentialsCalls int
+	updateExtraCalls       int
 	lastCredentials        map[string]any
+	lastExtraUpdates       map[string]any
 	lastErrorMsg           string
 	lastTempReason         string
 	lastErrorID            int64
@@ -53,6 +55,12 @@ func (r *rateLimitAccountRepoStub) SetRateLimited(ctx context.Context, id int64,
 func (r *rateLimitAccountRepoStub) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
 	r.updateCredentialsCalls++
 	r.lastCredentials = shallowCopyMap(credentials)
+	return nil
+}
+
+func (r *rateLimitAccountRepoStub) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updateExtraCalls++
+	r.lastExtraUpdates = shallowCopyMap(updates)
 	return nil
 }
 

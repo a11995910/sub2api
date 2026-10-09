@@ -1,6 +1,16 @@
 # 官方上游与定制功能的兼容约定
 
-本项目基于官方 v0.2.11 及其后的 Grok CLI 身份头、Axios 安全修复，保留简易模式控制、OpenCode Go 用量管理和返利线下提现能力，同时保留定制的图片/视频存储、账号计费探测、基于请求表现的智能轮候、Codex 门票和兑换码返利来源。正式部署仍遵循 [源码部署规范](SOURCE_DEPLOY_CN.md)，以定制仓库的 `origin/main` 为唯一来源。
+本项目基于官方 v0.2.15，保留简易模式控制、OpenCode Go 用量管理和返利线下提现能力，同时保留定制的图片/视频存储、账号计费探测、基于请求表现的智能轮候、Codex 门票和兑换码返利来源。正式部署仍遵循 [源码部署规范](SOURCE_DEPLOY_CN.md)，以定制仓库的 `origin/main` 为唯一来源。
+
+## 平台清单与协议分流
+
+后端具体平台统一登记于 `internal/domain/platforms.go`，前端内置清单与后端通过测试保持一致。Command Code 和 Cline 纳入账号、分组、配额与合成路由的平台选项；可同步模型、渠道监控和额度探测仍按各自已实现的能力开放。
+
+多协议 API Key 供应商按平台 profile 提供各接入模式的默认端点，账号显式配置的端点和协议规则优先。Responses、Chat Completions 和 Messages 入口共用协议分流逻辑；定制的 Responses 转 Chat 回退仍保留推理条目 ID，以便从本地缓存恢复推理内容。OpenCode 会在转发前拒绝已知不支持的模型。
+
+WebSocket 后续轮次通过认证缓存重新读取同一分组的定价快照，用于该轮利润门和计费；Key 换组、平台或订阅类型变化以及快照读取失败时沿用建连快照。定制的请求级定价时刻、活动折扣、图片输入费用及托管图片工具用量校验继续生效。
+
+Antigravity 客户端错误先隐藏完整的项目标识和服务账号邮箱，再执行通用域名、IP 与查询参数脱敏，避免邮箱域名被替换后残留账号名前缀；错误体仅保留状态码、状态名和脱敏摘要。
 
 ## 账号受管状态
 
@@ -66,6 +76,8 @@ OpenAI 的 CC Switch 导入链接保留所配置的端点，仅去掉尾部斜�
 用户用量 CSV 以 UTF-8 BOM 开头，改善表格软件识别中文的兼容性。导出列保留请求时间、API Key 名称、模型、入口、用量、费用与耗时，不包含客户端 IP 和内部上游账号字段。
 
 ## 数据库迁移
+
+`242_drop_platform_check_constraints.sql` 仅移除 `user_platform_quotas.platform` 和 `composite_model_routes.target_platform` 的固定白名单约束，校验改由接口、服务、仓库与 Ent 的共享平台清单承担；不删除业务数据，不修改渠道监控的能力约束。它与定制的 242 迁移按完整文件名独立执行。回滚应用可保留放宽后的约束，但旧版本不识别 Command Code、Cline 等新增平台，回滚前须检查并停用相关账号和路由，避免旧版处理未知平台数据。
 
 `240_affiliate_ledger_operation_id.sql` 为 `user_affiliate_ledger` 增加可空的 `operation_id VARCHAR(64)` 和针对非空值的唯一索引，用于提现幂等。已有流水保持 `NULL`，无需回填，也不修改历史金额。
 
