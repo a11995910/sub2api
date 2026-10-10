@@ -335,8 +335,6 @@ func provideCleanup(
 			{"OpenAICodexTicketHarvester", func() error {
 				if openAIGateway != nil {
 					openAIGateway.StopOpenAICodexTicketHarvester()
-					openAIGateway.StopBPS403Recovery()
-					_ = openAIGateway.CloseExcelBPSImages()
 				}
 				return nil
 			}},

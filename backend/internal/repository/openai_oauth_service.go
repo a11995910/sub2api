@@ -46,12 +46,14 @@ func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifie
 
 	var tokenResp openai.TokenResponse
 
-	request := client.R().SetContext(ctx).SetFormDataFromValues(formData).SetSuccessResult(&tokenResp)
-	if clientID != openai.ExcelClientID {
-		authUA, authOriginator := service.CodexCanonicalAuthIdentity()
-		request.SetHeader("User-Agent", authUA).SetHeader("originator", authOriginator)
-	}
-	resp, err := request.Post(s.tokenURLForClient(clientID))
+	authUA, authOriginator := service.CodexCanonicalAuthIdentity()
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("User-Agent", authUA).
+		SetHeader("originator", authOriginator).
+		SetFormDataFromValues(formData).
+		SetSuccessResult(&tokenResp).
+		Post(s.tokenURL)
 
 	if err != nil {
 		if shouldReturnOpenAINoProxyHint(ctx, proxyURL, err) {
@@ -90,18 +92,18 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 	formData.Set("grant_type", "refresh_token")
 	formData.Set("refresh_token", refreshToken)
 	formData.Set("client_id", clientID)
-	if clientID != openai.ExcelClientID {
-		formData.Set("scope", openai.RefreshScopes)
-	}
+	formData.Set("scope", openai.RefreshScopes)
 
 	var tokenResp openai.TokenResponse
 
-	request := client.R().SetContext(ctx).SetFormDataFromValues(formData).SetSuccessResult(&tokenResp)
-	if clientID != openai.ExcelClientID {
-		authUA, authOriginator := service.CodexCanonicalAuthIdentity()
-		request.SetHeader("User-Agent", authUA).SetHeader("originator", authOriginator)
-	}
-	resp, err := request.Post(s.tokenURLForClient(clientID))
+	authUA, authOriginator := service.CodexCanonicalAuthIdentity()
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("User-Agent", authUA).
+		SetHeader("originator", authOriginator).
+		SetFormDataFromValues(formData).
+		SetSuccessResult(&tokenResp).
+		Post(s.tokenURL)
 
 	if err != nil {
 		if shouldReturnOpenAINoProxyHint(ctx, proxyURL, err) {
@@ -140,19 +142,4 @@ func newOpenAINoProxyHintError(cause error) error {
 		"OPENAI_OAUTH_PROXY_REQUIRED",
 		"OpenAI OAuth request failed: no proxy is configured and this server could not reach OpenAI directly. Select a proxy that can access OpenAI, then retry; if the authorization code has expired, regenerate the authorization URL.",
 	).WithCause(cause)
-}
-
-// Excel 凭据必须保留官方客户端身份，不能与 Codex 的刷新参数混用。
-func (s *openaiOAuthService) tokenURLForClient(clientID string) string {
-	if clientID != openai.ExcelClientID {
-		return s.tokenURL
-	}
-	u, err := url.Parse(s.tokenURL)
-	if err != nil {
-		return s.tokenURL
-	}
-	query := u.Query()
-	query.Set("unified", "true")
-	u.RawQuery = query.Encode()
-	return u.String()
 }

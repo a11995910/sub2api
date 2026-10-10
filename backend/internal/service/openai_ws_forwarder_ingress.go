@@ -104,9 +104,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 	// The handler normally owns this registration across retry attempts. Direct
 	// callers still get the same session-scoped preemption behavior here.
-	if account.IsExcelOAuth() || (account.IsExcelBPSEnabledForModel(extractOpenAICodexTicketModel(firstClientMessage)) && s.excelBPSGloballyEnabled(ctx)) {
-		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "Excel/BPS 请使用 HTTP/SSE 请求", nil)
-	}
 	if preemptCtx, cleanupPreempt, armed := s.BeginOpenAIWSIngressSessionPreemptionWithClient(ctx, c, account, firstClientMessage, clientConn); armed {
 		ctx = preemptCtx
 		defer cleanupPreempt()

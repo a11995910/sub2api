@@ -702,12 +702,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/auto-config',
-    name: 'AdminAutoConfig',
-    component: () => import('@/views/admin/AutoConfigView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true, title: '自动配置' }
-  },
-  {
     path: '/admin/settings',
     name: 'AdminSettings',
     component: () => import('@/views/admin/SettingsView.vue'),

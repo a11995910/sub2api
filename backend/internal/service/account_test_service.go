@@ -807,16 +807,6 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		testModelID = openai.DefaultTestModel
 	}
 
-	if account.IsExcelBPSEnabledForModel(testModelID) && s.openaiGatewayService != nil && s.openaiGatewayService.excelBPSGloballyEnabled(ctx) {
-		if mode == AccountTestModeCompact {
-			return s.sendErrorAndEnd(c, "BPS 压缩请使用 HTTP /v1/responses/compact 验证")
-		}
-		return s.testExcelBPSAccountConnection(c, account, testModelID, prompt)
-	}
-	if account.IsExcelOAuth() {
-		return s.sendErrorAndEnd(c, "Excel OAuth 账号需要开启该模型的 BPS 协议")
-	}
-
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
 	// account model mapping. Native remote compaction v2 rides the ordinary
 	// /responses wire and does NOT apply the legacy compact-only mapping

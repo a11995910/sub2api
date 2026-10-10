@@ -6,17 +6,6 @@
     @close="handleClose"
   >
     <form id="bulk-edit-account-form" class="space-y-5" @submit.prevent="() => handleSubmit()">
-      <div v-if="allOpenAIOAuthOnly" v-show="excelBPSAvailable" class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
-        <label class="flex items-center gap-2 text-sm"><input v-model="excelBPSDirty" type="checkbox" />批量修改 Excel / BPS 配置</label>
-        <ExcelBPSAccountSection
-          v-if="show"
-          v-show="excelBPSDirty"
-          v-model:enabled="excelBPSEnabled"
-          v-model:options="excelBPSOptions"
-          @available="excelBPSAvailable = $event"
-        />
-      </div>
-
       <!-- Info -->
       <div class="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
         <p class="text-sm text-blue-700 dark:text-blue-400">
@@ -1498,10 +1487,6 @@
 </template>
 
 <script setup lang="ts">
-import ExcelBPSAccountSection from '@/components/account/ExcelBPSAccountSection.vue'
-import { initialBPSDefaults } from '@/api/admin/excelBPS'
-import { writeBPSExtra } from '@/utils/excelBPS'
-
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -1721,10 +1706,6 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
-const excelBPSEnabled = ref(false)
-const excelBPSOptions = ref(initialBPSDefaults())
-const excelBPSDirty = ref(false)
-const excelBPSAvailable = ref(false)
 const openaiPassthroughEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -2009,7 +1990,6 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     }
   }
 
-  if (excelBPSAvailable.value && excelBPSDirty.value && allOpenAIOAuthOnly.value) Object.assign(ensureExtra(), writeBPSExtra({}, excelBPSEnabled.value, excelBPSOptions.value, true))
   if (enableOpenAIPassthrough.value) {
     const extra = ensureExtra()
     extra.openai_passthrough = openaiPassthroughEnabled.value
@@ -2398,10 +2378,6 @@ watch(
       enableRateMultiplier.value = false
       enableStatus.value = false
       enableGroups.value = false
-      excelBPSAvailable.value = false
-      excelBPSDirty.value = false
-      excelBPSEnabled.value = false
-      excelBPSOptions.value = initialBPSDefaults()
       enableOpenAIPassthrough.value = false
       enableOpenAIFlattenNamespaces.value = false
       enableOpenAILongContextBilling.value = false

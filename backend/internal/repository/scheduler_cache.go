@@ -956,7 +956,7 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	}
 	// Candidate-list admission evaluates the account override before hydrating
 	// the full account. Dropping it silently falls back to the platform threshold.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "client_id", "plan_type", "account_scheduling_threshold"}
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold"}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
@@ -1011,14 +1011,6 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_apikey_responses_websockets_v2_mode",
 		"responses_websockets_v2_enabled",
 		"openai_ws_enabled",
-		// BPS 的候选协议、冷却和 compact 能力判断必须保留这些配置。
-		"openai_excel_bps",
-		"openai_excel_bps_models",
-		"openai_excel_bps_mihomo",
-		"openai_excel_bps_auto_disable_on_403",
-		"openai_excel_bps_omit_unsupported_tools",
-		service.ExcelBPSAutoMoveOn403Key,
-		service.ExcelBPS403TargetGroupIDKey,
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
@@ -1056,7 +1048,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
-		if value, ok := extra[key]; ok && (value != nil || key == "openai_excel_bps_models") {
+		if value, ok := extra[key]; ok && value != nil {
 			if key == service.UpstreamBillingProbeExtraKey {
 				filteredProbe := filterSchedulerUpstreamBillingProbe(value)
 				if filteredProbe == nil {

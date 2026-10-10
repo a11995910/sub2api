@@ -359,33 +359,3 @@ func TestNewOpenAIOAuthClient_DefaultTokenURL(t *testing.T) {
 func TestOpenAIOAuthServiceSuite(t *testing.T) {
 	suite.Run(t, new(OpenAIOAuthServiceSuite))
 }
-
-func TestExcelBPSOAuthPreservesClientIdentity(t *testing.T) {
-	for _, grant := range []string{"refresh", "exchange"} {
-		t.Run(grant, func(t *testing.T) {
-			received := make(chan *http.Request, 1)
-			srv := newLocalTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_ = r.ParseForm()
-				received <- r
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = io.WriteString(w, `{"access_token":"test-at","refresh_token":"test-rt","expires_in":3600}`)
-			}))
-			defer srv.Close()
-			svc := &openaiOAuthService{tokenURL: srv.URL + "?existing=1"}
-			var err error
-			if grant == "refresh" {
-				_, err = svc.RefreshTokenWithClientID(context.Background(), "test-rt", "", openai.ExcelClientID)
-			} else {
-				_, err = svc.ExchangeCode(context.Background(), "code", "verifier", "http://localhost/callback", "", openai.ExcelClientID)
-			}
-			require.NoError(t, err)
-			r := <-received
-			require.Equal(t, "true", r.URL.Query().Get("unified"))
-			require.Equal(t, "1", r.URL.Query().Get("existing"))
-			require.Equal(t, openai.ExcelClientID, r.PostForm.Get("client_id"))
-			require.Empty(t, r.PostForm.Get("scope"))
-			require.Empty(t, r.Header.Get("originator"))
-			require.NotContains(t, r.UserAgent(), "codex")
-		})
-	}
-}

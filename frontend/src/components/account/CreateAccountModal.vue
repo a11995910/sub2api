@@ -3128,7 +3128,6 @@
         </p>
       </div>
 
-      <ExcelBPSAccountSection v-if="show && form.platform === 'openai' && form.type === 'oauth'" :key="form.platform + form.type" v-model:enabled="excelBPSEnabled" v-model:options="excelBPSOptions" @change="excelBPSDirty = true" @update:enabled="excelBPSDirty = true" @update:options="excelBPSDirty = true" />
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="form.platform === 'openai'"
@@ -3956,10 +3955,6 @@
 </template>
 
 <script setup lang="ts">
-import ExcelBPSAccountSection from '@/components/account/ExcelBPSAccountSection.vue'
-import { initialBPSDefaults } from '@/api/admin/excelBPS'
-import { writeBPSExtra } from '@/utils/excelBPS'
-
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -4543,9 +4538,6 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 }
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
-const excelBPSEnabled = ref(false)
-const excelBPSOptions = ref(initialBPSDefaults())
-const excelBPSDirty = ref(false)
 const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -5027,9 +5019,6 @@ watch(
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
-      excelBPSEnabled.value = false
-      excelBPSOptions.value = initialBPSDefaults()
-      excelBPSDirty.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -5484,9 +5473,6 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
-      excelBPSEnabled.value = false
-      excelBPSOptions.value = initialBPSDefaults()
-      excelBPSDirty.value = false
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
@@ -5625,7 +5611,6 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.images_url_to_b64_json
   }
 
-  if (form.type === 'oauth' && excelBPSDirty.value) return writeBPSExtra(extra, excelBPSEnabled.value, excelBPSOptions.value)
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 

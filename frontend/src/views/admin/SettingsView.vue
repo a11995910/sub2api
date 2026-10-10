@@ -7237,7 +7237,6 @@
 
 	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
-          <ExcelBPSSettingsCard />
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -9384,7 +9383,6 @@
 </template>
 
 <script setup lang="ts">
-import ExcelBPSSettingsCard from "@/components/admin/excelbps/ExcelBPSSettingsCard.vue";
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { listPlatformIds } from "@/constants/platformCatalog";
 import { useI18n } from "vue-i18n";

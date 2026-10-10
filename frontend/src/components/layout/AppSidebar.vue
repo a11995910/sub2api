@@ -825,7 +825,6 @@ const adminNavItems = computed((): NavItem[] => {
       icon: CogIcon,
       expandOnly: true,
       children: [
-        { path: '/admin/auto-config', label: '自动配置', icon: CogIcon },
         { path: '/admin/intelligent-ops/time-rotation', label: t('timeRotation.title'), icon: CogIcon }
       ]
     },

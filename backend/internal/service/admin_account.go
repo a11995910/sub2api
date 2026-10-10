@@ -550,10 +550,6 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
-	if err := s.validateExcelBPSAccount(ctx, account); err != nil {
-		return nil, err
-	}
-	account.Extra = MergeExcelBPS403Marker(account.Extra, nil)
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -756,10 +752,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
-	if err := s.validateExcelBPSAccount(ctx, account); err != nil {
-		return nil, err
-	}
-
 	if input.Extra == nil {
 		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
@@ -1007,9 +999,6 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		return nil, err
 	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
-	for _, key := range excelBPS403MarkerKeys {
-		delete(input.Extra, key)
-	}
 	input.Extra = RedactOpenAICodexTicketExtra(input.Extra)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
@@ -1056,7 +1045,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || hasExcelBPSExtra(input.Extra) {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1067,22 +1056,6 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	for _, account := range cachedTargets {
 		if account != nil {
 			targetsByID[account.ID] = account
-		}
-	}
-	if hasExcelBPSExtra(input.Extra) {
-		for _, account := range cachedTargets {
-			candidate := *account
-			candidate.Extra = cloneExcelBPSRecoveryExtra(account.Extra)
-			for key, value := range input.Extra {
-				if value == nil {
-					delete(candidate.Extra, key)
-				} else {
-					candidate.Extra[key] = value
-				}
-			}
-			if err := s.validateExcelBPSAccount(ctx, &candidate); err != nil {
-				return nil, err
-			}
 		}
 	}
 	if openAISettings.any() {

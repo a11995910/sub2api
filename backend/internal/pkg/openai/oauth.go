@@ -15,8 +15,6 @@ import (
 
 // OpenAI OAuth Constants (from CRS project - Codex CLI client)
 const (
-	// ExcelClientID 是官方 Excel 加载项公开的 OAuth 客户端标识。
-	ExcelClientID = "app_fnr0pYvVwwFDocDumLG3H2Bp"
 	// OAuth Client ID for OpenAI (Codex CLI official)
 	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
