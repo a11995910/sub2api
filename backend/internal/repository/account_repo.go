@@ -737,6 +737,7 @@ func lockAndMergeAccountProbeExtra(
 		}
 	}
 	extra := service.MergeOpenAICodexTicketExtra(copyJSONMap(normalizeJSONMap(account.Extra)), currentExtra)
+	extra = service.MergeExcelBPS403Marker(extra, currentExtra)
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,
@@ -3263,6 +3264,14 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			extraExpression += " || $" + itoa(idx) + "::jsonb"
 			args = append(args, payload)
 			idx++
+			for _, key := range []string{"openai_excel_bps_models", "openai_excel_bps_403_target_group_id"} {
+				if value, exists := updates.Extra[key]; exists && value == nil {
+					extraExpression = "(" + extraExpression + ") - '" + key + "'"
+				}
+			}
+			if updates.Extra["openai_excel_bps"] == true {
+				extraExpression = "(" + extraExpression + ") - 'openai_excel_bps_403_disabled_at' - 'openai_excel_bps_403_last_probe_at'"
+			}
 			if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
 				extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 			}

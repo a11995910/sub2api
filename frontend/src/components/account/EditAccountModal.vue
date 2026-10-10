@@ -1768,6 +1768,7 @@
         </p>
       </div>
 
+      <ExcelBPSAccountSection v-if="show && account?.platform === 'openai' && account?.type === 'oauth' && !account?.parent_account_id" :key="account.id" v-model:enabled="excelBPSEnabled" v-model:options="excelBPSOptions" :free="String(account.credentials?.plan_type || '').trim().toLowerCase() === 'free'" :disabled-at="String(account.extra?.openai_excel_bps_403_disabled_at || '')" @change="excelBPSDirty = true" @update:enabled="excelBPSDirty = true" @update:options="excelBPSDirty = true" />
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -3158,6 +3159,10 @@
 </template>
 
 <script setup lang="ts">
+import ExcelBPSAccountSection from '@/components/account/ExcelBPSAccountSection.vue'
+import { initialBPSDefaults } from '@/api/admin/excelBPS'
+import { readBPSExtra, writeBPSExtra } from '@/utils/excelBPS'
+
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -3762,6 +3767,9 @@ const customBaseUrlEnabled = ref(false)
 const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
+const excelBPSEnabled = ref(false)
+const excelBPSOptions = ref(initialBPSDefaults())
+const excelBPSDirty = ref(false)
 const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -4202,6 +4210,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedChannelWarningDetails.value = null
   mixedChannelWarningRawMessage.value = ''
   mixedChannelWarningAction.value = null
+  excelBPSEnabled.value = newAccount.extra?.openai_excel_bps === true
+  excelBPSOptions.value = readBPSExtra(newAccount.extra as Record<string, unknown> || {})
+  excelBPSDirty.value = false
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
@@ -5880,6 +5891,7 @@ const handleSubmit = async () => {
         }
       }
 
+      if (props.account.type === 'oauth' && excelBPSDirty.value) { Object.assign(newExtra, writeBPSExtra(newExtra, excelBPSEnabled.value, excelBPSOptions.value)); if (excelBPSOptions.value.all_models) delete newExtra.openai_excel_bps_models; if (!excelBPSOptions.value.auto_move_on_403) delete newExtra.openai_excel_bps_403_target_group_id }
       updatePayload.extra = newExtra
     }
 

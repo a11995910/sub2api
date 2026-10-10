@@ -33,6 +33,9 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
+	bpsImageAdmission := middleware.ExcelBPSImageAdmission(settingService, cfg.Gateway.MaxBodySize)
+	r.GET("/api/bps-images/:token", h.OpenAIGateway.ServeExcelBPSImage)
+	r.HEAD("/api/bps-images/:token", h.OpenAIGateway.ServeExcelBPSImage)
 	bodyBudget := middleware.NewBodyMemoryBudget(
 		cfg.Gateway.MaxInflightBodyBytes,
 		cfg.Gateway.BodyAdmissionWaitSeconds,
@@ -216,6 +219,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.Use(gin.HandlerFunc(modelTestAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+	gateway.Use(bpsImageAdmission)
 	gateway.Use(bodyAdmission)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(compositeTarget)
@@ -397,7 +401,7 @@ func RegisterGatewayRoutes(
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
-		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, deferredBodyAdmission, gin.HandlerFunc(apiKeyAuth), bodyAdmission, groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
+		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, deferredBodyAdmission, gin.HandlerFunc(apiKeyAuth), bpsImageAdmission, bodyAdmission, groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
 	}
 	for _, prefix := range []string{"/api/v3", "/v3", "/v1", ""} {
 		rootRoute(http.MethodPost, prefix+"/contents/generations/tasks", bodyLimit, h.OpenAIGateway.SeedanceTasks)
@@ -414,7 +418,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
-	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, deferredBodyAdmission, gin.HandlerFunc(apiKeyAuth), bodyAdmission, groupModelAllowlist, compositeTarget, requireGroupAnthropic)
+	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, deferredBodyAdmission, gin.HandlerFunc(apiKeyAuth), bpsImageAdmission, bodyAdmission, groupModelAllowlist, compositeTarget, requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)

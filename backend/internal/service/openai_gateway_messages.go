@@ -42,6 +42,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	} else if changed {
 		body = sanitized
 	}
+	if account.IsExcelOAuth() {
+		return nil, writeExcelOAuthRouteError(c)
+	}
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)

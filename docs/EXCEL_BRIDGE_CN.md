@@ -1,5 +1,7 @@
 # Excel Bridge 独立上游
 
+内置账号协议的配置见 [内置 Excel / BPS 协议](EXCEL_BPS_CN.md)。两者为独立接入方式：内置 BPS 直接使用所选 OAuth 账号转发，不经过本文的 Bridge 容器或插件。
+
 Excel Bridge 以独立容器接入正式 VPS 的 Sub2API，不通过 `.s2plugin` 插件管理页安装。客户端仍访问 Sub2API，鉴权、分组限制、计费和使用记录由 Sub2API 处理。
 
 ## 平台多账号改造

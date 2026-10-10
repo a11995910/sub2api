@@ -606,6 +606,10 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	adminSettings := admin.Group("/settings")
 	{
+		adminSettings.GET("/excel-bps", h.Admin.Setting.GetExcelBPS)
+		adminSettings.PUT("/excel-bps", h.Admin.Setting.SaveExcelBPS)
+		admin.GET("/auto-config", h.Admin.Setting.GetExcelBPSDefaults)
+		admin.PUT("/auto-config", h.Admin.Setting.SaveExcelBPSDefaults)
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)

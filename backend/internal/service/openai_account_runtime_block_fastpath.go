@@ -558,6 +558,9 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 		return false
 	}
 	requireCompact := len(compact) > 0 && compact[0]
+	if s.isExcelBPSCoolingDown(account, requestedModel) && s.excelBPSGloballyEnabled(context.Background()) {
+		return true
+	}
 	if s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)) {
 		return true
 	}

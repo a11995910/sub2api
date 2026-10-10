@@ -22,6 +22,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	stageOpenAIRequestIntegrity(c, account, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	c.Writer.Header().Del("X-Codex2API-Upstream")
+	c.Writer.Header().Del("X-Codex2API-Basispoints-Bypass")
 	// imageIntent 会受账号模型映射和 bridge 注入影响，因此必须按 attempt
 	// 重置；失败账号的最终判定不能泄漏到下一次 failover。
 	setOpenAIStreamCacheHitAttemptImageIntent(c, false)
@@ -60,6 +62,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			},
 		})
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
+	}
+
+	// BPS 必须在 Codex 专属改写、透传及 WS 选择之前分流。
+	modelForBPS := gjson.GetBytes(body, "model").String()
+	if account.IsExcelBPSEnabledForModel(modelForBPS) && s.excelBPSGloballyEnabled(ctx) {
+		if reason := account.excelBPSNativeFallbackReason(body); reason == "" || account.IsExcelOAuth() {
+			return s.forwardExcelBPS(ctx, c, account, body, startTime)
+		} else {
+			c.Header("X-Codex2API-Upstream", "codex")
+			c.Header("X-Codex2API-Basispoints-Bypass", reason)
+		}
+	}
+	if account.IsExcelOAuth() {
+		return nil, writeExcelOAuthRouteError(c)
 	}
 
 	normalizedBody, normalized, err := normalizeOpenAICodexCompactReasoningEffortForAccount(c, account, body)

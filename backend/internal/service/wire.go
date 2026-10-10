@@ -1199,6 +1199,7 @@ func ProvideOpenAIGatewayService(
 	accountTimeRotationService *AccountTimeRotationService,
 ) *OpenAIGatewayService {
 	svc := NewOpenAIGatewayService(accountRepo, groupRepo, usageLogRepo, usageBillingRepo, userRepo, userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService, settingService, userPlatformQuotaRepo)
+	svc.StartBPS403Recovery()
 	svc.SetAccountTimeRotationService(accountTimeRotationService)
 	return svc
 }

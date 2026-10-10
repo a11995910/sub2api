@@ -357,6 +357,9 @@ func (s *OpenAIGatewayService) bindOpenAICodexTicket(ctx context.Context, accoun
 // （默认非空），此时若门控仍按客户端原始模型判定，就会把「实际出站是非门控
 // 模型、根本不需要票」的 compact 请求整片误拦成不可调度。
 func (s *OpenAIGatewayService) openAICodexTicketOutboundModel(account *Account, requestedModel string, requireCompact bool) string {
+	if account != nil && account.IsExcelBPSEnabledForModel(requestedModel) && s.excelBPSGloballyEnabled(context.Background()) {
+		return account.GetMappedModel(requestedModel)
+	}
 	model := strings.TrimSpace(requestedModel)
 	if account == nil || model == "" {
 		return model
@@ -380,6 +383,9 @@ func (s *OpenAIGatewayService) openAICodexTicketOutboundModel(account *Account, 
 // outboundModel 必须是真正会发给上游的模型名（openAICodexTicketOutboundModel），
 // 不是客户端原始模型：注入侧读的是出站 body.model，两侧口径必须一致。
 func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, outboundModel string) bool {
+	if account != nil && account.isExcelBPSUpstreamModelEnabled(outboundModel) && s.excelBPSGloballyEnabled(context.Background()) {
+		return false
+	}
 	if s == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabled() {
 		return false
 	}

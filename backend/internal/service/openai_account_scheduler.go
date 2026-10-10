@@ -68,6 +68,7 @@ var openAIAdvancedSchedulerSettingCache atomic.Value // *cachedOpenAIAdvancedSch
 var openAIAdvancedSchedulerSettingSF singleflight.Group
 
 type OpenAIAccountScheduleRequest struct {
+	excelBPSEnabled         bool
 	GroupID                 *int64
 	Platform                string
 	SessionHash             string
@@ -384,6 +385,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
+	if s != nil {
+		req.excelBPSEnabled = s.service.excelBPSGloballyEnabled(ctx)
+	}
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
@@ -898,7 +902,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	if req.RequireCompact {
 		candidates = make([]openAIAccountCandidateScore, 0, len(allCandidates))
 		for _, candidate := range allCandidates {
-			if openAICompactSupportTier(candidate.account) == 0 {
+			if req.compactSupportTier(candidate.account) == 0 {
 				staleSnapshotCompactRetry = append(staleSnapshotCompactRetry, candidate)
 				continue
 			}
@@ -1165,7 +1169,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		supported := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
 		unknown := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
 		for _, candidate := range plan.candidates {
-			switch openAICompactSupportTier(candidate.account) {
+			switch req.compactSupportTier(candidate.account) {
 			case 2:
 				supported = append(supported, candidate)
 			case 1:
@@ -1271,7 +1275,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			release(result)
 			continue
 		}
-		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
+		if req.RequireCompact && req.compactSupportTier(fresh) == 0 {
 			compactBlocked = true
 			release(result)
 			continue
@@ -1361,7 +1365,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
-		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
+		if req.RequireCompact && req.compactSupportTier(account) == 0 {
 			continue
 		}
 		// Keep weighted sticky fallback subject to the same free-tier gate as the
@@ -1511,6 +1515,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		if account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
 			filterStats.exclude("platform_mismatch")
+			continue
+		}
+		if s.service.isExcelBPSCoolingDown(account, req.RequestedModel) && s.service.excelBPSGloballyEnabled(ctx) {
+			filterStats.exclude("excel_bps_rate_limited")
 			continue
 		}
 		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact) {
@@ -1697,7 +1705,7 @@ func openAICostOverflowExpanded(req OpenAIAccountScheduleRequest, plan openAIAcc
 	}
 	supported, unknown := 0, 0
 	for _, candidate := range plan.candidates {
-		switch openAICompactSupportTier(candidate.account) {
+		switch req.compactSupportTier(candidate.account) {
 		case 2:
 			supported++
 		case 1:
@@ -1774,7 +1782,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 				continue
 			}
-			if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
+			if req.RequireCompact && req.compactSupportTier(fresh) == 0 {
 				compactBlocked = true
 				continue
 			}
@@ -1829,6 +1837,16 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 // openAISelectionFilterStats so that "no available accounts" errors state why
 // each candidate was dropped instead of failing silently (#4599).
 func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
+	if account != nil && s != nil && s.service != nil {
+		bps := account.IsExcelBPSEnabledForModel(req.RequestedModel) && s.service.excelBPSGloballyEnabled(ctx)
+		if account.IsExcelOAuth() && !bps {
+			return false, "excel_oauth_route_unavailable"
+		}
+		if bps && req.RequiredTransport != OpenAIUpstreamTransportAny && req.RequiredTransport != OpenAIUpstreamTransportHTTPSSE {
+			return false, "excel_bps_requires_http"
+		}
+	}
+
 	if account == nil {
 		return false, "account_nil"
 	}
@@ -1839,6 +1857,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
+	}
+	if s != nil && s.service != nil && s.service.isExcelBPSCoolingDown(account, req.RequestedModel) && s.service.excelBPSGloballyEnabled(ctx) {
+		return false, "excel_bps_rate_limited"
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact) {
 		return false, "runtime_blocked"
@@ -2378,6 +2399,7 @@ func (s *OpenAIGatewayService) selectLegacyAccountByPreviousResponse(
 	account := selection.Account
 	scheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
 	compatible, _ := scheduler.isAccountRequestCompatibleReason(ctx, account, OpenAIAccountScheduleRequest{
+		excelBPSEnabled:         s.excelBPSGloballyEnabled(ctx),
 		GroupID:                 groupID,
 		Platform:                platform,
 		RequestedModel:          requestedModel,
@@ -2451,6 +2473,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 			}
 			fallbackScheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
 			selection, _, err := fallbackScheduler.selectBySessionHash(ctx, OpenAIAccountScheduleRequest{
+				excelBPSEnabled:         s.excelBPSGloballyEnabled(ctx),
 				GroupID:                 groupID,
 				Platform:                platform,
 				SessionHash:             sessionHash,
@@ -2554,6 +2577,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+		excelBPSEnabled:         s.excelBPSGloballyEnabled(ctx),
 		GroupID:                 groupID,
 		Platform:                platform,
 		SessionHash:             sessionHash,

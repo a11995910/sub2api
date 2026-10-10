@@ -450,7 +450,10 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 		}
 		return "capability_mismatch"
 	}
-	if requireCompact && openAICompactSupportTier(account) == 0 {
+	if account.IsExcelOAuth() && !excelBPSRouteEnabled(ctx, account, requestedModel) {
+		return "excel_oauth_route_unavailable"
+	}
+	if requireCompact && openAIRequestCompactSupportTier(ctx, account, requestedModel) == 0 {
 		return "compact_unsupported"
 	}
 	return ""
@@ -777,6 +780,7 @@ func openAIQuotaAutoPauseSettingsFromContext(ctx context.Context) OpsOpenAIAccou
 }
 
 func (s *OpenAIGatewayService) withOpenAIQuotaAutoPauseContext(ctx context.Context) context.Context {
+	ctx = context.WithValue(ctx, excelBPSRouteContextKey{}, s.excelBPSGloballyEnabled(ctx))
 	if s == nil || s.settingService == nil {
 		return ctx
 	}
@@ -787,6 +791,10 @@ func (s *OpenAIGatewayService) withOpenAIQuotaAutoPauseContext(ctx context.Conte
 // compact support are tried first, followed by unknown, then explicitly unsupported.
 // The relative order within each tier is preserved.
 func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
+	return prioritizeOpenAICompactAccountsForRequest(context.Background(), accounts, "")
+}
+
+func prioritizeOpenAICompactAccountsForRequest(ctx context.Context, accounts []*Account, model string) []*Account {
 	if len(accounts) == 0 {
 		return nil
 	}
@@ -794,7 +802,7 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 	unknown := make([]*Account, 0, len(accounts))
 	unsupported := make([]*Account, 0, len(accounts))
 	for _, account := range accounts {
-		switch openAICompactSupportTier(account) {
+		switch openAIRequestCompactSupportTier(ctx, account, model) {
 		case 2:
 			supported = append(supported, account)
 		case 1:
@@ -1071,7 +1079,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		}
 		compactTier := 0
 		if requireCompact {
-			compactTier = openAICompactSupportTier(fresh)
+			compactTier = openAIRequestCompactSupportTier(ctx, fresh, requestedModel)
 			if compactTier == 0 {
 				compactBlocked = true
 				filterStats.exclude("compact_unsupported")
@@ -1385,6 +1393,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			filterStats.exclude("shadow_parent_unhealthy")
 			continue
 		}
+		if s.isExcelBPSCoolingDown(acc, requestedModel) && s.excelBPSGloballyEnabled(ctx) {
+			filterStats.exclude(excelBPSRateLimitedFilterReason)
+			continue
+		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel, requireCompact) {
 			filterStats.exclude("runtime_blocked")
 			continue
@@ -1470,7 +1482,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if requireCompact {
 			appendTier := func(out []accountWithLoad, tier int) []accountWithLoad {
 				for _, item := range available {
-					if openAICompactSupportTier(item.account) == tier {
+					if openAIRequestCompactSupportTier(ctx, item.account, requestedModel) == tier {
 						out = append(out, item)
 					}
 				}
@@ -1528,7 +1540,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			})
 		}
 		if requireCompact {
-			ordered = prioritizeOpenAICompactAccounts(ordered)
+			ordered = prioritizeOpenAICompactAccountsForRequest(ctx, ordered, requestedModel)
 		}
 		for _, acc := range ordered {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
@@ -1584,7 +1596,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		})
 	}
 	if requireCompact {
-		candidates = prioritizeOpenAICompactAccounts(candidates)
+		candidates = prioritizeOpenAICompactAccountsForRequest(ctx, candidates, requestedModel)
 	}
 	for _, acc := range candidates {
 		if s.accountTimeRotation.IsRecovering(acc.ID, time.Now()) {
