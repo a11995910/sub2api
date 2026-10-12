@@ -90,3 +90,12 @@ func normalizeEffortModelID(model string) string {
 	}
 	return id
 }
+
+// SupportsAdaptiveThinking 判断模型是否接受自适应思考配置。
+func SupportsAdaptiveThinking(model string) bool {
+	id := normalizeEffortModelID(model)
+	if id == "claude-opus-4-5" || strings.HasPrefix(id, "claude-opus-4-5-") {
+		return false
+	}
+	return EffortLevelsForModel(model) != nil
+}

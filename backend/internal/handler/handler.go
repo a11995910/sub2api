@@ -7,6 +7,7 @@ import (
 
 // AdminHandlers contains all admin-related HTTP handlers
 type AdminHandlers struct {
+	PelicanGroupTest       *admin.PelicanGroupTestHandler
 	TimeRotation           *admin.AccountTimeRotationHandler
 	Dashboard              *admin.DashboardHandler
 	User                   *admin.UserHandler
@@ -51,6 +52,7 @@ type AdminHandlers struct {
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
+	PelicanShowcase  *PelicanShowcaseHandler
 	Auth             *AuthHandler
 	User             *UserHandler
 	APIKey           *APIKeyHandler

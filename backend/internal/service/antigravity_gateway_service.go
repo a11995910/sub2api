@@ -398,7 +398,9 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 
 	// 构建请求体
 	var requestBody []byte
-	if strings.HasPrefix(modelID, "gemini-") {
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		requestBody, err = s.buildPelicanTestRequest(projectID, mappedModel, options)
+	} else if strings.HasPrefix(modelID, "gemini-") {
 		requestBody, err = s.buildGeminiTestRequest(projectID, mappedModel)
 	} else {
 		requestBody, err = s.buildClaudeTestRequest(projectID, mappedModel)
@@ -446,7 +448,15 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	}
 	defer func() { _ = result.resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, s.upstreamErrorBodyReadLimit()))
+	readLimit := s.upstreamErrorBodyReadLimit()
+	if _, ok := pelicanTestOptionsFromContext(ctx); ok {
+		readLimit = (4 << 20) + 1
+	}
+	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, readLimit))
+	if _, ok := pelicanTestOptionsFromContext(ctx); ok && len(respBody) > 4<<20 {
+		return nil, errors.New(pelicanErrCaptureLimit)
+	}
+	recordPelicanTestSSE(ctx, "gemini", mappedModel, respBody)
 	if err != nil {
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 	}

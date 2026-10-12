@@ -606,6 +606,19 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
+    path: '/admin/intelligent-ops/pelican-tests',
+    alias: '/admin/pelican-tests',
+    name: 'AdminPelicanTests',
+    component: () => import('@/views/admin/PelicanTestsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '鹈鹕测智', titleKey: 'pelicanTests.title', descriptionKey: 'pelicanTests.description' }
+  },
+  {
+    path: '/pelican-showcase',
+    name: 'PelicanShowcase',
+    component: () => import('@/views/user/PelicanShowcaseView.vue'),
+    meta: { requiresAuth: true, title: '鹈鹕测智', titleKey: 'pelicanShowcase.title', descriptionKey: 'pelicanShowcase.description' }
+  },
+  {
     path: '/admin/intelligent-ops/time-rotation',
     name: 'AdminTimeRotation',
     component: () => import('@/views/admin/TimeRotationView.vue'),

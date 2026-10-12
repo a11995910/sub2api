@@ -756,6 +756,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/model-market', label: t('nav.modelMarket'), icon: ChannelIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/pelican-showcase', label: t('pelicanShowcase.title'), icon: ChartIcon, featureFlag: () => appStore.cachedPublicSettings?.pelican_showcase_enabled === true },
     ...customMenuItemsForUser.value.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
@@ -825,7 +826,8 @@ const adminNavItems = computed((): NavItem[] => {
       icon: CogIcon,
       expandOnly: true,
       children: [
-        { path: '/admin/intelligent-ops/time-rotation', label: t('timeRotation.title'), icon: CogIcon }
+        { path: '/admin/intelligent-ops/time-rotation', label: t('timeRotation.title'), icon: CogIcon },
+        { path: '/admin/intelligent-ops/pelican-tests', label: t('pelicanTests.title'), icon: ChartIcon }
       ]
     },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },

@@ -678,8 +678,10 @@ func ProvideScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	groupTests *PelicanGroupTestService,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
+	svc.groupTests = groupTests
 	svc.Start()
 	return svc
 }
@@ -932,6 +934,8 @@ func ProvideAccountTimeRotationService(repo AccountTimeRotationRepository) *Acco
 }
 
 var ProviderSet = wire.NewSet(
+	NewPelicanShowcaseService,
+	NewPelicanGroupTestService,
 	ProvideAccountTimeRotationService,
 	// Core services
 	ProvideAuthService,

@@ -561,6 +561,9 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// Create Claude Code style payload (same for all account types)
 	payload, err := createTestPayload(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payload, err = createPelicanClaudePayload(testModelID, options.prompt, options.reasoningEffort)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -639,6 +642,9 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	c.Writer.Flush()
 
 	payload, err := createTestPayload(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payload, err = createPelicanClaudePayload(testModelID, options.prompt, options.reasoningEffort)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -725,6 +731,10 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		},
 		"max_tokens":  256,
 		"temperature": 1,
+	}
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		bedrockPayload["max_tokens"] = pelicanClaudeMaxTokens
+		bedrockPayload["messages"] = []map[string]any{{"role": "user", "content": []map[string]any{{"type": "text", "text": options.prompt}}}}
 	}
 	bedrockBody, _ := json.Marshal(bedrockPayload)
 
@@ -891,6 +901,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payload = createPelicanOpenAIPayload(upstreamTestModelID, isOAuth, options.prompt, options.reasoningEffort)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -1254,6 +1267,9 @@ func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx con
 	s.prepareGrokTestSSE(c)
 
 	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payloadBytes, err = json.Marshal(createPelicanOpenAIPayload(testModelID, false, options.prompt, options.reasoningEffort))
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
 	}
@@ -2133,6 +2149,12 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Flush()
 
 	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	if pelicanUsageFromContext(ctx) != nil {
+		payload["stream_options"] = map[string]any{"include_usage": true}
+	}
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok && options.reasoningEffort != "" {
+		payload["reasoning_effort"] = options.reasoningEffort
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2693,6 +2715,7 @@ func createGeminiTestPayload(modelID string, prompt string) []byte {
 // processGeminiStream processes SSE stream from Gemini API
 func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "gemini")
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -2710,6 +2733,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 		}
 
 		jsonStr := strings.TrimPrefix(line, "data: ")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -2821,13 +2845,25 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 // processClaudeStream processes the SSE stream from Claude API
 func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "anthropic")
+	// 鹈鹕作答需要完整正文，输出预算耗尽或拒答时保留失败原因。
+	pelican := pelicanTestRequested(c)
+	stopReason, refusalCategory := "", ""
+	complete := func() error {
+		if pelican {
+			if failure := pelicanClaudeStopFailure(stopReason, refusalCategory); failure != "" {
+				return s.sendErrorAndEnd(c, failure)
+			}
+		}
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
+				return complete()
 			}
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
@@ -2838,9 +2874,9 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		}
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return complete()
 		}
 
 		var data map[string]any
@@ -2857,9 +2893,17 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
+		case "message_delta":
+			if delta, ok := data["delta"].(map[string]any); ok {
+				if reason, ok := delta["stop_reason"].(string); ok {
+					stopReason = reason
+				}
+				if details, ok := delta["stop_details"].(map[string]any); ok {
+					refusalCategory, _ = details["category"].(string)
+				}
+			}
 		case "message_stop":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return complete()
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {
@@ -2876,6 +2920,7 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 // OpenAI-compatible Chat Completions API.
 func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "chat")
 	seenJSON := false
 	seenFinish := false
 
@@ -2902,6 +2947,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 		}
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
@@ -2951,6 +2997,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
 func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "openai")
 	seenCompleted := false
 
 	for {
@@ -2972,6 +3019,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		}
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
 			if seenCompleted {
 				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
@@ -3267,6 +3315,11 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "test_start" && event.Model != "" && c.Request != nil {
+		if usage := pelicanUsageFromContext(c.Request.Context()); usage != nil {
+			usage.model = event.Model
+		}
+	}
 	if event.Type == "test_complete" {
 		if suppress, ok := c.Get(accountTestSuppressCompletionContextKey); ok {
 			if suppressCompletion, _ := suppress.(bool); suppressCompletion {

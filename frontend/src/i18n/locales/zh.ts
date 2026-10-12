@@ -1,6 +1,10 @@
+import pelicanTests from './zh/pelicanTests'
+import pelicanShowcase from './zh/pelicanShowcase'
 import timeRotation from './zh/timeRotation'
 
 export default {
+  pelicanTests,
+  pelicanShowcase,
   timeRotation,
   // Home Page
   home: {

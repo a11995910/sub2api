@@ -21,16 +21,25 @@ type ScheduledTestPlan struct {
 }
 
 // ScheduledTestResult represents a single test execution result.
+type PelicanTestConfig struct {
+	QuestionKind    string `json:"question_kind,omitempty"`
+	Prompt          string `json:"prompt"`
+	ReasoningEffort string `json:"reasoning_effort"`
+	ParallelCount   int    `json:"parallel_count"`
+	ModelID         string `json:"model_id,omitempty"`
+}
+
 type ScheduledTestResult struct {
-	ID           int64     `json:"id"`
-	PlanID       int64     `json:"plan_id"`
-	Status       string    `json:"status"`
-	ResponseText string    `json:"response_text"`
-	ErrorMessage string    `json:"error_message"`
-	LatencyMs    int64     `json:"latency_ms"`
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at"`
-	CreatedAt    time.Time `json:"created_at"`
+	PelicanConfig *PelicanTestConfig `json:"pelican_config,omitempty"`
+	ID            int64              `json:"id"`
+	PlanID        int64              `json:"plan_id"`
+	Status        string             `json:"status"`
+	ResponseText  string             `json:"response_text"`
+	ErrorMessage  string             `json:"error_message"`
+	LatencyMs     int64              `json:"latency_ms"`
+	StartedAt     time.Time          `json:"started_at"`
+	FinishedAt    time.Time          `json:"finished_at"`
+	CreatedAt     time.Time          `json:"created_at"`
 }
 
 // ScheduledTestPlanRepository defines the data access interface for test plans.

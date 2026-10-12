@@ -113,6 +113,7 @@ func RegisterAdminRoutes(
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
 
+		registerPelicanShowcaseRoutes(admin, h)
 		// 智能运维：时段轮候
 		admin.GET("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Get)
 		admin.GET("/intelligent-ops/time-rotation/status", h.Admin.TimeRotation.Status)
@@ -945,4 +946,17 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 		}
 		c.Next()
 	}
+}
+
+func registerPelicanShowcaseRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/pelican-showcase/settings", h.PelicanShowcase.GetSettings)
+	admin.PUT("/pelican-showcase/settings", h.PelicanShowcase.UpdateSettings)
+	admin.DELETE("/pelican-showcase/items/:id", h.PelicanShowcase.DeleteItem)
+	admin.GET("/pelican-group-tests", h.Admin.PelicanGroupTest.ListPlans)
+	admin.POST("/pelican-group-tests", h.Admin.PelicanGroupTest.CreatePlan)
+	admin.PUT("/pelican-group-tests/:id", h.Admin.PelicanGroupTest.UpdatePlan)
+	admin.DELETE("/pelican-group-tests/:id", h.Admin.PelicanGroupTest.DeletePlan)
+	admin.POST("/pelican-group-tests/:id/run", h.Admin.PelicanGroupTest.RunPlan)
+	admin.GET("/pelican-group-test-results", h.Admin.PelicanGroupTest.ListResults)
+	admin.GET("/pelican-group-test-results/:id", h.Admin.PelicanGroupTest.GetResult)
 }

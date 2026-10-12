@@ -11,6 +11,7 @@ import (
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
+	pelicanGroupTestHandler *admin.PelicanGroupTestHandler,
 	timeRotationHandler *admin.AccountTimeRotationHandler,
 	dashboardHandler *admin.DashboardHandler,
 	userHandler *admin.UserHandler,
@@ -65,6 +66,7 @@ func ProvideAdminHandlers(
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
 	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
 	return &AdminHandlers{
+		PelicanGroupTest:       pelicanGroupTestHandler,
 		TimeRotation:           timeRotationHandler,
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
@@ -203,6 +205,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	pelicanShowcaseHandler *PelicanShowcaseHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	apiKeyHandler *APIKeyHandler,
@@ -237,6 +240,7 @@ func ProvideHandlers(
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
 	return &Handlers{
+		PelicanShowcase:  pelicanShowcaseHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		APIKey:           apiKeyHandler,
@@ -281,6 +285,8 @@ func ProvideAsyncImageHandler(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	NewPelicanShowcaseHandler,
+	admin.NewPelicanGroupTestHandler,
 	wire.Bind(new(service.ImageTaskExecutor), new(*AsyncImageHandler)),
 	// Top-level handlers
 	NewAuthHandler,
