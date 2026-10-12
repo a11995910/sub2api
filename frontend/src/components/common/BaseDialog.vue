@@ -11,7 +11,7 @@
         @click.self="handleClose"
       >
         <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop>
+        <div ref="dialogRef" :class="['modal-content', widthClasses, contentClass]" @click.stop>
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
@@ -28,7 +28,7 @@
           </div>
 
           <!-- Body -->
-          <div ref="modalBodyRef" class="modal-body">
+          <div ref="modalBodyRef" :class="['modal-body', bodyClass]">
             <slot></slot>
           </div>
 
@@ -65,6 +65,8 @@ interface Props {
   show: boolean
   title: string
   width?: DialogWidth
+  contentClass?: string
+  bodyClass?: string
   closeOnEscape?: boolean
   closeOnClickOutside?: boolean
   showCloseButton?: boolean
