@@ -879,6 +879,9 @@ func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, no
 }
 
 func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, account *Account) (map[string]any, error) {
+	if account.IsExcelOAuth() {
+		return nil, nil
+	}
 	if account == nil || !account.IsOAuth() {
 		return nil, nil
 	}

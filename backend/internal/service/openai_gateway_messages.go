@@ -127,7 +127,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	compatReplayTrimmed := false
 	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel)
-	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel)
+	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel) && !account.isExcelBPSEnabledForUpstreamModel(billingModel)
 	previousResponseID := ""
 	if compatContinuationEnabled {
 		previousResponseID = s.getOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
@@ -206,6 +206,20 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	responsesBody, err := json.Marshal(responsesReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal responses request: %w", err)
+	}
+
+	bpsEnabled, bpsErr := s.excelBPSRouteEnabledForUpstreamModel(ctx, account, billingModel)
+	if bpsErr != nil {
+		MarkResponseCommitted(c)
+		writeExcelBPSOutputError(c, "anthropic", false, 503, "basispoints_settings_unavailable", bpsErr.Error())
+		return nil, bpsErr
+	}
+	if bpsEnabled && account.excelBPSNativeFallbackReason(responsesBody) == "" {
+		return s.forwardExcelBPSCompat(ctx, c, account, responsesBody, originalModel, upstreamModel, promptCacheKey, clientStream, startTime, "anthropic")
+	}
+	if account.IsExcelOAuth() {
+		writeAnthropicError(c, 400, "invalid_request_error", "Excel OAuth 仅支持已启用的 Excel/BPS 模型路由")
+		return nil, fmt.Errorf("Excel OAuth 路由不可用")
 	}
 
 	if account.UsesOpenAICodexProtocol() && account.Platform != PlatformGrok {

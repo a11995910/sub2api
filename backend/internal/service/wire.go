@@ -135,9 +135,13 @@ func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient OpenAIOAuthClient,
 	privacyClientFactory PrivacyClientFactory,
+	accountRepo AccountRepository,
+	encryptor SecretEncryptor,
+	tokenCache GeminiTokenCache,
 ) *OpenAIOAuthService {
 	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
 	svc.SetPrivacyClientFactory(privacyClientFactory)
+	svc.SetExcelOAuthDependencies(accountRepo, encryptor, tokenCache)
 	return svc
 }
 

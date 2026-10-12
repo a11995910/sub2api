@@ -14,6 +14,9 @@ import (
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
 type OpenAIOAuthService struct {
+	excelAccountRepo     AccountRepository
+	excelEncryptor       SecretEncryptor
+	excelTokenCache      OpenAITokenCache
 	sessionStore         *openai.SessionStore
 	proxyRepo            ProxyRepository
 	oauthClient          OpenAIOAuthClient
@@ -42,7 +45,14 @@ type OpenAIAuthURLResult struct {
 }
 
 // GenerateAuthURL generates an OpenAI OAuth authorization URL
-func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI, platform string) (*OpenAIAuthURLResult, error) {
+func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI, platform string, profiles ...string) (*OpenAIAuthURLResult, error) {
+	profile := "codex"
+	if len(profiles) > 0 && profiles[0] != "" {
+		profile = profiles[0]
+	}
+	if profile != "codex" && profile != "excel" {
+		return nil, infraerrors.BadRequest("INVALID_OAUTH_PROFILE", "授权类型无效")
+	}
 	// Generate PKCE values
 	state, err := openai.GenerateState()
 	if err != nil {
@@ -81,6 +91,10 @@ func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 	normalizedPlatform := normalizeOpenAIOAuthPlatform(platform)
 	clientID, _ := openai.OAuthClientConfigByPlatform(normalizedPlatform)
 
+	if profile == "excel" {
+		clientID = openai.ExcelClientID
+		redirectURI = openai.ExcelRedirectURI
+	}
 	// Store session
 	session := &openai.OAuthSession{
 		State:        state,
@@ -94,6 +108,9 @@ func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 
 	// Build authorization URL
 	authURL := openai.BuildAuthorizationURLForPlatform(state, codeChallenge, redirectURI, normalizedPlatform)
+	if profile == "excel" {
+		authURL = openai.BuildExcelAuthorizationURL(state, codeChallenge)
+	}
 
 	return &OpenAIAuthURLResult{
 		AuthURL:   authURL,
@@ -157,7 +174,7 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 
 	// Use redirect URI from session or input
 	redirectURI := session.RedirectURI
-	if input.RedirectURI != "" {
+	if input.RedirectURI != "" && session.ClientID != openai.ExcelClientID {
 		redirectURI = input.RedirectURI
 	}
 	clientID := strings.TrimSpace(session.ClientID)
@@ -202,7 +219,9 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 		tokenInfo.PlanType = userInfo.PlanType
 	}
 
-	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+	if tokenInfo.ClientID != openai.ExcelClientID {
+		s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+	}
 
 	return tokenInfo, nil
 }
@@ -249,7 +268,9 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		tokenInfo.PlanType = userInfo.PlanType
 	}
 
-	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+	if tokenInfo.ClientID != openai.ExcelClientID {
+		s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+	}
 
 	return tokenInfo, nil
 }
@@ -379,7 +400,9 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 				tokenInfo.ExpiresAt = expiresAt.Unix()
 				tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
 			}
-			s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+			if tokenInfo.ClientID != openai.ExcelClientID {
+				s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+			}
 			return tokenInfo, nil
 		}
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")

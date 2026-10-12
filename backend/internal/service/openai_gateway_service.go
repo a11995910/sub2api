@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -456,6 +457,13 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
+	excelBPSImagesMu       sync.Mutex
+	excelBPSImages         *basispoints.ImageRelay
+	excelBPSAttachments    basispoints.AttachmentCache
+	excelBPSImageAdmission excelBPSImageAdmission
+	excelBPSModelCooldowns excelBPSModelCooldowns
+	excelBPSCooldownUntil  sync.Map
+
 	accountRepo           AccountRepository
 	groupRepo             GroupRepository
 	usageLogRepo          UsageLogRepository
@@ -767,6 +775,9 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
+	if s != nil {
+		_ = s.CloseExcelBPSImages()
+	}
 	if s != nil && s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}
@@ -1284,6 +1295,9 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			return "", "", err
 		}
 		account = credAccount
+	}
+	if account.IsExcelOAuth() {
+		return "", "", errors.New("Excel OAuth 凭据仅允许用于 BPS")
 	}
 	switch account.Type {
 	case AccountTypeOAuth:

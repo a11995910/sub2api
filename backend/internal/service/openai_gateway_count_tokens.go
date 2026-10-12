@@ -61,6 +61,10 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 		return err
 	}
 
+	if account.IsExcelOAuth() {
+		writeOpenAIResponsesInputTokensFallback(c, account, prepared, 0, "excel_bps_local")
+		return nil
+	}
 	if shouldEstimateOpenAIInputTokensLocally(account) {
 		writeOpenAIResponsesInputTokensFallback(c, account, prepared, 0, "custom_relay")
 		return nil

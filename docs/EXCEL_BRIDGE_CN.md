@@ -1,5 +1,7 @@
 # Excel Bridge 独立上游
 
+本站内置的 Excel / BPS 功能见 [EXCEL_BPS_CN.md](EXCEL_BPS_CN.md)。内置功能使用账号开关、独立 Excel 授权和智能运维默认模板，不需要部署下述 Bridge。本文保留独立 Bridge 的架构和历史部署参考；其运行状态需现场核实，不能作为内置功能的发布或验收依据。
+
 Excel Bridge 以独立容器接入正式 VPS 的 Sub2API，不通过 `.s2plugin` 插件管理页安装。客户端仍访问 Sub2API，鉴权、分组限制、计费和使用记录由 Sub2API 处理。
 
 ## 平台多账号改造
@@ -12,9 +14,9 @@ Excel Bridge 以独立容器接入正式 VPS 的 Sub2API，不通过 `.s2plugin`
 
 新插件尚未安装或绑定正式宿主，也未进行真实 OAuth 推理与端到端扣费验收。下方原版容器及停用测试账号仍是当前线上实际状态；不得把新镜像存在或隔离测试通过等同于已开放生产。后续安装、发布者公钥配置与恢复方法以独立仓库 `docs/PLATFORM_DEPLOY.md` 为准。
 
-## 当前部署
+## 独立 Bridge 部署参考（旧正式机）
 
-- 主机：正式 VPS `205.185.113.15`，SSH 别名 `sub2api-new-vps`。
+- 主机：旧正式 VPS `205.185.113.15`，SSH 别名 `sub2api-new-vps`。
 - 来源：`https://github.com/Kaixxrua/excel-codex-bridge.git`，版本 `v0.5.3`，完整提交 `168ed925548d6149a9dde15651b40211a926a3c9`。
 - 源码：`/opt/excel-codex-bridge/repo`；运行配置：`/opt/excel-codex-bridge/runtime`。
 - 镜像：`excel-sub2api:0.5.3-168ed925548d`；容器：`excel-sub2api`；Compose project：`excel-bridge`。保留旧镜像 `excel-sub2api:0.4.6-66c41df941fb` 用于回滚。

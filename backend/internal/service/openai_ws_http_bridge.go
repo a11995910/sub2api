@@ -433,6 +433,24 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if writeClientMessage == nil {
 		return nil, errors.New("client websocket writer is nil")
 	}
+	bpsEnabled, bpsErr := s.excelBPSRouteEnabledForUpstreamModel(ctx, account, gjson.GetBytes(payload, "model").String())
+	if bpsErr != nil {
+		return nil, bpsErr
+	}
+	if bpsEnabled {
+		return s.proxyExcelBPSWSTurn(ctx, c, account, payload, originalModel, writeClientMessage)
+	}
+	if account.IsExcelOAuth() {
+		return nil, errors.New("Excel OAuth 仅支持启用的 Excel/BPS 模型路由")
+	}
+	// BPS 首帧未预取原生凭据；只有切到原生模型时才获取，不能复用 Excel 令牌。
+	if token == "" {
+		var tokenErr error
+		token, _, tokenErr = s.GetRequestCredential(ctx, c, account)
+		if tokenErr != nil {
+			return nil, tokenErr
+		}
+	}
 	responseModelObserver := &upstreamResponseModelObserver{}
 
 	body, err := prepareOpenAIWSHTTPBridgeBody(account, payload)

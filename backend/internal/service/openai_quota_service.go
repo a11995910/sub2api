@@ -471,6 +471,9 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		account = resolved
 	}
 
+	if account.IsExcelOAuth() {
+		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "EXCEL_QUOTA_UNSUPPORTED", "Excel OAuth 不支持 Codex 额度接口")
+	}
 	chatGPTAccountID = strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
 	if chatGPTAccountID == "" {
 		// Fall back to organization_id — some legacy accounts only persisted poid.

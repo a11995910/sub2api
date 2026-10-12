@@ -856,6 +856,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		isOAuth = true
 		// Agent Identity signs each request and does not retain the OAuth token.
 		if !credentialAccount.IsOpenAIAgentIdentity() {
+			if credentialAccount.IsExcelOAuth() {
+				return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
+			}
 			authToken = credentialAccount.GetOpenAIAccessToken()
 		}
 		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -2225,6 +2228,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	case credentialAccount.IsOAuth():
 		isOAuth = true
 		if !credentialAccount.IsOpenAIAgentIdentity() {
+			if credentialAccount.IsExcelOAuth() {
+				return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
+			}
 			authToken = credentialAccount.GetOpenAIAccessToken()
 		}
 		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -3175,6 +3181,9 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	authToken := ""
 	if !credentialAccount.IsOpenAIAgentIdentity() {
+		if credentialAccount.IsExcelOAuth() {
+			return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
+		}
 		authToken = credentialAccount.GetOpenAIAccessToken()
 	}
 	if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {

@@ -320,6 +320,8 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
     },
     global: {
       stubs: {
+        ExcelBPSAccountSettings: true,
+        RouterLink: true,
         BaseDialog: BaseDialogStub,
         Select: SelectStub,
         Icon: true,

@@ -93,6 +93,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = reasoningBody
 		}
 	}
+	// BPS 必须先于 Codex 请求清洗和门票注入，保留客户端工具与完整历史。
+	bpsEnabled, bpsErr := s.excelBPSRouteEnabled(ctx, account, gjson.GetBytes(body, "model").String())
+	if bpsErr != nil {
+		MarkResponseCommitted(c)
+		writeExcelBPSOutputError(c, "responses", false, 503, "basispoints_settings_unavailable", bpsErr.Error())
+		return nil, bpsErr
+	}
+	if bpsEnabled && account.excelBPSNativeFallbackReason(body) == "" {
+		return s.forwardExcelBPS(ctx, c, account, body, startTime)
+	}
+	if account.IsExcelOAuth() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "excel_oauth_route_unavailable", "message": "Excel OAuth 仅支持已启用的 Excel/BPS 路由，请检查全局开关和账号模型范围"}})
+		return nil, fmt.Errorf("Excel OAuth 路由不可用")
+	}
 	responsesLite := account.IsOpenAI() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader))
 	if responsesLite {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(body, account)

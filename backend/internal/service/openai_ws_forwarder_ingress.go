@@ -89,8 +89,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return err
 	}
-	if err := validateOpenAIWSBearerToken(account, token); err != nil {
-		return err
+	if token != "" || !account.IsExcelBPSEnabled() {
+		if err := validateOpenAIWSBearerToken(account, token); err != nil {
+			return err
+		}
 	}
 
 	// 预取一次 OpenAI Fast Policy settings，绑定到 ctx，让该 WS session
@@ -115,7 +117,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	forceHTTPBridge := account.Platform == PlatformGrok ||
+	// 启用 BPS 的账号整条连接走 HTTP bridge，后续帧可切换到另一协议的模型。
+	forceHTTPBridge := account.IsExcelOAuth() || account.IsExcelBPSEnabled() || account.Platform == PlatformGrok ||
 		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
 	ingressMode := OpenAIWSIngressModeCtxPool
@@ -270,6 +273,39 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		} else {
 			normalized = next
 		}
+		// BPS 保留客户端原始工具与历史；不能先执行 Codex 别名、图片工具注入及指纹改写。
+		bpsOriginal := strings.TrimSpace(values[1].String())
+		if bpsOriginal == "" {
+			bpsOriginal = ingressSessionOriginalModel
+		}
+		requestModel := bpsOriginal
+		if hooks != nil && hooks.MapRequestModel != nil {
+			mapped, mapErr := hooks.MapRequestModel(turn, bpsOriginal)
+			if mapErr != nil {
+				return openAIWSClientPayload{}, mapErr
+			}
+			if strings.TrimSpace(mapped) != "" {
+				requestModel = strings.TrimSpace(mapped)
+			}
+		}
+		bpsTurn, bpsTurnErr := s.excelBPSRouteEnabled(ctx, account, requestModel)
+		if bpsTurnErr != nil {
+			return openAIWSClientPayload{}, bpsTurnErr
+		}
+		if bpsTurn {
+			mapped := account.GetMappedModel(requestModel)
+			normalized, bpsTurnErr = applyPayloadMutation(normalized, "model", mapped)
+			if bpsTurnErr != nil {
+				return openAIWSClientPayload{}, bpsTurnErr
+			}
+			previous := strings.TrimSpace(values[3].String())
+			if previous != "" && ClassifyOpenAIPreviousResponseIDKind(previous) == OpenAIPreviousResponseIDKindMessageID {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "previous_response_id 必须是响应 ID", nil)
+			}
+			frameIntegrity.expectMappedModel(mapped)
+			ingressSessionOriginalModel = bpsOriginal
+			return openAIWSClientPayload{payloadRaw: normalized, accountIdentitySourceRaw: append([]byte(nil), normalized...), rawForHash: trimmed, promptCacheKey: strings.TrimSpace(values[2].String()), previousResponseID: previous, originalModel: bpsOriginal, payloadBytes: len(normalized), requestedReasoningEffort: requestedReasoningEffort, integritySnapshot: frameIntegrity}, nil
+		}
 		responsesLite := isOpenAIResponsesLiteWebSocketPayload(normalized)
 		if compatibilityBody, compatibilityChanged, compatibilityErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, account, responsesLite); compatibilityErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", compatibilityErr)
@@ -378,16 +414,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", marshalErr)
 				}
 				normalized = rebuilt
-			}
-		}
-		requestModel := originalModel
-		if hooks != nil && hooks.MapRequestModel != nil {
-			mappedModel, mapErr := hooks.MapRequestModel(turn, originalModel)
-			if mapErr != nil {
-				return openAIWSClientPayload{}, mapErr
-			}
-			if mappedModel = strings.TrimSpace(mappedModel); mappedModel != "" {
-				requestModel = mappedModel
 			}
 		}
 		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(requestModel))

@@ -114,6 +114,8 @@ func RegisterAdminRoutes(
 		registerAdminAPIKeyRoutes(admin, h)
 
 		registerPelicanShowcaseRoutes(admin, h)
+		admin.GET("/intelligent-ops/excel-bps", h.Admin.Setting.GetExcelBPSConfig)
+		admin.PUT("/intelligent-ops/excel-bps", h.Admin.Setting.SaveExcelBPSConfig)
 		// 智能运维：时段轮候
 		admin.GET("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Get)
 		admin.GET("/intelligent-ops/time-rotation/status", h.Admin.TimeRotation.Status)
@@ -495,6 +497,9 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		openai.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
 		openai.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
+		openai.GET("/accounts/:id/excel-authorization", h.Admin.OpenAIOAuth.ExcelAuthorizationStatus)
+		openai.POST("/accounts/:id/excel-authorization/url", h.Admin.OpenAIOAuth.GenerateExcelAccountAuthURL)
+		openai.POST("/accounts/:id/excel-authorization", h.Admin.OpenAIOAuth.ExchangeExcelAccountCode)
 		openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
 		openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
 		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)

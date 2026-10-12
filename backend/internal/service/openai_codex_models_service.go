@@ -1702,6 +1702,9 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	appendModelsPath := false
 	switch {
 	case credAccount.IsOpenAIOAuth():
+		if credAccount.IsExcelOAuth() {
+			return nil, infraerrors.New(http.StatusBadRequest, "EXCEL_CODEX_MODELS_UNSUPPORTED", "Excel OAuth 不支持 Codex 模型清单")
+		}
 		authToken = strings.TrimSpace(credAccount.GetOpenAIAccessToken())
 		if authToken == "" && !credAccount.IsOpenAIAgentIdentity() {
 			return nil, infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_TOKEN_MISSING", "account has no Codex backend access token")

@@ -550,6 +550,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
+	if err := validateExcelBPSAccount(account); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_EXCEL_BPS", err.Error())
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -893,6 +896,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// directly; production wiring requires this capability through
 		// AdminAccountRepository.
 		updater, _ = s.accountRepo.(AccountBillingSettingsRepository)
+	}
+	if err := validateExcelBPSAccount(account); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_EXCEL_BPS", err.Error())
 	}
 	if updater != nil {
 		if err := updater.UpdateWithAccountBillingSettings(

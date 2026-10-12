@@ -1829,6 +1829,7 @@
         </div>
       </div>
 
+      <ExcelBPSAccountSettings v-if="account?.platform === 'openai' && account?.type === 'oauth' && !account.parent_account_id" v-model="excelBPS" :account-id="account.id" />
       <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
@@ -3158,6 +3159,9 @@
 </template>
 
 <script setup lang="ts">
+import ExcelBPSAccountSettings from './ExcelBPSAccountSettings.vue'
+import { readExcelBPSAccount, writeExcelBPSAccount } from '@/api/admin/excelBps'
+
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -3280,6 +3284,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const excelBPS = ref(readExcelBPSAccount())
 const appStore = useAppStore()
 const browserTimeZone = getBrowserTimeZone()
 
@@ -4233,6 +4238,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+  excelBPS.value = readExcelBPSAccount(extra)
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
@@ -5191,6 +5197,9 @@ const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Ac
 }
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
+  if (props.account?.platform === 'openai' && props.account.type === 'oauth' && !props.account.parent_account_id) {
+    updatePayload.extra = writeExcelBPSAccount((updatePayload.extra || props.account.extra) as Record<string, unknown>, excelBPS.value)
+  }
   submitting.value = true
   try {
     let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))

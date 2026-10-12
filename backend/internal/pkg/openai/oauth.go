@@ -17,6 +17,9 @@ import (
 const (
 	// OAuth Client ID for OpenAI (Codex CLI official)
 	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+	// Excel 授权使用官方注册的客户端和回调；不能把 Codex 刷新令牌改为此客户端使用。
+	ExcelClientID    = "app_fnr0pYvVwwFDocDumLG3H2Bp"
+	ExcelRedirectURI = "https://bps.openai.com/basispoints/extension/360590d7-f8f9-4d88-bf75-0edfe0a4b9f3/auth/callback"
 
 	// OAuth endpoints
 	AuthorizeURL = "https://auth.openai.com/oauth/authorize"
@@ -410,4 +413,10 @@ func (c *IDTokenClaims) GetUserInfo() *UserInfo {
 	}
 
 	return info
+}
+
+// BuildExcelAuthorizationURL 创建独立 Excel PKCE 授权链接。
+func BuildExcelAuthorizationURL(state, challenge string) string {
+	params := url.Values{"client_id": {ExcelClientID}, "response_type": {"code"}, "redirect_uri": {ExcelRedirectURI}, "scope": {"openid offline_access email profile organization.read"}, "state": {state}, "code_challenge_method": {"S256"}, "code_challenge": {challenge}, "audience": {"https://api.openai.com/v1"}, "platform": {"PC"}}
+	return "https://auth.openai.com/api/accounts/authorize?" + params.Encode()
 }

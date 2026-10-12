@@ -1085,6 +1085,9 @@ func (s *AccountTestService) buildOpenAIOAuthUpstreamModelsRequest(ctx context.C
 			}
 		}
 	} else {
+		if credentialAccount.IsExcelOAuth() {
+			return nil, newUpstreamModelSyncConfigError("Excel OAuth 不支持同步 Codex 模型清单", nil)
+		}
 		accessToken := strings.TrimSpace(credentialAccount.GetOpenAIAccessToken())
 		if accessToken == "" {
 			return nil, newUpstreamModelSyncConfigError("No OpenAI access token is available", nil)

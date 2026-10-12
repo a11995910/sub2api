@@ -619,6 +619,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, title: '鹈鹕测智', titleKey: 'pelicanShowcase.title', descriptionKey: 'pelicanShowcase.description' }
   },
   {
+    path: '/admin/intelligent-ops/excel-bps',
+    name: 'AdminExcelBPS',
+    component: () => import('@/views/admin/ExcelBPSView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Excel / BPS 默认设置' }
+  },
+  {
     path: '/admin/intelligent-ops/time-rotation',
     name: 'AdminTimeRotation',
     component: () => import('@/views/admin/TimeRotationView.vue'),

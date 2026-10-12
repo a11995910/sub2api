@@ -2365,6 +2365,14 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'openai' && accountCategory === 'oauth-based'" class="space-y-2">
+        <label class="input-label">OAuth 授权类型</label>
+        <select v-model="openaiOAuthProfile" class="input" @change="openaiOAuth.resetState(); excelBPS.enabled = openaiOAuthProfile === 'excel'; if (openaiOAuthProfile === 'excel') excelBPS.all_models = true">
+          <option value="codex">Codex OAuth</option><option value="excel">Excel OAuth（仅用于 BPS）</option>
+        </select>
+        <p v-if="openaiOAuthProfile === 'excel'" class="input-hint">使用官方 Excel 回调 URL 完成授权。导入刷新令牌时也必须提供 Excel 客户端的令牌。</p>
+      </div>
+      <ExcelBPSAccountSettings v-if="form.platform === 'openai' && accountCategory === 'oauth-based'" v-model="excelBPS" />
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
         v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
@@ -3955,6 +3963,9 @@
 </template>
 
 <script setup lang="ts">
+import ExcelBPSAccountSettings from './ExcelBPSAccountSettings.vue'
+import { readExcelBPSAccount, writeExcelBPSAccount } from '@/api/admin/excelBps'
+
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -4075,6 +4086,8 @@ interface OAuthFlowExposed {
 }
 
 const { t } = useI18n()
+const excelBPS = ref(readExcelBPSAccount())
+const openaiOAuthProfile = ref<'codex' | 'excel'>('codex')
 const browserTimeZone = getBrowserTimeZone()
 
 const oauthStepTitle = computed(() => {
@@ -4089,6 +4102,7 @@ const oauthStepTitle = computed(() => {
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
 const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefined>(extra: T): T | Record<string, unknown> => {
+  if (form.platform === 'openai' && accountCategory.value === 'oauth-based') extra = writeExcelBPSAccount(extra, excelBPS.value) as T
   const name = upstreamRequestIdHeader.value.trim()
   if (!name) return extra
   return { ...(extra || {}), upstream_request_id_header: name }
@@ -5415,6 +5429,8 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  openaiOAuthProfile.value = 'codex'
+  excelBPS.value = readExcelBPSAccount()
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -5652,6 +5668,7 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  if (payload.platform === 'openai' && payload.type === 'oauth') payload.extra = writeExcelBPSAccount(payload.extra as Record<string, unknown>, excelBPS.value)
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })
@@ -6017,7 +6034,7 @@ const goBackToBasicInfo = () => {
 
 const handleGenerateUrl = async () => {
   if (form.platform === 'openai') {
-    await openaiOAuth.generateAuthUrl(form.proxy_id)
+    await openaiOAuth.generateAuthUrl(form.proxy_id, undefined, openaiOAuthProfile.value)
   } else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(
       form.proxy_id,
@@ -6790,7 +6807,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
 }
 
 // 手动输入 RT（Codex CLI client_id，默认）
-const handleOpenAIValidateRT = (rt: string) => handleOpenAIBatchRT(rt)
+const handleOpenAIValidateRT = (rt: string) => handleOpenAIBatchRT(rt, openaiOAuthProfile.value === 'excel' ? 'app_fnr0pYvVwwFDocDumLG3H2Bp' : undefined)
 
 // 手动输入 Mobile RT
 const handleOpenAIValidateMobileRT = (rt: string) => handleOpenAIBatchRT(rt, OPENAI_MOBILE_RT_CLIENT_ID)

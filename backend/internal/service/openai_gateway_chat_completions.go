@@ -247,6 +247,19 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 	}
 
+	bpsEnabled, bpsErr := s.excelBPSRouteEnabledForUpstreamModel(ctx, account, billingModel)
+	if bpsErr != nil {
+		MarkResponseCommitted(c)
+		writeExcelBPSOutputError(c, "chat", false, 503, "basispoints_settings_unavailable", bpsErr.Error())
+		return nil, bpsErr
+	}
+	if bpsEnabled && account.excelBPSNativeFallbackReason(responsesBody) == "" {
+		return s.forwardExcelBPSCompat(ctx, c, account, responsesBody, originalModel, upstreamModel, promptCacheKey, clientStream, startTime, "chat")
+	}
+	if account.IsExcelOAuth() {
+		return nil, writeExcelOAuthRouteError(c)
+	}
+
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),

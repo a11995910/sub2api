@@ -144,6 +144,8 @@ function mountModal(groups: any[] = []) {
     props: { show: true, proxies: [], groups },
     global: {
       stubs: {
+        ExcelBPSAccountSettings: true,
+        RouterLink: true,
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
