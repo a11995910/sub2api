@@ -80,6 +80,17 @@ def setting(key):
     return row['value']
 
 
+def short_subscription_token():
+    # 从现有随机凭据派生 96 位短码；重置原凭据时短码同步失效。
+    raw = hashlib.sha256(setting('subscription').encode()).digest()[:12]
+    return base64.urlsafe_b64encode(raw).decode()
+
+
+def subscription_url():
+    public = urlparse(PUBLIC)
+    return public.scheme + '://' + public.netloc + '/s/' + short_subscription_token()
+
+
 @app.middleware('http')
 async def security(request: Request, call_next):
     path = request.url.path
@@ -148,7 +159,7 @@ def state():
         node = dict(row)
         node['has_password'] = bool(node.pop('password'))
         nodes.append(node)
-    return {'nodes': nodes, 'subscription_url': PUBLIC + '/sub/' + setting('subscription'), 'username': setting('username')}
+    return {'nodes': nodes, 'subscription_url': subscription_url(), 'username': setting('username')}
 
 
 class Node(BaseModel):
@@ -290,9 +301,11 @@ def node_uri(row):
     return f'{scheme}://{auth}@{host}:{row["port"]}#{name}'
 
 
+@app.get('/s/{token}')
 @app.get(BASE + '/sub/{token}')
 def subscription(token: str, format: str = 'clash'):
-    if not hmac.compare_digest(token, setting('subscription')):
+    if not (hmac.compare_digest(token.encode(), setting('subscription').encode()) or
+            hmac.compare_digest(token.encode(), short_subscription_token().encode())):
         raise HTTPException(404, '订阅不存在或已重置')
     with db() as c:
         rows = c.execute('SELECT * FROM nodes WHERE enabled=1 ORDER BY managed DESC,id').fetchall()
@@ -323,7 +336,7 @@ def subscription(token: str, format: str = 'clash'):
 def qr(format: str = 'clash'):
     if format not in ('clash', 'shadowrocket'):
         raise HTTPException(400, '不支持此订阅格式')
-    url = PUBLIC + '/sub/' + setting('subscription') + ('?format=shadowrocket' if format == 'shadowrocket' else '')
+    url = subscription_url() + ('?format=shadowrocket' if format == 'shadowrocket' else '')
     image = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, border=4)
     output = io.BytesIO()
     image.save(output)

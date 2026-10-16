@@ -3,6 +3,7 @@ import base64
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 _test_data = tempfile.TemporaryDirectory()
 os.environ['VPN_DATA_DIR'] = _test_data.name
@@ -58,6 +59,24 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.client.get('/vpn/sub/test-token').status_code,404)
         url=self.client.get('/vpn/api/state').json()['subscription_url']
         self.assertEqual(self.client.get(url).status_code,200)
+
+    def test_short_url_compatibility_qr_and_rotation(self):
+        self.login()
+        self.client.post('/vpn/api/nodes',json=self.node())
+        short=self.client.get('/vpn/api/state').json()['subscription_url']
+        self.assertRegex(short,r'^https://testserver/s/[A-Za-z0-9_-]{16}$')
+        self.assertEqual(self.client.get(short).text,self.client.get('/vpn/sub/test-token').text)
+        with patch('app.qrcode.make',wraps=app.qrcode.make) as make:
+            self.assertEqual(self.client.get('/vpn/api/qr').status_code,200)
+            self.assertEqual(make.call_args.args[0],short)
+        self.assertEqual(self.client.get('/s/invalid').status_code,404)
+        self.assertEqual(self.client.get('/s/错误').status_code,404)
+        self.client.post('/vpn/api/rotate')
+        self.assertEqual(self.client.get(short).status_code,404)
+        self.assertEqual(self.client.get('/vpn/sub/test-token').status_code,404)
+        fresh=self.client.get('/vpn/api/state').json()['subscription_url']
+        self.assertNotEqual(fresh,short)
+        self.assertEqual(self.client.get(fresh).status_code,200)
 
     def test_password_revokes_sessions(self):
         self.login()
