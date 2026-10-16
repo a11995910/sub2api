@@ -4,5 +4,7 @@ set -eu
 install -d -o root -g caddy -m 0750 /var/lib/sub-vpn-tls
 install -o root -g caddy -m 0640 /etc/letsencrypt/live/sub-vpn-ip/fullchain.pem /var/lib/sub-vpn-tls/fullchain.pem
 install -o root -g caddy -m 0640 /etc/letsencrypt/live/sub-vpn-ip/privkey.pem /var/lib/sub-vpn-tls/privkey.pem
+install -o sub-vpn -g sub-vpn -m 0600 /etc/letsencrypt/live/sub-vpn-ip/fullchain.pem /var/lib/sub-vpn/anytls-fullchain.pem
+install -o sub-vpn -g sub-vpn -m 0600 /etc/letsencrypt/live/sub-vpn-ip/privkey.pem /var/lib/sub-vpn/anytls-privkey.pem
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 systemctl reload caddy

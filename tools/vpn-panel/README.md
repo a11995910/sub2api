@@ -27,6 +27,7 @@
 | Caddy 追加配置 | `/etc/caddy/sub-vpn.caddy`，主配置通过 import 加载 |
 | IP 证书源 | `/etc/letsencrypt/live/sub-vpn-ip/` |
 | Caddy 证书副本 | `/var/lib/sub-vpn-tls/`，root:caddy，目录 0750、文件 0640 |
+| AnyTLS 证书副本 | `/var/lib/sub-vpn/anytls-fullchain.pem`、`anytls-privkey.pem`，sub-vpn:sub-vpn，文件 0600 |
 | 证书 HTTP 验证目录 | `/var/lib/sub-vpn-acme/` |
 
 后台只监听 `127.0.0.1:18181`。三个 systemd 单元分别管理后台、自建节点和证书续期；续期 timer 每十二小时检查，成功后由 `install-ip-cert` 安装证书、校验 Caddy 并平滑 reload。IP 证书使用 Let's Encrypt `shortlived` profile，80/443 必须保持公网可达。
