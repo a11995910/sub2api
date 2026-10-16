@@ -97,6 +97,15 @@ class PanelTests(unittest.TestCase):
         body=self.node();body['host']='192.0.2.11'
         self.assertEqual(self.client.put('/vpn/api/nodes/'+str(node['id']),json=body).status_code,400)
 
+    def test_anytls_subscription_and_shadowrocket_guard(self):
+        self.login()
+        with app.db() as c:
+            c.execute("INSERT INTO nodes(name,category,protocol,host,port,password,managed) VALUES ('自建 AnyTLS','自建','anytls','198.51.100.10',24444,'anytls-secret',1)")
+        result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
+        self.assertEqual(result['proxies'][0]['type'],'anytls')
+        self.assertEqual(result['proxies'][0]['sni'],'198.51.100.10')
+        self.assertEqual(self.client.get('/vpn/sub/test-token?format=shadowrocket').status_code,400)
+
     def test_relay_subscription_and_dependency(self):
         self.login()
         with app.db() as c:

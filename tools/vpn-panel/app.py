@@ -184,7 +184,7 @@ class Node(BaseModel):
             raise HTTPException(400, '名称、分类或服务器地址不正确；地址只填写 IP 或域名')
         if self.name.strip() in ('DIRECT', 'REJECT', '节点选择', '自动选择'):
             raise HTTPException(400, '此名称为订阅保留名称')
-        if self.protocol not in ('socks5', 'http', 'https', 'ss'):
+        if self.protocol not in ('socks5', 'http', 'https', 'ss', 'anytls'):
             raise HTTPException(400, '不支持此协议')
         if self.protocol == 'ss' and self.cipher not in ('aes-128-gcm', 'aes-256-gcm', 'chacha20-ietf-poly1305', '2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm'):
             raise HTTPException(400, '请选择有效的 Shadowsocks 加密方式')
@@ -277,7 +277,9 @@ def change_password(body: PasswordChange):
 
 def clash_node(row):
     node = {'name': row['name'], 'type': 'http' if row['protocol'] == 'https' else row['protocol'], 'server': row['host'], 'port': row['port']}
-    if row['protocol'] == 'ss':
+    if row['protocol'] == 'anytls':
+        node.update(password=row['password'], sni=row['host'], udp=True, **{'skip-cert-verify': False})
+    elif row['protocol'] == 'ss':
         node.update(cipher=row['cipher'], password=row['password'], udp=True)
     else:
         if row['username']:
@@ -293,6 +295,8 @@ def clash_node(row):
 def node_uri(row):
     host = '[' + row['host'] + ']' if ':' in row['host'] else row['host']
     name = quote(row['name'])
+    if row['protocol'] == 'anytls':
+        raise HTTPException(400, 'Shadowrocket 直连格式不支持 AnyTLS，请使用 Clash/Mihomo')
     if row['protocol'] == 'ss':
         user = base64.urlsafe_b64encode((row['cipher']+':'+row['password']).encode()).decode().rstrip('=')
         return f'ss://{user}@{host}:{row["port"]}#{name}'
@@ -312,13 +316,16 @@ def subscription(token: str, format: str = 'clash'):
     if not rows:
         raise HTTPException(503, '没有启用的节点，请联系管理员')
     if format == 'shadowrocket':
+        if any(row['protocol'] == 'anytls' for row in rows):
+            raise HTTPException(400, '当前订阅包含 AnyTLS，自建节点请使用 Clash/Mihomo 格式')
         text = base64.b64encode('\n'.join(node_uri(row) for row in rows).encode()).decode()
         return Response(text, media_type='text/plain', headers={'profile-update-interval': '24'})
     if format != 'clash':
         raise HTTPException(400, '不支持此订阅格式')
     names = [row['name'] for row in rows]
     proxies = [clash_node(row) for row in rows]
-    own = next((row['name'] for row in rows if row['managed']), None)
+    own_row = next((row for row in rows if row['managed'] and row['protocol'] == 'anytls'), None) or next((row for row in rows if row['managed']), None)
+    own = own_row['name'] if own_row else None
     for node, row in zip(proxies, rows):
         if row['relay']:
             if not own:
