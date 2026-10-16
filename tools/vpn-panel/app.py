@@ -211,8 +211,8 @@ def save_node(body, node_id=None):
             raise HTTPException(400, '请先启用自建节点，再使用中转')
         if previous and not data['password']:
             data['password'] = previous['password']
-        if data['protocol'] == 'ss' and not data['password']:
-            raise HTTPException(400, 'Shadowsocks 必须填写密码')
+        if data['protocol'] in ('ss', 'anytls') and not data['password']:
+            raise HTTPException(400, 'Shadowsocks / AnyTLS 必须填写密码')
         if data['protocol'] == 'ss' and data['cipher'].startswith('2022-'):
             try:
                 key = base64.b64decode(data['password'], validate=True)
@@ -296,7 +296,7 @@ def node_uri(row):
     host = '[' + row['host'] + ']' if ':' in row['host'] else row['host']
     name = quote(row['name'])
     if row['protocol'] == 'anytls':
-        raise HTTPException(400, 'Shadowrocket 直连格式不支持 AnyTLS，请使用 Clash/Mihomo')
+        raise HTTPException(400, '当前直连格式尚未实现 AnyTLS 导出，请使用 Clash/Mihomo')
     if row['protocol'] == 'ss':
         user = base64.urlsafe_b64encode((row['cipher']+':'+row['password']).encode()).decode().rstrip('=')
         return f'ss://{user}@{host}:{row["port"]}#{name}'

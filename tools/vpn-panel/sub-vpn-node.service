@@ -1,5 +1,5 @@
 [Unit]
-Description=Sub2API 自建 Shadowsocks 节点
+Description=Sub2API 自建 AnyTLS 与兼容节点
 After=network-online.target
 Wants=network-online.target
 
