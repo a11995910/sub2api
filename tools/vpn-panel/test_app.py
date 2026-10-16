@@ -78,6 +78,18 @@ class PanelTests(unittest.TestCase):
         body=self.node();body['host']='192.0.2.11'
         self.assertEqual(self.client.put('/vpn/api/nodes/'+str(node['id']),json=body).status_code,400)
 
+    def test_relay_subscription_and_dependency(self):
+        self.login()
+        with app.db() as c:
+            c.execute("INSERT INTO nodes(name,category,protocol,host,port,password,cipher,managed) VALUES ('自建','自建','ss','192.0.2.1',24443,'own-secret','aes-256-gcm',1)")
+        body=self.node(relay=True)
+        self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
+        result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
+        self.assertEqual(result['proxies'][1]['dialer-proxy'],'自建')
+        own=self.client.get('/vpn/api/state').json()['nodes'][0]
+        own.update(password='',enabled=False)
+        self.assertEqual(self.client.put('/vpn/api/nodes/'+str(own['id']),json=own).status_code,400)
+
     def test_login_rate_limit(self):
         for i in range(10):
             self.assertEqual(self.client.post('/vpn/api/login',json={'username':'admin','password':'bad'}).status_code,401)

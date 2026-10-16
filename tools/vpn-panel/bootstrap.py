@@ -28,8 +28,8 @@ def bootstrap(source):
             note = '从线上 Sub 导入，2026-10-16 实测出口可用。'
             if row['status'] == 'expired':
                 note += '来源记录已标记过期，请核对续费；实测仍可连接。'
-            c.execute('INSERT INTO nodes(name,category,protocol,host,port,username,password,note) VALUES (?,?,?,?,?,?,?,?)',
-                      (row['name'], row['name'], row['protocol'], row['host'], row['port'], row['username'] or '', row['password'] or '', note))
+            c.execute('INSERT INTO nodes(name,category,protocol,host,port,username,password,note,relay) VALUES (?,?,?,?,?,?,?,?,?)',
+                      (row['name'], row['name'], row['protocol'], row['host'], row['port'], row['username'] or '', row['password'] or '', note, 1))
     config = {'log': {'level': 'warn'}, 'inbounds': [{'type': 'shadowsocks', 'tag': 'own-ss', 'listen': '0.0.0.0', 'listen_port': 24443, 'method': 'aes-256-gcm', 'password': node_password}], 'outbounds': [{'type': 'direct', 'tag': 'direct'}]}
     for filename, contents in [('sing-box.json', json.dumps(config)), ('admin-initial.txt', 'admin\n' + password + '\n')]:
         path = DATA / filename

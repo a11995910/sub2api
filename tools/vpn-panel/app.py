@@ -62,8 +62,10 @@ def init():
         CREATE TABLE IF NOT EXISTS nodes(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,category TEXT NOT NULL,
           protocol TEXT NOT NULL,host TEXT NOT NULL,port INTEGER NOT NULL,username TEXT NOT NULL DEFAULT '',
           password TEXT NOT NULL DEFAULT '',cipher TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,
-          managed INTEGER NOT NULL DEFAULT 0,note TEXT NOT NULL DEFAULT '');
+          managed INTEGER NOT NULL DEFAULT 0,note TEXT NOT NULL DEFAULT '',relay INTEGER NOT NULL DEFAULT 0);
         ''')
+        if 'relay' not in {row['name'] for row in c.execute('PRAGMA table_info(nodes)')}:
+            c.execute('ALTER TABLE nodes ADD COLUMN relay INTEGER NOT NULL DEFAULT 0')
     os.chmod(DATA / 'panel.db', 0o600)
 
 
@@ -159,6 +161,7 @@ class Node(BaseModel):
     password: str = Field(default='', max_length=512)
     cipher: str = ''
     enabled: bool = True
+    relay: bool = False
     note: str = Field(default='', max_length=500)
 
     def values_checked(self):
@@ -187,8 +190,14 @@ def save_node(body, node_id=None):
             for key in ('protocol', 'host', 'port', 'username', 'cipher'):
                 if data[key] != previous[key]:
                     raise HTTPException(400, '自建节点的连接参数由服务管理，不能在这里修改')
+            if data['relay']:
+                raise HTTPException(400, '自建节点不能经自身中转')
+            if not data['enabled'] and c.execute('SELECT 1 FROM nodes WHERE relay=1 AND enabled=1 LIMIT 1').fetchone():
+                raise HTTPException(400, '仍有启用的节点经自建节点中转，请先关闭这些节点的中转或停用它们')
             if data['password']:
                 raise HTTPException(400, '自建节点密码由服务管理')
+        if data['relay'] and data['enabled'] and not c.execute('SELECT 1 FROM nodes WHERE managed=1 AND enabled=1 LIMIT 1').fetchone():
+            raise HTTPException(400, '请先启用自建节点，再使用中转')
         if previous and not data['password']:
             data['password'] = previous['password']
         if data['protocol'] == 'ss' and not data['password']:
@@ -295,8 +304,15 @@ def subscription(token: str, format: str = 'clash'):
     if format != 'clash':
         raise HTTPException(400, '不支持此订阅格式')
     names = [row['name'] for row in rows]
+    proxies = [clash_node(row) for row in rows]
+    own = next((row['name'] for row in rows if row['managed']), None)
+    for node, row in zip(proxies, rows):
+        if row['relay']:
+            if not own:
+                raise HTTPException(503, '中转节点未启用，请联系管理员')
+            node['dialer-proxy'] = own
     config = {'mixed-port': 7890, 'allow-lan': False, 'mode': 'rule', 'log-level': 'warning',
-              'proxies': [clash_node(row) for row in rows],
+              'proxies': proxies,
               'proxy-groups': [{'name': '节点选择', 'type': 'select', 'proxies': names + ['DIRECT']}],
               'rules': ['GEOIP,LAN,DIRECT', 'GEOIP,CN,DIRECT', 'MATCH,节点选择']}
     return Response(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), media_type='text/yaml',
