@@ -1,8 +1,8 @@
 [Unit]
-Description=每十二小时检查外部 AnyTLS 节点证书
+Description=每日检查外部 AnyTLS 固定证书有效期
 
 [Timer]
-OnCalendar=*-*-* 00,12:00:00
+OnCalendar=daily
 RandomizedDelaySec=1800
 Persistent=true
 

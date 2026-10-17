@@ -1,0 +1,6 @@
+[Unit]
+Description=检查外部 AnyTLS 固定证书有效期
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/openssl x509 -in /var/lib/sub-vpn/anytls-fullchain.pem -noout -checkend 2592000

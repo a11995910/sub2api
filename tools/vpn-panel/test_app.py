@@ -122,6 +122,27 @@ class PanelTests(unittest.TestCase):
         own.update(password='',enabled=False)
         self.assertEqual(self.client.put('/vpn/api/nodes/'+str(own['id']),json=own).status_code,400)
 
+    def test_anytls_certificate_fingerprint(self):
+        self.login()
+        body=self.node(fingerprint='AA:'*31+'AA');body['protocol']='anytls'
+        self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
+        saved=self.client.get('/vpn/api/state').json()['nodes'][0]
+        self.assertEqual(saved['fingerprint'],'aa'*32)
+        result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)['proxies'][0]
+        self.assertEqual(result['fingerprint'],'aa'*32)
+        self.assertFalse(result['skip-cert-verify'])
+        saved.update(password='',note='编辑后保留证书指纹')
+        self.assertEqual(self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved).status_code,200)
+        self.assertEqual(yaml.safe_load(self.client.get('/vpn/sub/test-token').text)['proxies'][0]['fingerprint'],'aa'*32)
+        saved.pop('fingerprint')
+        self.assertEqual(self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved).status_code,200)
+        self.assertEqual(yaml.safe_load(self.client.get('/vpn/sub/test-token').text)['proxies'][0]['fingerprint'],'aa'*32)
+        for invalid in ('aa','zz'*32):
+            body['fingerprint']=invalid
+            self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,400)
+        body.update(protocol='http',fingerprint='aa'*32)
+        self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,400)
+
     def test_login_rate_limit(self):
         for i in range(10):
             self.assertEqual(self.client.post('/vpn/api/login',json={'username':'admin','password':'bad'}).status_code,401)

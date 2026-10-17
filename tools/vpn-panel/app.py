@@ -69,6 +69,8 @@ def init():
             c.execute('ALTER TABLE nodes ADD COLUMN relay INTEGER NOT NULL DEFAULT 0')
         if 'location' not in columns:
             c.execute("ALTER TABLE nodes ADD COLUMN location TEXT NOT NULL DEFAULT ''")
+        if 'fingerprint' not in columns:
+            c.execute("ALTER TABLE nodes ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
     os.chmod(DATA / 'panel.db', 0o600)
 
 
@@ -178,6 +180,7 @@ class Node(BaseModel):
     relay: bool = False
     note: str = Field(default='', max_length=500)
     location: str = Field(default='', max_length=100)
+    fingerprint: str = Field(default='', max_length=95)
 
     def values_checked(self):
         data = self.model_dump()
@@ -185,6 +188,9 @@ class Node(BaseModel):
         data['category'] = self.category.strip()
         data['host'] = self.host.strip().strip('[]')
         data['location'] = self.location.strip()
+        data['fingerprint'] = self.fingerprint.strip().replace(':', '').lower()
+        if data['fingerprint'] and (self.protocol != 'anytls' or len(data['fingerprint']) != 64 or any(ch not in '0123456789abcdef' for ch in data['fingerprint'])):
+            raise HTTPException(400, '证书指纹仅用于 AnyTLS，必须是 SHA-256 的 64 位十六进制值')
         if not data['name'] or not data['category'] or not data['host'] or any(ch in data['host'] for ch in '/?#@ \t\r\n'):
             raise HTTPException(400, '名称、分类或服务器地址不正确；地址只填写 IP 或域名')
         if self.name.strip() in ('DIRECT', 'REJECT', '节点选择', '自动选择'):
@@ -202,8 +208,10 @@ def save_node(body, node_id=None):
         previous = c.execute('SELECT * FROM nodes WHERE id=?', (node_id,)).fetchone() if node_id else None
         if node_id and not previous:
             raise HTTPException(404, '节点不存在')
+        if previous and 'fingerprint' not in body.model_fields_set and data['protocol'] == 'anytls':
+            data['fingerprint'] = previous['fingerprint']
         if previous and previous['managed']:
-            for key in ('protocol', 'host', 'port', 'username', 'cipher'):
+            for key in ('protocol', 'host', 'port', 'username', 'cipher', 'fingerprint'):
                 if data[key] != previous[key]:
                     raise HTTPException(400, '自建节点的连接参数由服务管理，不能在这里修改')
             if data['relay']:
@@ -292,6 +300,8 @@ def clash_node(row):
     node = {'name': display_name(row), 'type': 'http' if row['protocol'] == 'https' else row['protocol'], 'server': row['host'], 'port': row['port']}
     if row['protocol'] == 'anytls':
         node.update(password=row['password'], sni=row['host'], udp=True, **{'skip-cert-verify': False})
+        if row['fingerprint']:
+            node['fingerprint'] = row['fingerprint']
     elif row['protocol'] == 'ss':
         node.update(cipher=row['cipher'], password=row['password'], udp=True)
     else:
