@@ -307,7 +307,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return openAIWSClientPayload{payloadRaw: normalized, accountIdentitySourceRaw: append([]byte(nil), normalized...), rawForHash: trimmed, promptCacheKey: strings.TrimSpace(values[2].String()), previousResponseID: previous, originalModel: bpsOriginal, payloadBytes: len(normalized), requestedReasoningEffort: requestedReasoningEffort, integritySnapshot: frameIntegrity}, nil
 		}
 		responsesLite := isOpenAIResponsesLiteWebSocketPayload(normalized)
-		if compatibilityBody, compatibilityChanged, compatibilityErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, account, responsesLite); compatibilityErr != nil {
+		if compatibilityBody, compatibilityChanged, compatibilityErr := normalizeOpenAIResponsesWebSocketCompatibilityBodyWithConfig(s.cfg, normalized, account, responsesLite); compatibilityErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", compatibilityErr)
 		} else if compatibilityChanged {
 			normalized = compatibilityBody

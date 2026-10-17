@@ -90,7 +90,8 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 	for _, p := range plans {
 		gi := groupInfo[p.GroupID]
 		result = append(result, planWithPlatform{
-			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: gi.Platform, GroupName: gi.Name,
+			ID: int64(p.ID), GroupID: p.GroupID,
+			GroupPlatform: gi.Platform, GroupName: gi.I18n.LocalizeName(c.GetHeader("Accept-Language"), gi.Name),
 			RateMultiplier: gi.RateMultiplier, PeakRateEnabled: gi.PeakRateEnabled,
 			PeakStart: gi.PeakStart, PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
 			PromoDiscountEnabled: gi.PromoDiscountEnabled, PromoDiscountStart: gi.PromoDiscountStart,
@@ -139,8 +140,8 @@ func (h *PaymentHandler) PurchasePlanWithBalance(c *gin.Context) {
 		PlanID:       result.PlanID,
 		Price:        result.Price,
 		NewBalance:   result.NewBalance,
-		RedeemCode:   dto.RedeemCodeFromService(result.RedeemCode),
-		Subscription: dto.UserSubscriptionFromService(result.Subscription),
+		RedeemCode:   dto.RedeemCodeFromService(result.RedeemCode).Localized(c.GetHeader("Accept-Language")),
+		Subscription: dto.UserSubscriptionFromService(result.Subscription).Localized(c.GetHeader("Accept-Language")),
 	})
 }
 
@@ -191,7 +192,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		gi := groupInfo[p.GroupID]
 		planList = append(planList, checkoutPlan{
 			ID: int64(p.ID), GroupID: p.GroupID,
-			GroupPlatform: gi.Platform, GroupName: gi.Name,
+			GroupPlatform: gi.Platform, GroupName: gi.I18n.LocalizeName(c.GetHeader("Accept-Language"), gi.Name),
 			RateMultiplier:  gi.RateMultiplier,
 			PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
 			PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,

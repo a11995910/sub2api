@@ -654,11 +654,11 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		// Request for existing static file
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 		assert.Empty(t, w.Header().Get("Cache-Control"))
 
 		markdownWriter := httptest.NewRecorder()
@@ -756,7 +756,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, "public, max-age=31536000, immutable", w.Header().Get("Cache-Control"))
 	})
 
-	t.Run("sets_short_cache_for_logo", func(t *testing.T) {
+	t.Run("非版本化标志不使用固定缓存", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -768,11 +768,12 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		router.Use(server.Middleware())
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "public, max-age=3600", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
+		assert.Empty(t, w.Header().Get("Cache-Control"))
 	})
 }
 
@@ -884,11 +885,11 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 		router.Use(middleware)
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/logo.png", nil)
+		req := httptest.NewRequest(http.MethodGet, "/logo.svg", nil)
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 	})
 
 	t.Run("serves_markdown_as_utf8", func(t *testing.T) {

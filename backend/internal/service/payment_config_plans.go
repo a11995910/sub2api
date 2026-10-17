@@ -76,13 +76,13 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 
 // PlanGroupInfo holds the group details needed for subscription plan display.
 type PlanGroupInfo struct {
-	Platform           string   `json:"platform"`
-	Name               string   `json:"name"`
-	RateMultiplier     float64  `json:"rate_multiplier"`
-	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
-	PeakStart          string   `json:"peak_start"`
-	PeakEnd            string   `json:"peak_end"`
-	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	Platform           string  `json:"platform"`
+	Name               string  `json:"name"`
+	RateMultiplier     float64 `json:"rate_multiplier"`
+	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
+	PeakStart          string  `json:"peak_start"`
+	PeakEnd            string  `json:"peak_end"`
+	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
 	// 限时活动折扣：起止为站点时区墙钟字符串，PromoActive 为查询时刻是否生效
 	PromoDiscountEnabled bool     `json:"promo_discount_enabled"`
 	PromoDiscountStart   string   `json:"promo_discount_start"`
@@ -93,6 +93,9 @@ type PlanGroupInfo struct {
 	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd"`
 	ModelScopes          []string `json:"supported_model_scopes"`
+
+	// 按请求语言本地化名称，不对外输出原始译文。
+	I18n GroupI18n `json:"-"`
 }
 
 // GetGroupInfoMap returns a map of group_id → PlanGroupInfo for the given plans.
@@ -138,6 +141,7 @@ func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbe
 			WeeklyLimitUSD:       g.WeeklyLimitUsd,
 			MonthlyLimitUSD:      g.MonthlyLimitUsd,
 			ModelScopes:          g.SupportedModelScopes,
+			I18n:                 g.I18n,
 		}
 	}
 	return m
