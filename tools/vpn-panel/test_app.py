@@ -46,6 +46,9 @@ class PanelTests(unittest.TestCase):
         result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
         self.assertEqual(result['proxies'][0]['password'],'proxy-secret')
         self.assertEqual(result['proxies'][0]['name'],'住宅改名 · 192.0.2.10')
+        body=self.node(location='美国·测试地址'); self.client.put('/vpn/api/nodes/'+str(n['id']),json={**body, 'name':'住宅改名', 'password':''})
+        result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
+        self.assertEqual(result['proxies'][0]['name'],'住宅改名 · 192.0.2.10 · 美国·测试地址')
         body['enabled']=False
         self.client.put('/vpn/api/nodes/'+str(n['id']),json=body)
         self.assertEqual(self.client.get('/vpn/sub/test-token').status_code,503)

@@ -62,10 +62,13 @@ def init():
         CREATE TABLE IF NOT EXISTS nodes(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,category TEXT NOT NULL,
           protocol TEXT NOT NULL,host TEXT NOT NULL,port INTEGER NOT NULL,username TEXT NOT NULL DEFAULT '',
           password TEXT NOT NULL DEFAULT '',cipher TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,
-          managed INTEGER NOT NULL DEFAULT 0,note TEXT NOT NULL DEFAULT '',relay INTEGER NOT NULL DEFAULT 0);
+          managed INTEGER NOT NULL DEFAULT 0,note TEXT NOT NULL DEFAULT '',relay INTEGER NOT NULL DEFAULT 0,location TEXT NOT NULL DEFAULT '');
         ''')
-        if 'relay' not in {row['name'] for row in c.execute('PRAGMA table_info(nodes)')}:
+        columns = {row['name'] for row in c.execute('PRAGMA table_info(nodes)')}
+        if 'relay' not in columns:
             c.execute('ALTER TABLE nodes ADD COLUMN relay INTEGER NOT NULL DEFAULT 0')
+        if 'location' not in columns:
+            c.execute("ALTER TABLE nodes ADD COLUMN location TEXT NOT NULL DEFAULT ''")
     os.chmod(DATA / 'panel.db', 0o600)
 
 
@@ -174,12 +177,14 @@ class Node(BaseModel):
     enabled: bool = True
     relay: bool = False
     note: str = Field(default='', max_length=500)
+    location: str = Field(default='', max_length=100)
 
     def values_checked(self):
         data = self.model_dump()
         data['name'] = self.name.strip()
         data['category'] = self.category.strip()
         data['host'] = self.host.strip().strip('[]')
+        data['location'] = self.location.strip()
         if not data['name'] or not data['category'] or not data['host'] or any(ch in data['host'] for ch in '/?#@ \t\r\n'):
             raise HTTPException(400, '名称、分类或服务器地址不正确；地址只填写 IP 或域名')
         if self.name.strip() in ('DIRECT', 'REJECT', '节点选择', '自动选择'):
@@ -277,7 +282,10 @@ def change_password(body: PasswordChange):
 
 def display_name(row):
     """订阅和管理界面使用可辨识的名称，保留数据库中的自定义名称。"""
-    return f"{row['name']} · {row['host']}"
+    suffix = f" · {row['host']}"
+    if row['location']:
+        suffix += f" · {row['location']}"
+    return row['name'] + suffix
 
 
 def clash_node(row):
