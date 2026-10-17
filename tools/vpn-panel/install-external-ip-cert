@@ -1,0 +1,10 @@
+#!/bin/sh
+# 外部自建节点专用；与现有网站的证书和续期工具隔离。
+set -eu
+source_dir=/etc/sub-vpn-acme/live/sub-vpn-ip
+install -o sub-vpn -g sub-vpn -m 0600 "$source_dir/fullchain.pem" /var/lib/sub-vpn/anytls-fullchain.pem
+install -o sub-vpn -g sub-vpn -m 0600 "$source_dir/privkey.pem" /var/lib/sub-vpn/anytls-privkey.pem
+/usr/local/bin/sub-vpn-sing-box check -c /var/lib/sub-vpn/sing-box.json
+if systemctl is-active --quiet sub-vpn-node; then
+    systemctl restart sub-vpn-node
+fi

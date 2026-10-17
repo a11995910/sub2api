@@ -34,6 +34,18 @@
 
 ## 检查与维护
 
+### 外部自建节点：小鸡家宽
+
+`192.220.36.75:24444` 使用独立 sing-box AnyTLS 入站，作为普通可编辑节点加入管理后台，`relay=false`，客户端直接连接该机。显示名为“小鸡家宽 · 192.220.36.75 · 美国·加利福尼亚州·洛杉矶”。此名称由用户指定；出口查询归属 AS2914 NTT America，不能据此确认住宅属性。
+
+SSH 使用 `~/.ssh/sub2api_192_220_36_75_ed25519`。程序为 `/usr/local/bin/sub-vpn-sing-box`，配置和证书副本在 `/var/lib/sub-vpn/`，仅服务用户可读，运行单元复用 `sub-vpn-node.service`。本机不运行订阅后台，不改变现有域名上游。
+
+证书工具独立安装在 `/opt/sub-vpn-node/venv`，使用 Certbot 5.4.0 和 Let's Encrypt `shortlived` IP 证书。配置、工作、日志目录分别是 `/etc/sub-vpn-acme`、`/var/lib/sub-vpn-acme-work`、`/var/log/sub-vpn-acme`；不会与系统 Certbot 的网站证书混用。Nginx 现有 `license-admin` IP 入口仅增加 `/.well-known/acme-challenge/` 路由，验证文件根目录为 `/var/lib/sub-vpn-acme`。修改前备份 Nginx 配置，校验后平滑 reload，并核对原有网站响应。
+
+将本目录 `install-external-ip-cert` 安装到 `/opt/sub-vpn-node/`，root 所有、0700；安装并启用 `sub-vpn-external-cert-renew.timer`，每十二小时检查证书。续期后校验节点配置并重启节点加载证书，会短暂断开该节点连接。检查方式：`systemctl status sub-vpn-node sub-vpn-external-cert-renew.timer`；证书验收必须检查 IP SAN 和信任链，客户端保持 `skip-cert-verify=false`。
+
+停用此节点时先在后台移出订阅，再停止本机 `sub-vpn-node` 和 `sub-vpn-external-cert-renew.timer`；如移除 ACME 路由，先备份并通过 `nginx -t` 后 reload。保留受限配置与证书以便恢复，不能关闭既有网站服务。
+
 ```bash
 ssh -i ~/.ssh/sub2api_38_47_115_99_ed25519 root@38.47.115.99
 systemctl status sub-vpn-panel sub-vpn-node sub-vpn-cert-renew.timer

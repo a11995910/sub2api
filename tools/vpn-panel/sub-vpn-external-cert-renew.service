@@ -1,0 +1,8 @@
+[Unit]
+Description=外部 AnyTLS 节点 IP 证书续期
+After=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/opt/sub-vpn-node/venv/bin/certbot renew --config-dir /etc/sub-vpn-acme --work-dir /var/lib/sub-vpn-acme-work --logs-dir /var/log/sub-vpn-acme --cert-name sub-vpn-ip --quiet --deploy-hook /opt/sub-vpn-node/install-external-ip-cert
