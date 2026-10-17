@@ -45,7 +45,7 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.client.put('/vpn/api/nodes/'+str(n['id']),json=body).status_code,200)
         result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
         self.assertEqual(result['proxies'][0]['password'],'proxy-secret')
-        self.assertEqual(result['proxies'][0]['name'],'住宅改名')
+        self.assertEqual(result['proxies'][0]['name'],'住宅改名 · 192.0.2.10')
         body['enabled']=False
         self.client.put('/vpn/api/nodes/'+str(n['id']),json=body)
         self.assertEqual(self.client.get('/vpn/sub/test-token').status_code,503)
@@ -103,6 +103,7 @@ class PanelTests(unittest.TestCase):
             c.execute("INSERT INTO nodes(name,category,protocol,host,port,password,managed) VALUES ('自建 AnyTLS','自建','anytls','198.51.100.10',24444,'anytls-secret',1)")
         result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
         self.assertEqual(result['proxies'][0]['type'],'anytls')
+        self.assertEqual(result['proxies'][0]['name'],'自建 AnyTLS · 198.51.100.10')
         self.assertEqual(result['proxies'][0]['sni'],'198.51.100.10')
         self.assertEqual(self.client.get('/vpn/sub/test-token?format=shadowrocket').status_code,400)
 
@@ -113,7 +114,7 @@ class PanelTests(unittest.TestCase):
         body=self.node(relay=True)
         self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
         result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
-        self.assertEqual(result['proxies'][1]['dialer-proxy'],'自建')
+        self.assertEqual(result['proxies'][1]['dialer-proxy'],'自建 · 192.0.2.1')
         own=self.client.get('/vpn/api/state').json()['nodes'][0]
         own.update(password='',enabled=False)
         self.assertEqual(self.client.put('/vpn/api/nodes/'+str(own['id']),json=own).status_code,400)

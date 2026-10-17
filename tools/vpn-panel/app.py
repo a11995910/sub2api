@@ -275,8 +275,13 @@ def change_password(body: PasswordChange):
     return {'ok': True}
 
 
+def display_name(row):
+    """订阅和管理界面使用可辨识的名称，保留数据库中的自定义名称。"""
+    return f"{row['name']} · {row['host']}"
+
+
 def clash_node(row):
-    node = {'name': row['name'], 'type': 'http' if row['protocol'] == 'https' else row['protocol'], 'server': row['host'], 'port': row['port']}
+    node = {'name': display_name(row), 'type': 'http' if row['protocol'] == 'https' else row['protocol'], 'server': row['host'], 'port': row['port']}
     if row['protocol'] == 'anytls':
         node.update(password=row['password'], sni=row['host'], udp=True, **{'skip-cert-verify': False})
     elif row['protocol'] == 'ss':
@@ -294,7 +299,7 @@ def clash_node(row):
 
 def node_uri(row):
     host = '[' + row['host'] + ']' if ':' in row['host'] else row['host']
-    name = quote(row['name'])
+    name = quote(display_name(row))
     if row['protocol'] == 'anytls':
         raise HTTPException(400, '当前直连格式尚未实现 AnyTLS 导出，请使用 Clash/Mihomo')
     if row['protocol'] == 'ss':
@@ -322,10 +327,10 @@ def subscription(token: str, format: str = 'clash'):
         return Response(text, media_type='text/plain', headers={'profile-update-interval': '24'})
     if format != 'clash':
         raise HTTPException(400, '不支持此订阅格式')
-    names = [row['name'] for row in rows]
+    names = [display_name(row) for row in rows]
     proxies = [clash_node(row) for row in rows]
     own_row = next((row for row in rows if row['managed'] and row['protocol'] == 'anytls'), None) or next((row for row in rows if row['managed']), None)
-    own = own_row['name'] if own_row else None
+    own = display_name(own_row) if own_row else None
     for node, row in zip(proxies, rows):
         if row['relay']:
             if not own:
