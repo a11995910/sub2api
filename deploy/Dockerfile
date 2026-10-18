@@ -12,6 +12,26 @@ ARG ALPINE_IMAGE=alpine:3.20
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
 
+# Excel 自动授权运行时：固定依赖版本，携带独立动态链接器供 Alpine 使用。
+FROM node:22.22.2-bookworm-slim AS excel-node
+FROM python:3.12.12-slim-bookworm AS excel-builder
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libstdc++6 curl && rm -rf /var/lib/apt/lists/*
+COPY --from=excel-node /usr/local/bin/node /usr/local/bin/node
+COPY --from=excel-node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
+WORKDIR /build/tosub2
+RUN curl -fsSL --retry 3 https://codeload.github.com/poxiao33/toSub2/tar.gz/8548397e89bf80e508eda64a87e0d556d43abc84 | tar -xz --strip-components=1
+COPY tools/excel-oauth-runtime/package*.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY tools/excel-oauth-runtime/requirements.txt /build/requirements.txt
+RUN python -m pip install --no-cache-dir --only-binary=:all: -r /build/requirements.txt
+COPY tools/excel-oauth-runtime/ /build/tools/
+RUN cd /build/tools && EXCEL_TEST_TOSUB2_ROOT=/build/tosub2 python -m unittest discover -p 'test_*.py' -q && node test_openai_excel_password_flow.mjs
+RUN python /build/tools/package.py /out
+FROM ${ALPINE_IMAGE} AS excel-runtime
+COPY --from=excel-builder /out/ /opt/excel-oauth-runtime/
+RUN /opt/excel-oauth-runtime/python /opt/excel-oauth-runtime/runner.py --check | grep -q '"ready": true' && NODE_EXECUTABLE=/opt/excel-oauth-runtime/node TOSUB2_PYTHON=/opt/excel-oauth-runtime/python /opt/excel-oauth-runtime/node /opt/excel-oauth-runtime/smoke.mjs && touch /opt/excel-oauth-runtime/ready
+
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
@@ -104,6 +124,9 @@ RUN addgroup -g 1000 sub2api && \
 
 # Set working directory
 WORKDIR /app
+
+# 自动授权只执行随镜像构建的固定运行时，不在运行时下载代码。
+COPY --from=excel-runtime /opt/excel-oauth-runtime/ /opt/excel-oauth-runtime/
 
 # Copy binary and runtime fallback resources from builder
 COPY --from=backend-builder /app/sub2api /app/sub2api

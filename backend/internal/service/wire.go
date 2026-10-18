@@ -138,10 +138,12 @@ func ProvideOpenAIOAuthService(
 	accountRepo AccountRepository,
 	encryptor SecretEncryptor,
 	tokenCache GeminiTokenCache,
+	settings *SettingService,
 ) *OpenAIOAuthService {
 	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
 	svc.SetPrivacyClientFactory(privacyClientFactory)
 	svc.SetExcelOAuthDependencies(accountRepo, encryptor, tokenCache)
+	svc.StartExcelAuto(settings, ExcelProcessRunner{Root: "/opt/excel-oauth-runtime"})
 	return svc
 }
 

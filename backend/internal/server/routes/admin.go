@@ -497,6 +497,8 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		openai.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
 		openai.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
+		openai.GET("/accounts/:id/excel-auto-authorization", h.Admin.OpenAIOAuth.ExcelAutoStatus)
+		openai.PUT("/accounts/:id/excel-auto-authorization", h.Admin.OpenAIOAuth.SaveExcelAuto)
 		openai.GET("/accounts/:id/excel-authorization", h.Admin.OpenAIOAuth.ExcelAuthorizationStatus)
 		openai.POST("/accounts/:id/excel-authorization/url", h.Admin.OpenAIOAuth.GenerateExcelAccountAuthURL)
 		openai.POST("/accounts/:id/excel-authorization", h.Admin.OpenAIOAuth.ExchangeExcelAccountCode)

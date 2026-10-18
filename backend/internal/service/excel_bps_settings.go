@@ -153,5 +153,27 @@ func (s *OpenAIGatewayService) excelBPSRouteEnabledForUpstreamModel(ctx context.
 	if err != nil {
 		return false, fmt.Errorf("Excel/BPS 配置读取失败")
 	}
-	return cfg.Enabled, nil
+	if !cfg.Enabled {
+		return false, nil
+	}
+	// 自动授权排队期间普通 Codex 账号继续走原协议，避免刚打开开关就中断服务。
+	if !a.IsExcelOAuth() && s.openAITokenProvider != nil && s.openAITokenProvider.openAIOAuthService != nil {
+		oauth := s.openAITokenProvider.openAIOAuthService
+		if repo, e := oauth.autoRepo(); e == nil {
+			record, e := repo.GetExcelAuto(ctx, a.ID)
+			if e != nil {
+				return false, fmt.Errorf("自动授权状态读取失败")
+			}
+			if record != nil && record.Enabled {
+				_, _, token, e := oauth.readExcelGrant(ctx, a.ID)
+				if e != nil {
+					return false, fmt.Errorf("Excel 授权状态无效，请检查授权配置")
+				}
+				if token == nil {
+					return false, nil
+				}
+			}
+		}
+	}
+	return true, nil
 }

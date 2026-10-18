@@ -57,3 +57,18 @@ export const excelOAuthAPI = {
   async generate(id: number): Promise<{ auth_url: string; session_id: string }> { return (await apiClient.post(`/admin/openai/accounts/${id}/excel-authorization/url`)).data },
   async exchange(id: number, input: { session_id: string; code: string; state: string }): Promise<void> { await apiClient.post(`/admin/openai/accounts/${id}/excel-authorization`, input, { timeout: 60000 }) }
 }
+
+export interface ExcelAutoStatus {
+  enabled: boolean
+  configured: boolean
+  email: string
+  totp_configured: boolean
+  state: 'disabled' | 'queued' | 'running' | 'authorized' | 'failed'
+  last_error: string
+  next_attempt_at?: string
+  worker_ready: boolean
+}
+export const excelAutoAPI = {
+  async status(id: number): Promise<ExcelAutoStatus> { return (await apiClient.get(`/admin/openai/accounts/${id}/excel-auto-authorization`)).data },
+  async save(id: number, input: { enabled: boolean; email: string; password: string; totp_secret: string; clear_totp: boolean }): Promise<void> { await apiClient.put(`/admin/openai/accounts/${id}/excel-auto-authorization`, input) }
+}

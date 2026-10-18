@@ -91,3 +91,7 @@ deploy/redis_data/
 .claude/
 issues/
 CLAUDE.md
+
+# 自动授权运行时的来源说明需随镜像保留。
+!tools/excel-oauth-runtime/NOTICE.md
+**/__pycache__/

@@ -304,7 +304,12 @@ func (s *OpenAIOAuthService) ExcelAccessToken(ctx context.Context, id int64) (st
 	}
 	response, err := s.oauthClient.RefreshTokenWithClientID(ctx, token.RefreshToken, proxy, openai.ExcelClientID)
 	if err != nil || response == nil {
-		return "", errors.New("Excel 授权刷新失败，请重新授权")
+		if err != nil && strings.Contains(err.Error(), "invalid_grant") {
+			if repo, e := s.autoRepo(); e == nil {
+				_ = repo.RetryExcelAuto(ctx, id)
+			}
+		}
+		return "", errors.New("Excel 授权刷新失败，请检查自动授权状态或重新授权")
 	}
 	token.AccessToken = response.AccessToken
 	if response.RefreshToken != "" {

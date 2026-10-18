@@ -2,7 +2,7 @@
 
 本站在 OpenAI OAuth 网关内提供 Excel/Basispoints 协议适配，复用原有账号调度、分组、代理、模型映射、用量和计费链路。协议核心移植自 `ranxi2001/sub2api` 的固定提交 `a519cfeb66c253dd39d7728d20d55b7cf9f79897`，来源说明保留在 `backend/internal/service/basispoints/NOTICE.md`。
 
-本功能不依赖独立 Excel Bridge 容器或 `.s2plugin`。历史方案见 [EXCEL_BRIDGE_CN.md](EXCEL_BRIDGE_CN.md)，两者不共享会话和配置。本实现包含协议、账号选项、默认模板、图片及独立 OAuth 授权，不引入参考项目的自动登录工作器、代理池、自动移组或定时恢复规则。
+本功能不依赖独立 Excel Bridge 容器或 `.s2plugin`。历史方案见 [EXCEL_BRIDGE_CN.md](EXCEL_BRIDGE_CN.md)，两者不共享会话和配置。本实现包含协议、账号选项、默认模板、图片及独立 OAuth 授权，包含独立 Excel 自动登录工作器；不引入参考项目的代理池、自动移组、Codex 自动重登或 TOTP 更换。
 
 ## 管理入口
 
@@ -22,6 +22,23 @@
 2. 生成并打开官方授权链接，登录同一用户并选择同一工作区。
 3. 将包含 `code` 和 `state` 的完整官方回调地址粘贴回表单，保存 Excel 授权。
 4. 保存账号的协议开关与模型范围。
+
+### 自动授权
+
+已有 Codex OAuth 账号也可在编辑页的 **Excel / BPS → 自动 Excel 授权** 中配置：
+
+1. 开启自动授权，填写该账号的登录邮箱、密码；启用 2FA 的账号同时填写长期 Base32 TOTP 密钥（不是六位验证码）。
+2. 点击“保存自动授权设置”。密码和 TOTP 留空表示保留原值；更换邮箱须重新输入密码。此保存独立于外层账号表单。
+3. 保存外层账号 BPS 开关及模型范围。账号须处于启用且允许调度状态，全局 BPS 开关须开启。
+4. 后台每分钟检查一次队列，使用当前绑定的账号代理登录官方 Excel OAuth，并校验同一用户、工作区和客户端。页面自动刷新任务状态；授权等待期间普通 Codex 请求继续走原协议，取得授权后匹配模型才进入 BPS。
+
+自动授权仍需要真实登录资料，不能把已有 Codex refresh token 转成 Excel token。官方额外安全验证会停止本次尝试，页面提示改用手动授权；不自动轮换代理。失败至少间隔 30 分钟重试，单实例串行登录，数据库租约防止多个实例重复执行。成功后的 Excel 令牌沿用原有独立刷新；刷新明确返回 invalid_grant 时，已启用的自动授权会重新排队。
+
+关闭并保存自动授权会清除已保存的登录资料、使旧任务失效，保留已取得的 Excel 授权。配置修改、账号身份改变或手动授权更新时，旧自动任务不得覆盖新状态。系统不把密码、TOTP、代理凭据、令牌或外部登录异常正文写入日志；自动授权设置接口的审计请求体整体省略。
+
+登录资料单独加密保存在 `account_excel_auto_authorizations`，不进入普通账号导出。页面只回传邮箱和是否已配置密码/TOTP。迁移 `248_excel_auto_authorizations.sql` 仅新增该表和索引，不改写现有账号。回滚应用时可保留新增表，恢复时须保留现有运行时加密密钥。
+
+`deploy/Dockerfile` 构建并携带 `/opt/excel-oauth-runtime`，固定参考项目与 toSub2 版本，包含 Python、Node 和所需库，应用运行时不下载代码。依赖来源与许可见 `tools/excel-oauth-runtime/NOTICE.md`。后端内置 Worker 随服务启停；缺少运行时会显示“尚未就绪”且不领取任务。本地直接运行 Go 服务不自带该目录，可使用手动授权；完整自动流程由标准发布镜像提供。
 
 独立授权使用 Excel 官方客户端 `app_fnr0pYvVwwFDocDumLG3H2Bp`、PKCE 和固定官方 HTTPS 回调。服务端交换授权码并核对用户、工作区及客户端，浏览器不会收到独立授权令牌。普通 Codex RT 不能通过改写客户端 ID 转成 Excel RT。
 
@@ -72,6 +89,7 @@ BPS 直接使用账号代理访问 `bps.openai.com`，不注入 Codex 门票、C
 管理员接口复用现有管理端鉴权：
 
 - `GET/PUT /api/v1/admin/intelligent-ops/excel-bps`：读取或更新全局开关、默认模板、图片配置；PUT 只修改提供的顶层部分。
+- `GET/PUT /api/v1/admin/openai/accounts/:id/excel-auto-authorization`：读取脱敏自动授权状态或保存/清除登录资料。
 - `GET /api/v1/admin/openai/accounts/:id/excel-authorization`：读取脱敏授权状态。
 - `POST /api/v1/admin/openai/accounts/:id/excel-authorization/url`：生成官方 Excel 授权链接。
 - `POST /api/v1/admin/openai/accounts/:id/excel-authorization`：交换授权码并保存独立授权。

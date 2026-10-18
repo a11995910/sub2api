@@ -1,4 +1,5 @@
 <template>
+  <ExcelAutoAuthorization v-if="!status?.primary" :account-id="accountId" @authorized="refreshStatus" />
   <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -20,6 +21,7 @@
 </template>
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import ExcelAutoAuthorization from './ExcelAutoAuthorization.vue'
 import { excelOAuthAPI, type ExcelOAuthStatus } from '@/api/admin/excelBps'
 import { extractApiErrorMessage } from '@/utils/apiError'
 const props = defineProps<{ accountId: number }>()
@@ -37,6 +39,10 @@ watch(() => props.accountId, async id => {
   try { const result = await excelOAuthAPI.status(id); if (current === revision) status.value = result }
   catch { if (current === revision) error.value = '授权状态读取失败，可重新授权或稍后重试。' }
 }, { immediate: true })
+async function refreshStatus() {
+  const current = revision
+  try { const result = await excelOAuthAPI.status(props.accountId); if (current === revision) status.value = result } catch { /* 下次打开时重试，保留正在编辑的手动授权表单。 */ }
+}
 async function generate() {
   const current = revision
   busy.value = true; error.value = ''; saved.value = false; callback.value = ''

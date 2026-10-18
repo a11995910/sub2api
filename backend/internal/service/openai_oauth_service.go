@@ -14,6 +14,7 @@ import (
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
 type OpenAIOAuthService struct {
+	excelAuto            *excelAutoWorker
 	excelAccountRepo     AccountRepository
 	excelEncryptor       SecretEncryptor
 	excelTokenCache      OpenAITokenCache
@@ -463,6 +464,7 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 
 // Stop stops the session store cleanup goroutine
 func (s *OpenAIOAuthService) Stop() {
+	s.stopExcelAuto()
 	s.sessionStore.Stop()
 }
 
