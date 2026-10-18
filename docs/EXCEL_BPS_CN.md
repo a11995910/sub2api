@@ -34,7 +34,7 @@
 
 自动授权仍需要真实登录资料，不能把已有 Codex refresh token 转成 Excel token。官方额外安全验证会停止本次尝试，页面提示改用手动授权；不自动轮换代理。失败至少间隔 30 分钟重试，单实例串行登录，数据库租约防止多个实例重复执行。成功后的 Excel 令牌沿用原有独立刷新；刷新明确返回 invalid_grant 时，已启用的自动授权会重新排队。
 
-关闭并保存自动授权会清除已保存的登录资料、使旧任务失效，保留已取得的 Excel 授权。配置修改、账号身份改变或手动授权更新时，旧自动任务不得覆盖新状态。系统不把密码、TOTP、代理凭据、令牌或外部登录异常正文写入日志；自动授权设置接口的审计请求体整体省略。
+关闭并保存自动授权会清除已保存的登录资料、使旧任务失效，保留已取得的 Excel 授权。删除账号时保留账号软删除历史行，并在同一事务内清除独立 Excel 授权与自动登录密文；并发保存和自动任务不得在删除后重建密文。配置修改、账号身份改变或手动授权更新时，旧自动任务不得覆盖新状态。系统不把密码、TOTP、代理凭据、令牌或外部登录异常正文写入日志；自动授权设置接口的审计请求体整体省略。
 
 登录资料单独加密保存在 `account_excel_auto_authorizations`，不进入普通账号导出。页面只回传邮箱和是否已配置密码/TOTP。迁移 `248_excel_auto_authorizations.sql` 仅新增该表和索引，不改写现有账号。回滚应用时可保留新增表，恢复时须保留现有运行时加密密钥。
 
@@ -84,7 +84,7 @@ BPS 直接使用账号代理访问 `bps.openai.com`，不注入 Codex 门票、C
 
 ## 存储与接口
 
-全局配置存于现有 `settings.excel_bps_config` JSON；账号选项存于 `accounts.extra.openai_excel_bps*`。新增迁移 `247_excel_oauth_grants.sql` 创建 `account_excel_oauth_grants`，保存每账号独立授权密文，账号硬删除时级联删除。密文使用本站现有 AES-GCM 加密器及运行时加密密钥；迁移或恢复时必须保留原密钥。普通账号导出不包含独立 Excel 授权；搬迁应保存该表及原加密密钥，不能只导出账号 JSON。
+全局配置存于现有 `settings.excel_bps_config` JSON；账号选项存于 `accounts.extra.openai_excel_bps*`。新增迁移 `247_excel_oauth_grants.sql` 创建 `account_excel_oauth_grants`，保存每账号独立授权密文；账号软删除由仓储事务清除该表及 `account_excel_auto_authorizations` 中的密文，硬删除仍由外键级联删除。密文使用本站现有 AES-GCM 加密器及运行时加密密钥；迁移或恢复时必须保留原密钥。普通账号导出不包含独立 Excel 授权；搬迁应保存该表及原加密密钥，不能只导出账号 JSON。
 
 管理员接口复用现有管理端鉴权：
 

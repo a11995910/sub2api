@@ -24,8 +24,10 @@ func (r *accountRepository) GetExcelAuto(ctx context.Context, id int64) (*servic
 	return v, err
 }
 func (r *accountRepository) SaveExcelAuto(ctx context.Context, id, revision int64, ciphertext string, enabled bool) (bool, error) {
-	result, err := r.sql.ExecContext(ctx, `INSERT INTO account_excel_auto_authorizations(account_id,ciphertext,enabled,state)
- SELECT id,$3,$4,CASE WHEN $4 THEN 'queued' ELSE 'disabled' END FROM accounts WHERE id=$1 AND deleted_at IS NULL AND ($2=0 OR EXISTS(SELECT 1 FROM account_excel_auto_authorizations WHERE account_id=$1 AND revision=$2))
+	result, err := r.sql.ExecContext(ctx, `WITH eligible AS (
+ SELECT id FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR SHARE
+ ) INSERT INTO account_excel_auto_authorizations(account_id,ciphertext,enabled,state)
+ SELECT id,$3,$4,CASE WHEN $4 THEN 'queued' ELSE 'disabled' END FROM eligible WHERE $2=0 OR EXISTS(SELECT 1 FROM account_excel_auto_authorizations WHERE account_id=$1 AND revision=$2)
  ON CONFLICT(account_id) DO UPDATE SET ciphertext=EXCLUDED.ciphertext,enabled=EXCLUDED.enabled,state=EXCLUDED.state,revision=account_excel_auto_authorizations.revision+1,run_id='',last_error='',next_attempt_at=NOW(),updated_at=NOW()
  WHERE account_excel_auto_authorizations.revision=$2`, id, revision, ciphertext, enabled)
 	if err != nil {
@@ -71,16 +73,18 @@ func (r *accountRepository) FinishExcelAuto(ctx context.Context, job *service.Ex
 	if err != nil {
 		return false, err
 	}
-	// 配置行锁与账号行锁共同约束最终写入；手动授权变化由授权密文 CAS 拦截。
-	rows, err := r.sql.QueryContext(ctx, `WITH config AS (
- SELECT account_id FROM account_excel_auto_authorizations WHERE account_id=$1 AND revision=$2 AND run_id=$3 AND enabled AND state='running' FOR UPDATE
+	// 与账号删除相同的锁顺序：先账号，再配置；手动授权变化由授权密文 CAS 拦截。
+	rows, err := r.sql.QueryContext(ctx, `WITH account_lock AS (
+ SELECT a.id,a.platform,a.type,a.parent_account_id,a.credentials,a.extra,a.status,a.schedulable
+ FROM accounts a WHERE a.id=$1 AND a.deleted_at IS NULL FOR UPDATE OF a
+ ), config AS (
+ SELECT c.account_id FROM account_excel_auto_authorizations c JOIN account_lock a ON a.id=c.account_id WHERE c.account_id=$1 AND c.revision=$2 AND c.run_id=$3 AND c.enabled AND c.state='running' FOR UPDATE OF c
  ), eligible AS (
- SELECT a.id FROM accounts a JOIN config c ON c.account_id=a.id WHERE a.deleted_at IS NULL
- AND a.platform='openai' AND a.type='oauth' AND a.parent_account_id IS NULL
- AND a.credentials=$4::jsonb AND a.extra->'openai_excel_bps'='true'::jsonb AND a.status='active' AND a.schedulable FOR UPDATE OF a
+ SELECT id FROM account_lock WHERE platform='openai' AND type='oauth' AND parent_account_id IS NULL
+ AND credentials=$4::jsonb AND extra->'openai_excel_bps'='true'::jsonb AND status='active' AND schedulable
  ), saved AS (
  INSERT INTO account_excel_oauth_grants(account_id,ciphertext)
- SELECT id,$6 FROM eligible WHERE $5='' OR EXISTS(SELECT 1 FROM account_excel_oauth_grants WHERE account_id=$1 AND ciphertext=$5)
+ SELECT e.id,$6 FROM eligible e JOIN config c ON c.account_id=e.id WHERE $5='' OR EXISTS(SELECT 1 FROM account_excel_oauth_grants WHERE account_id=$1 AND ciphertext=$5)
  ON CONFLICT(account_id) DO UPDATE SET ciphertext=EXCLUDED.ciphertext,updated_at=NOW() WHERE account_excel_oauth_grants.ciphertext=$5
  RETURNING account_id
  ) UPDATE account_excel_auto_authorizations SET state=CASE WHEN EXISTS(SELECT 1 FROM saved) THEN 'authorized' ELSE 'failed' END,
