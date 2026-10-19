@@ -138,3 +138,36 @@ func TestPelicanAccountRepoAllOnlyClaimsOAuth(t *testing.T) {
 	require.False(t, claimed[ids[2]])
 	require.False(t, claimed[ids[3]])
 }
+
+func TestPelicanAccountRepoSelectedAPIKeysAndTypeIsolation(t *testing.T) {
+	ctx := context.Background()
+	ids := pelicanAccountFixtures(t)
+	repo := NewPelicanAccountTestRepository(integrationDB)
+	now := time.Now()
+	jobs, err := repo.Claim(ctx, service.PelicanAccountStart{AccountType: "apikey", AccountIDs: []int64{ids[0], ids[2], ids[3]}}, "密钥测试", now, now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, ids[2], jobs[0].AccountID)
+	jobs[0].Status = "success"
+	jobs[0].ResponseText = "<svg>密钥作品</svg>"
+	require.NoError(t, repo.Complete(ctx, jobs[0]))
+	saved, err := repo.Get(ctx, ids[2])
+	require.NoError(t, err)
+	require.Equal(t, "<svg>密钥作品</svg>", saved.ResponseText)
+	list, err := repo.List(ctx)
+	require.NoError(t, err)
+	found := false
+	for _, r := range list {
+		if r.AccountID == ids[2] {
+			found = true
+		}
+	}
+	require.True(t, found)
+	oauth, err := repo.Claim(ctx, service.PelicanAccountStart{AccountType: "oauth", AccountIDs: []int64{ids[1], ids[2]}}, "所选OAuth", now, now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Len(t, oauth, 1)
+	require.Equal(t, ids[1], oauth[0].AccountID)
+	missing, err := repo.Get(ctx, ids[0])
+	require.NoError(t, err)
+	require.Nil(t, missing)
+}

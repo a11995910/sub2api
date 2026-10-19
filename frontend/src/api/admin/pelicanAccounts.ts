@@ -14,6 +14,7 @@ export interface PelicanAccountResult {
 }
 export interface PelicanAccountRun { account_id: number; run_id: string }
 export interface PelicanAccountStart {
+  account_type?: 'oauth' | 'apikey'
   all?: boolean
   account_ids?: number[]
   models: Record<string, string>

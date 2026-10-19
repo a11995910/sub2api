@@ -1,11 +1,11 @@
 <template>
   <section class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900" data-testid="pelican-account-tests">
     <header class="flex flex-wrap items-center justify-between gap-3">
-      <div><h3 class="font-semibold">{{ t('pelicanTests.accounts.title') }} · {{ accounts.length }}</h3><p class="mt-1 text-sm text-gray-500">{{ t('pelicanTests.accounts.hint') }}</p></div>
+      <div><h3 class="font-semibold">{{ t(`pelicanTests.tabs.${accountType}`) }} · {{ accounts.length }}</h3><p class="mt-1 text-sm text-gray-500">{{ t('pelicanTests.accounts.hint') }}</p></div>
       <div class="flex gap-2">
         <button class="btn btn-secondary" :disabled="loading || submitting" @click="load">{{ t('pelicanTests.refresh') }}</button>
         <button v-if="running" class="btn btn-secondary" :disabled="submitting" data-testid="oauth-stop" @click="stop">{{ t('pelicanTests.accounts.stop') }}</button>
-        <button class="btn btn-primary" :disabled="loading || submitting || !!loadError || !accounts.length" data-testid="oauth-run-all" @click="run()">{{ t('pelicanTests.accounts.runAll') }}</button>
+        <button class="btn btn-primary" :disabled="loading || submitting || !!loadError || !selectedAccounts.length" data-testid="oauth-run-selected" @click="runSelected()">{{ t('pelicanTests.accounts.runSelected', { count: selectedAccounts.length }) }}</button>
       </div>
     </header>
     <p v-if="loadError" class="mt-3 text-sm text-red-500" role="alert">{{ loadError }}</p>
@@ -18,10 +18,21 @@
       </label>
       <span v-if="running" role="status" class="text-sm text-gray-500">{{ t('pelicanTests.accounts.runningCount', { count: runningCount }) }}</span>
     </div>
+    <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
+      <input v-model="search" class="input w-64" :placeholder="t('pelicanTests.accounts.search')" :aria-label="t('pelicanTests.accounts.search')" data-testid="account-search" />
+      <button class="btn btn-secondary" :disabled="loading || submitting" data-testid="select-page" @click="selectAccounts(visibleAccounts)">{{ t('pelicanTests.accounts.selectPage') }}</button>
+      <button class="btn btn-secondary" :disabled="loading || submitting" data-testid="select-all" @click="selectAccounts(filteredAccounts)">{{ t('pelicanTests.accounts.selectAll') }}</button>
+      <button class="text-gray-500 hover:underline" data-testid="clear-selection" @click="selectedIds = new Set()">{{ t('pelicanTests.accounts.clearSelection') }}</button>
+      <span>{{ t('pelicanTests.accounts.selectedCount', { count: selectedAccounts.length }) }}</span>
+    </div>
     <p v-if="loading" role="status">{{ t('pelicanTests.history.loading') }}</p>
-    <p v-else-if="!accounts.length && !loadError" class="py-8 text-center text-gray-500">{{ t('pelicanTests.accounts.empty') }}</p>
+    <p v-else-if="!filteredAccounts.length && !loadError" class="py-8 text-center text-gray-500">{{ t('pelicanTests.accounts.empty') }}</p>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="oauth-grid">
       <article v-for="account in visibleAccounts" :key="account.id" class="min-w-0 overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700" :data-testid="`oauth-card-${account.id}`">
+        <label class="flex items-center gap-2 border-b border-gray-100 px-3 py-2 text-xs dark:border-dark-700">
+          <input type="checkbox" :checked="selectedIds.has(account.id)" :disabled="submitting" :data-testid="`select-account-${account.id}`" @change="toggleSelection(account.id)" />
+          {{ t('pelicanTests.accounts.participate') }}
+        </label>
         <div class="aspect-[4/3] bg-gray-50 dark:bg-dark-800">
           <PelicanArtworkPreview v-if="results[account.id]?.html" :html="results[account.id].html" :title="account.name" :interactive="false" />
           <div v-else class="flex h-full items-center justify-center p-3 text-center text-sm text-gray-500" role="status">{{ t(`pelicanTests.accounts.${results[account.id]?.status || 'idle'}`) }}</div>
@@ -39,7 +50,7 @@
         </div>
       </article>
     </div>
-    <Pagination v-if="accounts.length > pageSize" :total="accounts.length" :page="page" :page-size="pageSize" @update:page="page = $event" />
+    <Pagination v-if="filteredAccounts.length > pageSize" :total="filteredAccounts.length" :page="page" :page-size="pageSize" @update:page="page = $event" />
     <BaseDialog :show="!!editing" :title="`${t('pelicanTests.accounts.groups')} · ${editing?.name || ''}`" @close="closeEditor">
       <template v-if="editing">
         <fieldset :disabled="saving"><GroupSelector v-model="groupIds" :groups="groups" :platform="editing.platform" :mixed-scheduling="editing.extra?.mixed_scheduling === true" /></fieldset>
@@ -55,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { accountsAPI } from '@/api/admin/accounts'
 import { groupsAPI } from '@/api/admin/groups'
@@ -69,7 +80,18 @@ import PelicanArtworkPreview from '@/components/user/pelican/PelicanArtworkPrevi
 import { extractPelicanHtml } from '@/utils/pelicanHtml'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
+const props = withDefaults(defineProps<{ accountType?: 'oauth' | 'apikey' }>(), { accountType: 'oauth' })
 const { t } = useI18n()
+const selectedIds = ref(new Set<number>())
+const search = ref('')
+const filteredAccounts = computed(() => {
+  const query = search.value.trim().toLowerCase()
+  return accounts.value.filter(a => !query || `${a.name} ${a.id} ${a.platform}`.toLowerCase().includes(query))
+})
+const selectedAccounts = computed(() => accounts.value.filter(a => selectedIds.value.has(a.id)))
+function toggleSelection(id: number) { const ids = new Set(selectedIds.value); if (ids.has(id)) ids.delete(id); else ids.add(id); selectedIds.value = ids }
+function selectAccounts(items: AccountListItem[]) { selectedIds.value = new Set([...selectedIds.value, ...items.map(a => a.id)]) }
+function runSelected() { if (selectedAccounts.value.length) return run(selectedAccounts.value) }
 const accounts = ref<AccountListItem[]>([])
 const groups = ref<AdminGroup[]>([])
 const loading = ref(false)
@@ -81,7 +103,7 @@ const runningCount = computed(() => Object.values(results).filter(r => r.status 
 const running = computed(() => runningCount.value > 0)
 const page = ref(1)
 const pageSize = 25
-const visibleAccounts = computed(() => accounts.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+const visibleAccounts = computed(() => filteredAccounts.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const platforms = computed(() => [...new Set(accounts.value.map(a => a.platform))])
 const results = reactive<Record<number, PelicanAccountResult & { html: string }>>({})
 const editing = ref<AccountListItem | null>(null)
@@ -95,6 +117,7 @@ let polling = false
 let resultRequest = 0
 const detailsLoading = new Set<string>()
 let alive = true
+let active = true
 const loadController = new AbortController()
 
 async function load() {
@@ -104,7 +127,7 @@ async function load() {
     const next: AccountListItem[] = []
     let current = 1
     while (true) {
-      const response = await accountsAPI.list(current++, 100, { type: 'oauth', lite: '1', sort_by: 'id', sort_order: 'asc' }, { signal: loadController.signal })
+      const response = await accountsAPI.list(current++, 100, { type: props.accountType, lite: '1', sort_by: 'id', sort_order: 'asc' }, { signal: loadController.signal })
       next.push(...response.items)
       if (next.length >= response.total) break
       if (!response.items.length) throw new Error(t('pelicanTests.loadError'))
@@ -112,8 +135,9 @@ async function load() {
     const nextGroups = await groupsAPI.getAllIncludingInactive()
     if (!alive) return
     accounts.value = [...new Map(next.map(a => [a.id, a])).values()]
+    selectedIds.value = new Set([...selectedIds.value].filter(id => accounts.value.some(a => a.id === id)))
     groups.value = nextGroups
-    page.value = Math.min(page.value, Math.max(1, Math.ceil(accounts.value.length / pageSize)))
+    page.value = Math.min(page.value, Math.max(1, Math.ceil(filteredAccounts.value.length / pageSize)))
     await refreshResults()
   } catch (error) { if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
   finally { loading.value = false }
@@ -123,13 +147,16 @@ async function refreshResults() {
   const request = ++resultRequest
   const summaries = await pelicanAccountsAPI.list(loadController.signal)
   if (!alive || request !== resultRequest) return
-  const ids = new Set(summaries.map(r => r.account_id))
+  const available = new Set(accounts.value.map(a => a.id))
+  const ids = new Set(summaries.filter(r => available.has(r.account_id)).map(r => r.account_id))
   for (const id of Object.keys(results)) if (!ids.has(Number(id))) delete results[Number(id)]
   applyResults(summaries)
   await loadVisibleArtworks()
 }
 function applyResults(summaries: PelicanAccountResult[]) {
+  const available = new Set(accounts.value.map(a => a.id))
   for (const summary of summaries) {
+    if (!available.has(summary.account_id)) continue
     const old = results[summary.account_id]
     results[summary.account_id] = { ...summary, html: old?.run_id === summary.run_id && summary.status === 'success' ? old.html : '' }
   }
@@ -149,14 +176,15 @@ async function loadVisibleArtworks() {
     finally { detailsLoading.delete(key) }
   }))
 }
-async function run(targets?: AccountListItem[]) {
-  if (submitting.value) return
+async function run(targets: AccountListItem[]) {
+  if (submitting.value || !targets.length) return
   submitting.value = true
   loadError.value = ''
   ++resultRequest
   try {
     const started = await pelicanAccountsAPI.start({
-      ...(targets ? { account_ids: targets.map(a => a.id) } : { all: true }),
+      account_ids: targets.map(a => a.id),
+      account_type: props.accountType,
       models: Object.fromEntries(Object.entries(models).map(([platform, model]) => [platform, model.trim()])),
       reasoning_effort: effort.value,
     })
@@ -198,11 +226,14 @@ async function saveGroups(confirmed = false) {
   } catch (error) { saveError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
   finally { saving.value = false }
 }
+watch(search, () => { page.value = 1; void loadVisibleArtworks() })
 watch(page, loadVisibleArtworks)
+onActivated(() => { active = true; if (accounts.value.length) void refreshResults().catch(() => undefined) })
+onDeactivated(() => { active = false; preview.value = null; editing.value = null; risk.value = '' })
 onMounted(() => {
   void load()
   timer = setInterval(async () => {
-    if (polling || loading.value || submitting.value) return
+    if (!active || polling || loading.value || submitting.value) return
     polling = true
     try { await refreshResults() }
     catch (error) { if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }

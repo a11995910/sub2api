@@ -115,7 +115,7 @@ func TestPelicanAccountTestsStopCancelsUpstream(t *testing.T) {
 }
 func TestPelicanAccountTestsRejectInvalidSelection(t *testing.T) {
 	svc := NewPelicanAccountTestService(nil, nil)
-	for _, input := range []PelicanAccountStart{{}, {All: true, AccountIDs: []int64{1}}, {AccountIDs: []int64{-1}}, {All: true, ReasoningEffort: "错误值"}} {
+	for _, input := range []PelicanAccountStart{{AccountType: "setup-token", All: true}, {}, {All: true, AccountIDs: []int64{1}}, {AccountIDs: []int64{-1}}, {All: true, ReasoningEffort: "错误值"}} {
 		_, err := svc.Start(context.Background(), input)
 		require.Error(t, err)
 	}

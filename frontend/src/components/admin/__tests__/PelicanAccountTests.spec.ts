@@ -9,7 +9,7 @@ vi.mock('@/api/admin/pelicanAccounts', () => ({ pelicanAccountsAPI: { start: api
 vi.mock('vue-i18n', async () => ({ ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'), useI18n: () => ({ t: (key: string) => key }) }))
 const account = (id: number) => ({ id, name: `账号 ${id}`, platform: 'openai', type: 'oauth', group_ids: [1] })
 const result = (id: number, run = '第一轮', status = 'success') => ({ account_id: id, run_id: run, status, model_id: '测试模型', error_message: '', started_at: '', finished_at: null, running_until: '', reasoning_effort: '' })
-const create = () => mount(PelicanAccountTests, { global: { stubs: {
+const create = (accountType: 'oauth' | 'apikey' = 'oauth') => mount(PelicanAccountTests, { props: { accountType }, global: { stubs: {
   PelicanArtworkPreview: { props: ['html'], template: '<div data-testid="artwork">{{ html }}</div>' },
   Pagination: true,
   GroupSelector: { props: ['modelValue'], emits: ['update:modelValue'], template: '<button data-testid="select-groups" @click="$emit(\'update:modelValue\', [2])">分组</button>' },
@@ -29,15 +29,41 @@ beforeEach(() => {
   api.update.mockResolvedValue({ ...account(1), group_ids: [2] })
 })
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
-describe('OAuth 鹈鹕测试', () => {
-  it('全部账号只提交一个后台批次，不受展示分页和浏览器连接数量限制', async () => {
+describe('账号鹈鹕测试', () => {
+  it('默认不选中账号，跨页全选后仅提交明确的账号编号', async () => {
     api.list.mockResolvedValueOnce({ items: Array.from({ length: 25 }, (_, i) => account(i + 1)), total: 26 })
       .mockResolvedValueOnce({ items: [account(26)], total: 26 })
     wrapper = create(); await flushPromises()
     expect(wrapper.findAll('article')).toHaveLength(25)
-    await wrapper.get('[data-testid="oauth-run-all"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-testid="oauth-run-selected"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="select-all"]').trigger('click')
+    await wrapper.get('[data-testid="oauth-run-selected"]').trigger('click'); await flushPromises()
     expect(api.start).toHaveBeenCalledTimes(1)
-    expect(api.start).toHaveBeenCalledWith({ all: true, models: {}, reasoning_effort: '' })
+    expect(api.start).toHaveBeenCalledWith({ account_ids: Array.from({ length: 26 }, (_, i) => i + 1), account_type: 'oauth', models: {}, reasoning_effort: '' })
+  })
+  it('API Key 页签只加载密钥账号，并仅测试勾选账号', async () => {
+    api.list.mockResolvedValue({ items: [{ ...account(10), type: 'apikey' }, { ...account(11), type: 'apikey' }], total: 2 })
+    wrapper = create('apikey'); await flushPromises()
+    expect(api.list.mock.calls[0][2].type).toBe('apikey')
+    await wrapper.get('[data-testid="select-account-11"]').setValue(true)
+    await wrapper.get('[data-testid="oauth-run-selected"]').trigger('click'); await flushPromises()
+    expect(api.start).toHaveBeenCalledWith({ account_ids: [11], account_type: 'apikey', models: {}, reasoning_effort: '' })
+  })
+  it('搜索后选择结果不会选中其他账号，清空后禁止启动', async () => {
+    wrapper = create(); await flushPromises()
+    await wrapper.get('[data-testid="account-search"]').setValue('账号 2')
+    await wrapper.get('[data-testid="select-all"]').trigger('click')
+    await wrapper.get('[data-testid="account-search"]').setValue('')
+    await wrapper.get('[data-testid="oauth-run-selected"]').trigger('click'); await flushPromises()
+    expect(api.start.mock.calls[0][0].account_ids).toEqual([2])
+    await wrapper.get('[data-testid="clear-selection"]').trigger('click')
+    expect(wrapper.get('[data-testid="oauth-run-selected"]').attributes('disabled')).toBeDefined()
+  })
+  it('当前页签的停止操作不会影响另一类型的账号', async () => {
+    api.results.mockResolvedValue([result(1, 'OAuth轮次', 'running'), result(99, '密钥轮次', 'running')])
+    wrapper = create(); await flushPromises()
+    await wrapper.get('[data-testid="oauth-stop"]').trigger('click'); await flushPromises()
+    expect(api.stop).toHaveBeenCalledWith([{ account_id: 1, run_id: 'OAuth轮次' }])
   })
   it('重新打开页面恢复服务端作品，不重新发起测试', async () => {
     api.results.mockResolvedValue([result(1)])
@@ -52,7 +78,8 @@ describe('OAuth 鹈鹕测试', () => {
     api.results.mockResolvedValue([result(1, '第一轮', 'running')])
     wrapper = create(); await flushPromises()
     expect(wrapper.find('[data-testid="oauth-stop"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="oauth-run-all"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="select-account-2"]').setValue(true)
+    expect(wrapper.get('[data-testid="oauth-run-selected"]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
     expect(api.stop).not.toHaveBeenCalled()
   })
@@ -102,7 +129,7 @@ describe('OAuth 鹈鹕测试', () => {
   it('列表加载不完整时禁止启动批量测试', async () => {
     api.list.mockResolvedValueOnce({ items: [account(1)], total: 2 }).mockRejectedValueOnce(new Error('加载失败'))
     wrapper = create(); await flushPromises()
-    expect(wrapper.get('[data-testid="oauth-run-all"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="oauth-run-selected"]').attributes('disabled')).toBeDefined()
     expect(api.start).not.toHaveBeenCalled()
   })
 })

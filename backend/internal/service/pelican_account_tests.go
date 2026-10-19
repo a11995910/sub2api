@@ -31,6 +31,7 @@ type PelicanAccountRun struct {
 	RunID     string `json:"run_id"`
 }
 type PelicanAccountStart struct {
+	AccountType     string            `json:"account_type"`
 	All             bool              `json:"all"`
 	AccountIDs      []int64           `json:"account_ids"`
 	Models          map[string]string `json:"models"`
@@ -59,6 +60,12 @@ func NewPelicanAccountTestService(repo PelicanAccountTestRepository, tests *Acco
 	return &PelicanAccountTestService{repo: repo, runAccount: tests.RunPelicanBackground, active: make(map[int64]pelicanAccountCancel)}
 }
 func (s *PelicanAccountTestService) Start(ctx context.Context, input PelicanAccountStart) ([]*PelicanAccountResult, error) {
+	if input.AccountType == "" {
+		input.AccountType = AccountTypeOAuth
+	}
+	if input.AccountType != AccountTypeOAuth && input.AccountType != AccountTypeAPIKey {
+		return nil, infraerrors.BadRequest("PELICAN_ACCOUNT_TYPE", "仅支持 OAuth 或 API Key 账号")
+	}
 	if (!input.All && len(input.AccountIDs) == 0) || (input.All && len(input.AccountIDs) > 0) {
 		return nil, infraerrors.BadRequest("PELICAN_ACCOUNT_SELECTION", "请选择全部账号或指定账号")
 	}

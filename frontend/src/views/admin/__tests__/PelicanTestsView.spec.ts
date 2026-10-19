@@ -385,3 +385,17 @@ describe('PelicanTestsView', () => {
     expect(signal.aborted).toBe(true)
   })
 })
+
+it('使用页签切换分组与两类账号测试，隐藏不相关的分组操作', async () => {
+  wrapper = mountView(); await flushPromises()
+  expect(wrapper.get('#pelican-panel-groups').isVisible()).toBe(true)
+  expect(wrapper.find('pelican-account-tests-stub').exists()).toBe(false)
+  await wrapper.get('#pelican-tab-oauth').trigger('click'); await flushPromises()
+  expect(wrapper.get('#pelican-panel-groups').attributes('style')).toContain('display: none')
+  expect(wrapper.get('pelican-account-tests-stub').attributes('accounttype')).toBe('oauth')
+  expect(wrapper.find('[data-testid="pelican-tests-create"]').exists()).toBe(false)
+  await wrapper.get('#pelican-tab-apikey').trigger('click'); await flushPromises()
+  expect(wrapper.get('pelican-account-tests-stub').attributes('accounttype')).toBe('apikey')
+  await wrapper.get('#pelican-tab-groups').trigger('click')
+  expect(wrapper.get('#pelican-panel-groups').isVisible()).toBe(true)
+})
