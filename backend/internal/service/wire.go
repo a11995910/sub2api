@@ -949,6 +949,7 @@ func ProvideAccountTimeRotationService(repo AccountTimeRotationRepository) *Acco
 var ProviderSet = wire.NewSet(
 	NewPelicanShowcaseService,
 	NewPelicanGroupTestService,
+	NewPelicanAccountTestService,
 	ProvideAccountTimeRotationService,
 	// Core services
 	ProvideAuthService,

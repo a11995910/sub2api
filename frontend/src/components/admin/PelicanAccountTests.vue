@@ -3,20 +3,20 @@
     <header class="flex flex-wrap items-center justify-between gap-3">
       <div><h3 class="font-semibold">{{ t('pelicanTests.accounts.title') }} · {{ accounts.length }}</h3><p class="mt-1 text-sm text-gray-500">{{ t('pelicanTests.accounts.hint') }}</p></div>
       <div class="flex gap-2">
-        <button class="btn btn-secondary" :disabled="loading || running" @click="load">{{ t('pelicanTests.refresh') }}</button>
-        <button v-if="running" class="btn btn-secondary" data-testid="oauth-stop" @click="stop">{{ t('pelicanTests.accounts.stop') }}</button>
-        <button v-else class="btn btn-primary" :disabled="loading || !!loadError || !accounts.length" data-testid="oauth-run-all" @click="run(accounts)">{{ t('pelicanTests.accounts.runAll') }}</button>
+        <button class="btn btn-secondary" :disabled="loading || submitting" @click="load">{{ t('pelicanTests.refresh') }}</button>
+        <button v-if="running" class="btn btn-secondary" :disabled="submitting" data-testid="oauth-stop" @click="stop">{{ t('pelicanTests.accounts.stop') }}</button>
+        <button class="btn btn-primary" :disabled="loading || submitting || !!loadError || !accounts.length" data-testid="oauth-run-all" @click="run()">{{ t('pelicanTests.accounts.runAll') }}</button>
       </div>
     </header>
     <p v-if="loadError" class="mt-3 text-sm text-red-500" role="alert">{{ loadError }}</p>
     <div class="my-4 flex flex-wrap items-end gap-3">
       <label v-for="platform in platforms" :key="platform" class="text-xs text-gray-500">{{ platform }} {{ t('pelicanTests.accounts.model') }}
-        <input v-model="models[platform]" class="input mt-1 block w-48" :disabled="running" :placeholder="t('pelicanTests.accounts.autoModel')" />
+        <input v-model="models[platform]" class="input mt-1 block w-48" :disabled="submitting" :placeholder="t('pelicanTests.accounts.autoModel')" />
       </label>
       <label class="text-xs text-gray-500">{{ t('pelicanTests.accounts.effort') }}
-        <select v-model="effort" class="input mt-1 block" :disabled="running"><option value="">{{ t('pelicanTests.accounts.autoModel') }}</option><option v-for="value in ['low', 'medium', 'high', 'xhigh']" :key="value">{{ value }}</option></select>
+        <select v-model="effort" class="input mt-1 block" :disabled="submitting"><option value="">{{ t('pelicanTests.accounts.autoModel') }}</option><option v-for="value in ['low', 'medium', 'high', 'xhigh']" :key="value">{{ value }}</option></select>
       </label>
-      <span v-if="running" role="status" class="text-sm text-gray-500">{{ finished }} / {{ batchTotal }}</span>
+      <span v-if="running" role="status" class="text-sm text-gray-500">{{ t('pelicanTests.accounts.runningCount', { count: runningCount }) }}</span>
     </div>
     <p v-if="loading" role="status">{{ t('pelicanTests.history.loading') }}</p>
     <p v-else-if="!accounts.length && !loadError" class="py-8 text-center text-gray-500">{{ t('pelicanTests.accounts.empty') }}</p>
@@ -24,15 +24,15 @@
       <article v-for="account in visibleAccounts" :key="account.id" class="min-w-0 overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700" :data-testid="`oauth-card-${account.id}`">
         <div class="aspect-[4/3] bg-gray-50 dark:bg-dark-800">
           <PelicanArtworkPreview v-if="results[account.id]?.html" :html="results[account.id].html" :title="account.name" :interactive="false" />
-          <div v-else class="flex h-full items-center justify-center p-3 text-center text-sm text-gray-500" role="status">{{ t(`pelicanTests.accounts.${results[account.id]?.state || 'idle'}`) }}</div>
+          <div v-else class="flex h-full items-center justify-center p-3 text-center text-sm text-gray-500" role="status">{{ t(`pelicanTests.accounts.${results[account.id]?.status || 'idle'}`) }}</div>
         </div>
         <div class="space-y-2 p-3 text-xs">
           <p class="truncate font-semibold" :title="account.name">{{ account.name }} <span class="font-normal text-gray-400">#{{ account.id }}</span></p>
-          <p class="truncate text-gray-500">{{ account.platform }} · {{ results[account.id]?.model || models[account.platform] || t('pelicanTests.accounts.autoModel') }}</p>
+          <p class="truncate text-gray-500">{{ account.platform }} · {{ results[account.id]?.model_id || models[account.platform] || t('pelicanTests.accounts.autoModel') }}</p>
           <p class="truncate text-gray-500" :title="groupNames(account)">{{ groupNames(account) }}</p>
-          <p v-if="results[account.id]?.error" class="break-words text-red-500" role="alert">{{ results[account.id].error }}</p>
+          <p v-if="results[account.id]?.error_message" class="break-words text-red-500" role="alert">{{ results[account.id].error_message }}</p>
           <div class="flex flex-wrap gap-2">
-            <button class="text-primary-600 hover:underline" :disabled="running || loading" @click="run([account])">{{ t('pelicanTests.accounts.test') }}</button>
+            <button class="text-primary-600 hover:underline" :disabled="results[account.id]?.status === 'running' || loading || submitting" @click="run([account])">{{ t('pelicanTests.accounts.test') }}</button>
             <button class="text-primary-600 hover:underline" :disabled="saving || loading" :data-testid="`oauth-groups-${account.id}`" @click="editGroups(account)">{{ t('pelicanTests.accounts.groups') }}</button>
             <button v-if="results[account.id]?.html" class="text-primary-600 hover:underline" @click="preview = account">{{ t('pelicanTests.history.view') }}</button>
           </div>
@@ -55,11 +55,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { accountsAPI } from '@/api/admin/accounts'
 import { groupsAPI } from '@/api/admin/groups'
-import { testPelicanAccount } from '@/api/admin/pelicanAccounts'
+import { pelicanAccountsAPI, type PelicanAccountResult } from '@/api/admin/pelicanAccounts'
 import type { AccountListItem, AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -76,22 +76,24 @@ const loading = ref(false)
 const loadError = ref('')
 const models = reactive<Record<string, string>>({})
 const effort = ref('')
-const running = ref(false)
-const finished = ref(0)
-const batchTotal = ref(0)
+const submitting = ref(false)
+const runningCount = computed(() => Object.values(results).filter(r => r.status === 'running').length)
+const running = computed(() => runningCount.value > 0)
 const page = ref(1)
 const pageSize = 25
 const visibleAccounts = computed(() => accounts.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const platforms = computed(() => [...new Set(accounts.value.map(a => a.platform))])
-const results = reactive<Record<number, { state: string; html: string; model: string; error: string }>>({})
+const results = reactive<Record<number, PelicanAccountResult & { html: string }>>({})
 const editing = ref<AccountListItem | null>(null)
 const preview = ref<AccountListItem | null>(null)
 const groupIds = ref<number[]>([])
 const saving = ref(false)
 const saveError = ref('')
 const risk = ref('')
-const controllers = new Set<AbortController>()
-let stopped = false
+let timer: ReturnType<typeof setInterval> | undefined
+let polling = false
+let resultRequest = 0
+const detailsLoading = new Set<string>()
 let alive = true
 const loadController = new AbortController()
 
@@ -111,47 +113,71 @@ async function load() {
     if (!alive) return
     accounts.value = [...new Map(next.map(a => [a.id, a])).values()]
     groups.value = nextGroups
-    page.value = 1
+    page.value = Math.min(page.value, Math.max(1, Math.ceil(accounts.value.length / pageSize)))
+    await refreshResults()
   } catch (error) { if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
   finally { loading.value = false }
 }
 
-async function run(targets: AccountListItem[]) {
-  if (running.value) return
-  stopped = false
-  running.value = true
-  finished.value = 0
-  batchTotal.value = targets.length
-  const queue = [...targets]
-  for (const account of queue) results[account.id] = { state: 'queued', html: '', model: '', error: '' }
-  async function worker() {
-    while (!stopped && alive) {
-      const account = queue.shift()
-      if (!account) return
-      const result = results[account.id]
-      result.state = 'running'
-      const controller = new AbortController()
-      controllers.add(controller)
-      const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000)
-      try {
-        const answer = await testPelicanAccount(account.id, models[account.platform]?.trim() || '', effort.value, controller.signal)
-        if (stopped || !alive) { result.state = 'stopped'; continue }
-        result.model = answer.model
-        const html = extractPelicanHtml(answer.text)
-        if (!html) throw new Error(t('pelicanTests.accounts.invalid'))
-        result.html = html
-        result.state = 'success'
-      } catch (error) {
-        result.state = stopped ? 'stopped' : 'failed'
-        result.error = stopped ? '' : controller.signal.aborted ? t('pelicanTests.accounts.timeout') : extractApiErrorMessage(error) || t('pelicanTests.accounts.failed')
-      } finally { clearTimeout(timeout); controllers.delete(controller); finished.value++ }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker))
-  for (const account of queue) results[account.id].state = 'stopped'
-  running.value = false
+async function refreshResults() {
+  const request = ++resultRequest
+  const summaries = await pelicanAccountsAPI.list(loadController.signal)
+  if (!alive || request !== resultRequest) return
+  const ids = new Set(summaries.map(r => r.account_id))
+  for (const id of Object.keys(results)) if (!ids.has(Number(id))) delete results[Number(id)]
+  applyResults(summaries)
+  await loadVisibleArtworks()
 }
-function stop() { stopped = true; for (const controller of controllers) controller.abort() }
+function applyResults(summaries: PelicanAccountResult[]) {
+  for (const summary of summaries) {
+    const old = results[summary.account_id]
+    results[summary.account_id] = { ...summary, html: old?.run_id === summary.run_id && summary.status === 'success' ? old.html : '' }
+  }
+}
+async function loadVisibleArtworks() {
+  await Promise.all(visibleAccounts.value.map(async account => {
+    const summary = results[account.id]
+    if (!summary || summary.status !== 'success' || summary.html) return
+    const key = `${account.id}/${summary.run_id}`
+    if (detailsLoading.has(key)) return
+    detailsLoading.add(key)
+    try {
+      const detail = await pelicanAccountsAPI.get(account.id, loadController.signal)
+      if (!alive || results[account.id]?.run_id !== detail.run_id || detail.run_id !== summary.run_id) return
+      results[account.id] = { ...detail, html: detail.status === 'success' ? extractPelicanHtml(detail.response_text || '') : '' }
+    } catch (error) { if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
+    finally { detailsLoading.delete(key) }
+  }))
+}
+async function run(targets?: AccountListItem[]) {
+  if (submitting.value) return
+  submitting.value = true
+  loadError.value = ''
+  ++resultRequest
+  try {
+    const started = await pelicanAccountsAPI.start({
+      ...(targets ? { account_ids: targets.map(a => a.id) } : { all: true }),
+      models: Object.fromEntries(Object.entries(models).map(([platform, model]) => [platform, model.trim()])),
+      reasoning_effort: effort.value,
+    })
+    if (!alive) return
+    applyResults(started)
+    await refreshResults()
+  } catch (error) {
+    if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError')
+  } finally { submitting.value = false }
+}
+async function stop() {
+  if (submitting.value) return
+  const runs = Object.values(results).filter(r => r.status === 'running').map(r => ({ account_id: r.account_id, run_id: r.run_id }))
+  submitting.value = true
+  ++resultRequest
+  try {
+    await pelicanAccountsAPI.stop(runs)
+    if (alive) await refreshResults()
+  } catch (error) { if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
+  finally { submitting.value = false }
+}
 function groupNames(account: AccountListItem) { return (account.group_ids || []).map(id => groups.value.find(g => g.id === id)?.name || `#${id}`).join('、') || t('pelicanTests.accounts.ungrouped') }
 function editGroups(account: AccountListItem) { editing.value = account; groupIds.value = [...(account.group_ids || [])]; saveError.value = ''; risk.value = '' }
 function closeEditor() { if (!saving.value) { editing.value = null; risk.value = '' } }
@@ -172,6 +198,17 @@ async function saveGroups(confirmed = false) {
   } catch (error) { saveError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
   finally { saving.value = false }
 }
-onMounted(load)
-onBeforeUnmount(() => { alive = false; stop(); loadController.abort() })
+watch(page, loadVisibleArtworks)
+onMounted(() => {
+  void load()
+  timer = setInterval(async () => {
+    if (polling || loading.value || submitting.value) return
+    polling = true
+    try { await refreshResults() }
+    catch (error) { if (alive) loadError.value = extractApiErrorMessage(error) || t('pelicanTests.loadError') }
+    finally { polling = false }
+  }, 3000)
+})
+// 页面关闭只停止查询；后台生成仍继续，结果由服务器保存。
+onBeforeUnmount(() => { alive = false; if (timer) clearInterval(timer); loadController.abort() })
 </script>

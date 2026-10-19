@@ -1,7 +1,8 @@
 export default {
   accounts: {
+    runningCount: '{count} accounts running',
     "title": "Test all OAuth accounts",
-    "hint": "Test each account directly, with 3 concurrent requests. Results stay on this page only and are not published to the gallery. Tests consume upstream quota.",
+    "hint": "Run all OAuth accounts independently at the same time. Tests continue in the background; the latest result is saved across refreshes and replaced on retest. Tests consume upstream quota.",
     "stop": "Stop",
     "runAll": "Test all OAuth",
     "model": "model",
