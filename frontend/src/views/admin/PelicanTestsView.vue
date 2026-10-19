@@ -23,6 +23,8 @@
       <p v-if="error" role="alert" class="error-banner">{{ error }}</p>
       <p v-if="notice" role="status" class="success-banner">{{ notice }}</p>
 
+      <PelicanAccountTests />
+
       <div class="ops-columns">
         <section class="settings-card" data-testid="pelican-showcase-settings">
           <div class="section-title">
@@ -334,6 +336,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import PelicanAccountTests from '@/components/admin/PelicanAccountTests.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'

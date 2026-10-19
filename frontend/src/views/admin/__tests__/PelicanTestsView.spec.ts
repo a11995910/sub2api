@@ -60,6 +60,7 @@ const mountView = () => mount(PelicanTestsView, {
     stubs: {
       AppLayout: { template: '<div><slot /></div>' },
       SmartOpsNav: true,
+      PelicanAccountTests: true,
       RouterLink: RouterLinkStub,
       Icon: true,
       PlatformIcon: true,

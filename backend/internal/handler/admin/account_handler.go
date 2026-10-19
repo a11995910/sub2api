@@ -1311,9 +1311,10 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 
 // TestAccountRequest represents the request body for testing an account
 type TestAccountRequest struct {
-	ModelID string `json:"model_id"`
-	Prompt  string `json:"prompt"`
-	Mode    string `json:"mode"`
+	ModelID         string `json:"model_id"`
+	Prompt          string `json:"prompt"`
+	Mode            string `json:"mode"`
+	ReasoningEffort string `json:"reasoning_effort"`
 	// Optional media for Grok (and future) real generation tests.
 	// ImageDataURL / AudioDataURL are data:<mime>;base64,... payloads.
 	ImageDataURL string `json:"image_data_url"`
@@ -1346,6 +1347,13 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	var req TestAccountRequest
 	// Allow empty body, model_id is optional
 	_ = c.ShouldBindJSON(&req)
+
+	// 按账号生成作品，不经过分组调度，成功后也不自动恢复账号故障状态。
+	if req.Mode == "pelican" {
+		_ = h.accountTestService.TestPelicanAccountConnection(c, accountID, req.ModelID,
+			"创建一个 HTML，内容是 SVG 绘制一个鹈鹕骑自行车的 2D 动画。", req.ReasoningEffort)
+		return
+	}
 
 	opts := service.AccountTestOptions{
 		ImageDataURL: req.ImageDataURL,
