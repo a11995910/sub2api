@@ -37,15 +37,14 @@ func TestCandyAnswerParsing(t *testing.T) {
 	}
 }
 
-func TestCandyDailyScheduleUsesBeijing(t *testing.T) {
-	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
-	next, err := NextCandyTestRun("08:00", now)
-	require.NoError(t, err)
-	require.Equal(t, now.Add(24*time.Hour), next.UTC())
-	next, err = NextCandyTestRun("08:01", now.In(time.FixedZone("测试时区", -7*60*60)))
-	require.NoError(t, err)
-	require.Equal(t, now.Add(time.Minute), next.UTC())
-	for _, value := range []string{"8:00", "24:00", "12:60", "08:00:00", ""} {
+func TestCandyIntervalScheduleUsesElapsedHours(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 35, 0, 0, time.UTC)
+	for _, hours := range []int{1, 2, 6, 24, 168} {
+		next, err := NextCandyTestRun(hours, now.In(time.FixedZone("测试时区", -7*60*60)))
+		require.NoError(t, err)
+		require.Equal(t, now.Add(time.Duration(hours)*time.Hour), next.UTC())
+	}
+	for _, value := range []int{0, -1, 169, 1000000} {
 		_, err := NextCandyTestRun(value, now)
 		require.Error(t, err)
 	}
@@ -153,6 +152,12 @@ func TestCandySettingsValidationAllowsDisablingStaleGroups(t *testing.T) {
 	input.ExpectedAnswer = "21或22"
 	_, err = svc.UpdateSettings(context.Background(), input)
 	require.Error(t, err)
+	for _, hours := range []int{0, -1, 169} {
+		input = DefaultCandyTestSettings()
+		input.IntervalHours = hours
+		_, err = svc.UpdateSettings(context.Background(), input)
+		require.Error(t, err)
+	}
 }
 
 func TestCandyWorkersBoundConcurrencyAndKeepSnapshot(t *testing.T) {

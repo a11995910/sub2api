@@ -19,7 +19,7 @@ vi.mock('vue-i18n', async () => ({
 
 const input = (): CandyTestSettingsInput => ({
   prompt: DEFAULT_CANDY_PROMPT, expected_answer: '21', model_id: '', reasoning_effort: 'high',
-  schedule_enabled: false, daily_time: '08:00', auto_group_enabled: false,
+  schedule_enabled: false, interval_hours: 24, auto_group_enabled: false,
   normal_add_group_ids: [], normal_remove_group_ids: [], degraded_add_group_ids: [], degraded_remove_group_ids: [],
 })
 const settings = (overrides: Partial<CandyTestSettings> = {}): CandyTestSettings => ({ ...input(), running_run_id: '', next_run_at: null, last_run_at: null, running_until: null, ...overrides })
@@ -64,15 +64,41 @@ describe('糖果账号测试', () => {
     await wrapper.get('[data-testid="candy-run"]').trigger('click')
     expect(api.run).not.toHaveBeenCalled()
     await wrapper.get('[data-testid="candy-schedule-enabled"]').trigger('click')
-    await wrapper.get('[data-testid="candy-daily-time"]').setValue('23:35')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-interval-hours"]').element.value).toBe('24')
+    await wrapper.get('[data-testid="candy-interval-hours"]').setValue('6')
     await wrapper.get('[data-testid="candy-settings"]').trigger('submit')
     await flushPromises()
-    expect(api.updateSettings).toHaveBeenCalledWith({ ...input(), prompt: '自定义题目', expected_answer: '42', schedule_enabled: true, daily_time: '23:35' })
+    expect(api.updateSettings).toHaveBeenCalledWith({ ...input(), prompt: '自定义题目', expected_answer: '42', schedule_enabled: true, interval_hours: 6 })
     expect(api.updateSettings.mock.calls[0][0]).not.toHaveProperty('running_run_id')
+    expect(api.updateSettings.mock.calls[0][0]).not.toHaveProperty('daily_time')
     expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeUndefined()
     await wrapper.get('[data-testid="candy-reset"]').trigger('click')
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="candy-prompt"]').element.value).toBe(DEFAULT_CANDY_PROMPT)
     expect(wrapper.get<HTMLInputElement>('[data-testid="candy-answer"]').element.value).toBe('21')
+  })
+
+  it.each(['', '0', '-1', '1.5', '169'])('拒绝无效的小时测试间隔：%s', async value => {
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-schedule-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="candy-interval-hours"]').setValue(value)
+    await wrapper.get('[data-testid="candy-settings"]').trigger('submit')
+    expect(api.updateSettings).not.toHaveBeenCalled()
+    expect(wrapper.get('[role="alert"]').text()).toBe('candyTests.invalidInterval')
+  })
+
+  it.each([1, 168])('保存小时间隔边界 %s 并按北京时间显示下次运行', async hours => {
+    api.getSettings.mockResolvedValue(settings({ interval_hours: hours }))
+    api.updateSettings.mockImplementation(async (value: CandyTestSettingsInput) => settings({ ...value, next_run_at: '2026-10-20T01:00:00Z' }))
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-schedule-enabled"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-interval-hours"]').element.value).toBe(String(hours))
+    expect(wrapper.text()).toContain(`candyTests.intervalHint {"hours":${hours}}`)
+    await wrapper.get('[data-testid="candy-settings"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ interval_hours: hours, schedule_enabled: true }))
+    expect(wrapper.text()).toContain('candyTests.nextRun {"time":"2026/10/20 09:00"}')
   })
 
   it('只提供可用GPT分组并阻止同一结果同时增减同一分组', async () => {

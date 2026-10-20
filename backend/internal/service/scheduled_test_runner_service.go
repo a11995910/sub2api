@@ -74,7 +74,7 @@ func (s *ScheduledTestRunnerService) Start() {
 			})
 		}
 		if s.candyTests != nil {
-			// 糖果定时任务按北京时间执行，数据库租约负责跨实例去重。
+			// 糖果定时任务按配置的小时间隔执行，数据库租约负责跨实例去重。
 			_, _ = c.AddFunc("* * * * *", func() {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()

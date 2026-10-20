@@ -25,8 +25,9 @@ const CandyTestDefaultPrompt = `在一个黑色的袋子里放有三种口味的
 五角星形 7 6 4`
 
 const (
-	CandyTestMaxWorkers     = 10
-	CandyTestAccountTimeout = 10 * time.Minute
+	CandyTestMaxWorkers           = 10
+	CandyTestAccountTimeout       = 10 * time.Minute
+	CandyTestDefaultIntervalHours = 24
 )
 
 func CandyTestLeaseDuration(accountCount int) time.Duration {
@@ -40,8 +41,6 @@ var (
 	ErrCandyTestNoAccounts     = infraerrors.BadRequest("CANDY_TEST_NO_ACCOUNTS", "没有可测试的 GPT OAuth 主账号")
 	candyIntegerPattern        = regexp.MustCompile(`^[+-]?[0-9]+$`)
 	candyFinalAnswerPattern    = regexp.MustCompile(`(?i)^(?:最终答案|答案|final answer|answer)\s*[:：=]\s*([+-]?[0-9]+)\s*(?:个|颗|枚)?\s*(?:糖果)?[。.!！]?$`)
-	candyDailyTimePattern      = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9]$`)
-	candyBeijingLocation       = time.FixedZone("Asia/Shanghai", 8*60*60)
 )
 
 type CandyTestSettingsInput struct {
@@ -50,7 +49,7 @@ type CandyTestSettingsInput struct {
 	ModelID                string  `json:"model_id"`
 	ReasoningEffort        string  `json:"reasoning_effort"`
 	ScheduleEnabled        bool    `json:"schedule_enabled"`
-	DailyTime              string  `json:"daily_time"`
+	IntervalHours          int     `json:"interval_hours"`
 	AutoGroupEnabled       bool    `json:"auto_group_enabled"`
 	NormalAddGroupIDs      []int64 `json:"normal_add_group_ids"`
 	NormalRemoveGroupIDs   []int64 `json:"normal_remove_group_ids"`
@@ -127,21 +126,15 @@ func NewCandyTestService(repo CandyTestRepository, groups GroupRepository, tests
 }
 
 func DefaultCandyTestSettings() CandyTestSettingsInput {
-	return CandyTestSettingsInput{Prompt: CandyTestDefaultPrompt, ExpectedAnswer: "21", ModelID: AccountIntelligenceDefaultModel, ReasoningEffort: "high", DailyTime: "08:00", NormalAddGroupIDs: []int64{}, NormalRemoveGroupIDs: []int64{}, DegradedAddGroupIDs: []int64{}, DegradedRemoveGroupIDs: []int64{}}
+	return CandyTestSettingsInput{Prompt: CandyTestDefaultPrompt, ExpectedAnswer: "21", ModelID: AccountIntelligenceDefaultModel, ReasoningEffort: "high", IntervalHours: CandyTestDefaultIntervalHours, NormalAddGroupIDs: []int64{}, NormalRemoveGroupIDs: []int64{}, DegradedAddGroupIDs: []int64{}, DegradedRemoveGroupIDs: []int64{}}
 }
 
-// 每天按北京时间计算下一次执行，不依赖宿主机时区，也不追补停机期间的每一天。
-func NextCandyTestRun(dailyTime string, now time.Time) (time.Time, error) {
-	if !candyDailyTimePattern.MatchString(dailyTime) {
-		return time.Time{}, infraerrors.BadRequest("CANDY_TEST_TIME", "测试时间须为北京时间 HH:mm")
+// 按实际经过的小时计算下一次执行，不依赖时区，也不追补停机期间的批次。
+func NextCandyTestRun(intervalHours int, now time.Time) (time.Time, error) {
+	if intervalHours < 1 || intervalHours > 168 {
+		return time.Time{}, infraerrors.BadRequest("CANDY_TEST_INTERVAL", "测试间隔须为 1 至 168 的整数小时")
 	}
-	clock, _ := time.Parse("15:04", dailyTime)
-	local := now.In(candyBeijingLocation)
-	next := time.Date(local.Year(), local.Month(), local.Day(), clock.Hour(), clock.Minute(), 0, 0, candyBeijingLocation)
-	if !next.After(now) {
-		next = next.AddDate(0, 0, 1)
-	}
-	return next, nil
+	return now.Add(time.Duration(intervalHours) * time.Hour), nil
 }
 
 func (s *CandyTestService) GetSettings(ctx context.Context) (*CandyTestSettings, error) {
@@ -175,8 +168,7 @@ func (s *CandyTestService) UpdateSettings(ctx context.Context, input CandyTestSe
 	if input.ReasoningEffort == "" {
 		return nil, infraerrors.BadRequest("CANDY_TEST_EFFORT", "推理强度无效")
 	}
-	input.DailyTime = strings.TrimSpace(input.DailyTime)
-	if _, err := NextCandyTestRun(input.DailyTime, s.now()); err != nil {
+	if _, err := NextCandyTestRun(input.IntervalHours, s.now()); err != nil {
 		return nil, err
 	}
 	seen := make(map[int64]bool)

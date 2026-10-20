@@ -32,6 +32,11 @@ func TestCandyHandlerValidationPaginationAndConflict(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"expected_answer":"21"`)
 	require.Contains(t, w.Body.String(), `"schedule_enabled":false`)
+	require.Contains(t, w.Body.String(), `"interval_hours":24`)
+	for _, interval := range []string{"0", "-1", "169", "1.5"} {
+		body := `{"prompt":"题目","expected_answer":"21","reasoning_effort":"high","interval_hours":` + interval + `}`
+		require.Equal(t, http.StatusBadRequest, serveGroupTest(h.UpdateSettings, http.MethodPut, "/settings", "/settings", body).Code)
+	}
 	for _, body := range []string{`{`, `{}`, `{"all":true,"account_ids":[1]}`, `{"account_ids":[0]}`} {
 		require.Equal(t, http.StatusBadRequest, serveGroupTest(h.Run, http.MethodPost, "/run", "/run", body).Code)
 	}

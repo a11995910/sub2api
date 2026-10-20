@@ -12,7 +12,7 @@ export interface CandyTestSettingsInput {
   model_id: string
   reasoning_effort: string
   schedule_enabled: boolean
-  daily_time: string
+  interval_hours: number
   auto_group_enabled: boolean
   normal_add_group_ids: number[]
   normal_remove_group_ids: number[]

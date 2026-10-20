@@ -44,6 +44,10 @@ func scanCandySettings(row scannable) (*service.CandyTestSettings, error) {
 	if strings.TrimSpace(s.ModelID) == "" {
 		s.ModelID = service.AccountIntelligenceDefaultModel
 	}
+	// 旧每日配置按 24 小时衔接，保留数据库中已经安排的下一次时间。
+	if s.IntervalHours == 0 {
+		s.IntervalHours = service.CandyTestDefaultIntervalHours
+	}
 	return s, nil
 }
 
@@ -88,14 +92,6 @@ func (r *candyTestRepository) UpdateSettings(ctx context.Context, input *service
 	if err != nil {
 		return nil, err
 	}
-	var next *time.Time
-	if input.ScheduleEnabled {
-		value, err := service.NextCandyTestRun(input.DailyTime, now)
-		if err != nil {
-			return nil, err
-		}
-		next = &value
-	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -105,8 +101,20 @@ func (r *candyTestRepository) UpdateSettings(ctx context.Context, input *service
 		return nil, err
 	}
 	// 统一先锁配置，避免与完成批次时的配置、分组锁顺序相反。
-	if _, err := scanCandySettings(tx.QueryRowContext(ctx, `SELECT `+candySettingsColumns+` FROM candy_test_settings WHERE id=1 FOR UPDATE`)); err != nil {
+	current, err := scanCandySettings(tx.QueryRowContext(ctx, `SELECT `+candySettingsColumns+` FROM candy_test_settings WHERE id=1 FOR UPDATE`))
+	if err != nil {
 		return nil, err
+	}
+	var next *time.Time
+	if input.ScheduleEnabled {
+		next = current.NextRunAt
+		if !current.ScheduleEnabled || current.IntervalHours != input.IntervalHours || next == nil {
+			value, err := service.NextCandyTestRun(input.IntervalHours, now)
+			if err != nil {
+				return nil, err
+			}
+			next = &value
+		}
 	}
 	if input.AutoGroupEnabled {
 		if err := lockCandyGroups(ctx, tx, candyGroupIDs(input)); err != nil {
@@ -177,7 +185,7 @@ func (r *candyTestRepository) Claim(ctx context.Context, input service.CandyTest
 	}
 	var next = s.NextRunAt
 	if scheduled {
-		value, err := service.NextCandyTestRun(s.DailyTime, now)
+		value, err := service.NextCandyTestRun(s.IntervalHours, now)
 		if err != nil {
 			return nil, err
 		}
@@ -211,7 +219,7 @@ func (r *candyTestRepository) Claim(ctx context.Context, input service.CandyTest
 		return nil, err
 	}
 	if len(batch.Results) == 0 {
-		// 无账号时仍推进当日定时，避免每次轮询重复启动同一个空批次。
+		// 无账号时仍推进下次定时，避免每次轮询重复启动同一个空批次。
 		if scheduled {
 			if _, err := tx.ExecContext(ctx, `UPDATE candy_test_settings SET next_run_at=$1,run_id='',running_until=NULL WHERE id=1`, next); err != nil {
 				return nil, err

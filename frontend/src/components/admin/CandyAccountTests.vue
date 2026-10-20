@@ -41,8 +41,9 @@
             <Toggle v-model="draft.schedule_enabled" :aria-label="t('candyTests.schedule')" data-testid="candy-schedule-enabled" />
           </div>
           <div v-if="draft.schedule_enabled" class="mt-3 max-w-sm">
-            <label for="candy-daily-time" class="input-label">{{ t('candyTests.dailyTime') }}</label>
-            <input id="candy-daily-time" v-model="draft.daily_time" type="time" required class="input w-full" data-testid="candy-daily-time" />
+            <label for="candy-interval-hours" class="input-label">{{ t('candyTests.intervalHours') }}</label>
+            <input id="candy-interval-hours" v-model.number="draft.interval_hours" type="number" min="1" max="168" step="1" required class="input w-full" data-testid="candy-interval-hours" />
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('candyTests.intervalHint', { hours: draft.interval_hours }) }}</p>
           </div>
           <p v-if="settings?.next_run_at" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ t('candyTests.nextRun', { time: beijingTime(settings.next_run_at) }) }}</p>
         </div>
@@ -185,7 +186,7 @@ const unavailableGroupIds = computed(() => {
 function inputFrom(value: CandyTestSettingsInput): CandyTestSettingsInput {
   return {
     prompt: value.prompt, expected_answer: value.expected_answer, model_id: value.model_id,
-    reasoning_effort: value.reasoning_effort, schedule_enabled: value.schedule_enabled, daily_time: value.daily_time,
+    reasoning_effort: value.reasoning_effort, schedule_enabled: value.schedule_enabled, interval_hours: value.interval_hours,
     auto_group_enabled: value.auto_group_enabled,
     normal_add_group_ids: [...(value.normal_add_group_ids || [])], normal_remove_group_ids: [...(value.normal_remove_group_ids || [])],
     degraded_add_group_ids: [...(value.degraded_add_group_ids || [])], degraded_remove_group_ids: [...(value.degraded_remove_group_ids || [])],
@@ -288,8 +289,12 @@ async function poll() {
 
 async function save() {
   if (!draft.value || saving.value || starting.value || stopping.value || groupConflict.value) return
-  if (!draft.value.prompt.trim() || !draft.value.expected_answer.trim() || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.value.daily_time)) {
+  if (!draft.value.prompt.trim() || !draft.value.expected_answer.trim()) {
     fail(null, 'candyTests.required')
+    return
+  }
+  if (!Number.isInteger(draft.value.interval_hours) || draft.value.interval_hours < 1 || draft.value.interval_hours > 168) {
+    fail(null, 'candyTests.invalidInterval')
     return
   }
   if (draft.value.auto_group_enabled && (groupsFailed.value || unavailableGroupIds.value.length)) return

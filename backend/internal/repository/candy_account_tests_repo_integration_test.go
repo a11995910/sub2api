@@ -289,17 +289,29 @@ func TestCandyRepositoryScheduledClaimAndConfigUpdate(t *testing.T) {
 	ctx := context.Background()
 	repo := NewCandyTestRepository(integrationDB)
 	input := service.DefaultCandyTestSettings()
-	input.ScheduleEnabled, input.DailyTime = true, "08:00"
+	input.ScheduleEnabled, input.IntervalHours = true, 6
 	// 用两天前的时刻建立已到期计划，完成仍使用真实当前时间。
-	now := time.Now()
+	now := time.Now().Truncate(time.Microsecond)
 	before := now.AddDate(0, 0, -2)
 	settings, err := repo.UpdateSettings(ctx, &input, before)
 	require.NoError(t, err)
 	require.NotNil(t, settings.NextRunAt)
-	require.Equal(t, 0, settings.NextRunAt.UTC().Hour())
+	require.True(t, settings.NextRunAt.Equal(before.Add(6*time.Hour)))
+	// 编辑题目不重置计时，修改间隔则从本次保存时间重新计算。
+	input.Prompt = "修改后的题目"
+	settings, err = repo.UpdateSettings(ctx, &input, before.Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, settings.NextRunAt.Equal(before.Add(6*time.Hour)))
+	input.IntervalHours = 2
+	settings, err = repo.UpdateSettings(ctx, &input, before.Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, settings.NextRunAt.Equal(before.Add(3*time.Hour)))
 	batch, err := repo.Claim(ctx, service.CandyTestStart{}, "定时测试", now, now.Add(time.Minute), true)
 	require.NoError(t, err)
 	require.Len(t, batch.Results, 3)
+	settings, err = repo.GetSettings(ctx)
+	require.NoError(t, err)
+	require.True(t, settings.NextRunAt.Equal(now.Add(2*time.Hour)))
 	duplicate, err := repo.Claim(ctx, service.CandyTestStart{}, "重复定时", now, now.Add(time.Minute), true)
 	require.NoError(t, err)
 	require.Nil(t, duplicate)
@@ -314,6 +326,33 @@ func TestCandyRepositoryScheduledClaimAndConfigUpdate(t *testing.T) {
 	require.Nil(t, disabled)
 	manual := candyFixtureClaim(t, repo, f.accounts[0], "禁用后手动测试")
 	require.Equal(t, "running", manual.Status)
+}
+
+func TestCandyRepositoryLegacyScheduleKeepsNextRun(t *testing.T) {
+	createCandyFixtures(t)
+	ctx := context.Background()
+	repo := NewCandyTestRepository(integrationDB)
+	_, err := repo.GetSettings(ctx)
+	require.NoError(t, err)
+	next := time.Now().Add(time.Hour).Truncate(time.Microsecond)
+	_, err = integrationDB.Exec(`UPDATE candy_test_settings
+ SET config=(config-'interval_hours') || '{"daily_time":"08:00","model_id":"","schedule_enabled":true}'::jsonb,
+ next_run_at=$1 WHERE id=1`, next)
+	require.NoError(t, err)
+	settings, err := repo.GetSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 24, settings.IntervalHours)
+	require.Equal(t, "gpt-6-astra", settings.ModelID)
+	require.True(t, settings.NextRunAt.Equal(next))
+	notDue, err := repo.Claim(ctx, service.CandyTestStart{}, "尚未到期", next.Add(-time.Minute), next.Add(time.Minute), true)
+	require.NoError(t, err)
+	require.Nil(t, notDue)
+	batch, err := repo.Claim(ctx, service.CandyTestStart{}, "旧计划衔接", next, next.Add(time.Minute), true)
+	require.NoError(t, err)
+	require.Len(t, batch.Results, 3)
+	settings, err = repo.GetSettings(ctx)
+	require.NoError(t, err)
+	require.True(t, settings.NextRunAt.Equal(next.Add(24*time.Hour)))
 }
 
 func TestCandyRepositoryNoGroupChangeWhenDisabled(t *testing.T) {
