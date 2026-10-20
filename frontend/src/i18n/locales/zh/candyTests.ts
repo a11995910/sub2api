@@ -7,7 +7,7 @@ export default {
   expectedAnswer: '正确答案',
   answerHint: '默认答案为 21。答案匹配判为「智力正常」，明确回答其他答案判为「智力下降」；请求失败或无法识别答案不调组。',
   model: '模型',
-  modelPlaceholder: '留空使用账号默认模型',
+  modelPlaceholder: '留空使用 gpt-6-astra',
   effort: '推理强度',
   schedule: '定时测试',
   scheduleHint: '开启后每天按北京时间自动测试全部 GPT OAuth 主账号。',

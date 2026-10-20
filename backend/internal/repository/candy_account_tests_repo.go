@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -39,6 +40,9 @@ func scanCandySettings(row scannable) (*service.CandyTestSettings, error) {
 	}
 	if err := json.Unmarshal(data, &s.CandyTestSettingsInput); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(s.ModelID) == "" {
+		s.ModelID = service.AccountIntelligenceDefaultModel
 	}
 	return s, nil
 }

@@ -79,6 +79,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import PelicanArtworkPreview from '@/components/user/pelican/PelicanArtworkPreview.vue'
 import { extractPelicanHtml } from '@/utils/pelicanHtml'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { ACCOUNT_INTELLIGENCE_DEFAULT_MODEL } from '@/constants/account'
 
 const props = withDefaults(defineProps<{ accountType?: 'oauth' | 'apikey' }>(), { accountType: 'oauth' })
 const { t } = useI18n()
@@ -96,7 +97,7 @@ const accounts = ref<AccountListItem[]>([])
 const groups = ref<AdminGroup[]>([])
 const loading = ref(false)
 const loadError = ref('')
-const models = reactive<Record<string, string>>({})
+const models = reactive<Record<string, string>>({ openai: ACCOUNT_INTELLIGENCE_DEFAULT_MODEL })
 const effort = ref('')
 const submitting = ref(false)
 const runningCount = computed(() => Object.values(results).filter(r => r.status === 'running').length)

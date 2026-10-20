@@ -39,7 +39,7 @@ describe('账号鹈鹕测试', () => {
     await wrapper.get('[data-testid="select-all"]').trigger('click')
     await wrapper.get('[data-testid="oauth-run-selected"]').trigger('click'); await flushPromises()
     expect(api.start).toHaveBeenCalledTimes(1)
-    expect(api.start).toHaveBeenCalledWith({ account_ids: Array.from({ length: 26 }, (_, i) => i + 1), account_type: 'oauth', models: {}, reasoning_effort: '' })
+    expect(api.start).toHaveBeenCalledWith({ account_ids: Array.from({ length: 26 }, (_, i) => i + 1), account_type: 'oauth', models: { openai: 'gpt-6-astra' }, reasoning_effort: '' })
   })
   it('API Key 页签只加载密钥账号，并仅测试勾选账号', async () => {
     api.list.mockResolvedValue({ items: [{ ...account(10), type: 'apikey' }, { ...account(11), type: 'apikey' }], total: 2 })
@@ -47,7 +47,7 @@ describe('账号鹈鹕测试', () => {
     expect(api.list.mock.calls[0][2].type).toBe('apikey')
     await wrapper.get('[data-testid="select-account-11"]').setValue(true)
     await wrapper.get('[data-testid="oauth-run-selected"]').trigger('click'); await flushPromises()
-    expect(api.start).toHaveBeenCalledWith({ account_ids: [11], account_type: 'apikey', models: {}, reasoning_effort: '' })
+    expect(api.start).toHaveBeenCalledWith({ account_ids: [11], account_type: 'apikey', models: { openai: 'gpt-6-astra' }, reasoning_effort: '' })
   })
   it('搜索后选择结果不会选中其他账号，清空后禁止启动', async () => {
     wrapper = create(); await flushPromises()

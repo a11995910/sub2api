@@ -1,3 +1,6 @@
+// 账号测智的 OpenAI 默认模型，与后端 AccountIntelligenceDefaultModel 保持一致。
+export const ACCOUNT_INTELLIGENCE_DEFAULT_MODEL = 'gpt-6-astra'
+
 /** WebSearch emulation mode values (must match backend WebSearchMode* constants in account.go) */
 export const WEB_SEARCH_MODE_DEFAULT = 'default' as const
 export const WEB_SEARCH_MODE_ENABLED = 'enabled' as const

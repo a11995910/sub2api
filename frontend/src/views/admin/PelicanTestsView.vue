@@ -375,6 +375,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTimeToMinute } from '@/utils/format'
+import { ACCOUNT_INTELLIGENCE_DEFAULT_MODEL } from '@/constants/account'
 const testTabs = ['groups', 'oauth', 'apikey'] as const
 const activeTab = ref<typeof testTabs[number]>('groups')
 const methods = ['pelican', 'candy'] as const
@@ -453,6 +454,17 @@ const previewTitle = computed(() => (preview.value
 
 watch(() => editor.value?.schedule, (schedule) => {
   if (editor.value && schedule && schedule !== 'custom') editor.value.form.cron_expression = schedule
+})
+
+watch(() => editor.value?.form.group_id, (groupID) => {
+  const current = editor.value
+  const group = groups.value.find((item) => item.id === groupID)
+  if (!current || current.id || !group) return
+  if (group.platform !== 'openai' && current.form.model_id === ACCOUNT_INTELLIGENCE_DEFAULT_MODEL) {
+    current.form.model_id = ''
+  } else if (group.platform === 'openai' && !current.form.model_id) {
+    current.form.model_id = ACCOUNT_INTELLIGENCE_DEFAULT_MODEL
+  }
 })
 
 function effortLabel(effort?: string) {
@@ -613,7 +625,7 @@ function inputFrom(plan: PelicanGroupTestPlan): PelicanGroupTestPlanInput {
 function openEditor(plan?: PelicanGroupTestPlan) {
   const form: PelicanGroupTestPlanInput = plan
     ? inputFrom(plan)
-    : { group_id: 0, model_id: '', cron_expression: SCHEDULES[1].cron, enabled: true, prompt: PELICAN_PROMPT, reasoning_effort: 'medium', parallel_count: 1 }
+    : { group_id: 0, model_id: ACCOUNT_INTELLIGENCE_DEFAULT_MODEL, cron_expression: SCHEDULES[1].cron, enabled: true, prompt: PELICAN_PROMPT, reasoning_effort: 'medium', parallel_count: 1 }
   const schedule = SCHEDULES.some((preset) => preset.cron === form.cron_expression) ? form.cron_expression : 'custom'
   editor.value = { id: plan?.id ?? null, groupName: plan?.group_name ?? '', form, schedule }
   void loadGroups()

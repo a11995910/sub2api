@@ -7,7 +7,7 @@ export default {
   expectedAnswer: 'Correct answer',
   answerHint: 'The default answer is 21. A matching answer is normal; a clear incorrect answer is degraded. Failed requests and unrecognized answers never change groups.',
   model: 'Model',
-  modelPlaceholder: 'Leave blank to use the account default',
+  modelPlaceholder: 'Leave blank to use gpt-6-astra',
   effort: 'Reasoning effort',
   schedule: 'Scheduled testing',
   scheduleHint: 'Run all GPT OAuth primary accounts daily at the selected Beijing time.',

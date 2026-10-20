@@ -814,10 +814,13 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
 
-	// Default to openai.DefaultTestModel for OpenAI testing
+	// 鹈鹕和糖果测智使用专用默认模型，普通测试沿用原默认值。
 	testModelID := modelID
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
+		if account.Platform == PlatformOpenAI && pelicanTestRequested(c) {
+			testModelID = AccountIntelligenceDefaultModel
+		}
 	}
 
 	// Align test routing with gateway behavior: OpenAI accounts apply normal

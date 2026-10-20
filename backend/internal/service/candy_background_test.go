@@ -40,7 +40,7 @@ func TestCandyBackgroundRequiresCompletedResponses(t *testing.T) {
 			upstream := &queuedHTTPUpstream{responses: []*http.Response{newJSONResponse(http.StatusOK, body)}}
 			repo := &openAIAccountTestRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{91: account}}}
 			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
-			result, err := svc.RunCandyBackground(context.Background(), 91, "gpt-5.4", &PelicanTestConfig{Prompt: "测试题目", ReasoningEffort: "high"})
+			result, err := svc.RunCandyBackground(context.Background(), 91, "", &PelicanTestConfig{Prompt: "测试题目", ReasoningEffort: "high"})
 			require.NoError(t, err)
 			require.Equal(t, tc.success, result.Status == "success", result.ErrorMessage)
 			require.Equal(t, "21", result.ResponseText)
@@ -50,6 +50,7 @@ func TestCandyBackgroundRequiresCompletedResponses(t *testing.T) {
 			require.Len(t, upstream.requests, 1)
 			requestBody, err := io.ReadAll(upstream.requests[0].Body)
 			require.NoError(t, err)
+			require.Equal(t, "gpt-6-astra", gjson.GetBytes(requestBody, "model").String())
 			prompt := gjson.GetBytes(requestBody, "input.0.content.0.text").String()
 			require.Contains(t, prompt, "测试题目")
 			require.Contains(t, prompt, `{"answer":整数}`)

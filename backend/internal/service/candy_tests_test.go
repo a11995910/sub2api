@@ -126,10 +126,12 @@ func TestCandySettingsValidationAllowsDisablingStaleGroups(t *testing.T) {
 	svc := NewCandyTestService(repo, candyServiceGroups{groups: map[int64]*Group{1: {ID: 1, Platform: PlatformOpenAI, Status: StatusActive}, 2: {ID: 2, Platform: PlatformAnthropic, Status: StatusActive}, 3: {ID: 3, Platform: PlatformOpenAI, Status: StatusDisabled}}}, nil)
 	input := DefaultCandyTestSettings()
 	input.ExpectedAnswer = "+0021"
+	input.ModelID = " "
 	input.NormalAddGroupIDs = []int64{999}
 	settings, err := svc.UpdateSettings(context.Background(), input)
 	require.NoError(t, err)
 	require.Equal(t, "21", settings.ExpectedAnswer)
+	require.Equal(t, "gpt-6-astra", settings.ModelID)
 	input.AutoGroupEnabled = true
 	for _, id := range []int64{999, 2, 3} {
 		input.NormalAddGroupIDs = []int64{id}

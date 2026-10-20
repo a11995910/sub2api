@@ -127,7 +127,7 @@ func NewCandyTestService(repo CandyTestRepository, groups GroupRepository, tests
 }
 
 func DefaultCandyTestSettings() CandyTestSettingsInput {
-	return CandyTestSettingsInput{Prompt: CandyTestDefaultPrompt, ExpectedAnswer: "21", ReasoningEffort: "high", DailyTime: "08:00", NormalAddGroupIDs: []int64{}, NormalRemoveGroupIDs: []int64{}, DegradedAddGroupIDs: []int64{}, DegradedRemoveGroupIDs: []int64{}}
+	return CandyTestSettingsInput{Prompt: CandyTestDefaultPrompt, ExpectedAnswer: "21", ModelID: AccountIntelligenceDefaultModel, ReasoningEffort: "high", DailyTime: "08:00", NormalAddGroupIDs: []int64{}, NormalRemoveGroupIDs: []int64{}, DegradedAddGroupIDs: []int64{}, DegradedRemoveGroupIDs: []int64{}}
 }
 
 // 每天按北京时间计算下一次执行，不依赖宿主机时区，也不追补停机期间的每一天。
@@ -162,6 +162,9 @@ func (s *CandyTestService) UpdateSettings(ctx context.Context, input CandyTestSe
 	}
 	input.ExpectedAnswer = answer
 	input.ModelID = strings.TrimSpace(input.ModelID)
+	if input.ModelID == "" {
+		input.ModelID = AccountIntelligenceDefaultModel
+	}
 	if len(input.ModelID) > 200 {
 		return nil, infraerrors.BadRequest("CANDY_TEST_MODEL", "模型名称不得超过 200 字节")
 	}
