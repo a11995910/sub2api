@@ -50,13 +50,12 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	PromptMode bool   `json:"prompt_mode,omitempty"`
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	Model      string `json:"model,omitempty"`
-	Status     string `json:"status,omitempty"`
-	Code       string `json:"code,omitempty"`
-	ImageURL   string `json:"image_url,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Code     string `json:"code,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
 	// AudioURL / VideoURL are data: or https URLs for in-browser media players.
 	AudioURL string `json:"audio_url,omitempty"`
 	VideoURL string `json:"video_url,omitempty"`
@@ -3327,9 +3326,6 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
-	if event.Type == "test_start" && c.Request != nil {
-		event.PromptMode, _ = c.Request.Context().Value(accountPromptTestContextKey{}).(bool)
-	}
 	if event.Type == "test_start" && event.Model != "" && c.Request != nil {
 		if usage := pelicanUsageFromContext(c.Request.Context()); usage != nil {
 			usage.model = event.Model

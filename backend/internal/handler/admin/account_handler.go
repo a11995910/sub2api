@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -1347,19 +1346,7 @@ func (h *AccountHandler) Test(c *gin.Context) {
 
 	var req TestAccountRequest
 	// Allow empty body, model_id is optional
-	bindErr := c.ShouldBindJSON(&req)
-	if bindErr != nil && !errors.Is(bindErr, io.EOF) {
-		response.BadRequest(c, "账号测试请求格式无效")
-		return
-	}
-	if req.Mode == "prompt" {
-		if message := validateAccountPromptTest(req); message != "" {
-			response.BadRequest(c, message)
-			return
-		}
-		_ = h.accountTestService.TestPromptAccountConnection(c, accountID, req.ModelID, req.Prompt, req.ReasoningEffort)
-		return
-	}
+	_ = c.ShouldBindJSON(&req)
 
 	// 按账号生成作品，不经过分组调度，成功后也不自动恢复账号故障状态。
 	if req.Mode == "pelican" {
