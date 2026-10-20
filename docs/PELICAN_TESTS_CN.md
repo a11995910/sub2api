@@ -36,6 +36,8 @@
 
 ## 接口与权限
 
+外部账号管理工具可调用 `GET /api/v1/admin/accounts/prompt-test-capabilities` 确认 `version: 1`，再以 `POST /api/v1/admin/accounts/:id/test` 提交 `mode: "prompt"`、`prompt`、`model_id` 和 `reasoning_effort`。该模式只支持真实 OpenAI 账号、非空且不超过 20000 字符的题目；模型为 `gpt-6-astra` 或 `gpt-5.6-sol`，思考强度可留空或选择 low / medium / high / xhigh / max / ultra。每次只调用指定账号，复用它的认证、代理和模型映射，返回原始文本 SSE；`test_start` 额外含 `prompt_mode: true`。上游失败仍沿用账号测试的 401/429 状态处理，成功不执行连通性测试分支的自动恢复。此接口不保存回答、不自动打分或修改分组，由调用工具保存测试结果并控制批量并发、超时与取消。旧的连通性及鹈鹕测试模式保留原行为。
+
 以下管理接口统一使用现有管理员鉴权、审计和面板限流：
 
 - `GET /api/v1/admin/pelican-account-tests`：查询最新结果摘要及运行状态。
