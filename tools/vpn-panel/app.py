@@ -18,6 +18,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
+from geolocation import lookup_location
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('VPN_DATA_DIR', '/var/lib/sub-vpn'))
@@ -71,6 +72,8 @@ def init():
             c.execute("ALTER TABLE nodes ADD COLUMN location TEXT NOT NULL DEFAULT ''")
         if 'fingerprint' not in columns:
             c.execute("ALTER TABLE nodes ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
+        if 'location_auto' not in columns:
+            c.execute('ALTER TABLE nodes ADD COLUMN location_auto INTEGER NOT NULL DEFAULT 0')
     os.chmod(DATA / 'panel.db', 0o600)
 
 
@@ -210,6 +213,8 @@ def save_node(body, node_id=None):
             raise HTTPException(404, '节点不存在')
         if previous and 'fingerprint' not in body.model_fields_set and data['protocol'] == 'anytls':
             data['fingerprint'] = previous['fingerprint']
+        if previous and 'location' not in body.model_fields_set:
+            data['location'] = previous['location']
         if previous and previous['managed']:
             for key in ('protocol', 'host', 'port', 'username', 'cipher', 'fingerprint'):
                 if data[key] != previous[key]:
@@ -234,6 +239,13 @@ def save_node(body, node_id=None):
                     raise ValueError()
             except ValueError:
                 raise HTTPException(400, '此加密方式需要指定长度的 Base64 密钥')
+        # 自动识别的地址随 IP 改变，手动地址以用户输入为准。
+        inherited_auto = bool(previous and previous['location_auto'] and data['location'] == previous['location'])
+        needs_location = not data['location'] or (inherited_auto and data['host'] != previous['host'])
+        data['location_auto'] = int(needs_location or inherited_auto)
+        if needs_location:
+            # 此时只有 SELECT，尚未开启 SQLite 写事务；外部查询限时完成。
+            data['location'] = lookup_location(data['host'])
         try:
             if node_id:
                 c.execute('UPDATE nodes SET ' + ','.join(k+'=?' for k in data) + ' WHERE id=?', [*data.values(), node_id])
@@ -241,7 +253,10 @@ def save_node(body, node_id=None):
                 c.execute('INSERT INTO nodes ('+','.join(data)+') VALUES ('+','.join('?' for _ in data)+')', list(data.values()))
         except sqlite3.IntegrityError:
             raise HTTPException(409, '节点名称已存在，请使用不同名称')
-    return {'ok': True}
+    result = {'ok': True}
+    if needs_location and not data['location']:
+        result['warning'] = '节点已保存，但暂未识别到地址。公网 IP 可稍后重新保存重试；域名或内网地址请手动填写。'
+    return result
 
 
 @app.post(BASE + '/api/nodes')

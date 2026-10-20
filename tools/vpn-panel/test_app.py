@@ -148,6 +148,46 @@ class PanelTests(unittest.TestCase):
             self.assertEqual(self.client.post('/vpn/api/login',json={'username':'admin','password':'bad'}).status_code,401)
         self.assertEqual(self.client.post('/vpn/api/login',json={'username':'admin','password':'bad'}).status_code,429)
 
+    def test_location_auto_fill_and_host_change(self):
+        self.login()
+        body=self.node();body['host']='48.47.37.254'
+        with patch('app.lookup_location',return_value='美国·新泽西州·泽西') as lookup:
+            self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
+            saved=self.client.get('/vpn/api/state').json()['nodes'][0]
+            self.assertEqual(saved['location'],'美国·新泽西州·泽西')
+            self.assertEqual(saved['location_auto'],1)
+            result=yaml.safe_load(self.client.get('/vpn/sub/test-token').text)
+            self.assertIn('美国·新泽西州·泽西',result['proxies'][0]['name'])
+            saved.update(password='',note='只修改备注')
+            self.assertEqual(self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved).status_code,200)
+            lookup.assert_called_once_with('48.47.37.254')
+        with patch('app.lookup_location',return_value='美国·纽约州·纽约') as lookup:
+            saved['host']='48.46.54.149'
+            self.assertEqual(self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved).status_code,200)
+            lookup.assert_called_once_with('48.46.54.149')
+            self.assertEqual(self.client.get('/vpn/api/state').json()['nodes'][0]['location'],'美国·纽约州·纽约')
+
+    def test_location_manual_priority_and_retry(self):
+        self.login()
+        body=self.node(location='我的地址')
+        with patch('app.lookup_location') as lookup:
+            self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
+            saved=self.client.get('/vpn/api/state').json()['nodes'][0]
+            saved.update(host='48.47.37.254',password='')
+            saved.pop('location')
+            self.assertEqual(self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved).status_code,200)
+            self.assertEqual(self.client.get('/vpn/api/state').json()['nodes'][0]['location'],'我的地址')
+            lookup.assert_not_called()
+        saved['location']=''
+        with patch('app.lookup_location',return_value=''):
+            result=self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved)
+            self.assertEqual(result.status_code,200)
+            self.assertIn('warning',result.json())
+        with patch('app.lookup_location',return_value='美国·新泽西州·泽西'):
+            result=self.client.put('/vpn/api/nodes/'+str(saved['id']),json=saved)
+            self.assertNotIn('warning',result.json())
+            self.assertEqual(self.client.get('/vpn/api/state').json()['nodes'][0]['location'],'美国·新泽西州·泽西')
+
 
 if __name__=='__main__':
     unittest.main()
