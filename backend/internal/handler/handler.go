@@ -7,6 +7,7 @@ import (
 
 // AdminHandlers contains all admin-related HTTP handlers
 type AdminHandlers struct {
+	CandyTest              *admin.CandyTestHandler
 	PelicanGroupTest       *admin.PelicanGroupTestHandler
 	TimeRotation           *admin.AccountTimeRotationHandler
 	Dashboard              *admin.DashboardHandler

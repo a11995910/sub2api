@@ -606,11 +606,11 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
-    path: '/admin/intelligent-ops/pelican-tests',
-    alias: '/admin/pelican-tests',
+    path: '/admin/intelligent-ops/account-tests',
+    alias: ['/admin/intelligent-ops/pelican-tests', '/admin/pelican-tests'],
     name: 'AdminPelicanTests',
     component: () => import('@/views/admin/PelicanTestsView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true, title: '鹈鹕测智', titleKey: 'pelicanTests.title', descriptionKey: 'pelicanTests.description' }
+    meta: { requiresAuth: true, requiresAdmin: true, title: '账号测智', titleKey: 'pelicanTests.title', descriptionKey: 'pelicanTests.description' }
   },
   {
     path: '/pelican-showcase',

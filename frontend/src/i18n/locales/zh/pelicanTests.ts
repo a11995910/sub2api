@@ -30,8 +30,10 @@ export default {
     "ungrouped": "未分组",
     "mixedRisk": "存在混合渠道风险，是否继续保存？"
 },
-  title: '鹈鹕测智',
-  description: '切换分组、OAuth 或 API Key 测试，按需选择账号，查看作品并调整分组。',
+  title: '账号测智',
+  description: '选择鹈鹕或糖果测试，评估账号表现，按测试结果调整分组。',
+  method: '测试方法',
+  methods: { pelican: '鹈鹕测试', candy: '糖果测试' },
   viewShowcase: '查看展示页',
   refresh: '刷新',
   create: '新建分组测试',

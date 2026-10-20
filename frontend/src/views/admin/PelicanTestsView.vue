@@ -8,23 +8,28 @@
           <p class="subtitle">{{ t('pelicanTests.description') }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <RouterLink to="/pelican-showcase" class="btn btn-secondary inline-flex items-center gap-2">
+          <RouterLink v-if="activeMethod === 'pelican'" to="/pelican-showcase" class="btn btn-secondary inline-flex items-center gap-2">
             <Icon name="eye" size="sm" />{{ t('pelicanTests.viewShowcase') }}
           </RouterLink>
-          <button v-if="activeTab === 'groups'" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="load">
+          <button v-if="activeMethod === 'pelican' && activeTab === 'groups'" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="load">
             <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />{{ t('pelicanTests.refresh') }}
           </button>
-          <button v-if="activeTab === 'groups'" class="btn btn-primary inline-flex items-center gap-2" data-testid="pelican-tests-create" @click="openEditor()">
+          <button v-if="activeMethod === 'pelican' && activeTab === 'groups'" class="btn btn-primary inline-flex items-center gap-2" data-testid="pelican-tests-create" @click="openEditor()">
             <Icon name="plus" size="sm" />{{ t('pelicanTests.create') }}
           </button>
         </div>
       </header>
 
+      <div role="tablist" :aria-label="t('pelicanTests.method')" class="mb-5 flex gap-5 border-b border-gray-200 dark:border-dark-700">
+        <button v-for="method in methods" :id="`intelligence-method-${method}`" :key="method" role="tab" :aria-selected="activeMethod === method" :aria-controls="`intelligence-panel-${method}`" :tabindex="activeMethod === method ? 0 : -1" class="border-b-2 px-1 pb-3 text-sm font-semibold transition-colors" :class="activeMethod === method ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'" :data-testid="`intelligence-method-${method}`" @click="activeMethod = method" @keydown.right.prevent="moveMethod(method, 1)" @keydown.left.prevent="moveMethod(method, -1)">{{ t(`pelicanTests.methods.${method}`) }}</button>
+      </div>
+      <KeepAlive><CandyAccountTests v-if="activeMethod === 'candy'" id="intelligence-panel-candy" role="tabpanel" aria-labelledby="intelligence-method-candy" /></KeepAlive>
+      <div v-show="activeMethod === 'pelican'" id="intelligence-panel-pelican" role="tabpanel" aria-labelledby="intelligence-method-pelican">
       <div role="tablist" :aria-label="t('pelicanTests.title')" class="mb-5 inline-flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800">
         <button v-for="tab in testTabs" :id="`pelican-tab-${tab}`" :key="tab" role="tab" :aria-selected="activeTab === tab" :aria-controls="`pelican-panel-${tab}`" :tabindex="activeTab === tab ? 0 : -1" class="rounded-md px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === tab ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'" @click="activeTab = tab" @keydown.right.prevent="moveTab(tab, 1)" @keydown.left.prevent="moveTab(tab, -1)">{{ t(`pelicanTests.tabs.${tab}`) }}</button>
       </div>
       <KeepAlive>
-        <PelicanAccountTests v-if="activeTab !== 'groups'" :id="`pelican-panel-${activeTab}`" :key="activeTab" role="tabpanel" :aria-labelledby="`pelican-tab-${activeTab}`" :account-type="activeTab" />
+        <PelicanAccountTests v-if="activeMethod === 'pelican' && activeTab !== 'groups'" :id="`pelican-panel-${activeTab}`" :key="activeTab" role="tabpanel" :aria-labelledby="`pelican-tab-${activeTab}`" :account-type="activeTab" />
       </KeepAlive>
       <div v-show="activeTab === 'groups'" id="pelican-panel-groups" role="tabpanel" aria-labelledby="pelican-tab-groups">
       <p v-if="error" role="alert" class="error-banner">{{ error }}</p>
@@ -222,6 +227,7 @@
         />
       </section>
       </div>
+      </div>
 
     </div>
 
@@ -344,6 +350,7 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PelicanAccountTests from '@/components/admin/PelicanAccountTests.vue'
+import CandyAccountTests from '@/components/admin/CandyAccountTests.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -370,6 +377,12 @@ import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTimeToMinute } from '@/utils/format'
 const testTabs = ['groups', 'oauth', 'apikey'] as const
 const activeTab = ref<typeof testTabs[number]>('groups')
+const methods = ['pelican', 'candy'] as const
+const activeMethod = ref<typeof methods[number]>('pelican')
+function moveMethod(method: typeof methods[number], offset: number) {
+  activeMethod.value = methods[(methods.indexOf(method) + offset + methods.length) % methods.length]
+  document.getElementById(`intelligence-method-${activeMethod.value}`)?.focus()
+}
 function moveTab(tab: typeof testTabs[number], offset: number) {
   activeTab.value = testTabs[(testTabs.indexOf(tab) + offset + testTabs.length) % testTabs.length]
   document.getElementById(`pelican-tab-${activeTab.value}`)?.focus()
@@ -501,7 +514,7 @@ async function load() {
 }
 
 async function poll() {
-  if (loading.value || polling || document.hidden) return
+  if (activeMethod.value !== 'pelican' || loading.value || polling || document.hidden) return
   polling = true
   try {
     const [planList] = await Promise.all([pelicanTestsAPI.listPlans(), loadResults(true)])

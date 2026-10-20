@@ -692,9 +692,11 @@ func ProvideScheduledTestRunnerService(
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
 	groupTests *PelicanGroupTestService,
+	candyTests *CandyTestService,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
 	svc.groupTests = groupTests
+	svc.candyTests = candyTests
 	svc.Start()
 	return svc
 }
@@ -950,6 +952,7 @@ var ProviderSet = wire.NewSet(
 	NewPelicanShowcaseService,
 	NewPelicanGroupTestService,
 	NewPelicanAccountTestService,
+	NewCandyTestService,
 	ProvideAccountTimeRotationService,
 	// Core services
 	ProvideAuthService,

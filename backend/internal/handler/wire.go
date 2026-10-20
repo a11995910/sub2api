@@ -11,6 +11,7 @@ import (
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
+	candyTestHandler *admin.CandyTestHandler,
 	pelicanGroupTestHandler *admin.PelicanGroupTestHandler,
 	timeRotationHandler *admin.AccountTimeRotationHandler,
 	dashboardHandler *admin.DashboardHandler,
@@ -66,6 +67,7 @@ func ProvideAdminHandlers(
 	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
 	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
 	return &AdminHandlers{
+		CandyTest:              candyTestHandler,
 		PelicanGroupTest:       pelicanGroupTestHandler,
 		TimeRotation:           timeRotationHandler,
 		Dashboard:              dashboardHandler,
@@ -289,6 +291,7 @@ func ProvideAsyncImageHandler(
 var ProviderSet = wire.NewSet(
 	NewPelicanShowcaseHandler,
 	admin.NewPelicanGroupTestHandler,
+	admin.NewCandyTestHandler,
 	wire.Bind(new(service.ImageTaskExecutor), new(*AsyncImageHandler)),
 	// Top-level handlers
 	NewAuthHandler,

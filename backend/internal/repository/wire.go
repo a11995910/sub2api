@@ -68,6 +68,7 @@ var ProviderSet = wire.NewSet(
 	NewPelicanShowcaseRepository,
 	NewPelicanGroupTestRepository,
 	NewPelicanAccountTestRepository,
+	NewCandyTestRepository,
 	NewAccountTimeRotationRepository,
 	NewUserRepository,
 	NewAPIKeyRepository,

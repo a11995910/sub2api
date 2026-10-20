@@ -828,7 +828,7 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/intelligent-ops/excel-bps', label: 'Excel / BPS 默认设置', icon: CogIcon },
         { path: '/admin/intelligent-ops/time-rotation', label: t('timeRotation.title'), icon: CogIcon },
-        { path: '/admin/intelligent-ops/pelican-tests', label: t('pelicanTests.title'), icon: ChartIcon }
+        { path: '/admin/intelligent-ops/account-tests', label: t('pelicanTests.title'), icon: ChartIcon }
       ]
     },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
