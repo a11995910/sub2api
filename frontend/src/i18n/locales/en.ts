@@ -1,9 +1,11 @@
 import pelicanTests from './en/pelicanTests'
+import candyTests from './en/candyTests'
 import pelicanShowcase from './en/pelicanShowcase'
 import timeRotation from './en/timeRotation'
 
 export default {
   pelicanTests,
+  candyTests,
   pelicanShowcase,
   timeRotation,
   // Home Page

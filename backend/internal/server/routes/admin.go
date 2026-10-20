@@ -956,6 +956,16 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 }
 
 func registerPelicanShowcaseRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/candy-tests/settings", h.Admin.CandyTest.GetSettings)
+	admin.PUT("/candy-tests/settings", h.Admin.CandyTest.UpdateSettings)
+	admin.POST("/candy-tests/run", h.Admin.CandyTest.Run)
+	admin.POST("/candy-tests/stop", h.Admin.CandyTest.Stop)
+	admin.GET("/candy-tests/results", h.Admin.CandyTest.ListResults)
+	admin.GET("/candy-tests/results/:id", h.Admin.CandyTest.GetResult)
+	admin.POST("/pelican-account-tests/run", h.Admin.PelicanGroupTest.StartAccounts)
+	admin.POST("/pelican-account-tests/stop", h.Admin.PelicanGroupTest.StopAccounts)
+	admin.GET("/pelican-account-tests", h.Admin.PelicanGroupTest.ListAccountResults)
+	admin.GET("/pelican-account-tests/:id", h.Admin.PelicanGroupTest.GetAccountResult)
 	admin.GET("/pelican-showcase/settings", h.PelicanShowcase.GetSettings)
 	admin.PUT("/pelican-showcase/settings", h.PelicanShowcase.UpdateSettings)
 	admin.DELETE("/pelican-showcase/items/:id", h.PelicanShowcase.DeleteItem)

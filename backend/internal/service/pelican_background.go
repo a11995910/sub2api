@@ -25,6 +25,31 @@ const (
 )
 
 func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID int64, model string, cfg *PelicanTestConfig) (*ScheduledTestResult, error) {
+	return s.runContentTestBackground(ctx, accountID, model, cfg, PelicanDeliveryContract, pelicanOutputError)
+}
+
+// 糖果题复用账号鉴权、模型映射和完整流检测，输出采用纯文本而非绘图交付约定。
+func (s *AccountTestService) RunCandyBackground(ctx context.Context, accountID int64, model string, cfg *PelicanTestConfig) (*ScheduledTestResult, error) {
+	ctx = context.WithValue(ctx, candyTestContextKey{}, true)
+	return s.runContentTestBackground(ctx, accountID, model, cfg, `请独立解答题目，最终回复只输出 JSON {"answer":整数}，不要解释，不要使用 Markdown。`, func(output string) string {
+		if strings.TrimSpace(output) == "" {
+			return "模型返回了空答案"
+		}
+		return ""
+	})
+}
+
+type candyTestContextKey struct{}
+
+func candyTestRequested(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	requested, _ := c.Request.Context().Value(candyTestContextKey{}).(bool)
+	return requested
+}
+
+func (s *AccountTestService) runContentTestBackground(ctx context.Context, accountID int64, model string, cfg *PelicanTestConfig, contract string, validate func(string) string) (*ScheduledTestResult, error) {
 	started := time.Now()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -32,7 +57,7 @@ func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/internal/pelican-test", nil).WithContext(ctx)
 	c.Set(accountTestBackgroundKey, true)
-	err := s.TestPelicanAccountConnection(c, accountID, model, cfg.Prompt+"\n\n"+PelicanDeliveryContract, cfg.ReasoningEffort)
+	err := s.TestPelicanAccountConnection(c, accountID, model, cfg.Prompt+"\n\n"+contract, cfg.ReasoningEffort)
 	output, message := parsePelicanOutput(w.Body.String())
 	if w.overflow {
 		output = ""
@@ -42,7 +67,7 @@ func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID
 		message = err.Error()
 	}
 	if message == "" {
-		message = pelicanOutputError(output)
+		message = validate(output)
 	}
 	if len(output) > 2<<20 {
 		output = ""
@@ -55,6 +80,16 @@ func (s *AccountTestService) RunPelicanBackground(ctx context.Context, accountID
 	finished := time.Now()
 	snapshot := *cfg
 	snapshot.ModelID = model
+	// 默认模型或账号映射后的实际模型由测试开始事件给出。
+	for _, line := range strings.Split(w.Body.String(), "\n") {
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var event TestEvent
+		if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event) == nil && event.Type == "test_start" && event.Model != "" {
+			snapshot.ModelID = event.Model
+		}
+	}
 	return &ScheduledTestResult{Status: status, ResponseText: output, ErrorMessage: message, LatencyMs: finished.Sub(started).Milliseconds(), StartedAt: started, FinishedAt: finished, PelicanConfig: &snapshot}, nil
 }
 

@@ -369,6 +369,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 	bindAccountTestPlatform(c, account)
+	if candyTestRequested(c) && (account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
+		return s.sendErrorAndEnd(c, "糖果测试仅支持 GPT OAuth 主账号，账号类型可能已变更")
+	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
@@ -811,10 +814,13 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
 
-	// Default to openai.DefaultTestModel for OpenAI testing
+	// 鹈鹕和糖果测智使用专用默认模型，普通测试沿用原默认值。
 	testModelID := modelID
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
+		if account.Platform == PlatformOpenAI && pelicanTestRequested(c) {
+			testModelID = AccountIntelligenceDefaultModel
+		}
 	}
 
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
@@ -828,6 +834,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Route to image generation test if an image model is selected
 	if isOpenAIImageModel(testModelID) {
+		if candyTestRequested(c) {
+			return s.sendErrorAndEnd(c, "糖果测试映射到图像模型，无法进行整数答题")
+		}
 		imagePrompt := strings.TrimSpace(prompt)
 		if imagePrompt == "" {
 			imagePrompt = defaultOpenAIImageTestPrompt
@@ -3038,6 +3047,9 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 		var data map[string]any
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			if candyTestRequested(c) {
+				return s.sendErrorAndEnd(c, "糖果测试流包含无法解析的事件")
+			}
 			continue
 		}
 
@@ -3050,8 +3062,17 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
 		case "response.completed", "response.done":
+			if candyTestRequested(c) {
+				if message := candyResponseCompletionError(data); message != "" {
+					return s.sendErrorAndEnd(c, message)
+				}
+			}
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
+		case "response.refusal.delta", "response.refusal.done":
+			if candyTestRequested(c) {
+				return s.sendErrorAndEnd(c, "模型拒绝回答糖果题")
+			}
 		case "response.failed":
 			errorMsg := "OpenAI response failed"
 			if responseData, ok := data["response"].(map[string]any); ok {

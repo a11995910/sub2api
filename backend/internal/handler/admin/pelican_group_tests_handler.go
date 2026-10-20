@@ -9,11 +9,12 @@ import (
 )
 
 type PelicanGroupTestHandler struct {
-	svc *service.PelicanGroupTestService
+	svc      *service.PelicanGroupTestService
+	accounts *service.PelicanAccountTestService
 }
 
-func NewPelicanGroupTestHandler(svc *service.PelicanGroupTestService) *PelicanGroupTestHandler {
-	return &PelicanGroupTestHandler{svc: svc}
+func NewPelicanGroupTestHandler(svc *service.PelicanGroupTestService, accounts *service.PelicanAccountTestService) *PelicanGroupTestHandler {
+	return &PelicanGroupTestHandler{svc: svc, accounts: accounts}
 }
 
 func (h *PelicanGroupTestHandler) ListPlans(c *gin.Context) {
@@ -120,4 +121,53 @@ func pelicanGroupTestID(c *gin.Context, param string) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// 账号测试使用服务端后台任务，HTTP 连接关闭不会取消生成。
+func (h *PelicanGroupTestHandler) StartAccounts(c *gin.Context) {
+	var input service.PelicanAccountStart
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "测试参数无效")
+		return
+	}
+	results, err := h.accounts.Start(c.Request.Context(), input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, results)
+}
+func (h *PelicanGroupTestHandler) ListAccountResults(c *gin.Context) {
+	results, err := h.accounts.List(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, results)
+}
+func (h *PelicanGroupTestHandler) GetAccountResult(c *gin.Context) {
+	id, ok := pelicanGroupTestID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.accounts.Get(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+func (h *PelicanGroupTestHandler) StopAccounts(c *gin.Context) {
+	var input struct {
+		Runs []service.PelicanAccountRun `json:"runs"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "运行标识无效")
+		return
+	}
+	if err := h.accounts.Stop(c.Request.Context(), input.Runs); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"stopped": true})
 }

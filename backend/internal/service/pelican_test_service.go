@@ -13,6 +13,9 @@ import (
 
 const pelicanClaudeMaxTokens = 32000
 
+// 账号测智使用独立默认模型，避免影响普通连通性测试。
+const AccountIntelligenceDefaultModel = "gpt-6-astra"
+
 type pelicanTestContextKey struct{}
 
 type pelicanTestOptions struct {

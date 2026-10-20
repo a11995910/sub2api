@@ -8,20 +8,33 @@
           <p class="subtitle">{{ t('pelicanTests.description') }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <RouterLink to="/pelican-showcase" class="btn btn-secondary inline-flex items-center gap-2">
+          <RouterLink v-if="activeMethod === 'pelican'" to="/pelican-showcase" class="btn btn-secondary inline-flex items-center gap-2">
             <Icon name="eye" size="sm" />{{ t('pelicanTests.viewShowcase') }}
           </RouterLink>
-          <button class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="load">
+          <button v-if="activeMethod === 'pelican' && activeTab === 'groups'" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="load">
             <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />{{ t('pelicanTests.refresh') }}
           </button>
-          <button class="btn btn-primary inline-flex items-center gap-2" data-testid="pelican-tests-create" @click="openEditor()">
+          <button v-if="activeMethod === 'pelican' && activeTab === 'groups'" class="btn btn-primary inline-flex items-center gap-2" data-testid="pelican-tests-create" @click="openEditor()">
             <Icon name="plus" size="sm" />{{ t('pelicanTests.create') }}
           </button>
         </div>
       </header>
 
+      <div role="tablist" :aria-label="t('pelicanTests.method')" class="mb-5 flex gap-5 border-b border-gray-200 dark:border-dark-700">
+        <button v-for="method in methods" :id="`intelligence-method-${method}`" :key="method" role="tab" :aria-selected="activeMethod === method" :aria-controls="`intelligence-panel-${method}`" :tabindex="activeMethod === method ? 0 : -1" class="border-b-2 px-1 pb-3 text-sm font-semibold transition-colors" :class="activeMethod === method ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'" :data-testid="`intelligence-method-${method}`" @click="activeMethod = method" @keydown.right.prevent="moveMethod(method, 1)" @keydown.left.prevent="moveMethod(method, -1)">{{ t(`pelicanTests.methods.${method}`) }}</button>
+      </div>
+      <KeepAlive><CandyAccountTests v-if="activeMethod === 'candy'" id="intelligence-panel-candy" role="tabpanel" aria-labelledby="intelligence-method-candy" /></KeepAlive>
+      <div v-show="activeMethod === 'pelican'" id="intelligence-panel-pelican" role="tabpanel" aria-labelledby="intelligence-method-pelican">
+      <div role="tablist" :aria-label="t('pelicanTests.title')" class="mb-5 inline-flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800">
+        <button v-for="tab in testTabs" :id="`pelican-tab-${tab}`" :key="tab" role="tab" :aria-selected="activeTab === tab" :aria-controls="`pelican-panel-${tab}`" :tabindex="activeTab === tab ? 0 : -1" class="rounded-md px-4 py-2 text-sm font-medium transition-colors" :class="activeTab === tab ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'" @click="activeTab = tab" @keydown.right.prevent="moveTab(tab, 1)" @keydown.left.prevent="moveTab(tab, -1)">{{ t(`pelicanTests.tabs.${tab}`) }}</button>
+      </div>
+      <KeepAlive>
+        <PelicanAccountTests v-if="activeMethod === 'pelican' && activeTab !== 'groups'" :id="`pelican-panel-${activeTab}`" :key="activeTab" role="tabpanel" :aria-labelledby="`pelican-tab-${activeTab}`" :account-type="activeTab" />
+      </KeepAlive>
+      <div v-show="activeTab === 'groups'" id="pelican-panel-groups" role="tabpanel" aria-labelledby="pelican-tab-groups">
       <p v-if="error" role="alert" class="error-banner">{{ error }}</p>
       <p v-if="notice" role="status" class="success-banner">{{ notice }}</p>
+
 
       <div class="ops-columns">
         <section class="settings-card" data-testid="pelican-showcase-settings">
@@ -213,6 +226,8 @@
           @update:page-size="changeResultsPageSize"
         />
       </section>
+      </div>
+      </div>
 
     </div>
 
@@ -334,6 +349,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import PelicanAccountTests from '@/components/admin/PelicanAccountTests.vue'
+import CandyAccountTests from '@/components/admin/CandyAccountTests.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -358,6 +375,19 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTimeToMinute } from '@/utils/format'
+import { ACCOUNT_INTELLIGENCE_DEFAULT_MODEL } from '@/constants/account'
+const testTabs = ['groups', 'oauth', 'apikey'] as const
+const activeTab = ref<typeof testTabs[number]>('groups')
+const methods = ['pelican', 'candy'] as const
+const activeMethod = ref<typeof methods[number]>('pelican')
+function moveMethod(method: typeof methods[number], offset: number) {
+  activeMethod.value = methods[(methods.indexOf(method) + offset + methods.length) % methods.length]
+  document.getElementById(`intelligence-method-${activeMethod.value}`)?.focus()
+}
+function moveTab(tab: typeof testTabs[number], offset: number) {
+  activeTab.value = testTabs[(testTabs.indexOf(tab) + offset + testTabs.length) % testTabs.length]
+  document.getElementById(`pelican-tab-${activeTab.value}`)?.focus()
+}
 const PELICAN_PROMPT = '创建一个 HTML，内容是 SVG 绘制一个鹈鹕骑自行车的 2D 动画。'
 import { extractPelicanHtml } from '@/utils/pelicanHtml'
 import { platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
@@ -426,6 +456,17 @@ watch(() => editor.value?.schedule, (schedule) => {
   if (editor.value && schedule && schedule !== 'custom') editor.value.form.cron_expression = schedule
 })
 
+watch(() => editor.value?.form.group_id, (groupID) => {
+  const current = editor.value
+  const group = groups.value.find((item) => item.id === groupID)
+  if (!current || current.id || !group) return
+  if (group.platform !== 'openai' && current.form.model_id === ACCOUNT_INTELLIGENCE_DEFAULT_MODEL) {
+    current.form.model_id = ''
+  } else if (group.platform === 'openai' && !current.form.model_id) {
+    current.form.model_id = ACCOUNT_INTELLIGENCE_DEFAULT_MODEL
+  }
+})
+
 function effortLabel(effort?: string) {
   return effort && EFFORTS.includes(effort) ? t(`pelicanShowcase.efforts.${effort}`) : '—'
 }
@@ -485,7 +526,7 @@ async function load() {
 }
 
 async function poll() {
-  if (loading.value || polling || document.hidden) return
+  if (activeMethod.value !== 'pelican' || loading.value || polling || document.hidden) return
   polling = true
   try {
     const [planList] = await Promise.all([pelicanTestsAPI.listPlans(), loadResults(true)])
@@ -584,7 +625,7 @@ function inputFrom(plan: PelicanGroupTestPlan): PelicanGroupTestPlanInput {
 function openEditor(plan?: PelicanGroupTestPlan) {
   const form: PelicanGroupTestPlanInput = plan
     ? inputFrom(plan)
-    : { group_id: 0, model_id: '', cron_expression: SCHEDULES[1].cron, enabled: true, prompt: PELICAN_PROMPT, reasoning_effort: 'medium', parallel_count: 1 }
+    : { group_id: 0, model_id: ACCOUNT_INTELLIGENCE_DEFAULT_MODEL, cron_expression: SCHEDULES[1].cron, enabled: true, prompt: PELICAN_PROMPT, reasoning_effort: 'medium', parallel_count: 1 }
   const schedule = SCHEDULES.some((preset) => preset.cron === form.cron_expression) ? form.cron_expression : 'custom'
   editor.value = { id: plan?.id ?? null, groupName: plan?.group_name ?? '', form, schedule }
   void loadGroups()

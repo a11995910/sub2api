@@ -55,11 +55,14 @@ const ToggleStub = {
   template: `<input type="checkbox" :checked="modelValue" @change="$emit('update:modelValue', $event.target.checked)" />`,
 }
 
-const mountView = () => mount(PelicanTestsView, {
+const mountView = (attachTo?: Element) => mount(PelicanTestsView, {
+  attachTo,
   global: {
     stubs: {
       AppLayout: { template: '<div><slot /></div>' },
       SmartOpsNav: true,
+      PelicanAccountTests: true,
+      CandyAccountTests: true,
       RouterLink: RouterLinkStub,
       Icon: true,
       PlatformIcon: true,
@@ -189,9 +192,11 @@ describe('PelicanTestsView', () => {
     await wrapper.get('[data-testid="pelican-tests-create"]').trigger('click')
     await flushPromises()
     const editor = wrapper.get('[data-testid="pelican-test-editor"]')
+    expect((editor.get('[data-testid="pelican-test-model"]').element as HTMLInputElement).value).toBe('gpt-6-astra')
     const selects = editor.findAll('select')
     expect(selects[0].findAll('option').map((option) => option.text())).toEqual(['GPT PRO号池 · OpenAI', 'Claude Max · Anthropic'])
     await selects[0].setValue('6')
+    expect((editor.get('[data-testid="pelican-test-model"]').element as HTMLInputElement).value).toBe('')
     await editor.get('[data-testid="pelican-test-model"]').setValue('claude-opus-5-5')
     await selects[2].setValue('0 * * * *')
     expect(editor.find('[data-testid="pelican-test-cron"]').exists()).toBe(false)
@@ -383,4 +388,33 @@ describe('PelicanTestsView', () => {
     wrapper.unmount()
     expect(signal.aborted).toBe(true)
   })
+})
+
+it('使用页签切换分组与两类账号测试，隐藏不相关的分组操作', async () => {
+  wrapper = mountView(); await flushPromises()
+  expect(wrapper.get('#pelican-panel-groups').isVisible()).toBe(true)
+  expect(wrapper.find('pelican-account-tests-stub').exists()).toBe(false)
+  await wrapper.get('#pelican-tab-oauth').trigger('click'); await flushPromises()
+  expect(wrapper.get('#pelican-panel-groups').attributes('style')).toContain('display: none')
+  expect(wrapper.get('pelican-account-tests-stub').attributes('accounttype')).toBe('oauth')
+  expect(wrapper.find('[data-testid="pelican-tests-create"]').exists()).toBe(false)
+  await wrapper.get('#pelican-tab-apikey').trigger('click'); await flushPromises()
+  expect(wrapper.get('pelican-account-tests-stub').attributes('accounttype')).toBe('apikey')
+  await wrapper.get('#pelican-tab-groups').trigger('click')
+  expect(wrapper.get('#pelican-panel-groups').isVisible()).toBe(true)
+})
+
+it('账号测智可切换糖果方法并保留鹈鹕分组页状态', async () => {
+  wrapper = mountView(document.body)
+  await flushPromises()
+  await wrapper.get('[data-testid="intelligence-method-candy"]').trigger('click')
+  expect(wrapper.get('#intelligence-panel-pelican').isVisible()).toBe(false)
+  expect(wrapper.find('candy-account-tests-stub').exists()).toBe(true)
+  expect(wrapper.find('[data-testid="pelican-tests-create"]').exists()).toBe(false)
+  await wrapper.get('[data-testid="intelligence-method-pelican"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.get('[data-testid="intelligence-method-pelican"]').attributes('aria-selected')).toBe('true')
+  expect(wrapper.get('#intelligence-panel-pelican').attributes('style')).not.toContain('display: none')
+  expect(wrapper.get('#pelican-panel-groups').isVisible()).toBe(true)
+  expect(wrapper.get('[data-testid="pelican-plan-7"]').exists()).toBe(true)
 })
