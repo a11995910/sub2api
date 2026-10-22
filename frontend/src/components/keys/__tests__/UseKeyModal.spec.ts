@@ -383,7 +383,7 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('experimental_bearer_token = "sk-grok-codex-test"')
   })
 
-  it('renders GPT-5.6 SOL and goals feature in OpenAI Codex config', () => {
+  it('OpenAI Codex 配置默认使用 GPT-6 Astra 并保留 goals 功能', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -522,7 +522,7 @@ describe('UseKeyModal', () => {
     )
   })
 
-  it('renders GPT-5.6 SOL and goals feature in OpenAI Codex WebSocket config', async () => {
+  it('OpenAI Codex WebSocket 配置默认使用 GPT-6 Astra 并保留 goals 功能', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,

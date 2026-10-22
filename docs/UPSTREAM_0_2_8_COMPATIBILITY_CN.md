@@ -69,9 +69,9 @@ Gemini 图片 JSON 编辑请求保留原有引用 URL 和供应商扩展字段�
 
 ## 客户端导入与用量导出
 
-OpenAI 的 CC Switch 导入链接保留所配置的端点，仅去掉尾部斜杠，避免客户端重复追加 `/v1`；内嵌 Codex 配置的 `base_url` 保持单个 `/v1` 后缀。用量查询脚本先移除已有 `/v1`，再拼接 `/v1/usage`，金额缺省单位为“灵石”。导入继续使用 `gpt-5.6-sol`、`medium` 推理强度和 `goals = true`。
+OpenAI 的 CC Switch 导入链接保留所配置的端点，仅去掉尾部斜杠，避免客户端重复追加 `/v1`；内嵌 Codex 配置的 `base_url` 保持单个 `/v1` 后缀。用量查询脚本先移除已有 `/v1`，再拼接 `/v1/usage`，金额缺省单位为“灵石”。导入默认使用 `gpt-6-astra`，链接中的模型以及内嵌配置的 `model`、`review_model` 保持一致，推理强度为 `medium`，保留 `goals = true`。已导入客户端的配置不会自动更新，需要重新导入或手动修改。
 
-使用 Key 弹窗生成的 Codex 配置默认采用 `model_catalog_url`，指向站点的 `/v1/models`；也可切换为本地 JSON 文件模式。远程目录无需手动下载模型文件；默认模型、推理等级和 `goals` 定制设置保留。账号订阅标识支持上游当前的 Pro、Team、Business 等计划名称。
+使用 Key 弹窗生成的 Codex 配置默认采用 `model_catalog_url`，指向站点的 `/v1/models`；也可切换为本地 JSON 文件模式。远程目录无需手动下载模型文件；OpenAI 的普通与 WebSocket 配置均优先使用 `gpt-6-astra`，模型目录未提供该模型时继续按可用目录回退，推理等级和 `goals` 定制设置保留。账号订阅标识支持上游当前的 Pro、Team、Business 等计划名称。
 
 用户用量 CSV 以 UTF-8 BOM 开头，改善表格软件识别中文的兼容性。导出列保留请求时间、API Key 名称、模型、入口、用量、费用与耗时，不包含客户端 IP 和内部上游账号字段。
 
