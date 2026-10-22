@@ -25,7 +25,7 @@ func TestCandyRoutesRequireAdminAuthentication(t *testing.T) {
 	audit := middleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() })
 	step := middleware.StepUpAuthMiddleware(func(c *gin.Context) { c.Next() })
 	RegisterAdminRoutes(router.Group("/api/v1"), h, auth, audit, step, nil, nil)
-	for _, route := range []struct{ method, path string }{{"GET", "settings"}, {"PUT", "settings"}, {"POST", "run"}, {"POST", "stop"}, {"GET", "results"}, {"GET", "results/1"}} {
+	for _, route := range []struct{ method, path string }{{"GET", "settings"}, {"PUT", "settings"}, {"GET", "accounts"}, {"POST", "run"}, {"POST", "stop"}, {"GET", "results"}, {"GET", "results/1"}} {
 		for _, signedIn := range []bool{false, true} {
 			req := httptest.NewRequest(route.method, "/api/v1/admin/candy-tests/"+route.path, nil)
 			want := http.StatusUnauthorized

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -48,7 +49,28 @@ func scanCandySettings(row scannable) (*service.CandyTestSettings, error) {
 	if s.IntervalHours == 0 {
 		s.IntervalHours = service.CandyTestDefaultIntervalHours
 	}
+	if s.AutoGroupExcludedAccountIDs == nil {
+		s.AutoGroupExcludedAccountIDs = []int64{}
+	}
 	return s, nil
+}
+
+func (r *candyTestRepository) ListAccounts(ctx context.Context) ([]service.CandyTestAccount, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id,name FROM accounts
+ WHERE deleted_at IS NULL AND platform='openai' AND type='oauth' AND parent_account_id IS NULL ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	accounts := []service.CandyTestAccount{}
+	for rows.Next() {
+		var account service.CandyTestAccount
+		if err := rows.Scan(&account.ID, &account.Name); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
 }
 
 func (r *candyTestRepository) GetSettings(ctx context.Context) (*service.CandyTestSettings, error) {
@@ -88,10 +110,8 @@ func lockCandyGroups(ctx context.Context, tx *sql.Tx, ids []int64) error {
 }
 
 func (r *candyTestRepository) UpdateSettings(ctx context.Context, input *service.CandyTestSettingsInput, now time.Time) (*service.CandyTestSettings, error) {
-	data, err := json.Marshal(input)
-	if err != nil {
-		return nil, err
-	}
+	value := *input
+	input = &value
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -102,6 +122,14 @@ func (r *candyTestRepository) UpdateSettings(ctx context.Context, input *service
 	}
 	// 统一先锁配置，避免与完成批次时的配置、分组锁顺序相反。
 	current, err := scanCandySettings(tx.QueryRowContext(ctx, `SELECT `+candySettingsColumns+` FROM candy_test_settings WHERE id=1 FOR UPDATE`))
+	if err != nil {
+		return nil, err
+	}
+	// 配置行锁内合并旧客户端缺省字段，避免保存其他设置时清除排除名单。
+	if input.AutoGroupExcludedAccountIDs == nil {
+		input.AutoGroupExcludedAccountIDs = append([]int64{}, current.AutoGroupExcludedAccountIDs...)
+	}
+	data, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +173,9 @@ func scanCandyResult(row scannable, detail bool) (*service.CandyTestResult, erro
 	}
 	if err := json.Unmarshal(settings, &r.SettingsSnapshot); err != nil {
 		return nil, err
+	}
+	if r.SettingsSnapshot != nil && r.SettingsSnapshot.AutoGroupExcludedAccountIDs == nil {
+		r.SettingsSnapshot.AutoGroupExcludedAccountIDs = []int64{}
 	}
 	if len(action) > 0 {
 		if err := json.Unmarshal(action, &r.GroupAction); err != nil {
@@ -253,9 +284,8 @@ func (r *candyTestRepository) Complete(ctx context.Context, result *service.Cand
 		return err
 	}
 	defer tx.Rollback()
-	var activeRun string
-	err = tx.QueryRowContext(ctx, `SELECT run_id FROM candy_test_settings
- WHERE id=1 AND run_id=$1 AND running_until>clock_timestamp() FOR UPDATE`, result.RunID).Scan(&activeRun)
+	current, err := scanCandySettings(tx.QueryRowContext(ctx, `SELECT `+candySettingsColumns+` FROM candy_test_settings
+ WHERE id=1 AND run_id=$1 AND running_until>clock_timestamp() FOR UPDATE`, result.RunID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -273,20 +303,25 @@ func (r *candyTestRepository) Complete(ctx context.Context, result *service.Cand
 	var action *service.CandyTestGroupAction
 	groupError := ""
 	if saved.SettingsSnapshot != nil && saved.SettingsSnapshot.AutoGroupEnabled && result.Status != "error" {
-		if _, err := tx.ExecContext(ctx, `SAVEPOINT candy_group_change`); err != nil {
-			return err
-		}
-		action, groupError, err = applyCandyGroups(ctx, tx, saved, result.Status)
-		if err != nil {
-			if _, rollbackErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT candy_group_change`); rollbackErr != nil {
-				return rollbackErr
+		// 取消参与立即保护尚未完成的结果；启动时已排除的账号从下一批次恢复参与。
+		if slices.Contains(saved.SettingsSnapshot.AutoGroupExcludedAccountIDs, saved.AccountID) || slices.Contains(current.AutoGroupExcludedAccountIDs, saved.AccountID) {
+			action = &service.CandyTestGroupAction{AddedGroupIDs: []int64{}, RemovedGroupIDs: []int64{}, SkippedReason: "account_excluded"}
+		} else {
+			if _, err := tx.ExecContext(ctx, `SAVEPOINT candy_group_change`); err != nil {
+				return err
 			}
-			logger.LegacyPrintf("repository.candy_tests", "糖果测试自动调组失败：account_id=%d error=%v", saved.AccountID, err)
-			action = nil
-			groupError = "自动调组失败，所有分组变更已撤销，请检查服务日志后重试"
-		}
-		if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT candy_group_change`); err != nil {
-			return err
+			action, groupError, err = applyCandyGroups(ctx, tx, saved, result.Status)
+			if err != nil {
+				if _, rollbackErr := tx.ExecContext(ctx, `ROLLBACK TO SAVEPOINT candy_group_change`); rollbackErr != nil {
+					return rollbackErr
+				}
+				logger.LegacyPrintf("repository.candy_tests", "糖果测试自动调组失败：account_id=%d error=%v", saved.AccountID, err)
+				action = nil
+				groupError = "自动调组失败，所有分组变更已撤销，请检查服务日志后重试"
+			}
+			if _, err := tx.ExecContext(ctx, `RELEASE SAVEPOINT candy_group_change`); err != nil {
+				return err
+			}
 		}
 	}
 	var actionJSON any

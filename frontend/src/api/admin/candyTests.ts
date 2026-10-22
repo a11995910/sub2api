@@ -14,6 +14,7 @@ export interface CandyTestSettingsInput {
   schedule_enabled: boolean
   interval_hours: number
   auto_group_enabled: boolean
+  auto_group_excluded_account_ids: number[]
   normal_add_group_ids: number[]
   normal_remove_group_ids: number[]
   degraded_add_group_ids: number[]
@@ -25,6 +26,11 @@ export interface CandyTestSettings extends CandyTestSettingsInput {
   next_run_at?: string | null
   running_until?: string | null
   running_run_id: string
+}
+
+export interface CandyTestAccount {
+  id: number
+  name: string
 }
 
 export interface CandyTestResult {
@@ -42,7 +48,7 @@ export interface CandyTestResult {
   finished_at?: string | null
   running_until?: string | null
   settings_snapshot?: CandyTestSettingsInput
-  group_action?: { added_group_ids: number[]; removed_group_ids: number[] } | null
+  group_action?: { added_group_ids: number[]; removed_group_ids: number[]; skipped_reason?: 'account_excluded' } | null
   group_error: string
 }
 
@@ -53,6 +59,10 @@ export interface CandyTestBatch {
 }
 
 export const candyTestsAPI = {
+  async getAccounts(signal?: AbortSignal): Promise<CandyTestAccount[]> {
+    const { data } = await apiClient.get<CandyTestAccount[]>('/admin/candy-tests/accounts', { signal })
+    return data
+  },
   async getSettings(signal?: AbortSignal): Promise<CandyTestSettings> {
     const { data } = await apiClient.get<CandyTestSettings>('/admin/candy-tests/settings', { signal })
     return data

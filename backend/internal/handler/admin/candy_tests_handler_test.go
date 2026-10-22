@@ -16,6 +16,9 @@ func (candyHandlerRepo) Expire(context.Context, time.Time) error { return nil }
 func (candyHandlerRepo) GetSettings(context.Context) (*service.CandyTestSettings, error) {
 	return &service.CandyTestSettings{CandyTestSettingsInput: service.DefaultCandyTestSettings()}, nil
 }
+func (candyHandlerRepo) ListAccounts(context.Context) ([]service.CandyTestAccount, error) {
+	return []service.CandyTestAccount{{ID: 18, Name: "保留正价分组的账号"}}, nil
+}
 func (candyHandlerRepo) Claim(context.Context, service.CandyTestStart, string, time.Time, time.Time, bool) (*service.CandyTestBatch, error) {
 	return nil, service.ErrCandyTestRunning
 }
@@ -33,6 +36,10 @@ func TestCandyHandlerValidationPaginationAndConflict(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"expected_answer":"21"`)
 	require.Contains(t, w.Body.String(), `"schedule_enabled":false`)
 	require.Contains(t, w.Body.String(), `"interval_hours":24`)
+	require.Contains(t, w.Body.String(), `"auto_group_excluded_account_ids":[]`)
+	w = serveGroupTest(h.ListAccounts, http.MethodGet, "/accounts", "/accounts", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"code":0,"message":"success","data":[{"id":18,"name":"保留正价分组的账号"}]}`, w.Body.String())
 	for _, interval := range []string{"0", "-1", "169", "1.5"} {
 		body := `{"prompt":"题目","expected_answer":"21","reasoning_effort":"high","interval_hours":` + interval + `}`
 		require.Equal(t, http.StatusBadRequest, serveGroupTest(h.UpdateSettings, http.MethodPut, "/settings", "/settings", body).Code)
@@ -50,4 +57,41 @@ func TestCandyHandlerValidationPaginationAndConflict(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, serveGroupTest(h.GetResult, http.MethodGet, "/results/:id", "/results/90", "").Code)
 	require.Equal(t, http.StatusBadRequest, serveGroupTest(h.GetResult, http.MethodGet, "/results/:id", "/results/abc", "").Code)
 	require.Equal(t, http.StatusBadRequest, serveGroupTest(h.Stop, http.MethodPost, "/stop", "/stop", `{"run_id":"bad"}`).Code)
+}
+
+type candyHandlerSettingsRepo struct {
+	candyHandlerRepo
+	input service.CandyTestSettingsInput
+}
+
+func (r *candyHandlerSettingsRepo) UpdateSettings(_ context.Context, input *service.CandyTestSettingsInput, _ time.Time) (*service.CandyTestSettings, error) {
+	r.input = *input
+	return &service.CandyTestSettings{CandyTestSettingsInput: *input}, nil
+}
+
+func TestCandyHandlerExcludedAccountsCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		want  []int64
+	}{
+		{name: "旧客户端省略字段", want: nil},
+		{name: "空值保留名单", field: `,"auto_group_excluded_account_ids":null`, want: nil},
+		{name: "空数组清空名单", field: `,"auto_group_excluded_account_ids":[]`, want: []int64{}},
+		{name: "去重排序", field: `,"auto_group_excluded_account_ids":[9,2,9]`, want: []int64{2, 9}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &candyHandlerSettingsRepo{}
+			h := NewCandyTestHandler(service.NewCandyTestService(repo, nil, nil))
+			body := `{"prompt":"题目","expected_answer":"21","reasoning_effort":"high","interval_hours":24` + tc.field + `}`
+			w := serveGroupTest(h.UpdateSettings, http.MethodPut, "/settings", "/settings", body)
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Equal(t, tc.want, repo.input.AutoGroupExcludedAccountIDs)
+		})
+	}
+	h := NewCandyTestHandler(service.NewCandyTestService(&candyHandlerSettingsRepo{}, nil, nil))
+	for _, value := range []string{`[0]`, `[-1]`, `[1.5]`, `["1"]`} {
+		body := `{"prompt":"题目","expected_answer":"21","reasoning_effort":"high","interval_hours":24,"auto_group_excluded_account_ids":` + value + `}`
+		require.Equal(t, http.StatusBadRequest, serveGroupTest(h.UpdateSettings, http.MethodPut, "/settings", "/settings", body).Code)
+	}
 }

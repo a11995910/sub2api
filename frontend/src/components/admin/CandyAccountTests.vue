@@ -5,7 +5,7 @@
         <h3 class="text-lg font-semibold">{{ t('candyTests.title') }}</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('candyTests.hint') }}</p>
       </div>
-      <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading || saving || starting || stopping" @click="refresh">
+      <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading || saving || starting || stopping" data-testid="candy-refresh" @click="refresh">
         <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />{{ t('candyTests.refresh') }}
       </button>
     </div>
@@ -54,6 +54,30 @@
             <Toggle v-model="draft.auto_group_enabled" :aria-label="t('candyTests.autoGroup')" data-testid="candy-auto-group-enabled" />
           </div>
           <div v-if="draft.auto_group_enabled" class="mt-4 space-y-3">
+            <div class="rounded-lg border border-gray-200 dark:border-dark-600">
+              <button type="button" class="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm" :aria-expanded="accountsExpanded" aria-controls="candy-group-accounts" data-testid="candy-accounts-toggle" @click="toggleAccounts">
+                <span class="font-medium">{{ t('candyTests.groupAccounts') }}</span>
+                <span class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="accountsLoading">{{ t('candyTests.loading') }}</span>
+                  <span v-else-if="accountsFailed">{{ t('candyTests.accountsLoadFailed') }}</span>
+                  <span v-else data-testid="candy-accounts-summary">{{ t('candyTests.accountsSummary', { participating: accounts.length - excludedAccountCount, excluded: excludedAccountCount }) }}</span>
+                  <Icon name="chevronDown" size="sm" class="shrink-0 transition-transform" :class="{ 'rotate-180': accountsExpanded }" />
+                </span>
+              </button>
+              <div v-if="accountsExpanded" id="candy-group-accounts" class="space-y-2 border-t border-gray-100 p-3 dark:border-dark-700" data-testid="candy-accounts-panel">
+                <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('candyTests.accountsHint') }}</p>
+                <input v-model="accountSearch" type="search" class="input w-full text-sm" :placeholder="t('candyTests.accountsSearch')" :aria-label="t('candyTests.accountsSearch')" data-testid="candy-accounts-search" />
+                <p v-if="accountsFailed" role="alert" class="text-xs text-red-600 dark:text-red-400">{{ t('candyTests.accountsLoadFailed') }} <button type="button" class="underline" :disabled="accountsLoading" @click="loadAccounts">{{ t('candyTests.refresh') }}</button></p>
+                <div class="max-h-56 overflow-y-auto" data-testid="candy-accounts-list">
+                  <label v-for="account in filteredAccounts" :key="account.id" class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-gray-50 dark:hover:bg-dark-700">
+                    <input type="checkbox" class="h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500" :checked="!excludedAccountIds.has(account.id)" :data-testid="`candy-account-${account.id}`" @change="setAccountParticipation(account.id, $event)" />
+                    <span class="min-w-0 truncate text-sm" :title="account.name">{{ account.name || `#${account.id}` }}</span>
+                    <span class="ml-auto shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">#{{ account.id }}</span>
+                  </label>
+                  <p v-if="!accountsLoading && !accountsFailed && !filteredAccounts.length" class="py-4 text-center text-xs text-gray-500 dark:text-gray-400">{{ t(accountSearch.trim() ? 'candyTests.accountsNoMatch' : 'candyTests.accountsEmpty') }}</p>
+                </div>
+              </div>
+            </div>
             <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('candyTests.groupHint') }}</p>
             <p v-if="groupsFailed" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ t('candyTests.groupsLoadFailed') }}</p>
             <p v-if="unavailableGroupIds.length" role="alert" class="text-sm text-amber-600 dark:text-amber-400">
@@ -126,7 +150,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { candyTestsAPI, DEFAULT_CANDY_PROMPT, type CandyTestResult, type CandyTestSettings, type CandyTestSettingsInput } from '@/api/admin/candyTests'
+import { candyTestsAPI, DEFAULT_CANDY_PROMPT, type CandyTestAccount, type CandyTestResult, type CandyTestSettings, type CandyTestSettingsInput } from '@/api/admin/candyTests'
 import { adminAPI } from '@/api'
 import type { AdminGroup } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -144,6 +168,11 @@ const settings = ref<CandyTestSettings | null>(null)
 const draft = ref<CandyTestSettingsInput | null>(null)
 const groups = ref<AdminGroup[]>([])
 const groupsFailed = ref(false)
+const accounts = ref<CandyTestAccount[]>([])
+const accountsExpanded = ref(false)
+const accountsLoading = ref(false)
+const accountsFailed = ref(false)
+const accountSearch = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const starting = ref(false)
@@ -163,6 +192,7 @@ let alive = true
 let polling = false
 let timer: ReturnType<typeof setInterval> | undefined
 let resultsController: AbortController | undefined
+let accountsController: AbortController | undefined
 let requestId = 0
 let detailRequestId = 0
 let settingsRequestId = 0
@@ -176,6 +206,12 @@ const groupKeys = groupRules.flatMap(rule => [rule.add, rule.remove])
 const effortOptions = computed(() => ['minimal', 'low', 'medium', 'high', 'xhigh'].map(value => ({ value, label: t(`pelicanShowcase.efforts.${value}`) })))
 const dirty = computed(() => !!draft.value && JSON.stringify(draft.value) !== JSON.stringify(settings.value ? inputFrom(settings.value) : null))
 const running = computed(() => !!settings.value?.running_run_id)
+const excludedAccountIds = computed(() => new Set(draft.value?.auto_group_excluded_account_ids || []))
+const excludedAccountCount = computed(() => accounts.value.filter(account => excludedAccountIds.value.has(account.id)).length)
+const filteredAccounts = computed(() => {
+  const query = accountSearch.value.trim().toLocaleLowerCase()
+  return accounts.value.filter(account => !query || account.name.toLocaleLowerCase().includes(query) || `#${account.id}`.includes(query))
+})
 const groupConflict = computed(() => !!draft.value?.auto_group_enabled && groupRules.some(rule => draft.value![rule.add].some(id => draft.value![rule.remove].includes(id))))
 const unavailableGroupIds = computed(() => {
   if (!draft.value || groupsFailed.value) return []
@@ -188,6 +224,7 @@ function inputFrom(value: CandyTestSettingsInput): CandyTestSettingsInput {
     prompt: value.prompt, expected_answer: value.expected_answer, model_id: value.model_id,
     reasoning_effort: value.reasoning_effort, schedule_enabled: value.schedule_enabled, interval_hours: value.interval_hours,
     auto_group_enabled: value.auto_group_enabled,
+    auto_group_excluded_account_ids: [...(value.auto_group_excluded_account_ids || [])],
     normal_add_group_ids: [...(value.normal_add_group_ids || [])], normal_remove_group_ids: [...(value.normal_remove_group_ids || [])],
     degraded_add_group_ids: [...(value.degraded_add_group_ids || [])], degraded_remove_group_ids: [...(value.degraded_remove_group_ids || [])],
   }
@@ -207,6 +244,7 @@ function beijingTime(value: string) {
 
 function groupActionLabel(result: CandyTestResult) {
   const action = result.group_action
+  if (action?.skipped_reason === 'account_excluded') return t('candyTests.groupExcluded')
   if (!action || (!action.added_group_ids?.length && !action.removed_group_ids?.length)) return t('candyTests.groupUnchanged')
   const names = (ids: number[]) => ids.map(id => groups.value.find(group => group.id === id)?.name || `#${id}`).join('、') || t('candyTests.none')
   return t('candyTests.groupChanged', { added: names(action.added_group_ids || []), removed: names(action.removed_group_ids || []) })
@@ -233,6 +271,37 @@ function clearUnavailableGroups() {
   for (const key of groupKeys) draft.value[key] = draft.value[key].filter(id => !unavailable.has(id))
 }
 
+function setAccountParticipation(id: number, event: Event) {
+  if (!draft.value) return
+  const checked = (event.target as HTMLInputElement).checked
+  const excluded = new Set(draft.value.auto_group_excluded_account_ids)
+  if (checked) excluded.delete(id)
+  else excluded.add(id)
+  draft.value.auto_group_excluded_account_ids = [...excluded].sort((a, b) => a - b)
+}
+
+function toggleAccounts() {
+  accountsExpanded.value = !accountsExpanded.value
+  if (accountsExpanded.value) void loadAccounts()
+}
+
+async function loadAccounts() {
+  accountsController?.abort()
+  const controller = new AbortController()
+  accountsController = controller
+  accountsLoading.value = true
+  try {
+    const loaded = await candyTestsAPI.getAccounts(controller.signal)
+    if (!alive || controller.signal.aborted) return
+    accounts.value = loaded
+    accountsFailed.value = false
+  } catch {
+    if (alive && !controller.signal.aborted) accountsFailed.value = true
+  } finally {
+    if (alive && !controller.signal.aborted) accountsLoading.value = false
+  }
+}
+
 function fail(err: unknown, key: string) {
   error.value = extractApiErrorMessage(err, t(key))
   notice.value = ''
@@ -243,7 +312,7 @@ async function refresh() {
   const current = ++settingsRequestId
   loading.value = true
   error.value = ''
-  const loaded = await Promise.allSettled([candyTestsAPI.getSettings(), adminAPI.groups.getAll('openai'), loadResults()])
+  const loaded = await Promise.allSettled([candyTestsAPI.getSettings(), adminAPI.groups.getAll('openai'), loadResults(), loadAccounts()])
   if (!alive) return
   if (current === settingsRequestId) {
     if (loaded[0].status === 'fulfilled') applySettings(loaded[0].value)
@@ -370,5 +439,5 @@ function stopPolling() { if (timer) clearInterval(timer); timer = undefined }
 onMounted(() => { void refresh(); startPolling() })
 onActivated(startPolling)
 onDeactivated(stopPolling)
-onBeforeUnmount(() => { alive = false; resultsController?.abort(); stopPolling() })
+onBeforeUnmount(() => { alive = false; resultsController?.abort(); accountsController?.abort(); stopPolling() })
 </script>

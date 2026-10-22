@@ -160,6 +160,34 @@ func TestCandySettingsValidationAllowsDisablingStaleGroups(t *testing.T) {
 	}
 }
 
+func TestCandySettingsExcludedAccountsValidation(t *testing.T) {
+	repo := newCandyServiceRepo(0)
+	svc := NewCandyTestService(repo, nil, nil)
+	input := DefaultCandyTestSettings()
+	require.NotNil(t, input.AutoGroupExcludedAccountIDs)
+	require.Empty(t, input.AutoGroupExcludedAccountIDs)
+	input.AutoGroupExcludedAccountIDs = []int64{9, 2, 9}
+	saved, err := svc.UpdateSettings(context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, []int64{2, 9}, saved.AutoGroupExcludedAccountIDs)
+	require.Equal(t, []int64{9, 2, 9}, input.AutoGroupExcludedAccountIDs, "规范化不能改动调用方的数组")
+	for _, ids := range [][]int64{{0}, {-1}, {2, -1}} {
+		input.AutoGroupExcludedAccountIDs = ids
+		_, err := svc.UpdateSettings(context.Background(), input)
+		require.Error(t, err)
+	}
+	// 仓储需要区分未提交与显式清空，服务层不能提前把 nil 转成空数组。
+	input.AutoGroupExcludedAccountIDs = nil
+	saved, err = svc.UpdateSettings(context.Background(), input)
+	require.NoError(t, err)
+	require.Nil(t, saved.AutoGroupExcludedAccountIDs)
+	input.AutoGroupExcludedAccountIDs = []int64{}
+	saved, err = svc.UpdateSettings(context.Background(), input)
+	require.NoError(t, err)
+	require.NotNil(t, saved.AutoGroupExcludedAccountIDs)
+	require.Empty(t, saved.AutoGroupExcludedAccountIDs)
+}
+
 func TestCandyWorkersBoundConcurrencyAndKeepSnapshot(t *testing.T) {
 	repo := newCandyServiceRepo(23)
 	svc := NewCandyTestService(repo, nil, nil)

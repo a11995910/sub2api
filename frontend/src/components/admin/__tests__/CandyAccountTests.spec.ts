@@ -5,7 +5,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import { DEFAULT_CANDY_PROMPT, type CandyTestResult, type CandyTestSettings, type CandyTestSettingsInput } from '@/api/admin/candyTests'
 
 const { api, getGroups } = vi.hoisted(() => ({
-  api: { getSettings: vi.fn(), updateSettings: vi.fn(), run: vi.fn(), stop: vi.fn(), listResults: vi.fn(), getResult: vi.fn() },
+  api: { getSettings: vi.fn(), updateSettings: vi.fn(), getAccounts: vi.fn(), run: vi.fn(), stop: vi.fn(), listResults: vi.fn(), getResult: vi.fn() },
   getGroups: vi.fn(),
 }))
 vi.mock('@/api/admin/candyTests', async importOriginal => ({
@@ -20,6 +20,7 @@ vi.mock('vue-i18n', async () => ({
 const input = (): CandyTestSettingsInput => ({
   prompt: DEFAULT_CANDY_PROMPT, expected_answer: '21', model_id: '', reasoning_effort: 'high',
   schedule_enabled: false, interval_hours: 24, auto_group_enabled: false,
+  auto_group_excluded_account_ids: [],
   normal_add_group_ids: [], normal_remove_group_ids: [], degraded_add_group_ids: [], degraded_remove_group_ids: [],
 })
 const settings = (overrides: Partial<CandyTestSettings> = {}): CandyTestSettings => ({ ...input(), running_run_id: '', next_run_at: null, last_run_at: null, running_until: null, ...overrides })
@@ -40,6 +41,7 @@ beforeEach(() => {
   localStorage.clear()
   for (const fn of Object.values(api)) fn.mockReset()
   api.getSettings.mockResolvedValue(settings())
+  api.getAccounts.mockResolvedValue([{ id: 18, name: '保留正价账号' }, { id: 19, name: '普通账号' }])
   api.listResults.mockResolvedValue({ items: [], total: 0 })
   api.updateSettings.mockImplementation(async (value: CandyTestSettingsInput) => settings(value))
   getGroups.mockReset().mockResolvedValue([
@@ -52,6 +54,110 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
 
 describe('糖果账号测试', () => {
+  it.each([undefined, null])('兼容旧配置排除名单 %s，默认折叠且全部参与', async excluded => {
+    api.getSettings.mockResolvedValue({ ...settings({ auto_group_enabled: true }), auto_group_excluded_account_ids: excluded })
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="candy-accounts-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="candy-accounts-panel"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="candy-accounts-summary"]').text()).toContain('{"participating":2,"excluded":0}')
+    expect(wrapper.get('[data-testid="candy-save-state"]').text()).toBe('candyTests.savedState')
+    await wrapper.get('[data-testid="candy-accounts-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="candy-accounts-toggle"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-18"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-19"]').element.checked).toBe(true)
+  })
+
+  it('取消参与后保存并重载保持排除，新增账号默认参与，测试仍运行全部账号', async () => {
+    api.getSettings.mockResolvedValue(settings({ auto_group_enabled: true }))
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-accounts-toggle"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-account-18"]').setValue(false)
+    expect(wrapper.get('[data-testid="candy-accounts-summary"]').text()).toContain('{"participating":1,"excluded":1}')
+    expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="candy-settings"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ auto_group_excluded_account_ids: [18] }))
+    const saved = settings({ auto_group_enabled: true, auto_group_excluded_account_ids: [18] })
+    api.getSettings.mockResolvedValue(saved)
+    api.getAccounts.mockResolvedValue([{ id: 18, name: '保留正价账号' }, { id: 19, name: '普通账号' }, { id: 20, name: '自动新增账号' }])
+    wrapper.unmount()
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="candy-accounts-panel"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="candy-accounts-summary"]').text()).toContain('{"participating":2,"excluded":1}')
+    await wrapper.get('[data-testid="candy-accounts-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-18"]').element.checked).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-20"]').element.checked).toBe(true)
+    api.run.mockResolvedValue({ run_id: '排除调组批次', settings: saved, results: [result({ status: 'running' })] })
+    await wrapper.get('[data-testid="candy-run"]').trigger('click')
+    await flushPromises()
+    expect(api.run).toHaveBeenCalledWith({ all: true })
+  })
+
+  it('搜索、刷新和账号加载失败均不清除排除项，关闭全局调组也保留名单', async () => {
+    api.getSettings.mockResolvedValue(settings({ auto_group_enabled: true, auto_group_excluded_account_ids: [99] }))
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-accounts-toggle"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-account-18"]').setValue(false)
+    await wrapper.get('[data-testid="candy-accounts-search"]').setValue('普通')
+    expect(wrapper.find('[data-testid="candy-account-18"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="candy-account-19"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="candy-accounts-search"]').setValue('#18')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-18"]').element.checked).toBe(false)
+    api.getAccounts.mockResolvedValueOnce([{ id: 19, name: '普通账号' }])
+    await wrapper.get('[data-testid="candy-refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('candyTests.accountsNoMatch')
+    api.getAccounts.mockRejectedValueOnce(new Error('加载失败'))
+    await wrapper.get('[data-testid="candy-refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('candyTests.accountsLoadFailed')
+    await wrapper.get('[data-testid="candy-auto-group-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="candy-settings"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ auto_group_enabled: false, auto_group_excluded_account_ids: [18, 99] }))
+  })
+
+  it('轮询不覆盖未保存的参与选择，重新勾选只移除对应排除项', async () => {
+    vi.useFakeTimers()
+    api.getSettings.mockResolvedValue(settings({ auto_group_enabled: true, auto_group_excluded_account_ids: [18, 99] }))
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-accounts-toggle"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-account-18"]').setValue(true)
+    await wrapper.get('[data-testid="candy-account-19"]').setValue(false)
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-18"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="candy-account-19"]').element.checked).toBe(false)
+    await wrapper.get('[data-testid="candy-settings"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ auto_group_excluded_account_ids: [19, 99] }))
+  })
+
+  it('排除调组的结果仍显示测智结论，并在历史和详情显示跳过原因', async () => {
+    const excluded = result({ status: 'degraded', answer: '30', group_action: { added_group_ids: [], removed_group_ids: [], skipped_reason: 'account_excluded' } })
+    api.listResults.mockResolvedValue({ items: [excluded], total: 1 })
+    api.getResult.mockResolvedValue(excluded)
+    wrapper = mountView()
+    await flushPromises()
+    const row = wrapper.get('[data-testid="candy-result-1"]')
+    expect(row.text()).toContain('candyTests.statuses.degraded')
+    expect(row.text()).toContain('candyTests.groupExcluded')
+    expect(row.text()).not.toContain('candyTests.groupUnchanged')
+    await wrapper.get('[data-testid="candy-detail-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.detail-dialog').text()).toContain('candyTests.groupExcluded')
+  })
+
   it('默认关闭自动化，编辑后必须保存，提交排除运行字段并恢复默认题目答案', async () => {
     wrapper = mountView()
     await flushPromises()

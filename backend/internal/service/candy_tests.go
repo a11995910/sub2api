@@ -44,17 +44,18 @@ var (
 )
 
 type CandyTestSettingsInput struct {
-	Prompt                 string  `json:"prompt"`
-	ExpectedAnswer         string  `json:"expected_answer"`
-	ModelID                string  `json:"model_id"`
-	ReasoningEffort        string  `json:"reasoning_effort"`
-	ScheduleEnabled        bool    `json:"schedule_enabled"`
-	IntervalHours          int     `json:"interval_hours"`
-	AutoGroupEnabled       bool    `json:"auto_group_enabled"`
-	NormalAddGroupIDs      []int64 `json:"normal_add_group_ids"`
-	NormalRemoveGroupIDs   []int64 `json:"normal_remove_group_ids"`
-	DegradedAddGroupIDs    []int64 `json:"degraded_add_group_ids"`
-	DegradedRemoveGroupIDs []int64 `json:"degraded_remove_group_ids"`
+	Prompt                      string  `json:"prompt"`
+	ExpectedAnswer              string  `json:"expected_answer"`
+	ModelID                     string  `json:"model_id"`
+	ReasoningEffort             string  `json:"reasoning_effort"`
+	ScheduleEnabled             bool    `json:"schedule_enabled"`
+	IntervalHours               int     `json:"interval_hours"`
+	AutoGroupEnabled            bool    `json:"auto_group_enabled"`
+	AutoGroupExcludedAccountIDs []int64 `json:"auto_group_excluded_account_ids"`
+	NormalAddGroupIDs           []int64 `json:"normal_add_group_ids"`
+	NormalRemoveGroupIDs        []int64 `json:"normal_remove_group_ids"`
+	DegradedAddGroupIDs         []int64 `json:"degraded_add_group_ids"`
+	DegradedRemoveGroupIDs      []int64 `json:"degraded_remove_group_ids"`
 }
 
 type CandyTestSettings struct {
@@ -68,6 +69,12 @@ type CandyTestSettings struct {
 type CandyTestGroupAction struct {
 	AddedGroupIDs   []int64 `json:"added_group_ids"`
 	RemovedGroupIDs []int64 `json:"removed_group_ids"`
+	SkippedReason   string  `json:"skipped_reason,omitempty"`
+}
+
+type CandyTestAccount struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 type CandyTestResult struct {
@@ -101,6 +108,7 @@ type CandyTestBatch struct {
 }
 
 type CandyTestRepository interface {
+	ListAccounts(context.Context) ([]CandyTestAccount, error)
 	GetSettings(context.Context) (*CandyTestSettings, error)
 	UpdateSettings(context.Context, *CandyTestSettingsInput, time.Time) (*CandyTestSettings, error)
 	Claim(context.Context, CandyTestStart, string, time.Time, time.Time, bool) (*CandyTestBatch, error)
@@ -126,7 +134,7 @@ func NewCandyTestService(repo CandyTestRepository, groups GroupRepository, tests
 }
 
 func DefaultCandyTestSettings() CandyTestSettingsInput {
-	return CandyTestSettingsInput{Prompt: CandyTestDefaultPrompt, ExpectedAnswer: "21", ModelID: AccountIntelligenceDefaultModel, ReasoningEffort: "high", IntervalHours: CandyTestDefaultIntervalHours, NormalAddGroupIDs: []int64{}, NormalRemoveGroupIDs: []int64{}, DegradedAddGroupIDs: []int64{}, DegradedRemoveGroupIDs: []int64{}}
+	return CandyTestSettingsInput{Prompt: CandyTestDefaultPrompt, ExpectedAnswer: "21", ModelID: AccountIntelligenceDefaultModel, ReasoningEffort: "high", IntervalHours: CandyTestDefaultIntervalHours, AutoGroupExcludedAccountIDs: []int64{}, NormalAddGroupIDs: []int64{}, NormalRemoveGroupIDs: []int64{}, DegradedAddGroupIDs: []int64{}, DegradedRemoveGroupIDs: []int64{}}
 }
 
 // 按实际经过的小时计算下一次执行，不依赖时区，也不追补停机期间的批次。
@@ -142,6 +150,10 @@ func (s *CandyTestService) GetSettings(ctx context.Context) (*CandyTestSettings,
 		return nil, err
 	}
 	return s.repo.GetSettings(ctx)
+}
+
+func (s *CandyTestService) ListAccounts(ctx context.Context) ([]CandyTestAccount, error) {
+	return s.repo.ListAccounts(ctx)
 }
 
 func (s *CandyTestService) UpdateSettings(ctx context.Context, input CandyTestSettingsInput) (*CandyTestSettings, error) {
@@ -170,6 +182,15 @@ func (s *CandyTestService) UpdateSettings(ctx context.Context, input CandyTestSe
 	}
 	if _, err := NextCandyTestRun(input.IntervalHours, s.now()); err != nil {
 		return nil, err
+	}
+	// 保留 nil，兼容旧客户端未提交此字段；显式空数组才表示恢复全部参与。
+	input.AutoGroupExcludedAccountIDs = slices.Clone(input.AutoGroupExcludedAccountIDs)
+	slices.Sort(input.AutoGroupExcludedAccountIDs)
+	input.AutoGroupExcludedAccountIDs = slices.Compact(input.AutoGroupExcludedAccountIDs)
+	for _, id := range input.AutoGroupExcludedAccountIDs {
+		if id <= 0 {
+			return nil, infraerrors.BadRequest("CANDY_TEST_ACCOUNT", "不参与自动调组的账号编号无效")
+		}
 	}
 	seen := make(map[int64]bool)
 	for _, pair := range [][2]*[]int64{{&input.NormalAddGroupIDs, &input.NormalRemoveGroupIDs}, {&input.DegradedAddGroupIDs, &input.DegradedRemoveGroupIDs}} {

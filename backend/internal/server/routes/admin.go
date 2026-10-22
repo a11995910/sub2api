@@ -957,6 +957,7 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 
 func registerPelicanShowcaseRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	admin.GET("/candy-tests/settings", h.Admin.CandyTest.GetSettings)
+	admin.GET("/candy-tests/accounts", h.Admin.CandyTest.ListAccounts)
 	admin.PUT("/candy-tests/settings", h.Admin.CandyTest.UpdateSettings)
 	admin.POST("/candy-tests/run", h.Admin.CandyTest.Run)
 	admin.POST("/candy-tests/stop", h.Admin.CandyTest.Stop)

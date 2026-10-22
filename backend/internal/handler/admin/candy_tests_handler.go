@@ -12,6 +12,15 @@ func NewCandyTestHandler(svc *service.CandyTestService) *CandyTestHandler {
 	return &CandyTestHandler{svc: svc}
 }
 
+func (h *CandyTestHandler) ListAccounts(c *gin.Context) {
+	accounts, err := h.svc.ListAccounts(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, accounts)
+}
+
 func (h *CandyTestHandler) GetSettings(c *gin.Context) {
 	settings, err := h.svc.GetSettings(c.Request.Context())
 	if err != nil {

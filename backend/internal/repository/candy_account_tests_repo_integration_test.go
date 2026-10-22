@@ -94,6 +94,15 @@ func TestCandyRepositoryConcurrentClaimAndEligibility(t *testing.T) {
 	require.False(t, settings.ScheduleEnabled)
 	require.False(t, settings.AutoGroupEnabled)
 	require.Equal(t, "21", settings.ExpectedAnswer)
+	require.Equal(t, []int64{}, settings.AutoGroupExcludedAccountIDs)
+	accounts, err := repo.ListAccounts(ctx)
+	require.NoError(t, err)
+	accountIDs := []int64{}
+	for _, account := range accounts {
+		accountIDs = append(accountIDs, account.ID)
+		require.NotEmpty(t, account.Name)
+	}
+	require.ElementsMatch(t, []int64{f.accounts[0], f.accounts[1], f.accounts[5]}, accountIDs)
 	now := time.Now()
 	var wg sync.WaitGroup
 	batches := make(chan *service.CandyTestBatch, 2)
@@ -336,13 +345,14 @@ func TestCandyRepositoryLegacyScheduleKeepsNextRun(t *testing.T) {
 	require.NoError(t, err)
 	next := time.Now().Add(time.Hour).Truncate(time.Microsecond)
 	_, err = integrationDB.Exec(`UPDATE candy_test_settings
- SET config=(config-'interval_hours') || '{"daily_time":"08:00","model_id":"","schedule_enabled":true}'::jsonb,
+ SET config=(config-'interval_hours'-'auto_group_excluded_account_ids') || '{"daily_time":"08:00","model_id":"","schedule_enabled":true}'::jsonb,
  next_run_at=$1 WHERE id=1`, next)
 	require.NoError(t, err)
 	settings, err := repo.GetSettings(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 24, settings.IntervalHours)
 	require.Equal(t, "gpt-6-astra", settings.ModelID)
+	require.Equal(t, []int64{}, settings.AutoGroupExcludedAccountIDs)
 	require.True(t, settings.NextRunAt.Equal(next))
 	notDue, err := repo.Claim(ctx, service.CandyTestStart{}, "尚未到期", next.Add(-time.Minute), next.Add(time.Minute), true)
 	require.NoError(t, err)
@@ -353,6 +363,152 @@ func TestCandyRepositoryLegacyScheduleKeepsNextRun(t *testing.T) {
 	settings, err = repo.GetSettings(ctx)
 	require.NoError(t, err)
 	require.True(t, settings.NextRunAt.Equal(next.Add(24*time.Hour)))
+}
+
+func TestCandyRepositoryExclusionsPersistAndLegacyUpdatesPreserveThem(t *testing.T) {
+	f := createCandyFixtures(t)
+	ctx := context.Background()
+	repo := NewCandyTestRepository(integrationDB)
+	input := candyFixtureSettings(f)
+	input.AutoGroupExcludedAccountIDs = []int64{f.accounts[0], f.accounts[4]}
+	_, err := repo.UpdateSettings(ctx, &input, time.Now())
+	require.NoError(t, err)
+	restored, err := NewCandyTestRepository(integrationDB).GetSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, input.AutoGroupExcludedAccountIDs, restored.AutoGroupExcludedAccountIDs)
+
+	// 旧客户端省略字段、修改其他配置或关闭自动调组时，不丢失排除名单。
+	input.AutoGroupExcludedAccountIDs = nil
+	input.AutoGroupEnabled = false
+	saved, err := repo.UpdateSettings(ctx, &input, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, restored.AutoGroupExcludedAccountIDs, saved.AutoGroupExcludedAccountIDs)
+	input.AutoGroupEnabled = true
+	saved, err = repo.UpdateSettings(ctx, &input, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, restored.AutoGroupExcludedAccountIDs, saved.AutoGroupExcludedAccountIDs)
+
+	input.AutoGroupExcludedAccountIDs = []int64{}
+	saved, err = repo.UpdateSettings(ctx, &input, time.Now())
+	require.NoError(t, err)
+	require.Equal(t, []int64{}, saved.AutoGroupExcludedAccountIDs)
+	_, err = integrationDB.Exec(`UPDATE candy_test_settings SET config=jsonb_set(config, '{auto_group_excluded_account_ids}', 'null'::jsonb) WHERE id=1`)
+	require.NoError(t, err)
+	saved, err = repo.GetSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []int64{}, saved.AutoGroupExcludedAccountIDs)
+}
+
+func TestCandyRepositoryExcludedAccountsStillTestAndNewAccountsJoinGroups(t *testing.T) {
+	for _, scheduled := range []bool{false, true} {
+		for _, status := range []string{"normal", "degraded"} {
+			t.Run(fmt.Sprintf("定时=%t/结论=%s", scheduled, status), func(t *testing.T) {
+				f := createCandyFixtures(t)
+				ctx := context.Background()
+				repo := NewCandyTestRepository(integrationDB)
+				input := candyFixtureSettings(f)
+				input.AutoGroupExcludedAccountIDs = []int64{f.accounts[0], f.accounts[1]}
+				input.ScheduleEnabled = scheduled
+				now := time.Now()
+				_, err := repo.UpdateSettings(ctx, &input, now.Add(-48*time.Hour))
+				require.NoError(t, err)
+				_, err = integrationDB.Exec(`INSERT INTO account_groups(account_id,group_id,priority) VALUES ($1,$2,7),($1,$3,13)`, f.accounts[0], f.groups[0], f.groups[2])
+				require.NoError(t, err)
+
+				// 保存选择后导入的 OAuth 账号无需手动勾选，也会默认执行自动调组。
+				var newID int64
+				require.NoError(t, integrationDB.QueryRow(`INSERT INTO accounts(name,platform,type) VALUES ('后续导入账号','openai','oauth') RETURNING id`).Scan(&newID))
+				t.Cleanup(func() {
+					_, _ = integrationDB.Exec(`DELETE FROM scheduler_outbox WHERE account_id=$1`, newID)
+					_, _ = integrationDB.Exec(`DELETE FROM accounts WHERE id=$1`, newID)
+				})
+				batch, err := repo.Claim(ctx, service.CandyTestStart{All: true}, "排除账号照常测智", now, now.Add(time.Minute), scheduled)
+				require.NoError(t, err)
+				ids := []int64{}
+				for _, job := range batch.Results {
+					ids = append(ids, job.AccountID)
+					job.Status, job.Answer, job.ResponseText = status, "22", "最终答案：22"
+					if status == "normal" {
+						job.Answer, job.ResponseText = "21", "最终答案：21"
+					}
+					require.NoError(t, repo.Complete(ctx, job))
+					saved, err := repo.GetResult(ctx, job.ID)
+					require.NoError(t, err)
+					require.Equal(t, status, saved.Status)
+					require.Equal(t, job.ResponseText, saved.ResponseText)
+					require.Empty(t, saved.GroupError)
+					require.NotNil(t, saved.GroupAction)
+					if job.AccountID == f.accounts[0] || job.AccountID == f.accounts[1] {
+						require.Equal(t, "account_excluded", saved.GroupAction.SkippedReason)
+						require.Empty(t, saved.GroupAction.AddedGroupIDs)
+						require.Empty(t, saved.GroupAction.RemovedGroupIDs)
+					} else {
+						require.Empty(t, saved.GroupAction.SkippedReason)
+						want := input.NormalAddGroupIDs
+						if status == "degraded" {
+							want = input.DegradedAddGroupIDs
+						}
+						require.Equal(t, want, candyAccountGroups(t, job.AccountID))
+					}
+				}
+				require.ElementsMatch(t, []int64{f.accounts[0], f.accounts[1], f.accounts[5], newID}, ids)
+				require.Equal(t, []int64{f.groups[0], f.groups[2]}, candyAccountGroups(t, f.accounts[0]))
+				require.Empty(t, candyAccountGroups(t, f.accounts[1]))
+				var priority, outboxCount int
+				require.NoError(t, integrationDB.QueryRow(`SELECT priority FROM account_groups WHERE account_id=$1 AND group_id=$2`, f.accounts[0], f.groups[2]).Scan(&priority))
+				require.Equal(t, 13, priority)
+				require.NoError(t, integrationDB.QueryRow(`SELECT count(*) FROM scheduler_outbox WHERE account_id=ANY($1)`, pq.Array(input.AutoGroupExcludedAccountIDs)).Scan(&outboxCount))
+				require.Zero(t, outboxCount)
+				list, _, err := repo.ListResults(ctx, 0, 20)
+				require.NoError(t, err)
+				for _, result := range list {
+					if result.AccountID == f.accounts[0] {
+						require.Nil(t, result.SettingsSnapshot)
+						require.Equal(t, "account_excluded", result.GroupAction.SkippedReason)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestCandyRepositoryExclusionDuringRunAndReenableNextBatch(t *testing.T) {
+	for _, excludedAtStart := range []bool{false, true} {
+		t.Run(fmt.Sprintf("启动时排除=%t", excludedAtStart), func(t *testing.T) {
+			f := createCandyFixtures(t)
+			ctx := context.Background()
+			repo := NewCandyTestRepository(integrationDB)
+			input := candyFixtureSettings(f)
+			if excludedAtStart {
+				input.AutoGroupExcludedAccountIDs = []int64{f.accounts[0]}
+			}
+			_, err := repo.UpdateSettings(ctx, &input, time.Now())
+			require.NoError(t, err)
+			_, err = integrationDB.Exec(`INSERT INTO account_groups(account_id,group_id) VALUES ($1,$2)`, f.accounts[0], f.groups[2])
+			require.NoError(t, err)
+			job := candyFixtureClaim(t, repo, f.accounts[0], "运行中切换参与")
+			input.AutoGroupExcludedAccountIDs = []int64{f.accounts[0]}
+			if excludedAtStart {
+				input.AutoGroupExcludedAccountIDs = []int64{}
+			}
+			_, err = repo.UpdateSettings(ctx, &input, time.Now())
+			require.NoError(t, err)
+			job.Status, job.Answer = "degraded", "22"
+			require.NoError(t, repo.Complete(ctx, job))
+			require.Equal(t, []int64{f.groups[2]}, candyAccountGroups(t, f.accounts[0]))
+			require.NotNil(t, job.GroupAction)
+			require.Equal(t, "account_excluded", job.GroupAction.SkippedReason)
+			require.NoError(t, repo.Finish(ctx, job.RunID, time.Now()))
+			input.AutoGroupExcludedAccountIDs = []int64{}
+			_, err = repo.UpdateSettings(ctx, &input, time.Now())
+			require.NoError(t, err)
+			job = candyFixtureClaim(t, repo, f.accounts[0], "下轮恢复参与")
+			job.Status, job.Answer = "degraded", "22"
+			require.NoError(t, repo.Complete(ctx, job))
+			require.Equal(t, []int64{f.groups[1]}, candyAccountGroups(t, f.accounts[0]))
+			require.Empty(t, job.GroupAction.SkippedReason)
+		})
+	}
 }
 
 func TestCandyRepositoryNoGroupChangeWhenDisabled(t *testing.T) {
