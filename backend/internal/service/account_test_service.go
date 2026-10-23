@@ -366,11 +366,20 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
+		if candyTestRequested(c) {
+			return &candyTestSkippedError{reason: "无法读取账号最新状态，已跳过测试"}
+		}
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 	bindAccountTestPlatform(c, account)
 	if candyTestRequested(c) && (account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
-		return s.sendErrorAndEnd(c, "糖果测试仅支持 GPT OAuth 主账号，账号类型可能已变更")
+		return &candyTestSkippedError{reason: "账号类型已变更，不再是 GPT OAuth 主账号，已跳过测试"}
+	}
+
+	if candyTestRequested(c) {
+		if err := s.checkCandyAccountAvailable(ctx, account, modelID); err != nil {
+			return err
+		}
 	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal

@@ -527,10 +527,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}, nil
 	}
 
+	restReplay := &accountRestWSReplay{}
+	defer func() { restReplay.clearBinding(ctx, s, c, returnErr) }()
 	writeClientMessage := func(message []byte) error {
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		restReplay.observe(message)
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 
@@ -565,6 +568,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return err
 	}
 
+	restReplay.begin(firstClientMessage, firstPayload.originalModel)
 	useHTTPBridge := forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID)
 	turnState := strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 	stateStore := s.getOpenAIWSStateStore()
@@ -745,7 +749,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if bridgeErr != nil {
 				if turn > 1 && isAccountProtectionError(bridgeErr) {
-					return newOpenAIWSCurrentTurnFailoverError(bridgeErr, nil)
+					return restReplay.wrap(bridgeErr)
 				}
 				var failoverErr *UpstreamFailoverError
 				if turn > 1 && errors.As(bridgeErr, &failoverErr) && failoverErr != nil {
@@ -816,6 +820,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if parseErr != nil {
 				return parseErr
 			}
+			restReplay.begin(nextClientMessage, nextPayload.originalModel)
 			currentBridgePayload = nextPayload
 		}
 	}
@@ -1929,7 +1934,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			sessionLease.MarkBroken()
 			if turn > 1 && isAccountProtectionError(finalErr) {
-				return newOpenAIWSCurrentTurnFailoverError(finalErr, nil)
+				return restReplay.wrap(finalErr)
 			}
 			return finalErr
 		}
@@ -2066,6 +2071,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 		}
+		restReplay.begin(nextClientMessage, nextPayload.originalModel)
 		currentPayload = nextPayload.payloadRaw
 		currentIntegrity = nextPayload.integritySnapshot
 		currentClientPayload = nextPayload.rawForHash

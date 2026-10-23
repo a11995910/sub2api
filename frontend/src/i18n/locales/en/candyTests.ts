@@ -72,5 +72,6 @@ export default {
   testError: 'Test error',
   groupError: 'Group change failed',
   close: 'Close',
-  statuses: { running: 'Running', normal: 'Normal intelligence', degraded: 'Degraded intelligence', error: 'Test failed' },
+  skipReason: '跳过原因',
+  statuses: { skipped: '已跳过', running: 'Running', normal: 'Normal intelligence', degraded: 'Degraded intelligence', error: 'Test failed' },
 }

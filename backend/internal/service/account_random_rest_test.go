@@ -41,11 +41,11 @@ func TestAccountRandomRestDrainSharedAndResume(t *testing.T) {
 	require.ErrorAs(t, err, &fail)
 	code, _, _ := fail.AccountProtectionClientError()
 	require.Equal(t, "account_random_draining", code)
-	require.False(t, fail.ShouldRetryNextAccount())
+	require.True(t, fail.ShouldRetryNextAccount())
 	require.False(t, fail.ShouldReportAccountScheduleFailure())
 	require.False(t, s.allowsNewSession(ctx, root))
-	// 只有随机休息不影响老会话候选的可用性，最终出口明确拒绝。
-	require.NoError(t, s.checkRequestProtection(root, time.Now(), false))
+	// 休息同时阻止新老会话选择，不能继续占用绑定。
+	require.True(t, IsAccountRestError(s.checkSessionRest(ctx, root)))
 	done1()
 	done1()
 	require.EqualValues(t, 1, rdb.SCard(ctx, "account_random_rest:{1}:active").Val())
@@ -235,11 +235,10 @@ func TestAccountRandomRestStickyAndNewSessionScheduling(t *testing.T) {
 				}
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				if session == "固定会话" {
-					require.EqualValues(t, 1, result.Account.ID)
-				} else {
-					require.NotEqualValues(t, 1, result.Account.ID)
-				}
+				require.NotEqualValues(t, 1, result.Account.ID)
+				bound, bindErr := svc.getStickySessionAccountID(ctx, nil, session)
+				require.NoError(t, bindErr)
+				require.NotEqualValues(t, 1, bound)
 				if result.ReleaseFunc != nil {
 					result.ReleaseFunc()
 				}
@@ -248,4 +247,74 @@ func TestAccountRandomRestStickyAndNewSessionScheduling(t *testing.T) {
 			require.EqualValues(t, 0, rdb.SCard(ctx, "account_random_rest:{1}:active").Val())
 		})
 	}
+}
+
+func TestAccountRandomRestInterruptsRPMQueue(t *testing.T) {
+	rotation, mr, rdb := protectionWaitFixture(t, 1)
+	randomRestTestConfig(rotation, 100, 0)
+	now := time.Now()
+	mr.SetTime(now)
+	ctx := context.Background()
+	account := protectionTestAccount(1)
+	done, err := rotation.BeginProtectedRequest(ctx, account)
+	require.NoError(t, err)
+	result := make(chan error, 1)
+	go func() { result <- rotation.WaitAdmitRequest(ctx, account) }()
+	waitProtectionQueue(t, rdb, 1)
+	mr.SetTime(now.Add(time.Minute))
+	select {
+	case err := <-result:
+		require.True(t, IsAccountRestError(err))
+		var failure *UpstreamFailoverError
+		require.ErrorAs(t, err, &failure)
+		require.True(t, failure.ShouldRetryNextAccount())
+	case <-time.After(3 * time.Second):
+		t.Fatal("休息应立即退出限速队列")
+	}
+	waitProtectionQueue(t, rdb, 0)
+	require.EqualValues(t, 1, rdb.SCard(ctx, "account_random_rest:{1}:active").Val())
+	done()
+}
+
+func TestAccountRandomRestClearsPreviousResponseWithoutSnapshot(t *testing.T) {
+	rotation, mr, _ := protectionWaitFixture(t, 0)
+	randomRestTestConfig(rotation, 100, 0)
+	_, accounts, _, _ := smartSchedulingFixture()
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts}, cache: &schedulerTestGatewayCache{}, accountTimeRotation: rotation}
+	ctx := context.Background()
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, 0, "resp_rest", 1, time.Hour))
+	now := time.Now()
+	mr.SetTime(now)
+	done, err := rotation.BeginProtectedRequest(ctx, &accounts[0])
+	require.NoError(t, err)
+	done()
+	mr.SetTime(now.Add(time.Minute))
+	id, _, _, _ := svc.resolveAccountByPreviousResponseIDForCapability(ctx, nil, "resp_rest", "gpt-5.1", nil, "", false)
+	require.Zero(t, id)
+	id, err = store.GetResponseAccount(ctx, 0, "resp_rest")
+	require.NoError(t, err)
+	require.Zero(t, id)
+}
+
+func TestAccountRandomRestOverridesPreservedStickyBinding(t *testing.T) {
+	rotation, mr, _ := protectionWaitFixture(t, 0)
+	randomRestTestConfig(rotation, 100, 0)
+	_, accounts, _, _ := smartSchedulingFixture()
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts}, cache: &schedulerTestGatewayCache{}, accountTimeRotation: rotation}
+	ctx := context.Background()
+	require.NoError(t, svc.setStickySessionAccountID(ctx, nil, "保护绑定", 1, time.Hour))
+	now := time.Now()
+	mr.SetTime(now)
+	done, err := rotation.BeginProtectedRequest(ctx, &accounts[0])
+	require.NoError(t, err)
+	done()
+	mr.SetTime(now.Add(time.Minute))
+	scheduler := newDefaultOpenAIAccountScheduler(svc, nil)
+	result, _, err := scheduler.(*defaultOpenAIAccountScheduler).selectBySessionHash(ctx, OpenAIAccountScheduleRequest{Platform: PlatformOpenAI, SessionHash: "保护绑定", RequestedModel: "gpt-5.1", PreserveStickyBinding: true, DisableStickyEscape: true})
+	require.NoError(t, err)
+	require.Nil(t, result)
+	bound, err := svc.getStickySessionAccountID(ctx, nil, "保护绑定")
+	require.EqualError(t, err, "sticky session not found")
+	require.Zero(t, bound)
 }

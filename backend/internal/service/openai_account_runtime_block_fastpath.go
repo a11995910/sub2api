@@ -620,3 +620,11 @@ func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account
 	// telemetry, but must not prevent trying the bounded next-account budget.
 	return failedSwitches >= openAIOAuth429MaxAccountAttempts
 }
+
+// 只有配置了随机休息的账号才读取共享状态，不使用会掩盖刚开始休息的本地缓存。
+func (s *OpenAIGatewayService) isOpenAIAccountSchedulingBlocked(ctx context.Context, account *Account, requestedModel string, compact ...bool) bool {
+	if s == nil {
+		return false
+	}
+	return s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, compact...) || s.accountTimeRotation.checkRandomRest(ctx, account) != nil
+}

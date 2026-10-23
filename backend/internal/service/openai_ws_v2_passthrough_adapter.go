@@ -672,7 +672,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	firstClientMessage []byte,
 	hooks *OpenAIWSIngressHooks,
 	wsDecision OpenAIWSProtocolDecision,
-) error {
+) (returnErr error) {
 	// The same request context survives scheduler failover attempts. Clear any
 	// reverse mapping installed by the prior account before processing frames.
 	setCodexToolNameReverse(c, nil)
@@ -688,6 +688,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
+	restReplay := &accountRestWSReplay{}
+	defer func() { restReplay.clearBinding(ctx, s, c, returnErr) }()
+	restReplay.begin(firstClientMessage, gjson.GetBytes(firstClientMessage, "model").String())
 	firstIntegrity := newOpenAIRequestIntegritySnapshot(account, firstClientMessage)
 	if isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(firstClientMessage, account)
@@ -973,6 +976,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	responseCreates := atomic.Int32{}
+	responseCreates.Store(1)
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	var acceptedTurnStartedAt atomic.Pointer[time.Time]
 	clientFrameConn := &openAIWSClientFrameConn{
@@ -1008,6 +1013,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if isResponseCreate || eventType == "session.update" {
 				frameIntegrity = newOpenAIRequestIntegritySnapshot(account, payload)
 			}
+			if eventType == "session.update" {
+				restReplay.invalidate()
+			}
 			responseCreateAt := time.Time{}
 			acceptedTurn := false
 			if isResponseCreate {
@@ -1016,6 +1024,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					err := errors.New("overlapping response.create is not supported")
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
 				}
+				responseCreates.Add(1)
+				restReplay.begin(payload, usageMeta.requestModelForFrame(payload))
 				defer func() {
 					if !acceptedTurn {
 						turnLifecycle.cancelResponseCreate()
@@ -1301,6 +1311,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 			},
 			BeforeClientWrite: func(msgType coderws.MessageType, payload []byte) {
+				if msgType == coderws.MessageText || msgType == coderws.MessageBinary {
+					restReplay.observe(restoreCodexToolNamesFromContext(c, payload))
+				}
 				if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.beginTerminalWrite()
 					// 与轮次终态绑定，兼容缺少响应 ID 及二进制 JSON 终态。
@@ -1466,9 +1479,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	)
 
 	relayErr := relayExit.Err
-	if isAccountProtectionError(relayErr) && turnCount > 0 {
-		// 后续轮次被本地保护拒绝时关闭会话，不能换号重放首轮请求。
-		relayErr = newOpenAIWSCurrentTurnFailoverError(relayErr, nil)
+	if isAccountProtectionError(relayErr) && responseCreates.Load() > 1 {
+		// 仅在休息且当前轮历史完整时换号；其他保护错误不重放。
+		relayErr = restReplay.wrap(relayErr)
 	}
 
 	var firstOutputTimeoutErr *openAIWSPassthroughFirstOutputTimeoutError

@@ -1007,7 +1007,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+	if s.isOpenAIAccountSchedulingBlocked(ctx, account, requestedModel, requireCompact) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -1192,7 +1192,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if _, excluded := excludedIDs[account.ID]; excluded {
 				continue
 			}
-			if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) || s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+			if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) || s.isOpenAIAccountSchedulingBlocked(ctx, account, requestedModel, requireCompact) {
 				continue
 			}
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
@@ -1276,7 +1276,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if !parentHealthyForShadow(account, parentLookupL2) {
 			return false
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+		if s.isOpenAIAccountSchedulingBlocked(ctx, account, requestedModel, requireCompact) {
 			return false
 		}
 		return !needsUpstreamCheck || !s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact)
@@ -1335,7 +1335,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, requireCompact) {
+					} else if s.isOpenAIAccountSchedulingBlocked(ctx, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1393,7 +1393,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			filterStats.exclude("shadow_parent_unhealthy")
 			continue
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel, requireCompact) {
+		if s.isOpenAIAccountSchedulingBlocked(ctx, acc, requestedModel, requireCompact) {
 			filterStats.exclude("runtime_blocked")
 			continue
 		}
@@ -1719,7 +1719,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel, requireCompact) {
+	if s.isOpenAIAccountSchedulingBlocked(ctx, fresh, requestedModel, requireCompact) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, fresh) {
@@ -1796,7 +1796,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel, requireCompact) {
+	if s.isOpenAIAccountSchedulingBlocked(ctx, latest, requestedModel, requireCompact) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, latest) {
@@ -1928,5 +1928,25 @@ func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig
 		FallbackMaxWaiting:       100,
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
+	}
+}
+
+// ClearRestingAccountBinding 清理当前请求关联的休息账号绑定；空闲绑定在下次调度时失效。
+func (s *OpenAIGatewayService) ClearRestingAccountBinding(ctx context.Context, groupID *int64, sessionHash, responseID string, err error) {
+	if s == nil || !IsAccountRestError(err) {
+		return
+	}
+	if sessionHash != "" {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+	}
+	if store := s.getOpenAIWSStateStore(); store != nil {
+		if responseID != "" {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			store.DeleteResponseConn(responseID)
+		}
+		if sessionHash != "" {
+			store.DeleteSessionConn(derefGroupID(groupID), sessionHash)
+			store.DeleteSessionTurnState(derefGroupID(groupID), sessionHash)
+		}
 	}
 }

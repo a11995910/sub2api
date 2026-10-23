@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,7 @@ func TestCandyBackgroundRequiresCompletedResponses(t *testing.T) {
 		{"拒答事件", `{"type":"response.refusal.delta","delta":"拒绝"}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			account := &Account{ID: 91, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1, Credentials: map[string]any{"access_token": "测试令牌"}}
+			account := &Account{ID: 91, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"access_token": "测试令牌"}}
 			body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"21\"}\n\n"
 			if tc.terminal != "" {
 				body += "data: " + tc.terminal + "\n\n"
@@ -62,7 +63,7 @@ func TestCandyBackgroundRequiresCompletedResponses(t *testing.T) {
 }
 
 func TestCandyBackgroundRejectsMappedImageModel(t *testing.T) {
-	account := &Account{ID: 92, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1, Credentials: map[string]any{"access_token": "测试令牌", "model_mapping": map[string]any{"别名": "gpt-image-2"}}}
+	account := &Account{ID: 92, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"access_token": "测试令牌", "model_mapping": map[string]any{"别名": "gpt-image-2"}}}
 	repo := &openAIAccountTestRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{92: account}}}
 	upstream := &queuedHTTPUpstream{}
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
@@ -70,5 +71,57 @@ func TestCandyBackgroundRejectsMappedImageModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "failed", result.Status)
 	require.True(t, strings.Contains(result.ErrorMessage, "图像模型"))
+	require.Empty(t, upstream.requests)
+}
+
+func TestCandyBackgroundSkipsUnavailableWithoutSending(t *testing.T) {
+	future, past := time.Now().Add(time.Hour), time.Now().Add(-time.Hour)
+	for _, tc := range []struct {
+		name   string
+		change func(*Account)
+	}{
+		{"429", func(a *Account) { a.RateLimitResetAt = &future }},
+		{"停用", func(a *Account) { a.Status = StatusDisabled }},
+		{"错误", func(a *Account) { a.Status = StatusError }},
+		{"暂停调度", func(a *Account) { a.Schedulable = false }},
+		{"过载", func(a *Account) { a.OverloadUntil = &future }},
+		{"临时故障", func(a *Account) { a.TempUnschedulableUntil = &future }},
+		{"账号过期", func(a *Account) { a.AutoPauseOnExpired = true; a.ExpiresAt = &past }},
+		{"模型冷却", func(a *Account) {
+			a.Extra = map[string]any{"model_rate_limits": map[string]any{AccountIntelligenceDefaultModel: map[string]any{"rate_limit_reset_at": future.Format(time.RFC3339)}}}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := protectionTestAccount(91)
+			tc.change(account)
+			upstream := &queuedHTTPUpstream{}
+			repo := &openAIAccountTestRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{91: account}}}
+			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+			result, err := svc.RunCandyBackground(context.Background(), 91, "", &PelicanTestConfig{Prompt: "测试题"})
+			require.NoError(t, err)
+			require.Equal(t, "skipped", result.Status, result.ErrorMessage)
+			require.NotEmpty(t, result.ErrorMessage)
+			require.Empty(t, result.ResponseText)
+			require.Empty(t, upstream.requests)
+		})
+	}
+}
+
+func TestCandyBackgroundSkipsRestingAccount(t *testing.T) {
+	rotation, mr, _ := protectionWaitFixture(t, 0)
+	randomRestTestConfig(rotation, 100, 0)
+	account := protectionTestAccount(1)
+	now := time.Now()
+	mr.SetTime(now)
+	done, err := rotation.BeginProtectedRequest(context.Background(), account)
+	require.NoError(t, err)
+	done()
+	mr.SetTime(now.Add(time.Minute))
+	upstream := &queuedHTTPUpstream{}
+	repo := &openAIAccountTestRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{1: account}}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}, openaiGatewayService: &OpenAIGatewayService{accountTimeRotation: rotation}}
+	result, err := svc.RunCandyBackground(context.Background(), 1, "", &PelicanTestConfig{Prompt: "测试题"})
+	require.NoError(t, err)
+	require.Equal(t, "skipped", result.Status)
 	require.Empty(t, upstream.requests)
 }

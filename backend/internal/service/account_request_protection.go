@@ -45,6 +45,24 @@ func isAccountProtectionError(err error) bool {
 	return errors.As(err, &failure) && failure.Reason == accountProtectionReason
 }
 
+// IsAccountRestError 表示账号已停止接单，应解除绑定并重新选号；存储故障不属于休息。
+func IsAccountRestError(err error) bool {
+	var failure *UpstreamFailoverError
+	if !errors.As(err, &failure) {
+		return false
+	}
+	code, _, ok := failure.AccountProtectionClientError()
+	return ok && (code == "account_resting" || code == "account_random_draining" || code == "account_random_resting")
+}
+
+// 调度和发送前复核共用休息规则，不在这里检查 RPM，避免破坏原账号排队。
+func (s *AccountTimeRotationService) checkSessionRest(ctx context.Context, account *Account) error {
+	if err := s.checkRequestProtection(account, time.Now(), false); err != nil {
+		return err
+	}
+	return s.checkRandomRest(ctx, account)
+}
+
 func protectionRootID(account *Account) int64 {
 	if account.ParentAccountID != nil {
 		return *account.ParentAccountID

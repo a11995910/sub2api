@@ -361,6 +361,11 @@ func (s *CandyTestService) executeAccount(ctx context.Context, job *CandyTestRes
 	if result.PelicanConfig != nil {
 		job.ModelID = result.PelicanConfig.ModelID
 	}
+	if result.Status == "skipped" {
+		job.Status, job.ErrorMessage = "skipped", result.ErrorMessage
+		job.ResponseText, job.Answer = "", ""
+		return
+	}
 	if result.Status != "success" {
 		job.ErrorMessage = result.ErrorMessage
 		if job.ErrorMessage == "" {

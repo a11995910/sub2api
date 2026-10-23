@@ -113,16 +113,18 @@ func (s *AccountTimeRotationService) runRandomRest(ctx context.Context, id int64
 
 func accountRandomRestError(code, message string, retry int) error {
 	err := accountProtectionError(code, message, retry)
-	err.(*UpstreamFailoverError).NextAccountAction = NextAccountStop
+	if !IsAccountRestError(err) {
+		err.(*UpstreamFailoverError).NextAccountAction = NextAccountStop
+	}
 	return err
 }
 
 func (state randomRestState) admissionError() error {
 	switch state.phase {
 	case "draining":
-		return accountRandomRestError("account_random_draining", "原账号已暂停接单，正在等待已有请求结束，请稍后重试", 15)
+		return accountRandomRestError("account_random_draining", "原账号已暂停接单，请使用其他可用账号", 15)
 	case "resting":
-		return accountRandomRestError("account_random_resting", "原账号随机休息中，请在休息结束后重试", max(1, int(state.until.Sub(state.now).Seconds())+1))
+		return accountRandomRestError("account_random_resting", "原账号随机休息中，请使用其他可用账号", max(1, int(state.until.Sub(state.now).Seconds())+1))
 	}
 	return nil
 }

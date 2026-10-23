@@ -169,7 +169,7 @@ func TestAccountRandomRestWebSocketDrainsBeforeRest(t *testing.T) {
 			require.Error(t, rotation.checkRandomRest(context.Background(), account))
 			require.Equal(t, "draining", rdb.HGet(context.Background(), "account_random_rest:{1}", "phase").Val())
 			// 休息只阻止接单，已经开始的轮次仍能正常返回完整终态。
-			upstream.Send(`{"type":"response.completed","response":{"id":"resp_random_rest","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+			upstream.Send(`{"type":"response.completed","response":{"id":"resp_random_rest","model":"gpt-5.1","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"第一轮答案"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`)
 			_, err := readPassthroughLifecycleFrame(t, client, time.Second)
 			require.NoError(t, err)
 			require.Eventually(t, func() bool { return rdb.SCard(context.Background(), "account_random_rest:{1}:active").Val() == 0 }, time.Second, time.Millisecond)
@@ -179,6 +179,12 @@ func TestAccountRandomRestWebSocketDrainsBeforeRest(t *testing.T) {
 			case err := <-serverErr:
 				require.Error(t, err)
 				require.True(t, isAccountProtectionError(err))
+				payload, current := OpenAIWSCurrentTurnRetryPayload(err)
+				require.True(t, current)
+				require.NotEmpty(t, payload)
+				require.Contains(t, string(payload), "继续")
+				require.Contains(t, string(payload), "第一轮答案")
+				require.NotContains(t, string(payload), "previous_response_id")
 			case frame := <-upstream.writes:
 				t.Fatalf("休息中不能发送或重放请求：%s", frame)
 			case <-time.After(3 * time.Second):
@@ -192,7 +198,9 @@ func TestAccountRandomRestWebSocketDrainsBeforeRest(t *testing.T) {
 func TestAccountRandomRestPassthroughTerminalWithoutUsage(t *testing.T) {
 	for _, typ := range []websocket.MessageType{websocket.MessageText, websocket.MessageBinary} {
 		t.Run(typ.String(), func(t *testing.T) {
-			rotation, _, rdb := protectionWaitFixture(t, 0)
+			rotation, mr, rdb := protectionWaitFixture(t, 0)
+			now := time.Now()
+			mr.SetTime(now)
 			randomRestTestConfig(rotation, 100, 0)
 			upstream := newStagedPassthroughConn()
 			cfg := passthroughLifecycleConfig()
@@ -212,9 +220,14 @@ func TestAccountRandomRestPassthroughTerminalWithoutUsage(t *testing.T) {
 			_, err := readPassthroughLifecycleFrame(t, client, time.Second)
 			require.NoError(t, err)
 			require.Eventually(t, func() bool { return rdb.SCard(context.Background(), "account_random_rest:{1}:active").Val() == 0 }, time.Second, time.Millisecond)
-			require.NoError(t, client.CloseNow())
+			mr.SetTime(now.Add(time.Minute))
+			require.NoError(t, client.Write(context.Background(), websocket.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","previous_response_id":"unknown","input":"下一轮"}`)))
 			select {
-			case <-serverErr:
+			case err := <-serverErr:
+				require.True(t, IsAccountRestError(err))
+				payload, current := OpenAIWSCurrentTurnRetryPayload(err)
+				require.True(t, current, "缺少用量不能误把下一轮当作首轮")
+				require.Empty(t, payload, "缺少完整历史不能重放首轮")
 			case <-time.After(3 * time.Second):
 				t.Fatal("连接退出未完成")
 			}

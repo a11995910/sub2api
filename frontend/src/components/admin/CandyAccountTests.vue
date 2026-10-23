@@ -119,7 +119,7 @@
             <tr v-for="result in results" :key="result.id" :data-testid="`candy-result-${result.id}`">
               <td class="whitespace-nowrap px-5 py-4 text-xs tabular-nums">{{ beijingTime(result.started_at) }}</td>
               <td class="px-4 py-4"><p class="font-medium">{{ result.account_name || `#${result.account_id}` }}</p><p class="mt-1 text-xs text-gray-500">#{{ result.account_id }} · {{ result.model_id || '—' }}</p></td>
-              <td class="px-4 py-4"><span class="inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs" :class="statusClass(result.status)">{{ t(`candyTests.statuses.${result.status}`) }}</span><p v-if="result.error_message" class="mt-1 max-w-xs break-words text-xs text-red-600 dark:text-red-400">{{ result.error_message }}</p></td>
+              <td class="px-4 py-4"><span class="inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs" :class="statusClass(result.status)">{{ t(`candyTests.statuses.${result.status}`) }}</span><p v-if="result.error_message" class="mt-1 max-w-xs break-words text-xs" :class="result.status === 'skipped' ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'">{{ result.error_message }}</p></td>
               <td class="px-4 py-4 font-mono">{{ result.answer || '—' }}</td>
               <td class="px-4 py-4 text-xs"><p>{{ groupActionLabel(result) }}</p><p v-if="result.group_error" class="mt-1 max-w-xs break-words text-red-600 dark:text-red-400">{{ t('candyTests.groupError') }}：{{ result.group_error }}</p></td>
               <td class="px-4 py-4 text-right"><button type="button" class="whitespace-nowrap text-xs text-primary-600 hover:underline dark:text-primary-400" :data-testid="`candy-detail-${result.id}`" @click="openDetail(result)">{{ t('candyTests.detail') }}</button></td>
@@ -136,7 +136,7 @@
         <p v-if="detailLoading" role="status">{{ t('candyTests.loading') }}</p>
         <p v-if="detailError" role="alert" class="text-red-600 dark:text-red-400">{{ detailError }}</p>
         <p>{{ t('candyTests.result') }}：<strong>{{ t(`candyTests.statuses.${detail.status}`) }}</strong> · {{ t('candyTests.answer') }}：{{ detail.answer || '—' }} · {{ t('candyTests.expectedAnswer') }}：{{ detail.settings_snapshot?.expected_answer || '—' }}</p>
-        <div v-if="detail.error_message" class="rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-900/20 dark:text-red-300"><strong>{{ t('candyTests.testError') }}</strong><p class="mt-1 break-words">{{ detail.error_message }}</p></div>
+        <div v-if="detail.error_message" class="rounded-lg p-3" :class="statusClass(detail.status)"><strong>{{ t(detail.status === 'skipped' ? 'candyTests.skipReason' : 'candyTests.testError') }}</strong><p class="mt-1 break-words">{{ detail.error_message }}</p></div>
         <div><h4 class="mb-1 font-medium">{{ t('candyTests.groupAction') }}</h4><p>{{ groupActionLabel(detail) }}</p><p v-if="detail.group_error" class="mt-1 text-red-600 dark:text-red-400">{{ t('candyTests.groupError') }}：{{ detail.group_error }}</p></div>
         <div><h4 class="mb-2 font-medium">{{ t('candyTests.prompt') }}</h4><pre class="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 font-sans text-sm leading-6 dark:bg-dark-900">{{ detail.settings_snapshot?.prompt || '—' }}</pre></div>
         <div><h4 class="mb-2 font-medium">{{ t('candyTests.response') }}</h4><pre class="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 font-sans text-sm leading-6 dark:bg-dark-900" data-testid="candy-response">{{ detail.response_text || t('candyTests.noResponse') }}</pre></div>
@@ -252,6 +252,7 @@ function groupActionLabel(result: CandyTestResult) {
 
 function statusClass(status: CandyTestResult['status']) {
   return {
+    skipped: 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400',
     running: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
     normal: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
     degraded: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',

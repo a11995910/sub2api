@@ -608,3 +608,27 @@ func TestCandyRepositoryEmptyScheduledBatchAndHistoryRetention(t *testing.T) {
 	require.Empty(t, settings.RunningRunID)
 	require.Nil(t, settings.RunningUntil)
 }
+
+func TestCandyRepositorySkippedPreservesGroups(t *testing.T) {
+	f := createCandyFixtures(t)
+	ctx := context.Background()
+	repo := NewCandyTestRepository(integrationDB)
+	input := candyFixtureSettings(f)
+	_, err := repo.UpdateSettings(ctx, &input, time.Now())
+	require.NoError(t, err)
+	_, err = integrationDB.Exec(`INSERT INTO account_groups(account_id,group_id,priority) VALUES ($1,$2,7)`, f.accounts[0], f.groups[2])
+	require.NoError(t, err)
+	job := candyFixtureClaim(t, repo, f.accounts[0], "跳过不可用账号")
+	job.Status, job.ErrorMessage = "skipped", "账号处于 429 冷却"
+	require.NoError(t, repo.Complete(ctx, job))
+	require.NoError(t, repo.Finish(ctx, job.RunID, time.Now()))
+	saved, err := repo.GetResult(ctx, job.ID)
+	require.NoError(t, err)
+	require.Equal(t, "skipped", saved.Status)
+	require.Nil(t, saved.GroupAction)
+	require.Empty(t, saved.Answer)
+	require.Equal(t, []int64{f.groups[2]}, candyAccountGroups(t, f.accounts[0]))
+	var count int
+	require.NoError(t, integrationDB.QueryRow(`SELECT count(*) FROM scheduler_outbox WHERE account_id=$1`, f.accounts[0]).Scan(&count))
+	require.Zero(t, count)
+}

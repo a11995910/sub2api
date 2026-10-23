@@ -557,15 +557,29 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
+	if restErr := s.service.accountTimeRotation.checkSessionRest(ctx, account); restErr != nil {
+		if IsAccountRestError(restErr) {
+			// 休息优先于保护绑定/固定会话选项。
+			_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		}
+		return nil, false, nil
+	}
 	if !s.isAccountRequestCompatible(ctx, account, req) {
+		if IsAccountRestError(s.service.accountTimeRotation.checkSessionRest(ctx, account)) {
+			_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		}
 		return nil, false, nil
 	}
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		clearBinding()
 		return nil, false, nil
 	}
+	boundAccount := account
 	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
 	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+		if IsAccountRestError(s.service.accountTimeRotation.checkSessionRest(ctx, boundAccount)) {
+			_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		}
 		clearBinding()
 		return nil, false, nil
 	}
@@ -1537,7 +1551,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("platform_mismatch")
 			continue
 		}
-		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact) {
+		if s.service.isOpenAIAccountSchedulingBlocked(ctx, account, req.RequestedModel, req.RequireCompact) {
 			filterStats.exclude("runtime_blocked")
 			continue
 		}
@@ -1868,7 +1882,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel, req.RequireCompact) {
+	if s != nil && s.service != nil && s.service.isOpenAIAccountSchedulingBlocked(ctx, account, req.RequestedModel, req.RequireCompact) {
 		return false, "runtime_blocked"
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {
@@ -2308,7 +2322,8 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 			account := selection.Account
 			model := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
 			selection.CheckAvailability = func() error {
-				if err := s.accountTimeRotation.checkRequestProtection(account, time.Now(), false); err != nil {
+				if err := s.accountTimeRotation.checkSessionRest(ctx, account); err != nil {
+					s.ClearRestingAccountBinding(ctx, groupID, sessionHash, previousResponseID, err)
 					return err
 				}
 				if s.openAICodexTicketBlocksAccount(account, model) {

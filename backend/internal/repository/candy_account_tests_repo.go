@@ -276,7 +276,7 @@ func (r *candyTestRepository) Claim(ctx context.Context, input service.CandyTest
 }
 
 func (r *candyTestRepository) Complete(ctx context.Context, result *service.CandyTestResult) error {
-	if result.Status != "normal" && result.Status != "degraded" && result.Status != "error" {
+	if result.Status != "normal" && result.Status != "degraded" && result.Status != "error" && result.Status != "skipped" {
 		return fmt.Errorf("糖果测试的完成状态无效")
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -302,7 +302,7 @@ func (r *candyTestRepository) Complete(ctx context.Context, result *service.Cand
 	}
 	var action *service.CandyTestGroupAction
 	groupError := ""
-	if saved.SettingsSnapshot != nil && saved.SettingsSnapshot.AutoGroupEnabled && result.Status != "error" {
+	if saved.SettingsSnapshot != nil && saved.SettingsSnapshot.AutoGroupEnabled && (result.Status == "normal" || result.Status == "degraded") {
 		// 取消参与立即保护尚未完成的结果；启动时已排除的账号从下一批次恢复参与。
 		if slices.Contains(saved.SettingsSnapshot.AutoGroupExcludedAccountIDs, saved.AccountID) || slices.Contains(current.AutoGroupExcludedAccountIDs, saved.AccountID) {
 			action = &service.CandyTestGroupAction{AddedGroupIDs: []int64{}, RemovedGroupIDs: []int64{}, SkippedReason: "account_excluded"}

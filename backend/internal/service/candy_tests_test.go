@@ -320,3 +320,18 @@ func TestCandyScheduledSelectionAlwaysAll(t *testing.T) {
 	require.True(t, repo.claimedSelection.All)
 	require.Empty(t, repo.claimedSelection.AccountIDs)
 }
+
+func TestCandySkippedDoesNotJudgeAnswer(t *testing.T) {
+	repo := newCandyServiceRepo(1)
+	svc := NewCandyTestService(repo, nil, nil)
+	svc.runAccount = func(context.Context, int64, string, *PelicanTestConfig) (*ScheduledTestResult, error) {
+		return &ScheduledTestResult{Status: "skipped", ErrorMessage: "账号处于 429 冷却", ResponseText: "21"}, nil
+	}
+	job := &CandyTestResult{AccountID: 1}
+	svc.executeAccount(context.Background(), job, DefaultCandyTestSettings())
+	saved := <-repo.completed
+	require.Equal(t, "skipped", saved.Status)
+	require.Empty(t, saved.Answer)
+	require.Empty(t, saved.ResponseText)
+	require.Contains(t, saved.ErrorMessage, "429")
+}

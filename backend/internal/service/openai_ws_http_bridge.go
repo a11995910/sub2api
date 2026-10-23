@@ -580,6 +580,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		observeStagedOpenAIRequestIntegrity(c, account, body, "responses_ws_http_bridge_final")
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		if err != nil {
+			// 本地准入拒绝尚未发送本轮，保留保护错误给外层安全切号，不能先写出客户端错误。
+			if isAccountProtectionError(err) {
+				return nil, err
+			}
 			if turn == 1 {
 				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 			}

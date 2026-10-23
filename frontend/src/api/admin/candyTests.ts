@@ -38,7 +38,7 @@ export interface CandyTestResult {
   account_id: number
   account_name: string
   run_id: string
-  status: 'running' | 'normal' | 'degraded' | 'error'
+  status: 'running' | 'normal' | 'degraded' | 'error' | 'skipped'
   answer: string
   response_text?: string
   error_message: string

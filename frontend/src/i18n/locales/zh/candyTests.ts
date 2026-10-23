@@ -72,5 +72,6 @@ export default {
   testError: '测试错误',
   groupError: '分组变更失败',
   close: '关闭',
-  statuses: { running: '测试中', normal: '智力正常', degraded: '智力下降', error: '测试失败' },
+  skipReason: '跳过原因',
+  statuses: { skipped: '已跳过', running: '测试中', normal: '智力正常', degraded: '智力下降', error: '测试失败' },
 }

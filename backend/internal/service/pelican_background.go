@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"regexp"
@@ -76,6 +77,10 @@ func (s *AccountTestService) runContentTestBackground(ctx context.Context, accou
 	status := "success"
 	if message != "" {
 		status = "failed"
+	}
+	var skipped *candyTestSkippedError
+	if errors.As(err, &skipped) {
+		status, output, message = "skipped", "", skipped.Error()
 	}
 	finished := time.Now()
 	snapshot := *cfg

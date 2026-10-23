@@ -97,7 +97,7 @@ func (s *AccountTimeRotationService) WaitAdmitRequest(ctx context.Context, accou
 		return err
 	}
 	// 队列清理或心跳收尾也可能跨越排班边界，返回发送层前再次复核。
-	return s.checkRequestProtection(account, time.Now(), false)
+	return s.checkSessionRest(ctx, account)
 }
 
 func (s *AccountTimeRotationService) waitAdmitRequest(ctx context.Context, account *Account, maxWait time.Duration) error {
@@ -140,7 +140,7 @@ func (s *AccountTimeRotationService) waitAdmitRequest(ctx context.Context, accou
 		}
 		code, _, _ := failure.AccountProtectionClientError()
 		if code != "account_rate_limited" {
-			if waiter != "" && code != "account_resting" {
+			if waiter != "" && !IsAccountRestError(err) {
 				failure.NextAccountAction = NextAccountStop
 			}
 			return err
