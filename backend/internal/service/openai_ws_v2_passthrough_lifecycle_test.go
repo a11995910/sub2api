@@ -180,6 +180,12 @@ func startPassthroughLifecycleServerWithHooks(
 			return
 		}
 		defer func() { _ = conn.CloseNow() }()
+		controlCtx := controlCtx
+		if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+			var stopReader func()
+			controlCtx, stopReader = WithAccountProtectionWSClient(controlCtx, conn)
+			defer stopReader()
+		}
 
 		msgType, firstMessage, err := ReadOpenAIWSClientMessage(
 			controlCtx,

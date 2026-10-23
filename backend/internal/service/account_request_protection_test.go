@@ -13,9 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	"github.com/alicebob/miniredis/v2"
-	"github.com/coder/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -172,7 +170,7 @@ func TestAccountProtectionHTTPAttemptsAndExistingBody(t *testing.T) {
 	inner.failure = errors.New("模拟上游断开")
 	_, err = httpClient.Do(req, "", 2, 1)
 	require.ErrorIs(t, err, inner.failure)
-	_, err = httpClient.Do(req, "", 2, 1)
+	err = svc.waitAdmitRequest(context.Background(), shadow, 20*time.Millisecond)
 	require.True(t, isAccountProtectionError(err))
 	require.Equal(t, 2, inner.calls)
 	var failure *UpstreamFailoverError
@@ -195,30 +193,6 @@ func TestAccountProtectionHTTPAttemptsAndExistingBody(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), "完成")
 	require.NoError(t, response.Body.Close())
-}
-
-type protectionFrame struct {
-	openaiwsv2.FrameConn
-	writes int
-}
-
-func (f *protectionFrame) WriteFrame(context.Context, websocket.MessageType, []byte) error {
-	f.writes++
-	return nil
-}
-func TestAccountProtectionWebSocketEveryTurn(t *testing.T) {
-	mr := miniredis.RunT(t)
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
-	svc := protectionTestService(t, rdb, 1)
-	inner := &protectionFrame{}
-	conn := &accountProtectionFrameConn{FrameConn: inner, rotation: svc, account: protectionTestAccount(1)}
-	for _, frame := range []string{`{"type":"session.update"}`, `{"type":"response.create"}`} {
-		require.NoError(t, conn.WriteFrame(context.Background(), websocket.MessageText, []byte(frame)))
-	}
-	err := conn.WriteFrame(context.Background(), websocket.MessageText, []byte(`{"type":"response.create"}`))
-	require.True(t, isAccountProtectionError(err))
-	require.Equal(t, 2, inner.writes)
 }
 
 func TestAccountProtectionLaterTurnCannotReplayFirstTurn(t *testing.T) {

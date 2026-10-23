@@ -75,6 +75,28 @@
           </div>
           <button type="button" class="btn btn-secondary" :disabled="saving" data-testid="add-account-limit" @click="config.request_limits?.push({ account_id: 0, rpm: 10 })">{{ t('timeRotation.addLimit') }}</button>
           <p class="text-sm text-gray-500">{{ t('timeRotation.rateLimitHint') }}</p>
+          <div class="space-y-3 border-t pt-4" data-testid="random-rest-config">
+            <label class="flex items-center gap-2">
+              <input v-model="randomRest.enabled" type="checkbox" :disabled="saving" data-testid="random-rest-enabled" />
+              {{ t('timeRotation.randomRestTitle') }}
+            </label>
+            <p class="text-sm text-gray-500">{{ t('timeRotation.randomRestHint') }}</p>
+            <template v-if="randomRest.enabled">
+              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label v-for="field in randomRestFields" :key="field.key" class="text-sm">
+                  {{ t(`timeRotation.randomRestFields.${field.key}`) }}
+                  <input v-model.number="randomRest[field.key]" class="input mt-1 w-full" type="number" :min="field.min" :max="field.max" step="1" :disabled="saving" :data-testid="`random-rest-${field.key}`" />
+                </label>
+              </div>
+              <p class="text-sm">{{ t('timeRotation.randomRestAccounts') }}</p>
+              <div class="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3">
+                <label v-for="account in accounts" :key="account.id" class="flex items-center gap-2 text-sm">
+                  <input v-model="randomRest.account_ids" type="checkbox" :value="account.id" :disabled="saving" :data-testid="`random-rest-account-${account.id}`" />
+                  {{ account.name }} (#{{ account.id }})
+                </label>
+              </div>
+            </template>
+          </div>
           <div class="border-t pt-3" data-testid="protection-status">
             <p class="mb-2 text-sm font-medium">{{ t('timeRotation.protectionStatus') }}</p>
             <p v-if="statusError || !status || !status.ready" class="text-sm text-amber-700">{{ t('timeRotation.statusUnavailable') }}</p>
@@ -82,6 +104,8 @@
               <span>{{ accountName(item.account_id) }}</span>
               <span>{{ t(`timeRotation.protectionStates.${item.state}`) }}</span>
               <span v-if="item.rpm">{{ item.used ?? '—' }} / {{ item.rpm }}</span>
+              <span v-if="item.random_state">{{ t('timeRotation.randomRestInFlight', { n: item.in_flight ?? 0 }) }}</span>
+              <span v-if="item.random_rest_until">{{ t('timeRotation.randomRestUntil', { time: formatBeijingTime(item.random_rest_until) }) }}</span>
             </div>
           </div>
         </section>
@@ -274,6 +298,7 @@ import { list } from '@/api/admin/accounts'
 import {
   timeRotationAPI,
   type AccountTimeRotationConfig,
+  type AccountRandomRestConfig,
   type AccountRotationSlot,
   type SmartTimeRotationConfig,
   type TimeRotationStatus
@@ -298,6 +323,19 @@ const defaultSmart = (): SmartTimeRotationConfig => ({
   healthy_request_count: 3, sample_window_minutes: 10, cooldown_minutes: 30,
   waiting_priority: 50, probe_interval_seconds: 60
 })
+
+const randomRestFields = [
+  { key: 'check_interval_minutes', min: 1, max: 1440 },
+  { key: 'probability_percent', min: 0, max: 100 },
+  { key: 'min_rest_minutes', min: 1, max: 1440 },
+  { key: 'max_rest_minutes', min: 1, max: 1440 },
+  { key: 'max_work_minutes', min: 0, max: 1440 }
+] as const
+const defaultRandomRest = (): AccountRandomRestConfig => ({
+  enabled: false, account_ids: [], check_interval_minutes: 5,
+  probability_percent: 20, min_rest_minutes: 3, max_rest_minutes: 8, max_work_minutes: 90
+})
+const randomRest = computed(() => config.value.random_rest || defaultRandomRest())
 
 const config = ref<AccountTimeRotationConfig>({ enabled: false, revision: 0, slots: [], mode: 'manual' })
 const accounts = ref<AccountListItem[]>([])
@@ -442,7 +480,7 @@ async function loadStatus() {
 }
 
 function applySavedConfig(saved: AccountTimeRotationConfig) {
-  config.value = { ...saved, mode: saved.mode || 'manual', strict_rest: saved.strict_rest ?? false, request_limits: saved.request_limits ?? [] }
+  config.value = { ...saved, mode: saved.mode || 'manual', strict_rest: saved.strict_rest ?? false, request_limits: saved.request_limits ?? [], random_rest: { ...defaultRandomRest(), ...saved.random_rest } }
   config.value.smart = { ...defaultSmart(), ...saved.smart }
 }
 
@@ -485,6 +523,11 @@ async function save() {
   const isSmart = config.value.mode === 'smart'
   if ((isSmart && !validSmart()) || ((!isSmart || config.value.strict_rest) && config.value.slots.some(slot => !validManualSlot(slot)))) {
     error.value = t(isSmart ? 'timeRotation.invalidSmart' : 'timeRotation.invalid')
+    return
+  }
+  const random = randomRest.value
+  if (!randomRestFields.every(field => Number.isInteger(random[field.key]) && random[field.key] >= field.min && random[field.key] <= field.max) || random.max_rest_minutes < random.min_rest_minutes || (random.enabled && !random.account_ids.length) || random.account_ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(random.account_ids).size !== random.account_ids.length) {
+    error.value = t('timeRotation.invalidRandomRest')
     return
   }
   const limits = config.value.request_limits ?? []

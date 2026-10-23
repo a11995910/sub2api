@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
-	"github.com/coder/websocket"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -33,7 +31,7 @@ func (e *UpstreamFailoverError) AccountProtectionClientError() (code, message st
 
 func accountProtectionError(code, message string, retry int) error {
 	status := http.StatusServiceUnavailable
-	if code == "account_rate_limited" {
+	if code == "account_rate_limited" || code == "account_rate_limit_wait_timeout" || code == "account_rate_limit_queue_full" {
 		status = http.StatusTooManyRequests
 	}
 	body, _ := json.Marshal(map[string]any{"error": map[string]string{"code": code, "type": "server_error", "message": message}})
@@ -120,6 +118,9 @@ var accountRequestWindow = redis.NewScript(`
 local t = redis.call('TIME')
 local now = tonumber(t[1])*1000 + math.floor(tonumber(t[2])/1000)
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now-60000)
+redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', now)
+local head = redis.call('ZRANGE', KEYS[3], 0, 0)
+if #head > 0 and head[1] ~= ARGV[2] then return 1 end
 if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[1]) then
  local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
  return math.max(1, math.ceil((tonumber(first[2])+60000-now)/1000))
@@ -128,11 +129,19 @@ local seq = redis.call('INCR', KEYS[2])
 redis.call('ZADD', KEYS[1], now, tostring(seq))
 redis.call('PEXPIRE', KEYS[1], 61000)
 redis.call('PEXPIRE', KEYS[2], 61000)
+if ARGV[2] ~= '' then redis.call('ZREM', KEYS[3], ARGV[2]) end
 return 0
 `)
 
 func (s *AccountTimeRotationService) AdmitRequest(ctx context.Context, account *Account) error {
-	if err := s.CheckRequestProtection(account, time.Now()); err != nil {
+	return s.admitRequest(ctx, account, "")
+}
+
+func (s *AccountTimeRotationService) admitRequest(ctx context.Context, account *Account, waiter string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.checkRequestProtection(account, time.Now(), false); err != nil {
 		return err
 	}
 	if s == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
@@ -145,6 +154,9 @@ func (s *AccountTimeRotationService) AdmitRequest(ctx context.Context, account *
 	if cfg == nil || !cfg.Enabled {
 		return nil
 	}
+	if err := s.checkRandomRest(ctx, account); err != nil {
+		return err
+	}
 	id := protectionRootID(account)
 	for _, limit := range cfg.RequestLimits {
 		if limit.AccountID != id {
@@ -156,7 +168,7 @@ func (s *AccountTimeRotationService) AdmitRequest(ctx context.Context, account *
 		key := fmt.Sprintf("account_request_limit:{%d}", id)
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		retry, err := accountRequestWindow.Run(checkCtx, s.protectionRedis, []string{key, key + ":seq"}, limit.RPM).Int()
+		retry, err := accountRequestWindow.Run(checkCtx, s.protectionRedis, []string{key, key + ":seq", key + ":waiters"}, limit.RPM, waiter).Int()
 		if err != nil {
 			return accountProtectionError("account_protection_unavailable", "账号限速存储不可用，请稍后重试", 15)
 		}
@@ -169,7 +181,7 @@ func (s *AccountTimeRotationService) AdmitRequest(ctx context.Context, account *
 	return s.checkRequestProtection(account, time.Now(), false)
 }
 
-// 包装实际 HTTP 出口，每次重试均单独计数；不改动响应体生命周期。
+// 包装实际 HTTP 出口，每次重试单独计数，响应体关闭或读完后释放在途记录。
 type protectedHTTPUpstream struct {
 	inner    HTTPUpstream
 	rotation *AccountTimeRotationService
@@ -180,54 +192,47 @@ func NewProtectedHTTPUpstream(inner HTTPUpstream, rotation *AccountTimeRotationS
 	return &protectedHTTPUpstream{inner: inner, rotation: rotation, accounts: accounts}
 }
 
-func (p *protectedHTTPUpstream) admit(ctx context.Context, id int64) error {
-	// 未绑定账号的公共资源下载没有账号凭据，不进入账号保护。
+func (p *protectedHTTPUpstream) begin(ctx context.Context, id int64) (func(), error) {
+	noop := func() {}
 	if id <= 0 {
-		return nil
+		return noop, nil
 	}
 	cfg, err := p.rotation.protectionConfig(time.Now())
 	if err == nil && (cfg == nil || !cfg.Enabled || len(cfg.ProtectionAccountIDs()) == 0) {
-		return nil
+		return noop, nil
 	}
-	// 从仓储解析根账号，不能凭 shadow 的 ID 创建独立限速桶。
 	account, lookupErr := p.accounts.GetByID(ctx, id)
 	if lookupErr != nil || account == nil {
-		return accountProtectionError("account_protection_unavailable", "无法核实账号保护归属，请稍后重试", 15)
+		return noop, accountProtectionError("account_protection_unavailable", "无法核实账号保护归属，请稍后重试", 15)
 	}
-	return p.rotation.AdmitRequest(ctx, account)
+	return p.rotation.BeginProtectedRequest(ctx, account)
+}
+
+func protectedResponse(resp *http.Response, err error, done func()) (*http.Response, error) {
+	if err != nil || resp == nil || resp.Body == nil {
+		done()
+	} else {
+		resp.Body = &accountProtectionBody{ReadCloser: resp.Body, done: done}
+	}
+	return resp, err
 }
 
 func (p *protectedHTTPUpstream) Do(req *http.Request, proxy string, id int64, concurrency int) (*http.Response, error) {
-	if err := p.admit(req.Context(), id); err != nil {
+	done, err := p.begin(req.Context(), id)
+	if err != nil {
 		return nil, err
 	}
-	return p.inner.Do(req, proxy, id, concurrency)
+	resp, err := p.inner.Do(req, proxy, id, concurrency)
+	return protectedResponse(resp, err, done)
 }
 
 func (p *protectedHTTPUpstream) DoWithTLS(req *http.Request, proxy string, id int64, concurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
-	if err := p.admit(req.Context(), id); err != nil {
+	done, err := p.begin(req.Context(), id)
+	if err != nil {
 		return nil, err
 	}
-	return p.inner.DoWithTLS(req, proxy, id, concurrency, profile)
-}
-
-// 长连接只在 response.create 时计次，每一轮续聊都重新检查休息边界。
-type accountProtectionFrameConn struct {
-	openaiwsv2.FrameConn
-	rotation *AccountTimeRotationService
-	account  *Account
-}
-
-func (c *accountProtectionFrameConn) WriteFrame(ctx context.Context, typ websocket.MessageType, payload []byte) error {
-	var event struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(payload, &event) == nil && event.Type == "response.create" {
-		if err := c.rotation.AdmitRequest(ctx, c.account); err != nil {
-			return err
-		}
-	}
-	return c.FrameConn.WriteFrame(ctx, typ, payload)
+	resp, err := p.inner.DoWithTLS(req, proxy, id, concurrency, profile)
+	return protectedResponse(resp, err, done)
 }
 
 type accountProtectionBlock struct {
@@ -236,10 +241,13 @@ type accountProtectionBlock struct {
 }
 
 type AccountProtectionStatus struct {
-	AccountID int64  `json:"account_id"`
-	State     string `json:"state"`
-	RPM       int    `json:"rpm"`
-	Used      *int   `json:"used"`
+	AccountID       int64      `json:"account_id"`
+	State           string     `json:"state"`
+	RPM             int        `json:"rpm"`
+	Used            *int       `json:"used"`
+	RandomState     string     `json:"random_state,omitempty"`
+	RandomRestUntil *time.Time `json:"random_rest_until,omitempty"`
+	InFlight        int        `json:"in_flight"`
 }
 
 var accountRequestUsage = redis.NewScript(`
@@ -285,6 +293,25 @@ func (s *AccountTimeRotationService) ProtectionStatus(ctx context.Context, cfg *
 		result.Used = &used
 		if used >= result.RPM && result.State == "available" {
 			result.State = "account_rate_limited"
+		}
+	}
+	if policy := s.randomRestPolicy(account); policy != nil {
+		state, err := s.runRandomRest(ctx, protectionRootID(account), policy, "check", "")
+		if err != nil {
+			result.State = "account_protection_unavailable"
+		} else {
+			result.RandomState, result.InFlight = state.phase, state.active
+			if state.phase == "resting" {
+				result.RandomRestUntil = &state.until
+			}
+			if result.State == "available" || result.State == "account_rate_limited" {
+				if state.phase == "draining" {
+					result.State = "account_random_draining"
+				}
+				if state.phase == "resting" {
+					result.State = "account_random_resting"
+				}
+			}
 		}
 	}
 	return result

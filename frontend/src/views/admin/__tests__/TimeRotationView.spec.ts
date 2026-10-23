@@ -270,3 +270,42 @@ describe('严格休息和单账号总限速', () => {
     wrapper.unmount()
   })
 })
+
+describe('随机休息配置', () => {
+  it('默认关闭，启用后验证账号与范围并完整保存配置', async () => {
+    const wrapper = render()
+    await flushPromises()
+    expect((wrapper.find('[data-testid="random-rest-enabled"]').element as HTMLInputElement).checked).toBe(false)
+    await wrapper.find('[data-testid="random-rest-enabled"]').setValue(true)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
+    expect(save).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="random-rest-account-2"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="random-rest-account-1"]').setValue(true)
+    await wrapper.find('[data-testid="random-rest-probability_percent"]').setValue(101)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
+    expect(save).not.toHaveBeenCalled()
+    await wrapper.find('[data-testid="random-rest-probability_percent"]').setValue(30)
+    await wrapper.find('[data-testid="random-rest-max_work_minutes"]').setValue(0)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ random_rest: {
+      enabled: true, account_ids: [1], check_interval_minutes: 5, probability_percent: 30,
+      min_rest_minutes: 3, max_rest_minutes: 8, max_work_minutes: 0
+    } }))
+    wrapper.unmount()
+  })
+
+  it('显示排空状态、在途数量与休息截止时间', async () => {
+    status.mockResolvedValue({ ...runningStatus(), protection: [
+      { account_id: 1, state: 'account_random_draining', rpm: 0, used: null, random_state: 'draining', in_flight: 2 },
+      { account_id: 3, state: 'account_random_resting', rpm: 0, used: null, random_state: 'resting', in_flight: 0, random_rest_until: '2026-10-23T08:00:00+08:00' }
+    ] })
+    const wrapper = render()
+    await flushPromises()
+    const text = wrapper.find('[data-testid="protection-status"]').text()
+    expect(text).toContain('暂停接单，等待在途结束')
+    expect(text).toContain('在途请求：2')
+    expect(text).toContain('休息至')
+    wrapper.unmount()
+  })
+})

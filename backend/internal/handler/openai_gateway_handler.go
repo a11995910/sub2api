@@ -2928,6 +2928,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 建连时刻只用于选号/准入，不作为任何 turn 的计费定价时刻。
 	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
 	ctx = wsPricingCtx
+	protectionReaderAttached := false
 
 	for {
 		if ctx.Err() != nil {
@@ -2970,6 +2971,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
+		if !protectionReaderAttached && account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeOAuth {
+			var stopProtectionReader func()
+			ctx, stopProtectionReader = service.WithAccountProtectionWSClient(ctx, wsConn)
+			defer stopProtectionReader()
+			c.Request = c.Request.WithContext(ctx)
+			protectionReaderAttached = true
+		}
 		channelMappingWS, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, wsRouteModel)
 		wsForwardModel = wsRouteModel
 		if channelMappingWS.Mapped && strings.TrimSpace(channelMappingWS.MappedModel) != "" {

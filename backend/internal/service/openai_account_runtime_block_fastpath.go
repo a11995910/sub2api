@@ -559,7 +559,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s == nil {
 		return false
 	}
-	if s.accountTimeRotation.CheckRequestProtection(account, time.Now()) != nil {
+	if s.accountTimeRotation.checkRequestProtection(account, time.Now(), false) != nil {
 		return true
 	}
 	requireCompact := len(compact) > 0 && compact[0]

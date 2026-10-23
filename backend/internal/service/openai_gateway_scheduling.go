@@ -1073,6 +1073,10 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			filterStats.exclude(reason)
 			continue
 		}
+		if !s.accountTimeRotation.allowsNewSession(ctx, fresh) {
+			filterStats.exclude("account_rpm_reserved")
+			continue
+		}
 		compactTier := 0
 		if requireCompact {
 			compactTier = openAICompactSupportTier(fresh)
@@ -1337,7 +1341,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if higherPriorityAccountHasCapacity(account) {
+					} else if !s.accountTimeRotation.preservesProtectedSession(account) && higherPriorityAccountHasCapacity(account) {
 						// 粘性会话不能在更高优先级账号仍有空槽时持续抢占流量。
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
@@ -1395,6 +1399,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
 			filterStats.exclude("channel_upstream_restricted")
+			continue
+		}
+		if !s.accountTimeRotation.allowsNewSession(ctx, acc) {
+			filterStats.exclude("account_rpm_reserved")
 			continue
 		}
 		baseCandidateCount++

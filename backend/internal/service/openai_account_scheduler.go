@@ -397,6 +397,27 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		s.metrics.recordSelect(decision)
 	}()
 
+	// 受限账号优先保留已有绑定，避免加权调度在触顶时将续聊迁走。
+	if s.service != nil && req.StickyWeighted {
+		stickyID := req.StickyAccountID
+		if stickyID == 0 && req.SessionHash != "" && s.service.cache != nil {
+			stickyID, _ = s.service.getStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
+		}
+		previousID := req.StickyPreviousAccountID
+		if previousID == 0 && req.PreviousResponseID != "" {
+			previousID = s.service.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, req.GroupID, req.PreviousResponseID, req.RequestedModel, req.ExcludedIDs, req.RequiredCapability, req.RequireCompact)
+		}
+		for _, id := range []int64{previousID, stickyID} {
+			if id > 0 {
+				account, _ := s.service.getSchedulableAccount(ctx, id)
+				if s.service.accountTimeRotation.preservesProtectedSession(account) {
+					req.StickyWeighted = false
+					break
+				}
+			}
+		}
+	}
+
 	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
 	if previousResponseID != "" && NormalizeOpenAICompatiblePlatform(req.Platform) == PlatformOpenAI &&
 		(!req.StickyWeighted || !req.PreviousResponseCanMove) {
@@ -1535,6 +1556,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("transport_incompatible")
 			continue
 		}
+		if !s.service.accountTimeRotation.allowsNewSession(ctx, account) {
+			filterStats.exclude("account_rpm_reserved")
+			continue
+		}
 		filtered = append(filtered, account)
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
@@ -2283,7 +2308,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 			account := selection.Account
 			model := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
 			selection.CheckAvailability = func() error {
-				if err := s.accountTimeRotation.CheckRequestProtection(account, time.Now()); err != nil {
+				if err := s.accountTimeRotation.checkRequestProtection(account, time.Now(), false); err != nil {
 					return err
 				}
 				if s.openAICodexTicketBlocksAccount(account, model) {
@@ -2639,7 +2664,16 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountForwardResult(account *Account
 	if result == nil {
 		return s.ReportOpenAIAccountScheduleResult(account, model, success, nil)
 	}
-	return s.reportOpenAIAccountScheduleResult(account, model, success, success && !result.ClientDisconnect, result.FirstTokenMs, result.Duration)
+	firstTokenMs := result.FirstTokenMs
+	if firstTokenMs != nil && result.LocalAdmissionWait > 0 {
+		adjusted := max(0, *firstTokenMs-int(result.LocalAdmissionWait.Milliseconds()))
+		firstTokenMs = &adjusted
+	}
+	duration := result.Duration - result.LocalAdmissionWait
+	if duration < 0 {
+		duration = 0
+	}
+	return s.reportOpenAIAccountScheduleResult(account, model, success, success && !result.ClientDisconnect, firstTokenMs, duration)
 }
 
 func (s *OpenAIGatewayService) reportOpenAIAccountScheduleResult(account *Account, model string, success, healthSuccess bool, firstTokenMs *int, duration time.Duration, observedErr ...error) bool {

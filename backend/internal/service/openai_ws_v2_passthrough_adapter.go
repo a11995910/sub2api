@@ -504,7 +504,7 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) observeUpstreamActivity(msgTyp
 	if c == nil {
 		return
 	}
-	if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
+	if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) && openAIWSPassthroughIsTerminalOutput(payload) {
 		c.disarmDeadline(0)
 		return
 	}
@@ -943,7 +943,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if observeTicket != nil {
 		upstreamFrameConn = &openAICodexTicketFrameConn{FrameConn: upstreamFrameConn, observe: observeTicket}
 	}
-	upstreamFrameConn = &accountProtectionFrameConn{FrameConn: upstreamFrameConn, rotation: s.accountTimeRotation, account: account}
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,
 		activeReadTimeout: s.openAIWSPassthroughIdleTimeout(),
@@ -1179,6 +1178,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	upstreamFirstMessageSent := false
 	observeOpenAIRequestIntegrity(c, account, firstIntegrity, firstClientMessage, "responses_ws_passthrough_first")
+	protectionTurn := &accountProtectionTurn{}
+	defer protectionTurn.finishAll()
+	if err := protectionTurn.begin(ctx, s.accountTimeRotation, account); err != nil {
+		return err
+	}
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
 	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
 	cancelFirstWrite()
@@ -1217,6 +1221,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		UpstreamConn:       relayUpstreamFrameConn,
 		FirstClientMessage: firstClientMessage,
 		Options: openaiwsv2.RelayOptions{
+			BeforeWriteUpstream: func(writeCtx context.Context, typ coderws.MessageType, payload []byte) error {
+				if (typ == coderws.MessageText || typ == coderws.MessageBinary) && gjson.GetBytes(payload, "type").String() == "response.create" {
+					return protectionTurn.begin(writeCtx, s.accountTimeRotation, account)
+				}
+				return nil
+			},
 			WriteTimeout:       s.openAIWSWriteTimeout(),
 			FirstTurnStartedAt: firstTurnStartedAt,
 			TakeNextTurnStartedAt: func() time.Time {
@@ -1291,8 +1301,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 			},
 			BeforeClientWrite: func(msgType coderws.MessageType, payload []byte) {
-				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
+				if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.beginTerminalWrite()
+					// 与轮次终态绑定，兼容缺少响应 ID 及二进制 JSON 终态。
+					// 持有生命周期锁，客户端不能在释放前抢先开启下一轮。
+					if turnLifecycle.inFlight {
+						protectionTurn.finish()
+					}
 				}
 			},
 			AfterClientWrite: func(msgType coderws.MessageType, payload []byte, writeErr error) {
@@ -1300,7 +1315,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 					markOpenAIWSClientVisibleFailure(c, eventType, payload)
 				}
-				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
+				if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.finishTerminalWrite(writeErr == nil, clientFrameConn.markTurnCompleted)
 				}
 			},

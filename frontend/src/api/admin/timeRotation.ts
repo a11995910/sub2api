@@ -8,7 +8,18 @@ export interface AccountRotationSlot {
   inactive_priority: number
 }
 
+export interface AccountRandomRestConfig {
+  enabled: boolean
+  account_ids: number[]
+  check_interval_minutes: number
+  probability_percent: number
+  min_rest_minutes: number
+  max_rest_minutes: number
+  max_work_minutes: number
+}
+
 export interface AccountTimeRotationConfig {
+  random_rest?: AccountRandomRestConfig
   enabled: boolean
   revision: number
   strict_rest?: boolean
@@ -57,7 +68,7 @@ export interface TimeRotationStatusAccount {
 }
 
 export interface TimeRotationStatus {
-  protection?: { account_id: number; state: string; rpm: number; used: number | null }[]
+  protection?: { account_id: number; state: string; rpm: number; used: number | null; random_state?: string; random_rest_until?: string; in_flight?: number }[]
   mode: 'manual' | 'smart'
   enabled: boolean
   revision: number

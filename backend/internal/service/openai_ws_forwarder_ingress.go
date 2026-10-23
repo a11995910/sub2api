@@ -83,6 +83,20 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	// 每轮报告排队耗时，健康判断不得把本地等待算成上游响应慢。
+	ctx, recordWait := trackAccountProtectionWait(ctx)
+	if hooks != nil {
+		copyHooks := *hooks
+		afterTurn := hooks.AfterTurn
+		copyHooks.AfterTurn = func(turn int, result *OpenAIForwardResult, err error) {
+			recordWait(result)
+			_, recordWait = trackAccountProtectionWait(ctx)
+			if afterTurn != nil {
+				afterTurn(turn, result, err)
+			}
+		}
+		hooks = &copyHooks
+	}
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)
@@ -1014,9 +1028,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		wroteDownstream := false
 		// 同轮重试沿用入站摘要，检查删除续链字段、重放输入等后续变化。
 		observeOpenAIRequestIntegrity(c, account, integrity, payload, "responses_ws_ingress_final")
-		if err := s.accountTimeRotation.AdmitRequest(ctx, account); err != nil {
-			return nil, err
+		finishProtection, protectionErr := s.accountTimeRotation.BeginProtectedRequest(ctx, account)
+		if protectionErr != nil {
+			return nil, protectionErr
 		}
+		defer finishProtection()
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",

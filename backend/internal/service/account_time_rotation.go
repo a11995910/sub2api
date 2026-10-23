@@ -54,7 +54,19 @@ type AccountRequestLimit struct {
 	RPM       int   `json:"rpm"`
 }
 
+// AccountRandomRestConfig 的概率按时间间隔抽签，与请求数量无关。
+type AccountRandomRestConfig struct {
+	Enabled              bool    `json:"enabled"`
+	AccountIDs           []int64 `json:"account_ids"`
+	CheckIntervalMinutes int     `json:"check_interval_minutes"`
+	ProbabilityPercent   int     `json:"probability_percent"`
+	MinRestMinutes       int     `json:"min_rest_minutes"`
+	MaxRestMinutes       int     `json:"max_rest_minutes"`
+	MaxWorkMinutes       int     `json:"max_work_minutes"`
+}
+
 type AccountTimeRotationConfig struct {
+	RandomRest    *AccountRandomRestConfig    `json:"random_rest,omitempty"`
 	StrictRest    bool                        `json:"strict_rest"`
 	RequestLimits []AccountRequestLimit       `json:"request_limits"`
 	Enabled       bool                        `json:"enabled"`
@@ -136,6 +148,21 @@ func (c *AccountTimeRotationConfig) Validate() error {
 	}
 	if len(c.Slots) != 3 {
 		return invalid("时段轮候必须设置 3 个时段")
+	}
+	if r := c.RandomRest; r != nil {
+		if r.CheckIntervalMinutes < 1 || r.CheckIntervalMinutes > 1440 || r.ProbabilityPercent < 0 || r.ProbabilityPercent > 100 || r.MinRestMinutes < 1 || r.MaxRestMinutes < r.MinRestMinutes || r.MaxRestMinutes > 1440 || r.MaxWorkMinutes < 0 || r.MaxWorkMinutes > 1440 {
+			return invalid("随机休息间隔和时长须为 1–1440 分钟，概率须为 0–100，最长工作须为 0–1440 分钟，最长休息不能小于最短休息")
+		}
+		seenRandom := make(map[int64]bool)
+		for _, id := range r.AccountIDs {
+			if id <= 0 || seenRandom[id] {
+				return invalid("随机休息需选择不重复的根账号")
+			}
+			seenRandom[id] = true
+		}
+		if r.Enabled && len(r.AccountIDs) == 0 {
+			return invalid("启用随机休息时必须选择账号")
+		}
 	}
 	seenLimits := make(map[int64]bool)
 	for _, limit := range c.RequestLimits {
@@ -293,6 +320,11 @@ func cloneAccountTimeRotationConfig(config *AccountTimeRotationConfig) *AccountT
 		return nil
 	}
 	copyConfig := *config
+	if config.RandomRest != nil {
+		r := *config.RandomRest
+		r.AccountIDs = append([]int64{}, r.AccountIDs...)
+		copyConfig.RandomRest = &r
+	}
 	copyConfig.RequestLimits = append([]AccountRequestLimit{}, config.RequestLimits...)
 	copyConfig.Slots = make([]AccountRotationSlot, len(config.Slots))
 	for i, slot := range config.Slots {
@@ -330,6 +362,7 @@ func (s *AccountTimeRotationService) Start() {
 						slog.Error("智能轮候状态恢复失败", "error", loadErr)
 					} else {
 						s.publish(result, time.Now())
+						s.tickRandomRest(ctx, result)
 						if saveErr := s.persistHealth(ctx); saveErr != nil {
 							slog.Error("智能轮候状态保存失败", "error", saveErr)
 						}
@@ -365,6 +398,11 @@ func (s *AccountTimeRotationService) Stop() {
 // ProtectionAccountIDs 返回独立于手动/智能模式的保护账号。
 func (c *AccountTimeRotationConfig) ProtectionAccountIDs() []int64 {
 	ids := make(map[int64]bool)
+	if c.RandomRest != nil && c.RandomRest.Enabled {
+		for _, id := range c.RandomRest.AccountIDs {
+			ids[id] = true
+		}
+	}
 	if c.StrictRest {
 		for _, slot := range c.Slots {
 			for _, id := range slot.AccountIDs {

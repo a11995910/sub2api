@@ -237,8 +237,10 @@ type OpenAIUsage struct {
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
-	RequestID  string
-	ResponseID string
+	// 本地限速等待单独计量，不能误判为上游首字慢。
+	LocalAdmissionWait time.Duration
+	RequestID          string
+	ResponseID         string
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage

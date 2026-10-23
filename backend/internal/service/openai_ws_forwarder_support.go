@@ -78,9 +78,11 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	prewarmPayload["generate"] = false
 	prewarmPayloadJSON := payloadAsJSONBytes(prewarmPayload)
 
-	if err := s.accountTimeRotation.AdmitRequest(ctx, account); err != nil {
-		return err
+	finishProtection, protectionErr := s.accountTimeRotation.BeginProtectedRequest(ctx, account)
+	if protectionErr != nil {
+		return protectionErr
 	}
+	defer finishProtection()
 	if err := lease.WriteJSONWithContextTimeout(ctx, prewarmPayload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
