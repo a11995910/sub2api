@@ -113,6 +113,11 @@ func (r *accountTimeRotationRepository) Apply(ctx context.Context, replacement *
 			idsMap[id] = true
 		}
 	}
+	if replacement != nil && replacement.Enabled {
+		for _, id := range replacement.ProtectionAccountIDs() {
+			idsMap[id] = true
+		}
+	}
 	ids := make([]int64, 0, len(idsMap))
 	for id := range idsMap {
 		ids = append(ids, id)
@@ -152,6 +157,7 @@ func (r *accountTimeRotationRepository) Apply(ctx context.Context, replacement *
 				idsToValidate = append(idsToValidate, id)
 			}
 		}
+		idsToValidate = append(append([]int64{}, idsToValidate...), replacement.ProtectionAccountIDs()...)
 		for _, id := range idsToValidate {
 			a, exists := accounts[id]
 			if !exists || !a.eligible {

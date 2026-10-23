@@ -80,6 +80,10 @@ func newOpenAIWSUnsupportedModelSwitchError(model string) error {
 }
 
 func shouldReportOpenAIWSProxyAccountFailure(err error) bool {
+	var failure *service.UpstreamFailoverError
+	if errors.As(err, &failure) && !failure.ShouldReportAccountScheduleFailure() {
+		return false
+	}
 	return err != nil && !errors.Is(err, errOpenAIWSUnsupportedModelSwitch) && !service.IsOpenAIWSSessionPreemptedError(err)
 }
 
@@ -1665,6 +1669,12 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	if _, message, ok := failoverErr.AccountProtectionClientError(); ok {
+		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+		h.anthropicStreamingAwareError(c, failoverErr.ClientStatusCode, "api_error", message, streamStarted)
+		return
+	}
+
 	if _, message, ok := failoverErr.OpenAITurnStateClientError(); ok {
 		if streamStarted {
 			service.MarkOpsStreamError(c, "api_error", message, http.StatusServiceUnavailable)
@@ -3664,6 +3674,12 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	if code, message, ok := failoverErr.AccountProtectionClientError(); ok {
+		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
+		h.handleStreamingAwareErrorWithCode(c, failoverErr.ClientStatusCode, "server_error", code, message, streamStarted, false)
+		return
+	}
+
 	if code, message, ok := failoverErr.OpenAITurnStateClientError(); ok {
 		h.handleStreamingAwareErrorWithCode(c, http.StatusServiceUnavailable, "server_error", code, message, streamStarted, false)
 		return
@@ -4139,7 +4155,11 @@ func closeOpenAIWSFailoverExhausted(c *gin.Context, conn *coderws.Conn, failover
 		if reason := strings.TrimSpace(string(failoverErr.Reason)); reason != "" {
 			errorCode = reason
 		}
-		if code, localMessage, ok := failoverErr.OpenAITurnStateClientError(); ok {
+		if code, localMessage, ok := failoverErr.AccountProtectionClientError(); ok {
+			intendedStatus = failoverErr.ClientStatusCode
+			errorType, errorCode, message = "server_error", code, localMessage
+			closeStatus = coderws.StatusTryAgainLater
+		} else if code, localMessage, ok := failoverErr.OpenAITurnStateClientError(); ok {
 			intendedStatus = http.StatusServiceUnavailable
 			errorType, errorCode, message = "server_error", code, localMessage
 			closeStatus = coderws.StatusTryAgainLater

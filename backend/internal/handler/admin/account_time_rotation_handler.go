@@ -19,6 +19,7 @@ func NewAccountTimeRotationHandler(svc *service.AccountTimeRotationService, acco
 }
 
 type accountTimeRotationStatus struct {
+	Protection     []service.AccountProtectionStatus     `json:"protection"`
 	Mode           string                                `json:"mode"`
 	Enabled        bool                                  `json:"enabled"`
 	Revision       int64                                 `json:"revision"`
@@ -60,6 +61,23 @@ func (h *AccountTimeRotationHandler) Status(c *gin.Context) {
 	}
 	if groupID > 0 {
 		result.Scope = "group"
+	}
+	result.Protection = []service.AccountProtectionStatus{}
+	if ids := config.ProtectionAccountIDs(); len(ids) > 0 {
+		protected, err := h.accounts.GetByIDs(c.Request.Context(), ids)
+		if response.ErrorFrom(c, err) {
+			return
+		}
+		for _, account := range protected {
+			if account == nil || (groupID > 0 && !rotationAccountInGroup(account, groupID)) {
+				continue
+			}
+			item := h.svc.ProtectionStatus(c.Request.Context(), config, account, now)
+			if !result.Ready {
+				item.State = "account_protection_unavailable"
+			}
+			result.Protection = append(result.Protection, item)
+		}
 	}
 	if !result.Ready || !config.Enabled || result.Mode != "smart" || config.Smart == nil {
 		response.Success(c, result)

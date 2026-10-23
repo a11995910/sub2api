@@ -169,3 +169,22 @@ func TestAccountTimeRotationStatus_InvalidGroupAndRepositoryErrors(t *testing.T)
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/status", nil))
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+func TestAccountProtectionStatusManualAndGroupScope(t *testing.T) {
+	config := service.DefaultAccountTimeRotationConfig()
+	config.Enabled = true
+	config.StrictRest = true
+	config.Slots[0].AccountIDs = []int64{1, 2}
+	repo := &rotationStatusConfigRepo{config: config}
+	accounts := &rotationStatusAccountRepo{accounts: []*service.Account{
+		{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, GroupIDs: []int64{73}},
+		{ID: 2, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, GroupIDs: []int64{74}},
+	}}
+	router, _ := newRotationStatusRouter(t, repo, accounts, true)
+	result := readRotationStatus(t, router, "")
+	require.Len(t, result.Protection, 2)
+	require.Empty(t, result.Accounts)
+	result = readRotationStatus(t, router, "?group_id=73")
+	require.Len(t, result.Protection, 1)
+	require.EqualValues(t, 1, result.Protection[0].AccountID)
+}

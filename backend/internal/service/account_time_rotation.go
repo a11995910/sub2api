@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -47,12 +49,19 @@ type AccountSmartRotationConfig struct {
 	QuotaReservePercent int                          `json:"quota_reserve_percent"`
 }
 
+type AccountRequestLimit struct {
+	AccountID int64 `json:"account_id"`
+	RPM       int   `json:"rpm"`
+}
+
 type AccountTimeRotationConfig struct {
-	Enabled  bool                        `json:"enabled"`
-	Revision int64                       `json:"revision"`
-	Slots    []AccountRotationSlot       `json:"slots"`
-	Mode     string                      `json:"mode"`
-	Smart    *AccountSmartRotationConfig `json:"smart,omitempty"`
+	StrictRest    bool                        `json:"strict_rest"`
+	RequestLimits []AccountRequestLimit       `json:"request_limits"`
+	Enabled       bool                        `json:"enabled"`
+	Revision      int64                       `json:"revision"`
+	Slots         []AccountRotationSlot       `json:"slots"`
+	Mode          string                      `json:"mode"`
+	Smart         *AccountSmartRotationConfig `json:"smart,omitempty"`
 }
 
 func DefaultAccountTimeRotationConfig() *AccountTimeRotationConfig {
@@ -128,6 +137,13 @@ func (c *AccountTimeRotationConfig) Validate() error {
 	if len(c.Slots) != 3 {
 		return invalid("时段轮候必须设置 3 个时段")
 	}
+	seenLimits := make(map[int64]bool)
+	for _, limit := range c.RequestLimits {
+		if limit.AccountID <= 0 || limit.RPM < 1 || limit.RPM > 10000 || seenLimits[limit.AccountID] {
+			return invalid("单账号限速需选择不重复的根账号，RPM 必须为 1 至 10000 的整数")
+		}
+		seenLimits[limit.AccountID] = true
+	}
 	seen := make(map[int64]bool)
 	for i, slot := range c.Slots {
 		if slot.AccountIDs == nil {
@@ -140,6 +156,9 @@ func (c *AccountTimeRotationConfig) Validate() error {
 		end, err := rotationMinute(slot.End, true)
 		if err != nil {
 			return invalid(fmt.Sprintf("时段 %d 结束时间无效：%s", i+1, err))
+		}
+		if c.StrictRest && start == 0 && end == 1440 && len(slot.AccountIDs) > 0 {
+			return invalid("严格休息不能为账号安排全天工作时段")
 		}
 		if start == end {
 			return invalid(fmt.Sprintf("时段 %d 的开始和结束时间不能相同", i+1))
@@ -199,16 +218,18 @@ type AccountTimeRotationRepository interface {
 }
 
 type AccountTimeRotationService struct {
-	repo        AccountTimeRotationRepository
-	cancel      context.CancelFunc
-	start       sync.Once
-	stop        sync.Once
-	wg          sync.WaitGroup
-	snapshotMu  sync.RWMutex
-	snapshot    *AccountTimeRotationConfig
-	refreshedAt time.Time
-	health      map[int64]*AccountSmartRotationHealth
-	persistMu   sync.Mutex
+	protectionRedis  *redis.Client
+	protectionBlocks sync.Map
+	repo             AccountTimeRotationRepository
+	cancel           context.CancelFunc
+	start            sync.Once
+	stop             sync.Once
+	wg               sync.WaitGroup
+	snapshotMu       sync.RWMutex
+	snapshot         *AccountTimeRotationConfig
+	refreshedAt      time.Time
+	health           map[int64]*AccountSmartRotationHealth
+	persistMu        sync.Mutex
 }
 
 func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
@@ -272,6 +293,7 @@ func cloneAccountTimeRotationConfig(config *AccountTimeRotationConfig) *AccountT
 		return nil
 	}
 	copyConfig := *config
+	copyConfig.RequestLimits = append([]AccountRequestLimit{}, config.RequestLimits...)
 	copyConfig.Slots = make([]AccountRotationSlot, len(config.Slots))
 	for i, slot := range config.Slots {
 		copyConfig.Slots[i] = slot
@@ -338,4 +360,24 @@ func (s *AccountTimeRotationService) Stop() {
 			slog.Error("智能轮候退出时保存失败", "error", err)
 		}
 	})
+}
+
+// ProtectionAccountIDs 返回独立于手动/智能模式的保护账号。
+func (c *AccountTimeRotationConfig) ProtectionAccountIDs() []int64 {
+	ids := make(map[int64]bool)
+	if c.StrictRest {
+		for _, slot := range c.Slots {
+			for _, id := range slot.AccountIDs {
+				ids[id] = true
+			}
+		}
+	}
+	for _, limit := range c.RequestLimits {
+		ids[limit.AccountID] = true
+	}
+	result := make([]int64, 0, len(ids))
+	for id := range ids {
+		result = append(result, id)
+	}
+	return result
 }

@@ -55,6 +55,37 @@
           </p>
         </div>
 
+        <section class="card space-y-4 p-5">
+          <h2 class="font-semibold">{{ t('timeRotation.protectionTitle') }}</h2>
+          <label class="flex items-center gap-2">
+            <input v-model="config.strict_rest" type="checkbox" :disabled="saving" data-testid="strict-rest" />
+            {{ t('timeRotation.strictRest') }}
+          </label>
+          <p class="text-sm text-gray-500">{{ t('timeRotation.protectionHint') }}</p>
+          <div v-for="(limit, index) in config.request_limits" :key="index" class="flex flex-wrap items-center gap-3">
+            <select v-model.number="limit.account_id" class="input w-64" :disabled="saving" :aria-label="t('timeRotation.accounts')">
+              <option :value="0" disabled>{{ t('timeRotation.selectLimitAccount') }}</option>
+              <option v-for="account in accounts" :key="account.id" :value="account.id">{{ account.name }} (#{{ account.id }})</option>
+            </select>
+            <label class="flex items-center gap-2 text-sm">
+              {{ t('timeRotation.totalRPM') }}
+              <input v-model.number="limit.rpm" class="input w-28" type="number" min="1" max="10000" step="1" :disabled="saving" data-testid="account-rpm" />
+            </label>
+            <button type="button" class="btn btn-secondary" :disabled="saving" @click="config.request_limits?.splice(index, 1)">{{ t('common.delete') }}</button>
+          </div>
+          <button type="button" class="btn btn-secondary" :disabled="saving" data-testid="add-account-limit" @click="config.request_limits?.push({ account_id: 0, rpm: 10 })">{{ t('timeRotation.addLimit') }}</button>
+          <p class="text-sm text-gray-500">{{ t('timeRotation.rateLimitHint') }}</p>
+          <div class="border-t pt-3" data-testid="protection-status">
+            <p class="mb-2 text-sm font-medium">{{ t('timeRotation.protectionStatus') }}</p>
+            <p v-if="statusError || !status || !status.ready" class="text-sm text-amber-700">{{ t('timeRotation.statusUnavailable') }}</p>
+            <div v-else v-for="item in status.protection || []" :key="item.account_id" class="flex flex-wrap gap-3 py-1 text-sm">
+              <span>{{ accountName(item.account_id) }}</span>
+              <span>{{ t(`timeRotation.protectionStates.${item.state}`) }}</span>
+              <span v-if="item.rpm">{{ item.used ?? '—' }} / {{ item.rpm }}</span>
+            </div>
+          </div>
+        </section>
+
         <template v-if="config.mode === 'smart'">
           <section class="card p-5">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -160,7 +191,7 @@
           </section>
         </template>
 
-        <div v-else class="grid gap-5 xl:grid-cols-3">
+        <div v-if="config.mode !== 'smart' || config.strict_rest" class="grid gap-5 xl:grid-cols-3">
           <section v-for="(slot, index) in config.slots" :key="index" class="card overflow-hidden" :data-testid="`rotation-slot-${index}`">
             <div class="border-b border-gray-100 bg-gray-50/60 p-5 dark:border-dark-700 dark:bg-dark-800">
               <div class="mb-4 flex items-center justify-between">
@@ -411,7 +442,7 @@ async function loadStatus() {
 }
 
 function applySavedConfig(saved: AccountTimeRotationConfig) {
-  config.value = { ...saved, mode: saved.mode || 'manual' }
+  config.value = { ...saved, mode: saved.mode || 'manual', strict_rest: saved.strict_rest ?? false, request_limits: saved.request_limits ?? [] }
   config.value.smart = { ...defaultSmart(), ...saved.smart }
 }
 
@@ -452,8 +483,13 @@ async function save() {
   error.value = ''
   saveConflict.value = false
   const isSmart = config.value.mode === 'smart'
-  if (isSmart ? !validSmart() : config.value.slots.some(slot => !validManualSlot(slot))) {
+  if ((isSmart && !validSmart()) || ((!isSmart || config.value.strict_rest) && config.value.slots.some(slot => !validManualSlot(slot)))) {
     error.value = t(isSmart ? 'timeRotation.invalidSmart' : 'timeRotation.invalid')
+    return
+  }
+  const limits = config.value.request_limits ?? []
+  if (limits.some(limit => !Number.isSafeInteger(limit.account_id) || limit.account_id <= 0 || !Number.isInteger(limit.rpm) || limit.rpm < 1 || limit.rpm > 10000) || new Set(limits.map(limit => limit.account_id)).size !== limits.length || (config.value.strict_rest && config.value.slots.some(slot => slot.account_ids.length > 0 && slot.start === '00:00' && slot.end === '24:00'))) {
+    error.value = t('timeRotation.invalidProtection')
     return
   }
   saving.value = true
@@ -485,7 +521,7 @@ async function reloadAfterConflict() {
 }
 
 function refreshSmartStatus() {
-  if (ready.value && config.value.mode === 'smart' && !statusLoading.value) void loadStatus()
+  if (ready.value && !statusLoading.value) void loadStatus()
 }
 
 onMounted(async () => {

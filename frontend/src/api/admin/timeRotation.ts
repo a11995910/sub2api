@@ -11,6 +11,8 @@ export interface AccountRotationSlot {
 export interface AccountTimeRotationConfig {
   enabled: boolean
   revision: number
+  strict_rest?: boolean
+  request_limits?: { account_id: number; rpm: number }[]
   slots: AccountRotationSlot[]
   /** 未设置时兼容旧配置，等同于 manual。 */
   mode?: 'manual' | 'smart'
@@ -55,6 +57,7 @@ export interface TimeRotationStatusAccount {
 }
 
 export interface TimeRotationStatus {
+  protection?: { account_id: number; state: string; rpm: number; used: number | null }[]
   mode: 'manual' | 'smart'
   enabled: boolean
   revision: number

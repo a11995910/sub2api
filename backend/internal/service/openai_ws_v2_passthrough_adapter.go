@@ -943,6 +943,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if observeTicket != nil {
 		upstreamFrameConn = &openAICodexTicketFrameConn{FrameConn: upstreamFrameConn, observe: observeTicket}
 	}
+	upstreamFrameConn = &accountProtectionFrameConn{FrameConn: upstreamFrameConn, rotation: s.accountTimeRotation, account: account}
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,
 		activeReadTimeout: s.openAIWSPassthroughIdleTimeout(),
@@ -1450,6 +1451,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	)
 
 	relayErr := relayExit.Err
+	if isAccountProtectionError(relayErr) && turnCount > 0 {
+		// 后续轮次被本地保护拒绝时关闭会话，不能换号重放首轮请求。
+		relayErr = newOpenAIWSCurrentTurnFailoverError(relayErr, nil)
+	}
+
 	var firstOutputTimeoutErr *openAIWSPassthroughFirstOutputTimeoutError
 	if errors.As(relayErr, &firstOutputTimeoutErr) {
 		deadline := firstOutputTimeoutErr.deadline

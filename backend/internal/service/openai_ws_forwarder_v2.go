@@ -347,6 +347,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if c != nil && account.OpenAIRequestIntegrityMode() != "off" {
 		observeStagedOpenAIRequestIntegrity(c, account, payloadAsJSONBytes(payload), "responses_http_to_ws_final")
 	}
+	if err := s.accountTimeRotation.AdmitRequest(ctx, account); err != nil {
+		return nil, err
+	}
 	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(

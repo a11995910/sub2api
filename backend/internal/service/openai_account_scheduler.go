@@ -2283,6 +2283,9 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 			account := selection.Account
 			model := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
 			selection.CheckAvailability = func() error {
+				if err := s.accountTimeRotation.CheckRequestProtection(account, time.Now()); err != nil {
+					return err
+				}
 				if s.openAICodexTicketBlocksAccount(account, model) {
 					return wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
 				}
@@ -2640,6 +2643,11 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountForwardResult(account *Account
 }
 
 func (s *OpenAIGatewayService) reportOpenAIAccountScheduleResult(account *Account, model string, success, healthSuccess bool, firstTokenMs *int, duration time.Duration, observedErr ...error) bool {
+	for _, err := range observedErr {
+		if isAccountProtectionError(err) {
+			return false
+		}
+	}
 	if account == nil {
 		return false
 	}
@@ -2670,6 +2678,9 @@ func (s *OpenAIGatewayService) reportOpenAIAccountScheduleResult(account *Accoun
 // ObserveOpenAIAccountHealthFailure records failures that cannot reach the
 // scheduler-result path, for example after semantic response bytes were sent.
 func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Context, account *Account, observedErr error) bool {
+	if isAccountProtectionError(observedErr) {
+		return false
+	}
 	if s != nil && account != nil && observedErr != nil {
 		s.accountTimeRotation.ObserveHealth(account, false, nil, 0, time.Now())
 	}

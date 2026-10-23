@@ -730,6 +730,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				hooks.AfterTurn(turn, result, bridgeErr)
 			}
 			if bridgeErr != nil {
+				if turn > 1 && isAccountProtectionError(bridgeErr) {
+					return newOpenAIWSCurrentTurnFailoverError(bridgeErr, nil)
+				}
 				var failoverErr *UpstreamFailoverError
 				if turn > 1 && errors.As(bridgeErr, &failoverErr) && failoverErr != nil {
 					retryPayload, retrySafe, retryPayloadErr := buildOpenAIWSCurrentTurnRetryPayload(
@@ -1011,6 +1014,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		wroteDownstream := false
 		// 同轮重试沿用入站摘要，检查删除续链字段、重放输入等后续变化。
 		observeOpenAIRequestIntegrity(c, account, integrity, payload, "responses_ws_ingress_final")
+		if err := s.accountTimeRotation.AdmitRequest(ctx, account); err != nil {
+			return nil, err
+		}
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",
@@ -1906,6 +1912,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				hooks.AfterTurn(turn, nil, finalErr)
 			}
 			sessionLease.MarkBroken()
+			if turn > 1 && isAccountProtectionError(finalErr) {
+				return newOpenAIWSCurrentTurnFailoverError(finalErr, nil)
+			}
 			return finalErr
 		}
 		turnRetry = 0

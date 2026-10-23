@@ -161,6 +161,9 @@ func wrapOpenAIWSIngressTurnError(stage string, cause error, wroteDownstream boo
 }
 
 func isOpenAIWSIngressTurnRetryable(err error) bool {
+	if isAccountProtectionError(err) {
+		return false
+	}
 	var turnErr *openAIWSIngressTurnError
 	if !errors.As(err, &turnErr) || turnErr == nil {
 		return false

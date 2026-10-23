@@ -208,6 +208,7 @@ func ProvideOpenAITokenProvider(
 func ProvidePluginManager(repo PluginRepository, encryptor SecretEncryptor, cfg *config.Config, hostInfo PluginHostInfo, kvStore PluginKVStore, gateway *OpenAIGatewayService) *PluginManager {
 	manager := NewPluginManager(repo, encryptor, cfg, hostInfo, kvStore)
 	manager.SetAccountDirectory(gateway)
+	manager.requestProtection = gateway.accountTimeRotation
 	return manager
 }
 
@@ -942,8 +943,9 @@ func ProvideAPIKeyService(
 }
 
 // ProvideAccountTimeRotationService 启动每日时段轮候。
-func ProvideAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
+func ProvideAccountTimeRotationService(repo AccountTimeRotationRepository, rdb *redis.Client) *AccountTimeRotationService {
 	svc := NewAccountTimeRotationService(repo)
+	svc.protectionRedis = rdb
 	svc.Start()
 	return svc
 }

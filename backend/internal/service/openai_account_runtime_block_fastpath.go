@@ -559,6 +559,9 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s == nil {
 		return false
 	}
+	if s.accountTimeRotation.CheckRequestProtection(account, time.Now()) != nil {
+		return true
+	}
 	requireCompact := len(compact) > 0 && compact[0]
 	if s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)) {
 		return true

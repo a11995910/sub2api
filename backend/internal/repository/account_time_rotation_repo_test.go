@@ -277,3 +277,42 @@ func TestSmartRotationLoadHealthSnapshot(t *testing.T) {
 	require.Equal(t, 2, state.Accounts[1].HealthyStreak)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestAccountProtectionReferencesValidatedOutsideSmartPool(t *testing.T) {
+	for _, valid := range []bool{true, false} {
+		t.Run(map[bool]string{true: "保护账号独立校验", false: "拒绝不符合条件账号"}[valid], func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer db.Close()
+			existing := service.DefaultAccountTimeRotationConfig()
+			raw, err := json.Marshal(accountTimeRotationState{Config: *existing, OriginalPriorities: map[int64]int{}})
+			require.NoError(t, err)
+			next := service.DefaultAccountTimeRotationConfig()
+			next.Enabled = true
+			next.Mode = "smart"
+			next.Smart.AccountIDs = []int64{1}
+			next.StrictRest = true
+			next.Slots[0].AccountIDs = []int64{2}
+			next.RequestLimits = []service.AccountRequestLimit{{AccountID: 3, RPM: 10}}
+			mock.ExpectBegin()
+			mock.ExpectExec("INSERT INTO settings").WillReturnResult(sqlmock.NewResult(0, 0))
+			mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+			mock.ExpectQuery("SELECT id, priority.*FROM accounts.*FOR UPDATE").WithArgs("{1,2,3}").WillReturnRows(sqlmock.NewRows([]string{"id", "priority", "eligible"}).AddRow(1, 7, true).AddRow(2, 7, true).AddRow(3, 7, valid))
+			if valid {
+				mock.ExpectExec("UPDATE settings SET value").WithArgs(rotationStateArgument{check: func(state accountTimeRotationState) bool {
+					return state.Config.StrictRest && state.Config.RequestLimits[0].RPM == 10 && len(state.OriginalPriorities) == 0
+				}}, accountTimeRotationKey).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			} else {
+				mock.ExpectRollback()
+			}
+			_, err = NewAccountTimeRotationRepository(db).Apply(context.Background(), next, time.Now())
+			if valid {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
