@@ -53,6 +53,47 @@ class PanelTests(unittest.TestCase):
         self.client.put('/vpn/api/nodes/'+str(n['id']),json=body)
         self.assertEqual(self.client.get('/vpn/sub/test-token').status_code,503)
 
+    def test_connection_access_and_secret_isolation(self):
+        endpoint='/vpn/api/nodes/1/connection'
+        self.assertEqual(self.client.post(endpoint).status_code,401)
+        self.login()
+        self.client.post('/vpn/api/nodes',json=self.node())
+        node=self.client.get('/vpn/api/state').json()['nodes'][0]
+        endpoint='/vpn/api/nodes/'+str(node['id'])+'/connection'
+        self.assertNotIn('password',node)
+        self.assertNotIn('connection',node)
+        self.assertEqual(self.client.post(endpoint,headers={'Origin':'https://evil.test'}).status_code,403)
+        self.assertEqual(self.client.post(endpoint,headers={'Origin':''}).status_code,403)
+        response=self.client.post(endpoint)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json(),{'connection':'tester:proxy-secret@192.0.2.10:1080'})
+        self.assertEqual(response.headers['Cache-Control'],'no-store')
+        self.assertEqual(self.client.post('/vpn/api/nodes/999999/connection').status_code,404)
+        self.client.post('/vpn/api/logout')
+        self.assertEqual(self.client.post(endpoint).status_code,401)
+
+    def test_connection_formats_and_latest_saved_credentials(self):
+        self.login()
+        for index,(protocol,username,password,host,expected) in enumerate((
+            ('socks5','账@号','密:码@ /%','proxy.example','账@号:密:码@ /%@proxy.example:1080'),
+            ('http','','','192.0.2.10',':@192.0.2.10:1080'),
+            ('https','tester','proxy-secret','2001:db8::10','tester:proxy-secret@[2001:db8::10]:1080'),
+            ('anytls','','node-secret','192.0.2.11',':node-secret@192.0.2.11:1080'),
+            ('ss','','ss-secret','192.0.2.12',':ss-secret@192.0.2.12:1080'),
+        )):
+            with self.subTest(protocol=protocol):
+                body=self.node();body.update(name='格式测试'+str(index),protocol=protocol,username=username,password=password,host=host,cipher='aes-256-gcm' if protocol=='ss' else '',enabled=False)
+                self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
+                node=self.client.get('/vpn/api/state').json()['nodes'][-1]
+                endpoint='/vpn/api/nodes/'+str(node['id'])+'/connection'
+                self.assertEqual(self.client.post(endpoint).json(),{'connection':expected})
+                body['password']='changed-secret'
+                self.assertEqual(self.client.put('/vpn/api/nodes/'+str(node['id']),json=body).status_code,200)
+                host_part='['+host+']' if ':' in host else host
+                self.assertEqual(self.client.post(endpoint).json(),{'connection':username+':changed-secret@'+host_part+':1080'})
+                self.client.delete('/vpn/api/nodes/'+str(node['id']))
+                self.assertEqual(self.client.post(endpoint).status_code,404)
+
     def test_rotation_and_formats(self):
         self.login();self.client.post('/vpn/api/nodes',json=self.node())
         self.assertIn('socks://',base64.b64decode(self.client.get('/vpn/sub/test-token?format=shadowrocket').text).decode())

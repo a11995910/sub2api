@@ -264,6 +264,16 @@ def create_node(body: Node):
     return save_node(body)
 
 
+@app.post(BASE + '/api/nodes/{node_id}/connection')
+def node_connection(node_id: int):
+    with db() as c:
+        row = c.execute('SELECT username,password,host,port FROM nodes WHERE id=?', (node_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, '节点不存在')
+    host = '[' + row['host'] + ']' if ':' in row['host'] else row['host']
+    return {'connection': f'{row["username"]}:{row["password"]}@{host}:{row["port"]}'}
+
+
 @app.put(BASE + '/api/nodes/{node_id}')
 def update_node(node_id: int, body: Node):
     return save_node(body, node_id)
