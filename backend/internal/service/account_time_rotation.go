@@ -257,6 +257,9 @@ type AccountTimeRotationService struct {
 	refreshedAt      time.Time
 	health           map[int64]*AccountSmartRotationHealth
 	persistMu        sync.Mutex
+
+	// 只保存结束回调已执行、但 Redis 删除尚未确认的令牌，不接管其他实例的在途记录。
+	randomRestPendingReleases sync.Map
 }
 
 func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
@@ -387,6 +390,8 @@ func (s *AccountTimeRotationService) Stop() {
 			s.cancel()
 		}
 		s.wg.Wait()
+		// 补偿有独立的五秒预算，不挤占智能轮候状态持久化的超时。
+		s.retryRandomRestReleases(context.Background())
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.persistHealth(ctx); err != nil {

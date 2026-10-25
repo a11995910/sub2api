@@ -9,8 +9,126 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+// 模拟第一次准入已写入、响应丢失后，相同命令跨过抽签边界重放。
+type randomRestAdmitReplayHook struct{ advance func() }
+
+func (h randomRestAdmitReplayHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+func (h randomRestAdmitReplayHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+func (h randomRestAdmitReplayHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		args := cmd.Args()
+		if err == nil && (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(args) > 5 && args[5] == "admit" {
+			h.advance()
+			return next(ctx, cmd)
+		}
+		return err
+	}
+}
+
+func TestAccountRandomRestRejectedReplayReleasesAdmission(t *testing.T) {
+	s, mr, rdb := protectionWaitFixture(t, 0)
+	randomRestTestConfig(s, 100, 0)
+	now := time.Now()
+	mr.SetTime(now)
+	// 先启动工作周期，再把新请求放到抽签前 1 毫秒，重试无需超过两秒超时。
+	firstDone, err := s.BeginProtectedRequest(context.Background(), protectionTestAccount(1))
+	require.NoError(t, err)
+	firstDone()
+	mr.SetTime(now.Add(time.Minute - time.Millisecond))
+	rdb.AddHook(randomRestAdmitReplayHook{advance: func() { mr.SetTime(now.Add(time.Minute)) }})
+	done, err := s.BeginProtectedRequest(context.Background(), protectionTestAccount(1))
+	require.True(t, IsAccountRestError(err))
+	done()
+	require.Zero(t, rdb.SCard(context.Background(), "account_random_rest:{1}:active").Val(), "被拒绝的请求不能遗留第一次准入写入的令牌")
+	require.Equal(t, "resting", rdb.HGet(context.Background(), "account_random_rest:{1}", "phase").Val())
+}
+
+func TestAccountRandomRestReleaseFailureSurvivesCallbackOnce(t *testing.T) {
+	s, mr, rdb := protectionWaitFixture(t, 0)
+	cfg := randomRestTestConfig(s, 100, 0)
+	ctx := context.Background()
+	now := time.Now()
+	mr.SetTime(now)
+	done, err := s.BeginProtectedRequest(ctx, protectionTestAccount(1))
+	require.NoError(t, err)
+	mr.SetTime(now.Add(time.Minute))
+	require.True(t, IsAccountRestError(s.checkRandomRest(ctx, protectionTestAccount(1))))
+	mr.SetError("模拟请求结束时 Redis 短暂不可用")
+	done()
+	mr.SetError("")
+	done()
+	s.tickRandomRest(ctx, cfg)
+	require.Zero(t, rdb.SCard(ctx, "account_random_rest:{1}:active").Val(), "请求已经结束，Redis 恢复后应补偿释放")
+	require.Equal(t, "resting", rdb.HGet(ctx, "account_random_rest:{1}", "phase").Val())
+}
+
+func TestAccountRandomRestPendingReleasePreservesOtherInstanceAndDisabledConfig(t *testing.T) {
+	for _, change := range []string{"关闭总开关", "关闭随机休息", "移除账号"} {
+		t.Run(change, func(t *testing.T) {
+			s, mr, rdb := protectionWaitFixture(t, 0)
+			cfg := randomRestTestConfig(s, 100, 0)
+			other := protectionTestService(t, rdb, 0)
+			other.publish(cfg, time.Now())
+			ctx := context.Background()
+			now := time.Now()
+			mr.SetTime(now)
+			done, err := s.BeginProtectedRequest(ctx, protectionTestAccount(1))
+			require.NoError(t, err)
+			otherDone, err := other.BeginProtectedRequest(ctx, protectionTestAccount(1))
+			require.NoError(t, err)
+			defer otherDone()
+			mr.SetTime(now.Add(time.Minute))
+			require.True(t, IsAccountRestError(s.checkRandomRest(ctx, protectionTestAccount(1))))
+			mr.SetError("模拟清理失败")
+			done()
+			mr.SetError("")
+			switch change {
+			case "关闭总开关":
+				cfg.Enabled = false
+			case "关闭随机休息":
+				cfg.RandomRest.Enabled = false
+			case "移除账号":
+				cfg.RandomRest.AccountIDs = nil
+			}
+			s.publish(cfg, time.Now())
+			s.tickRandomRest(ctx, cfg)
+			s.tickRandomRest(ctx, cfg)
+			require.EqualValues(t, 1, rdb.SCard(ctx, "account_random_rest:{1}:active").Val(), "后台补偿不能删除其他实例仍在执行的请求")
+			require.Equal(t, "draining", rdb.HGet(ctx, "account_random_rest:{1}", "phase").Val())
+			pending := 0
+			s.randomRestPendingReleases.Range(func(_, _ any) bool { pending++; return true })
+			require.Zero(t, pending, "成功补偿后应回收内存记录")
+			otherDone()
+			require.Zero(t, rdb.SCard(ctx, "account_random_rest:{1}:active").Val())
+			require.Equal(t, "resting", rdb.HGet(ctx, "account_random_rest:{1}", "phase").Val())
+		})
+	}
+}
+
+func TestAccountRandomRestWorkerRetriesEndedRequestWithFeatureDisabled(t *testing.T) {
+	s, mr, rdb := protectionWaitFixture(t, 0)
+	cfg := randomRestTestConfig(s, 100, 0)
+	ctx := context.Background()
+	done, err := s.BeginProtectedRequest(ctx, protectionTestAccount(1))
+	require.NoError(t, err)
+	mr.SetError("模拟清理失败")
+	done()
+	mr.SetError("")
+	cfg.Enabled = false
+	s.repo = &snapshotRepoStub{config: cfg}
+	s.Start()
+	t.Cleanup(s.Stop)
+	require.Eventually(t, func() bool {
+		return rdb.SCard(ctx, "account_random_rest:{1}:active").Val() == 0
+	}, 3*time.Second, 10*time.Millisecond, "后台轮候应在功能关闭时仍补偿已结束请求")
+}
 
 func randomRestTestConfig(s *AccountTimeRotationService, probability, maxwork int) *AccountTimeRotationConfig {
 	cfg := cloneAccountTimeRotationConfig(s.snapshot)

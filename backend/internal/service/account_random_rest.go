@@ -159,7 +159,8 @@ func (s *AccountTimeRotationService) BeginProtectedRequest(ctx context.Context, 
 				return
 			}
 		}
-		slog.Error("随机休息在途记录清理失败，账号保持保守排空", "account_id", id)
+		s.randomRestPendingReleases.Store(token, randomRestPendingRelease{accountID: id, policy: *policy})
+		slog.Error("随机休息在途记录清理失败，已加入后台补偿，账号保持保守排空", "account_id", id)
 	}
 	state, err := s.runRandomRest(ctx, id, policy, "admit", token)
 	if err != nil {
@@ -167,6 +168,9 @@ func (s *AccountTimeRotationService) BeginProtectedRequest(ctx context.Context, 
 		return noop, err
 	}
 	if err = state.admissionError(); err != nil {
+		// Redis 响应丢失后的命令重放可能返回排空，但首次准入已登记此令牌。
+		// 无论是否实际登记过，按令牌幂等清理，不能把已登记的请求丢给 noop。
+		release()
 		return noop, err
 	}
 	var once sync.Once
@@ -182,7 +186,31 @@ func (s *AccountTimeRotationService) BeginProtectedRequest(ctx context.Context, 
 	return done, nil
 }
 
+type randomRestPendingRelease struct {
+	accountID int64
+	policy    AccountRandomRestConfig
+}
+
+// 只重试已明确结束的请求，绝不按令牌年龄、租约或进程启动时间清空在途集合。
+func (s *AccountTimeRotationService) retryRandomRestReleases(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	s.randomRestPendingReleases.Range(func(key, value any) bool {
+		if ctx.Err() != nil {
+			return false
+		}
+		pending := value.(randomRestPendingRelease)
+		if _, err := s.runRandomRest(ctx, pending.accountID, &pending.policy, "release", key.(string)); err == nil {
+			s.randomRestPendingReleases.Delete(key)
+			slog.Info("随机休息在途记录补偿清理成功", "account_id", pending.accountID)
+		}
+		return true
+	})
+}
+
 func (s *AccountTimeRotationService) tickRandomRest(ctx context.Context, cfg *AccountTimeRotationConfig) {
+	// 关闭功能或移除账号不能阻止已结束请求的清理。
+	s.retryRandomRestReleases(ctx)
 	if !cfg.Enabled || cfg.RandomRest == nil || !cfg.RandomRest.Enabled {
 		return
 	}
