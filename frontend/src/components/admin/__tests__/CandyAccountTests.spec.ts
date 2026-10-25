@@ -30,7 +30,7 @@ const result = (overrides: Partial<CandyTestResult> = {}): CandyTestResult => ({
 })
 const mountView = () => mount(CandyAccountTests, { global: { stubs: {
   Icon: true,
-  Select: { props: ['modelValue', 'options'], template: '<select :value="modelValue"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>' },
+  Select: { props: ['modelValue', 'options', 'disabled'], emits: ['update:modelValue'], template: '<select :value="modelValue" :disabled="disabled" @change="$emit(\'update:modelValue\', options.find(option => String(option.value) === $event.target.value)?.value ?? null)"><option value=""></option><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>' },
   GroupSelector: { props: ['modelValue', 'groups'], emits: ['update:modelValue'], template: '<div><input v-for="group in groups" :key="group.id" type="checkbox" :value="group.id" :checked="modelValue.includes(group.id)" @change="$emit(\'update:modelValue\', $event.target.checked ? [...modelValue, group.id] : modelValue.filter(id => id !== group.id))" /></div>' },
   BaseDialog: { props: ['show'], template: '<div v-if="show" class="detail-dialog"><slot /><slot name="footer" /></div>' },
   ConfirmDialog: { props: ['show'], emits: ['confirm'], template: '<div v-if="show"><button data-testid="stop-confirm" @click="$emit(\'confirm\')" /></div>' },
@@ -54,6 +54,64 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
 
 describe('糖果账号测试', () => {
+  it('单账号测试只发送选中 ID，沿用保存配置且不修改定时范围', async () => {
+    api.getSettings.mockResolvedValue(settings({ schedule_enabled: true }))
+    api.run.mockResolvedValue({ run_id: '单账号批次', settings: input(), results: [result({ status: 'running' })] })
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-scope-single"]').setValue()
+    expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="candy-single-account"]').setValue('18')
+    expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="candy-run"]').text()).toContain('candyTests.runSingle')
+    await wrapper.get('[data-testid="candy-run"]').trigger('click')
+    await flushPromises()
+    expect(api.run).toHaveBeenCalledTimes(1)
+    expect(api.run).toHaveBeenCalledWith({ all: false, account_ids: [18] })
+    expect(api.updateSettings).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('candyTests.runStarted')
+    await wrapper.get('[data-testid="candy-scope-all"]').setValue()
+    await wrapper.get('[data-testid="candy-run"]').trigger('click')
+    await flushPromises()
+    expect(api.run).toHaveBeenLastCalledWith({ all: true })
+  })
+
+  it('单账号测试保护未保存设置，已删除选择和列表失败不能误启动全量', async () => {
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-scope-single"]').setValue()
+    await wrapper.get('[data-testid="candy-single-account"]').setValue('18')
+    await wrapper.get('[data-testid="candy-prompt"]').setValue('未保存的题目')
+    expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="candy-run"]').trigger('click')
+    expect(api.run).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="candy-prompt"]').setValue(DEFAULT_CANDY_PROMPT)
+    api.getAccounts.mockResolvedValueOnce([{ id: 19, name: '其他账号' }])
+    await wrapper.get('[data-testid="candy-refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="candy-single-account"]').setValue('19')
+    api.getAccounts.mockRejectedValueOnce(new Error('加载失败'))
+    await wrapper.get('[data-testid="candy-refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('candyTests.accountsLoadFailed')
+    expect(wrapper.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    expect(api.run).not.toHaveBeenCalled()
+  })
+
+  it('单账号遇到并发批次显示冲突，不退回全部测试', async () => {
+    api.run.mockRejectedValue(new Error('已有糖果测试正在运行'))
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="candy-scope-single"]').setValue()
+    await wrapper.get('[data-testid="candy-single-account"]').setValue('19')
+    await wrapper.get('[data-testid="candy-run"]').trigger('click')
+    await flushPromises()
+    expect(api.run).toHaveBeenCalledTimes(1)
+    expect(api.run).toHaveBeenCalledWith({ all: false, account_ids: [19] })
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+  })
+
   it.each([undefined, null])('兼容旧配置排除名单 %s，默认折叠且全部参与', async excluded => {
     api.getSettings.mockResolvedValue({ ...settings({ auto_group_enabled: true }), auto_group_excluded_account_ids: excluded })
     wrapper = mountView()

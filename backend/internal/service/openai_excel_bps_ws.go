@@ -14,9 +14,9 @@ import (
 
 const excelBPSManagedWSContextKey = "excel_bps_managed_ws"
 
-// 将协议适配器输出的 SSE 事件逐条转为既有 WebSocket 连接中的 JSON 帧。
-// 不经过 httptest 缓冲整段响应，也不重复升级连接。
-type excelBPSWSWriter struct {
+// 将协议适配器输出的 SSE 逐条交给事件处理器，供 WebSocket 和账号测试复用。
+// 不缓冲整段响应，也不重复升级连接。
+type excelBPSEventWriter struct {
 	gin.ResponseWriter
 	headers   http.Header
 	pending   []byte
@@ -26,15 +26,15 @@ type excelBPSWSWriter struct {
 	collector openAIWSToolCallReplayCollector
 }
 
-func (w *excelBPSWSWriter) Header() http.Header               { return w.headers }
-func (w *excelBPSWSWriter) WriteHeader(status int)            { w.status = status }
-func (w *excelBPSWSWriter) WriteHeaderNow()                   {}
-func (w *excelBPSWSWriter) Status() int                       { return w.status }
-func (w *excelBPSWSWriter) Size() int                         { return w.size }
-func (w *excelBPSWSWriter) Written() bool                     { return w.size > 0 }
-func (w *excelBPSWSWriter) Flush()                            {}
-func (w *excelBPSWSWriter) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
-func (w *excelBPSWSWriter) Write(p []byte) (int, error) {
+func (w *excelBPSEventWriter) Header() http.Header               { return w.headers }
+func (w *excelBPSEventWriter) WriteHeader(status int)            { w.status = status }
+func (w *excelBPSEventWriter) WriteHeaderNow()                   {}
+func (w *excelBPSEventWriter) Status() int                       { return w.status }
+func (w *excelBPSEventWriter) Size() int                         { return w.size }
+func (w *excelBPSEventWriter) Written() bool                     { return w.size > 0 }
+func (w *excelBPSEventWriter) Flush()                            {}
+func (w *excelBPSEventWriter) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
+func (w *excelBPSEventWriter) Write(p []byte) (int, error) {
 	if len(w.pending)+len(p) > 16<<20 {
 		return 0, fmt.Errorf("BPS 事件超过大小限制")
 	}
@@ -73,7 +73,7 @@ func (s *OpenAIGatewayService) proxyExcelBPSWSTurn(ctx context.Context, c *gin.C
 	if err != nil {
 		return nil, err
 	}
-	writer := &excelBPSWSWriter{ResponseWriter: c.Writer, headers: make(http.Header), status: 200, send: send}
+	writer := &excelBPSEventWriter{ResponseWriter: c.Writer, headers: make(http.Header), status: 200, send: send}
 	previous := c.Writer
 	previousManaged := c.GetBool(excelBPSManagedWSContextKey)
 	c.Set(excelBPSManagedWSContextKey, true)

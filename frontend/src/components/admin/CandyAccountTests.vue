@@ -101,11 +101,26 @@
       </div>
     </form>
 
-    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
-      <div><p class="text-sm">{{ t('candyTests.scope') }}</p><p v-if="settings?.last_run_at" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('candyTests.lastRun', { time: beijingTime(settings.last_run_at) }) }}</p></div>
-      <div class="flex flex-wrap gap-2">
-        <button v-if="running && settings?.running_run_id" type="button" class="btn btn-secondary" :disabled="stopping || saving || starting" data-testid="candy-stop" @click="requestStop">{{ t('candyTests.stop') }}</button>
-        <button type="button" class="btn btn-primary inline-flex items-center gap-2" :disabled="!draft || dirty || starting || saving || stopping || running" data-testid="candy-run" @click="run"><Icon name="play" size="sm" />{{ t(running || starting ? 'candyTests.running' : 'candyTests.run') }}</button>
+    <div class="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
+      <fieldset :disabled="starting || saving || stopping || running" class="space-y-3">
+        <legend class="mb-2 text-sm font-semibold">{{ t('candyTests.testScope') }}</legend>
+        <div class="flex flex-wrap gap-4 text-sm">
+          <label class="inline-flex items-center gap-2"><input v-model="testScope" type="radio" name="candy-test-scope" value="all" data-testid="candy-scope-all" class="text-primary-600 focus:ring-primary-500" />{{ t('candyTests.allAccounts') }}</label>
+          <label class="inline-flex items-center gap-2"><input v-model="testScope" type="radio" name="candy-test-scope" value="single" data-testid="candy-scope-single" class="text-primary-600 focus:ring-primary-500" />{{ t('candyTests.singleAccount') }}</label>
+        </div>
+        <div v-if="testScope === 'single'" class="max-w-lg space-y-2">
+          <Select v-model="selectedAccountId" :options="testAccountOptions" searchable clearable :loading="accountsLoading" :disabled="starting || saving || stopping || running || accountsLoading || accountsFailed" :placeholder="t('candyTests.selectAccount')" :search-placeholder="t('candyTests.accountsSearch')" :aria-label="t('candyTests.selectAccount')" data-testid="candy-single-account" />
+          <p v-if="accountsFailed" role="alert" class="text-xs text-red-600 dark:text-red-400">{{ t('candyTests.accountsLoadFailed') }} <button type="button" class="underline" :disabled="accountsLoading" @click="loadAccounts">{{ t('candyTests.refresh') }}</button></p>
+          <p v-else-if="!accountsLoading && !accounts.length" class="text-xs text-gray-500 dark:text-gray-400">{{ t('candyTests.accountsEmpty') }}</p>
+          <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('candyTests.singleAccountHint') }}</p>
+        </div>
+      </fieldset>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div><p class="text-sm">{{ t('candyTests.scope') }}</p><p v-if="settings?.last_run_at" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('candyTests.lastRun', { time: beijingTime(settings.last_run_at) }) }}</p></div>
+        <div class="flex flex-wrap gap-2">
+          <button v-if="running && settings?.running_run_id" type="button" class="btn btn-secondary" :disabled="stopping || saving || starting" data-testid="candy-stop" @click="requestStop">{{ t('candyTests.stop') }}</button>
+          <button type="button" class="btn btn-primary inline-flex items-center gap-2" :disabled="!draft || dirty || starting || saving || stopping || running || invalidTestSelection" data-testid="candy-run" @click="run"><Icon name="play" size="sm" />{{ t(running || starting ? 'candyTests.running' : testScope === 'single' ? 'candyTests.runSingle' : 'candyTests.run') }}</button>
+        </div>
       </div>
     </div>
 
@@ -173,6 +188,10 @@ const accountsExpanded = ref(false)
 const accountsLoading = ref(false)
 const accountsFailed = ref(false)
 const accountSearch = ref('')
+const testScope = ref<'all' | 'single'>('all')
+const selectedAccountId = ref<number | null>(null)
+const testAccountOptions = computed(() => accounts.value.map(account => ({ value: account.id, label: `${account.name || 'OAuth'} · #${account.id}` })))
+const invalidTestSelection = computed(() => testScope.value === 'single' && (accountsLoading.value || accountsFailed.value || !accounts.value.some(account => account.id === selectedAccountId.value)))
 const loading = ref(false)
 const saving = ref(false)
 const starting = ref(false)
@@ -295,6 +314,7 @@ async function loadAccounts() {
     const loaded = await candyTestsAPI.getAccounts(controller.signal)
     if (!alive || controller.signal.aborted) return
     accounts.value = loaded
+    if (!loaded.some(account => account.id === selectedAccountId.value)) selectedAccountId.value = null
     accountsFailed.value = false
   } catch {
     if (alive && !controller.signal.aborted) accountsFailed.value = true
@@ -382,11 +402,14 @@ async function save() {
 }
 
 async function run() {
-  if (!draft.value || dirty.value || starting.value || saving.value || stopping.value || running.value) return
+  if (!draft.value || dirty.value || starting.value || saving.value || stopping.value || running.value || invalidTestSelection.value) return
+  const selection = testScope.value === 'single'
+    ? { all: false, account_ids: [selectedAccountId.value!] }
+    : { all: true }
   starting.value = true
   settingsRequestId++
   try {
-    const batch = await candyTestsAPI.run({ all: true })
+    const batch = await candyTestsAPI.run(selection)
     if (!alive) return
     applySettings({ ...settings.value, ...batch.settings, running_run_id: batch.run_id })
     page.value = 1

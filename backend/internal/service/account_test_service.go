@@ -837,15 +837,19 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// /responses wire and does NOT apply the legacy compact-only mapping
 	// (post-#5641 semantics: compact_model_mapping is /responses/compact-only).
 	testModelID = account.GetMappedModel(testModelID)
+	if candyTestRequested(c) && isOpenAIImageModel(testModelID) {
+		return s.sendErrorAndEnd(c, "糖果测试映射到图像模型，无法进行整数答题")
+	}
+	// 鹈鹕和糖果测试显式启用 Excel 后必须验证该协议，失败不能转回 Codex。
+	if pelicanTestRequested(c) && (account.Extra["openai_excel_bps"] == true || account.IsExcelOAuth()) {
+		return s.testIntelligenceExcelBPS(c, account, testModelID)
+	}
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
 
 	// Route to image generation test if an image model is selected
 	if isOpenAIImageModel(testModelID) {
-		if candyTestRequested(c) {
-			return s.sendErrorAndEnd(c, "糖果测试映射到图像模型，无法进行整数答题")
-		}
 		imagePrompt := strings.TrimSpace(prompt)
 		if imagePrompt == "" {
 			imagePrompt = defaultOpenAIImageTestPrompt
