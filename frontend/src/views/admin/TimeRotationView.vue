@@ -3,572 +3,258 @@
     <div class="space-y-6">
       <div class="card flex flex-wrap items-center justify-between gap-4 p-5">
         <div>
-          <div class="flex flex-wrap items-center gap-3">
-            <label class="flex cursor-pointer items-center gap-2 font-semibold text-gray-900 dark:text-white">
-              <input v-model="config.enabled" type="checkbox" :disabled="!ready || saving" class="h-4 w-4" data-testid="rotation-enabled" />
-              {{ t('timeRotation.enabled') }}
-            </label>
-            <span class="rounded-full bg-primary-50 px-3 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-              {{ t('timeRotation.timezone') }}
-            </span>
-          </div>
-          <p class="mt-2 text-sm text-gray-500">{{ t('timeRotation.description') }}</p>
+          <h1 class="text-xl font-semibold">{{ t('timeRotation.title') }}</h1>
+          <p class="mt-2 text-sm text-gray-500">{{ t('timeRotation.paced.description') }}</p>
         </div>
-        <div class="flex gap-2">
-          <button type="button" class="btn btn-secondary" :disabled="loading || saving" @click="load()">
-            {{ t('common.refresh') }}
-          </button>
-          <span v-if="dirty" class="self-center text-xs text-amber-700 dark:text-amber-300">{{ t('timeRotation.unsaved') }}</span>
-          <button type="button" class="btn btn-primary" :disabled="!ready || saving" data-testid="rotation-save" @click="save">
-            {{ saving ? t('common.saving') : t('common.save') }}
-          </button>
+        <div class="flex items-center gap-3">
+          <span v-if="dirty" class="text-sm text-amber-700">{{ t('timeRotation.unsaved') }}</span>
+          <button class="btn btn-secondary" :disabled="loading || saving" data-testid="rotation-reload" @click="load()">{{ t('common.refresh') }}</button>
+          <button class="btn btn-primary" :disabled="!ready || saving || (replacingLegacy && !replaceConfirmed)" data-testid="rotation-save" @click="save">{{ saving ? t('common.saving') : t('common.save') }}</button>
         </div>
       </div>
-      <p v-if="error" role="alert" class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
+
+      <p v-if="error" role="alert" class="rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20">
         {{ error }}
-        <button v-if="saveConflict" type="button" class="ml-2 font-medium underline" @click="reloadAfterConflict">
-          {{ t('timeRotation.reloadAfterConflict') }}
-        </button>
+        <button v-if="saveConflict" class="ml-2 underline" data-testid="reload-conflict" @click="load(true)">{{ t('timeRotation.reloadAfterConflict') }}</button>
       </p>
-      <p v-if="loading" class="py-8 text-center text-gray-500">{{ t('common.loading') }}</p>
+      <p v-if="loading" class="p-8 text-center text-gray-500">{{ t('common.loading') }}</p>
       <template v-else-if="ready">
-        <div class="card p-5">
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.mode') }}</span>
-            <label
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-              :class="config.mode !== 'smart' ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-600'"
-            >
-              <input v-model="config.mode" type="radio" value="manual" :disabled="saving" data-testid="rotation-mode-manual" />
-              {{ t('timeRotation.manualMode') }}
-            </label>
-            <label
-              class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-              :class="config.mode === 'smart' ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-dark-600'"
-            >
-              <input v-model="config.mode" type="radio" value="smart" :disabled="saving" data-testid="rotation-mode-smart" />
-              {{ t('timeRotation.smartMode') }}
-            </label>
-          </div>
-          <p class="mt-3 text-sm text-gray-500">
-            {{ config.mode === 'smart' ? t('timeRotation.smartDescription') : t('timeRotation.manualDescription') }}
-          </p>
-        </div>
-
-        <section class="card space-y-4 p-5">
-          <h2 class="font-semibold">{{ t('timeRotation.protectionTitle') }}</h2>
-          <label class="flex items-center gap-2">
-            <input v-model="config.strict_rest" type="checkbox" :disabled="saving" data-testid="strict-rest" />
-            {{ t('timeRotation.strictRest') }}
+        <div v-if="replacingLegacy" class="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 dark:bg-amber-950/30" data-testid="legacy-notice">
+          <p>{{ t('timeRotation.paced.legacyNotice') }}</p>
+          <label class="mt-3 flex items-start gap-2">
+            <input v-model="replaceConfirmed" type="checkbox" :disabled="saving" data-testid="replace-legacy" />
+            <span>{{ t('timeRotation.paced.replaceLegacy') }}</span>
           </label>
-          <p class="text-sm text-gray-500">{{ t('timeRotation.protectionHint') }}</p>
-          <div v-for="(limit, index) in config.request_limits" :key="index" class="flex flex-wrap items-center gap-3">
-            <select v-model.number="limit.account_id" class="input w-64" :disabled="saving" :aria-label="t('timeRotation.accounts')">
-              <option :value="0" disabled>{{ t('timeRotation.selectLimitAccount') }}</option>
-              <option v-for="account in accounts" :key="account.id" :value="account.id">{{ account.name }} (#{{ account.id }})</option>
-            </select>
-            <label class="flex items-center gap-2 text-sm">
-              {{ t('timeRotation.totalRPM') }}
-              <input v-model.number="limit.rpm" class="input w-28" type="number" min="1" max="10000" step="1" :disabled="saving" data-testid="account-rpm" />
-            </label>
-            <button type="button" class="btn btn-secondary" :disabled="saving" @click="config.request_limits?.splice(index, 1)">{{ t('common.delete') }}</button>
-          </div>
-          <button type="button" class="btn btn-secondary" :disabled="saving" data-testid="add-account-limit" @click="config.request_limits?.push({ account_id: 0, rpm: 10 })">{{ t('timeRotation.addLimit') }}</button>
-          <p class="text-sm text-gray-500">{{ t('timeRotation.rateLimitHint') }}</p>
-          <div class="space-y-3 border-t pt-4" data-testid="random-rest-config">
-            <label class="flex items-center gap-2">
-              <input v-model="randomRest.enabled" type="checkbox" :disabled="saving" data-testid="random-rest-enabled" />
-              {{ t('timeRotation.randomRestTitle') }}
-            </label>
-            <p class="text-sm text-gray-500">{{ t('timeRotation.randomRestHint') }}</p>
-            <template v-if="randomRest.enabled">
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <label v-for="field in randomRestFields" :key="field.key" class="text-sm">
-                  {{ t(`timeRotation.randomRestFields.${field.key}`) }}
-                  <input v-model.number="randomRest[field.key]" class="input mt-1 w-full" type="number" :min="field.min" :max="field.max" step="1" :disabled="saving" :data-testid="`random-rest-${field.key}`" />
-                </label>
-              </div>
-              <p class="text-sm">{{ t('timeRotation.randomRestAccounts') }}</p>
-              <div class="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3">
-                <label v-for="account in accounts" :key="account.id" class="flex items-center gap-2 text-sm">
-                  <input v-model="randomRest.account_ids" type="checkbox" :value="account.id" :disabled="saving" :data-testid="`random-rest-account-${account.id}`" />
-                  {{ account.name }} (#{{ account.id }})
-                </label>
-              </div>
-            </template>
-          </div>
-          <div class="border-t pt-3" data-testid="protection-status">
-            <p class="mb-2 text-sm font-medium">{{ t('timeRotation.protectionStatus') }}</p>
-            <p v-if="statusError || !status || !status.ready" class="text-sm text-amber-700">{{ t('timeRotation.statusUnavailable') }}</p>
-            <div v-else v-for="item in status.protection || []" :key="item.account_id" class="flex flex-wrap gap-3 py-1 text-sm">
-              <span>{{ accountName(item.account_id) }}</span>
-              <span>{{ t(`timeRotation.protectionStates.${item.state}`) }}</span>
-              <span v-if="item.rpm">{{ item.used ?? '—' }} / {{ item.rpm }}</span>
-              <span v-if="item.random_state">{{ t('timeRotation.randomRestInFlight', { n: item.in_flight ?? 0 }) }}</span>
-              <span v-if="item.random_rest_until">{{ t('timeRotation.randomRestUntil', { time: formatBeijingTime(item.random_rest_until) }) }}</span>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-2">
+          <section class="card space-y-5 p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h2 class="font-semibold">{{ t('timeRotation.paced.schedule') }}</h2>
+              <label class="flex items-center gap-2 text-sm"><input v-model="enabled" type="checkbox" :disabled="saving" data-testid="rotation-enabled" />{{ t('timeRotation.enabled') }}</label>
             </div>
+            <label class="block text-sm">
+              {{ t('timeRotation.paced.account') }}
+              <input v-model="query" type="search" class="input mt-2" :placeholder="t('timeRotation.search')" :disabled="saving" data-testid="account-search" />
+              <select v-model.number="policy.account_id" class="input mt-2" :disabled="saving" data-testid="paced-account">
+                <option :value="0">{{ t('timeRotation.paced.chooseAccount') }}</option>
+                <option v-for="account in candidates" :key="account.id" :value="account.id">{{ account.name }} · #{{ account.id }}</option>
+                <option v-if="policy.account_id && !accounts.some(a => a.id === policy.account_id)" :value="policy.account_id">{{ t('timeRotation.missingAccount', { id: policy.account_id }) }}</option>
+              </select>
+            </label>
+            <p v-if="selectedAccount && (selectedAccount.status !== 'active' || !selectedAccount.schedulable)" class="text-sm text-amber-700">{{ t('timeRotation.paced.accountUnavailable') }}</p>
+            <div class="grid grid-cols-2 gap-4">
+              <label class="text-sm">{{ t('timeRotation.start') }}<input v-model="policy.start" class="input mt-2" type="time" :disabled="saving" data-testid="paced-start" /></label>
+              <label class="text-sm">{{ t('timeRotation.end') }}<input v-model="policy.end" class="input mt-2" type="text" placeholder="18:30" :disabled="saving" data-testid="paced-end" /></label>
+            </div>
+            <p class="text-xs text-gray-500">{{ t('timeRotation.timezone') }} · {{ t('timeRotation.timeHint') }}</p>
+            <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
+              <div class="relative h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600" aria-hidden="true">
+                <span v-for="(part, index) in scheduleParts" :key="index" class="absolute inset-y-0 bg-primary-500" :style="{ left: `${part.start / 14.4}%`, width: `${part.length / 14.4}%` }" />
+              </div>
+              <div class="mt-2 flex justify-between text-xs text-gray-500"><span>00:00</span><span>12:00</span><span>24:00</span></div>
+              <p class="mt-3 text-sm" data-testid="schedule-summary">{{ t('timeRotation.paced.scheduleSummary', { work: (workMinutes / 60).toFixed(1), rest: ((1440 - workMinutes) / 60).toFixed(1) }) }}</p>
+            </div>
+            <p class="text-sm leading-6 text-gray-500">{{ t('timeRotation.paced.scheduleHint') }}</p>
+          </section>
+
+          <section class="card space-y-5 p-5">
+            <h2 class="font-semibold">{{ t('timeRotation.paced.capacity') }}</h2>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label v-for="field in fields" :key="field.key" class="text-sm">
+                {{ t(`timeRotation.paced.fields.${field.key}`) }}
+                <input v-model.number="policy[field.key]" class="input mt-2" type="number" :min="field.min" :max="field.max" step="1" :disabled="saving" :data-testid="field.key" />
+              </label>
+            </div>
+            <p class="rounded-xl bg-primary-50 p-4 text-sm leading-6 text-primary-800 dark:bg-primary-950/20" data-testid="capacity-summary">{{ t('timeRotation.paced.capacitySummary', { rpm: policy.sustained_rpm, burst: policy.burst_capacity, ceiling: policy.rpm, interval: (60 / policy.sustained_rpm).toFixed(1) }) }}</p>
+            <p class="text-sm leading-6 text-gray-500">{{ t('timeRotation.paced.capacityHint') }}</p>
+            <p class="text-sm leading-6 text-gray-500">{{ t('timeRotation.paced.waitHint') }}</p>
+          </section>
+        </div>
+
+        <section class="card space-y-4 p-5" data-testid="paced-status">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 class="font-semibold">{{ t('timeRotation.planPreview') }}</h2><p class="mt-1 text-xs text-gray-500">{{ t('timeRotation.savedStatusHint') }}</p></div>
+            <button class="btn btn-secondary" :disabled="statusLoading || saving" data-testid="refresh-status" @click="loadStatus">{{ t('common.refresh') }}</button>
           </div>
+          <p v-if="statusError || !status" class="text-sm text-amber-700">{{ t('timeRotation.statusUnavailable') }}</p>
+          <template v-else>
+            <p class="text-sm">{{ t('timeRotation.savedRevision', { n: status.revision }) }} · {{ statusMessage }}</p>
+            <template v-if="live && live.paced && status.ready && status.mode === 'paced'">
+              <p class="text-sm font-medium">{{ accountName(live.account_id) }} · {{ liveState }}</p>
+              <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                <div v-for="metric in liveMetrics" :key="metric.label" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800"><p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold tabular-nums">{{ metric.value }}</p></div>
+              </div>
+              <p class="text-sm text-gray-500">{{ t(live.paced.schedule_open ? 'timeRotation.paced.closesAt' : 'timeRotation.paced.opensAt', { time: formatTime(live.paced.next_change_at) }) }}</p>
+              <p v-if="live.paced.retry_after > 0 && live.state === 'account_rate_limited'" class="text-sm text-amber-700">{{ t('timeRotation.paced.blocked', { reason: t(`timeRotation.paced.reasons.${live.paced.blocked_by}`), seconds: live.paced.retry_after }) }}</p>
+            </template>
+          </template>
+          <p class="text-xs leading-5 text-gray-500">{{ t('timeRotation.paced.statusHint') }}</p>
         </section>
-
-        <template v-if="config.mode === 'smart'">
-          <section class="card p-5">
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.smartAccounts') }}</h2>
-                <p class="mt-1 text-xs text-gray-500">{{ t('timeRotation.smartAccountsHint') }}</p>
-              </div>
-              <span class="text-sm text-primary-600 dark:text-primary-400">
-                {{ t('timeRotation.selected', { n: smart.account_ids.length }) }}
-              </span>
-            </div>
-            <div v-if="smart.account_ids.length" class="mb-3 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
-              <button
-                v-for="id in smart.account_ids"
-                :key="id"
-                type="button"
-                class="rounded-lg bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                :disabled="saving"
-                :data-smart-remove-id="id"
-                :aria-label="t('timeRotation.removeAccount', { name: accountName(id) })"
-                @click="removeSmartAccount(id)"
-              >
-                {{ accountName(id) }} <span aria-hidden="true">×</span>
-              </button>
-            </div>
-            <input v-model="smartQuery" class="input mb-3 max-w-md" :placeholder="t('timeRotation.search')" type="search" data-testid="smart-account-search" />
-            <div class="grid max-h-72 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
-              <label v-for="account in smartCandidates.slice(0, 200)" :key="account.id" class="flex items-start gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-dark-700">
-                <input v-model="smart.account_ids" type="checkbox" :value="account.id" class="mt-1 h-4 w-4" :disabled="saving" :data-smart-account-id="account.id" />
-                <span class="min-w-0 text-sm">
-                  <span class="block break-all text-gray-900 dark:text-gray-100">{{ account.name }}</span>
-                  <span class="block text-xs text-gray-500">#{{ account.id }} · {{ smartAccountStatus(account) }}</span>
-                  <span v-if="smartAccountReason(account)" class="block text-xs text-amber-700 dark:text-amber-300">{{ smartAccountReason(account) }}</span>
-                </span>
-              </label>
-              <p v-if="!smartCandidates.length" class="py-6 text-center text-sm text-gray-500 sm:col-span-2 lg:col-span-3">{{ t('timeRotation.empty') }}</p>
-            </div>
-            <p v-if="smartCandidates.length > 200" class="mt-3 text-xs text-gray-500">{{ t('timeRotation.smartSearchMore') }}</p>
-          </section>
-
-          <section class="card p-5">
-            <h2 class="mb-4 font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.healthPolicy') }}</h2>
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <label v-for="field in healthFields" :key="field.key" class="input-label">
-                {{ t(`timeRotation.${field.key}`) }}
-                <input v-model.number="smart[field.key]" type="number" :min="field.min" :max="field.max" step="1" class="input mt-1" :disabled="saving" :data-testid="field.key" />
-              </label>
-            </div>
-            <p class="mt-3 text-xs text-gray-500">{{ t('timeRotation.smartSafetyHint') }}</p>
-          </section>
-
-          <section class="card p-5" data-testid="rotation-status">
-            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.planPreview') }}</h2>
-              <button type="button" class="btn btn-secondary text-sm" :disabled="statusLoading || saving" data-testid="refresh-status" @click="loadStatus">
-                {{ t('timeRotation.refreshPreview') }}
-              </button>
-            </div>
-            <p class="mb-3 text-xs text-gray-500">{{ t('timeRotation.savedStatusHint') }}</p>
-            <p v-if="statusError" class="text-sm text-amber-700 dark:text-amber-300">{{ t('timeRotation.statusFailed') }}</p>
-            <template v-else-if="status">
-              <p class="mb-2 text-sm" :class="status.ready ? 'text-gray-500' : 'text-amber-700 dark:text-amber-300'" data-testid="status-state">
-                {{ statusMessage }}
-              </p>
-              <p class="mb-3 text-xs text-gray-500">
-                {{ t('timeRotation.savedRevision', { n: status.revision }) }}
-                <span v-if="status.updated_at"> · {{ t('timeRotation.updatedAt') }} {{ formatBeijingTime(status.updated_at) }}</span>
-              </p>
-              <template v-if="status.enabled && status.mode === 'smart' && status.ready">
-                <div class="overflow-x-auto">
-                  <table class="w-full text-left text-sm">
-                    <thead>
-                      <tr class="border-b border-gray-100 text-xs text-gray-500 dark:border-dark-600">
-                        <th class="p-2">{{ t('timeRotation.accountName') }}</th>
-                        <th class="p-2">{{ t('timeRotation.accountRole') }}</th>
-                        <th class="p-2">{{ t('timeRotation.effectivePriority') }}</th>
-                        <th class="p-2">{{ t('timeRotation.latestLatency') }}</th>
-                        <th class="p-2">{{ t('timeRotation.streaks') }}</th>
-                        <th class="p-2">{{ t('timeRotation.recoveryAt') }}</th>
-                        <th class="p-2">{{ t('timeRotation.accountReason') }}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="account in status.accounts" :key="account.account_id" class="border-b border-gray-50 dark:border-dark-700">
-                        <td class="p-2">{{ account.name || accountName(account.account_id) }} <span class="text-xs text-gray-500">#{{ account.account_id }}</span></td>
-                        <td class="p-2" :class="{ 'text-green-600 dark:text-green-400': account.role === 'normal', 'text-amber-600 dark:text-amber-400': account.role === 'cooling', 'text-blue-600 dark:text-blue-400': account.role === 'recovering' }">{{ t(`timeRotation.role.${account.role}`) }}</td>
-                        <td class="p-2">{{ account.effective_priority }} <span class="text-xs text-gray-500">({{ t('timeRotation.originalPriority') }} {{ account.original_priority }})</span></td>
-                        <td class="p-2">
-                          {{ formatLatency(account.last_ttft_ms) }} / {{ formatLatency(account.last_duration_ms) }}
-                          <span v-if="account.last_sample_at" class="block text-xs text-gray-500">{{ formatBeijingTime(account.last_sample_at) }}</span>
-                        </td>
-                        <td class="p-2">{{ account.slow_streak ?? 0 }} / {{ account.healthy_streak ?? 0 }}</td>
-                        <td class="p-2">{{ account.cooldown_until ? formatBeijingTime(account.cooldown_until) : account.next_probe_at ? formatBeijingTime(account.next_probe_at) : '—' }}</td>
-                        <td class="p-2 text-gray-500">{{ account.reason }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </template>
-            </template>
-            <p v-else class="text-sm text-gray-500">{{ t('timeRotation.statusUnavailable') }}</p>
-            <p class="mt-3 text-xs text-gray-500">{{ t('timeRotation.statusHint') }}</p>
-          </section>
-        </template>
-
-        <div v-if="config.mode !== 'smart' || config.strict_rest" class="grid gap-5 xl:grid-cols-3">
-          <section v-for="(slot, index) in config.slots" :key="index" class="card overflow-hidden" :data-testid="`rotation-slot-${index}`">
-            <div class="border-b border-gray-100 bg-gray-50/60 p-5 dark:border-dark-700 dark:bg-dark-800">
-              <div class="mb-4 flex items-center justify-between">
-                <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('timeRotation.slot', { n: index + 1 }) }}</h2>
-                <span class="text-sm text-primary-600 dark:text-primary-400">{{ t('timeRotation.selected', { n: slot.account_ids.length }) }}</span>
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <label class="input-label">
-                  {{ t('timeRotation.start') }}
-                  <input v-model="slot.start" type="time" class="input mt-1" :disabled="saving" />
-                </label>
-                <label class="input-label">
-                  {{ t('timeRotation.end') }}
-                  <input v-model="slot.end" type="text" inputmode="numeric" placeholder="24:00" pattern="([01][0-9]|2[0-3]):[0-5][0-9]|24:00" class="input mt-1" :disabled="saving" />
-                </label>
-                <label class="input-label">
-                  {{ t('timeRotation.activePriority') }}
-                  <input v-model.number="slot.active_priority" type="number" min="1" max="2147483647" step="1" class="input mt-1" :disabled="saving" />
-                </label>
-                <label class="input-label">
-                  {{ t('timeRotation.inactivePriority') }}
-                  <input v-model.number="slot.inactive_priority" type="number" min="1" max="2147483647" step="1" class="input mt-1" :disabled="saving" />
-                </label>
-              </div>
-              <p class="mt-2 text-xs text-gray-500">{{ t('timeRotation.timeHint') }}</p>
-            </div>
-            <div class="space-y-3 p-5">
-              <label class="input-label" :for="`rotation-search-${index}`">{{ t('timeRotation.accounts') }}</label>
-              <div v-if="slot.account_ids.length" class="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
-                <button
-                  v-for="id in slot.account_ids"
-                  :key="id"
-                  type="button"
-                  class="rounded-lg bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                  :disabled="saving"
-                  :aria-label="t('timeRotation.removeAccount', { name: accountName(id) })"
-                  @click="toggleAccount(index, id)"
-                >
-                  {{ accountName(id) }} <span aria-hidden="true">×</span>
-                </button>
-              </div>
-              <input :id="`rotation-search-${index}`" v-model="queries[index]" class="input" :placeholder="t('timeRotation.search')" type="search" />
-              <div class="max-h-80 min-h-40 space-y-1 overflow-y-auto">
-                <label
-                  v-for="account in candidates(index).slice(0, 100)"
-                  :key="account.id"
-                  class="flex items-start gap-3 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-dark-700"
-                  :class="{ 'opacity-40': assignedElsewhere(index, account.id) }"
-                >
-                  <input type="checkbox" class="mt-1 h-4 w-4" :checked="slot.account_ids.includes(account.id)" :disabled="saving || assignedElsewhere(index, account.id)" :data-account-id="account.id" @change="toggleAccount(index, account.id)" />
-                  <span class="min-w-0 text-sm">
-                    <span class="block break-all text-gray-900 dark:text-gray-100">{{ account.name }}</span>
-                    <span class="text-xs text-gray-500">
-                      #{{ account.id }} · {{ t('timeRotation.currentPriority', { n: account.priority }) }}
-                      <template v-if="assignedElsewhere(index, account.id)"> · {{ t('timeRotation.assigned') }}</template>
-                    </span>
-                  </span>
-                </label>
-                <p v-if="!candidates(index).length" class="py-6 text-center text-sm text-gray-500">{{ t('timeRotation.empty') }}</p>
-              </div>
-              <p v-if="candidates(index).length > 100" class="text-xs text-gray-500">{{ t('timeRotation.searchMore') }}</p>
-            </div>
-          </section>
-        </div>
-        <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-sm leading-6 text-blue-800 dark:border-blue-900 dark:bg-blue-900/10 dark:text-blue-200">
-          <p>{{ config.mode === 'smart' ? t('timeRotation.smartPolicyHint') : t('timeRotation.priorityHint') }}</p>
-          <p>{{ config.mode === 'smart' ? t('timeRotation.smartRestoreHint') : t('timeRotation.restoreHint') }}</p>
-          <p>{{ t('timeRotation.schedulingHint') }}</p>
-        </div>
       </template>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { list } from '@/api/admin/accounts'
-import {
-  timeRotationAPI,
-  type AccountTimeRotationConfig,
-  type AccountRandomRestConfig,
-  type AccountRotationSlot,
-  type SmartTimeRotationConfig,
-  type TimeRotationStatus
-} from '@/api/admin/timeRotation'
+import { timeRotationAPI, type AccountPacedConfig, type AccountTimeRotationConfig, type TimeRotationStatus } from '@/api/admin/timeRotation'
 import type { AccountListItem } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const healthFields = [
-  { key: 'ttft_threshold_seconds', min: 1, max: 300 },
-  { key: 'slow_request_count', min: 2, max: 20 },
-  { key: 'healthy_request_count', min: 2, max: 20 },
-  { key: 'sample_window_minutes', min: 1, max: 120 },
-  { key: 'cooldown_minutes', min: 1, max: 1440 },
-  { key: 'waiting_priority', min: 1, max: 2147483647 },
-  { key: 'probe_interval_seconds', min: 1, max: 600 }
+const defaults = (): AccountPacedConfig => ({ account_id: 0, start: '08:30', end: '18:30', rpm: 40, sustained_rpm: 8, burst_capacity: 40, max_concurrency: 12, max_wait_seconds: 15 })
+const fields = [
+  { key: 'sustained_rpm', min: 1, max: 10000 }, { key: 'burst_capacity', min: 1, max: 10000 },
+  { key: 'rpm', min: 1, max: 10000 }, { key: 'max_concurrency', min: 1, max: 1000 },
+  { key: 'max_wait_seconds', min: 0, max: 65 }
 ] as const
-const defaultSmart = (): SmartTimeRotationConfig => ({
-  account_ids: [], ttft_threshold_seconds: 20, slow_request_count: 3,
-  healthy_request_count: 3, sample_window_minutes: 10, cooldown_minutes: 30,
-  waiting_priority: 50, probe_interval_seconds: 60
-})
-
-const randomRestFields = [
-  { key: 'check_interval_minutes', min: 1, max: 1440 },
-  { key: 'probability_percent', min: 0, max: 100 },
-  { key: 'min_rest_minutes', min: 1, max: 1440 },
-  { key: 'max_rest_minutes', min: 1, max: 1440 },
-  { key: 'max_work_minutes', min: 0, max: 1440 }
-] as const
-const defaultRandomRest = (): AccountRandomRestConfig => ({
-  enabled: false, account_ids: [], check_interval_minutes: 5,
-  probability_percent: 20, min_rest_minutes: 3, max_rest_minutes: 8, max_work_minutes: 90
-})
-const randomRest = computed(() => config.value.random_rest || defaultRandomRest())
-
-const config = ref<AccountTimeRotationConfig>({ enabled: false, revision: 0, slots: [], mode: 'manual' })
+const policy = ref(defaults())
+const enabled = ref(false)
+const saved = ref<AccountTimeRotationConfig | null>(null)
 const accounts = ref<AccountListItem[]>([])
-const queries = ref(['', '', ''])
-const smartQuery = ref('')
+const query = ref('')
 const loading = ref(false)
 const ready = ref(false)
 const saving = ref(false)
 const error = ref('')
+const saveConflict = ref(false)
+const replaceConfirmed = ref(false)
+const status = ref<TimeRotationStatus | null>(null)
 const statusError = ref(false)
 const statusLoading = ref(false)
-const status = ref<TimeRotationStatus | null>(null)
+const snapshot = ref('')
 const controller = new AbortController()
 let statusRequest = 0
-let statusRefreshTimer: ReturnType<typeof setInterval> | undefined
-const loadedConfigSnapshot = ref('')
-const saveConflict = ref(false)
+let timer: ReturnType<typeof setInterval> | undefined
 let mounted = true
-
-onBeforeUnmount(() => {
-  mounted = false
-  controller.abort()
-  statusRequest++
-  if (statusRefreshTimer) clearInterval(statusRefreshTimer)
-})
-
-const smart = computed(() => config.value.smart || defaultSmart())
-watch(() => config.value.mode, mode => {
-  if (mode === 'smart' && !config.value.smart) config.value.smart = defaultSmart()
-}, { immediate: true })
-
-const smartCandidates = computed(() => filterAccounts(smartQuery.value))
-const dirty = computed(() => ready.value && loadedConfigSnapshot.value !== JSON.stringify(config.value))
+const serialize = () => JSON.stringify({ enabled: enabled.value, paced: policy.value })
+const dirty = computed(() => ready.value && snapshot.value !== serialize())
+const replacingLegacy = computed(() => Boolean(saved.value?.enabled && saved.value.mode !== 'paced'))
+const selectedAccount = computed(() => accounts.value.find(a => a.id === policy.value.account_id))
+const candidates = computed(() => accounts.value.filter(a => a.id === policy.value.account_id || !query.value.trim() || `${a.name} ${a.id}`.toLowerCase().includes(query.value.trim().toLowerCase())))
+const live = computed(() => status.value?.protection?.find(item => item.account_id === saved.value?.paced?.account_id))
 const statusMessage = computed(() => {
-  if (!status.value) return ''
+  if (!status.value?.ready) return t('timeRotation.paced.statusStale')
   if (!status.value.enabled) return t('timeRotation.statusDisabled')
-  if (status.value.mode !== 'smart') return t('timeRotation.statusManual')
-  return t(status.value.ready ? 'timeRotation.statusReady' : 'timeRotation.statusStale')
+  if (status.value.mode !== 'paced') return t('timeRotation.paced.legacyRunning')
+  return t('timeRotation.paced.statusReady')
 })
-
-function filterAccounts(query: string) {
-  const normalized = query.trim().toLowerCase()
-  return accounts.value.filter(account => !normalized || account.name.toLowerCase().includes(normalized) || String(account.id).includes(normalized))
-}
-
-function accountName(id: number) {
-  return accounts.value.find(account => account.id === id)?.name || t('timeRotation.missingAccount', { id })
-}
-
-function isFuture(value: string | null | undefined) {
-  return Boolean(value && Number.isFinite(new Date(value).getTime()) && new Date(value).getTime() > Date.now())
-}
-
-function smartAccountStatus(account: AccountListItem) {
-  if (account.status !== 'active') return account.status === 'error' ? t('timeRotation.accountError') : t('timeRotation.accountInactive')
-  if (!account.schedulable) return t('timeRotation.accountUnschedulable')
-  if (isFuture(account.temp_unschedulable_until)) return t('timeRotation.accountTemporarilyUnavailable')
-  if (isFuture(account.overload_until)) return t('timeRotation.accountOverloaded')
-  if (isFuture(account.rate_limit_reset_at)) return t('timeRotation.accountRateLimited')
-  if (account.auto_pause_on_expired && account.expires_at && account.expires_at * 1000 <= Date.now()) return t('timeRotation.accountExpired')
-  return t('timeRotation.accountSchedulable')
-}
-
-function smartAccountReason(account: AccountListItem) {
-  if (account.temp_unschedulable_until && isFuture(account.temp_unschedulable_until)) return t('timeRotation.accountUntil', { time: formatBeijingTime(account.temp_unschedulable_until) })
-  if (account.overload_until && isFuture(account.overload_until)) return t('timeRotation.accountUntil', { time: formatBeijingTime(account.overload_until) })
-  if (account.rate_limit_reset_at && isFuture(account.rate_limit_reset_at)) return t('timeRotation.accountUntil', { time: formatBeijingTime(account.rate_limit_reset_at) })
-  if (account.temp_unschedulable_reason) return account.temp_unschedulable_reason
-  if (account.auto_pause_on_expired && account.expires_at && account.expires_at * 1000 <= Date.now()) return t('timeRotation.accountExpired')
-  return ''
-}
-
-function assignedElsewhere(index: number, id: number) {
-  return config.value.slots.some((slot, i) => i !== index && slot.account_ids.includes(id))
-}
-
-function candidates(index: number) {
-  return filterAccounts(queries.value[index] || '')
-}
-
-function toggleAccount(index: number, id: number) {
-  const slot = config.value.slots[index]
-  if (slot.account_ids.includes(id)) slot.account_ids = slot.account_ids.filter(value => value !== id)
-  else if (!assignedElsewhere(index, id)) slot.account_ids.push(id)
-}
-
-function removeSmartAccount(id: number) {
-  smart.value.account_ids = smart.value.account_ids.filter(value => value !== id)
-}
-
-function parseTime(value: string, end = false) {
+const liveState = computed(() => t(`timeRotation.paced.states.${live.value?.state || 'account_protection_unavailable'}`))
+const liveMetrics = computed(() => {
+  const item = live.value
+  const p = item?.paced
+  const known = item && item.used != null && item.state !== 'account_protection_unavailable'
+  return [
+    { label: t('timeRotation.paced.fields.rpm'), value: known ? `${item.used} / ${item.rpm}` : '—' },
+    { label: t('timeRotation.paced.availableTokens'), value: known && p ? `${p.available_tokens.toFixed(1)} / ${p.burst_capacity}` : '—' },
+    { label: t('timeRotation.paced.fields.sustained_rpm'), value: known && p ? `${p.sustained_rpm} RPM` : '—' },
+    { label: t('timeRotation.paced.fields.max_concurrency'), value: known && p ? `${item.in_flight} / ${p.max_concurrency}` : '—' },
+    { label: t('timeRotation.paced.waiting'), value: known && p ? String(p.waiting) : '—' }
+  ]
+})
+function minute(value: string, end = false) {
   if (end && value === '24:00') return 1440
-  const match = /^(\d{2}):(\d{2})$/.exec(value)
-  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return -1
-  return Number(match[1]) * 60 + Number(match[2])
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return -1
+  const [h, m] = value.split(':').map(Number)
+  return h * 60 + m
 }
-
-function validManualSlot(slot: AccountRotationSlot) {
-  return parseTime(slot.start) >= 0 && parseTime(slot.end, true) >= 0 && slot.start !== slot.end &&
-    [slot.active_priority, slot.inactive_priority].every(n => Number.isInteger(n) && n >= 1 && n <= 2147483647)
+const scheduleParts = computed(() => {
+  const start = minute(policy.value.start), end = minute(policy.value.end, true)
+  if (start < 0 || end < 0 || start === end) return []
+  return end > start ? [{ start, length: end - start }] : [{ start, length: 1440 - start }, { start: 0, length: end }]
+})
+const workMinutes = computed(() => scheduleParts.value.reduce((sum, part) => sum + part.length, 0))
+function valid() {
+  const p = policy.value
+  return Number.isSafeInteger(p.account_id) && p.account_id >= 0 && (!enabled.value || (p.account_id > 0 && !!selectedAccount.value)) &&
+    workMinutes.value > 0 && workMinutes.value < 1440 && fields.every(f => Number.isInteger(p[f.key]) && p[f.key] >= f.min && p[f.key] <= f.max) &&
+    p.sustained_rpm <= p.rpm && p.burst_capacity <= p.rpm
 }
-
-function formatBeijingTime(value: string) {
+function accountName(id: number) { return accounts.value.find(a => a.id === id)?.name || t('timeRotation.missingAccount', { id }) }
+function formatTime(value: string) {
   const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return t('timeRotation.unknown')
-  return new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
-  }).format(date)
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) : '—'
 }
-
-function formatLatency(value: number | null | undefined) {
-  return value == null || !Number.isFinite(value) ? t('timeRotation.unknown') : `${(value / 1000).toFixed(2)}s`
+function apply(value: AccountTimeRotationConfig) {
+  saved.value = value
+  policy.value = value.mode === 'paced' && value.paced ? { ...value.paced } : defaults()
+  enabled.value = value.mode === 'paced' && value.enabled
+  replaceConfirmed.value = false
+  snapshot.value = serialize()
 }
-
-function validSmart() {
-  const value = smart.value
-  if (config.value.enabled && value.account_ids.length === 0) return false
-  if (!value.account_ids.every(id => Number.isSafeInteger(id) && id > 0) || new Set(value.account_ids).size !== value.account_ids.length) return false
-  if (!healthFields.every(field => {
-    const n = value[field.key]
-    return n != null && Number.isInteger(n) && n >= field.min && n <= field.max
-  })) return false
-  return (Math.max(value.healthy_request_count ?? 0, value.slow_request_count ?? 0) - 1) * (value.probe_interval_seconds ?? 0) < (value.sample_window_minutes ?? 0) * 60
-}
-
 async function loadStatus() {
   const request = ++statusRequest
   statusLoading.value = true
   statusError.value = false
   try {
     const result = await timeRotationAPI.status()
-    if (request === statusRequest) status.value = result
+    if (mounted && request === statusRequest) status.value = result
   } catch {
-    if (request === statusRequest) {
-      status.value = null
-      statusError.value = true
-    }
+    if (mounted && request === statusRequest) { status.value = null; statusError.value = true }
   } finally {
-    if (request === statusRequest) statusLoading.value = false
+    if (mounted && request === statusRequest) statusLoading.value = false
   }
 }
-
-function applySavedConfig(saved: AccountTimeRotationConfig) {
-  config.value = { ...saved, mode: saved.mode || 'manual', strict_rest: saved.strict_rest ?? false, request_limits: saved.request_limits ?? [], random_rest: { ...defaultRandomRest(), ...saved.random_rest } }
-  config.value.smart = { ...defaultSmart(), ...saved.smart }
-}
-
 async function load(force = false) {
-  if (!force && dirty.value) {
-    error.value = t('timeRotation.refreshUnsaved')
-    return
-  }
+  if (!force && dirty.value) { error.value = t('timeRotation.refreshUnsaved'); return }
   loading.value = true
   ready.value = false
   error.value = ''
+  saveConflict.value = false
   statusRequest++
   status.value = null
   try {
-    const saved = await timeRotationAPI.get()
+    const value = await timeRotationAPI.get()
     const all: AccountListItem[] = []
     for (let page = 1; ; page++) {
-      const result = await list(page, 100, {
-        platform: 'openai', type: 'oauth', lite: 'true', include_scheduler_score: 'false', sort_by: 'id', sort_order: 'asc'
-      }, { signal: controller.signal })
-      all.push(...result.items.filter(account => !account.parent_account_id))
-      if (page >= result.pages || result.items.length === 0) break
+      const result = await list(page, 100, { platform: 'openai', type: 'oauth', lite: 'true', include_scheduler_score: 'false', sort_by: 'id', sort_order: 'asc' }, { signal: controller.signal })
+      all.push(...result.items.filter(a => !a.parent_account_id))
+      if (page >= result.pages || !result.items.length) break
     }
-    if (controller.signal.aborted) return
-    applySavedConfig(saved)
-    loadedConfigSnapshot.value = JSON.stringify(config.value)
+    if (!mounted) return
     accounts.value = all
+    apply(value)
     ready.value = true
     void loadStatus()
   } catch (err) {
-    if (!controller.signal.aborted) error.value = extractApiErrorMessage(err, t('timeRotation.loadFailed'))
-  } finally {
-    loading.value = false
-  }
+    if (mounted) error.value = extractApiErrorMessage(err, t('timeRotation.loadFailed'))
+  } finally { if (mounted) loading.value = false }
 }
-
 async function save() {
+  if (!ready.value || saving.value || (replacingLegacy.value && !replaceConfirmed.value)) return
   error.value = ''
   saveConflict.value = false
-  const isSmart = config.value.mode === 'smart'
-  if ((isSmart && !validSmart()) || ((!isSmart || config.value.strict_rest) && config.value.slots.some(slot => !validManualSlot(slot)))) {
-    error.value = t(isSmart ? 'timeRotation.invalidSmart' : 'timeRotation.invalid')
-    return
-  }
-  const random = randomRest.value
-  if (!randomRestFields.every(field => Number.isInteger(random[field.key]) && random[field.key] >= field.min && random[field.key] <= field.max) || random.max_rest_minutes < random.min_rest_minutes || (random.enabled && !random.account_ids.length) || random.account_ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(random.account_ids).size !== random.account_ids.length) {
-    error.value = t('timeRotation.invalidRandomRest')
-    return
-  }
-  const limits = config.value.request_limits ?? []
-  if (limits.some(limit => !Number.isSafeInteger(limit.account_id) || limit.account_id <= 0 || !Number.isInteger(limit.rpm) || limit.rpm < 1 || limit.rpm > 10000) || new Set(limits.map(limit => limit.account_id)).size !== limits.length || (config.value.strict_rest && config.value.slots.some(slot => slot.account_ids.length > 0 && slot.start === '00:00' && slot.end === '24:00'))) {
-    error.value = t('timeRotation.invalidProtection')
-    return
-  }
+  if (!valid()) { error.value = t('timeRotation.paced.invalid'); return }
   saving.value = true
-  // 保存开始后，旧预览即使较晚返回，也不能覆盖新版本的运行状态。
   statusRequest++
+  status.value = null
   statusLoading.value = false
   try {
-    const saved = await timeRotationAPI.save(config.value)
-    applySavedConfig(saved)
-    loadedConfigSnapshot.value = JSON.stringify(config.value)
+    const result = await timeRotationAPI.save({ enabled: enabled.value, revision: saved.value?.revision ?? 0, mode: 'paced', paced: { ...policy.value }, slots: [], strict_rest: false, request_limits: [] })
+    if (!mounted) return
+    apply(result)
     appStore.showSuccess(t('timeRotation.saved'))
     void loadStatus()
   } catch (err) {
-    const statusCode = (err as { response?: { status?: number } })?.response?.status
-    if (statusCode === 409) {
-      saveConflict.value = true
-      error.value = extractApiErrorMessage(err, t('timeRotation.saveConflict'))
-    } else {
-      error.value = extractApiErrorMessage(err, t('timeRotation.saveFailed'))
-    }
-  } finally {
-    saving.value = false
-  }
+    if (!mounted) return
+    saveConflict.value = (err as { response?: { status?: number } }).response?.status === 409
+    error.value = extractApiErrorMessage(err, t(saveConflict.value ? 'timeRotation.saveConflict' : 'timeRotation.saveFailed'))
+  } finally { if (mounted) saving.value = false }
 }
-
-async function reloadAfterConflict() {
-  saveConflict.value = false
-  await load(true)
-}
-
-function refreshSmartStatus() {
-  if (ready.value && !statusLoading.value) void loadStatus()
-}
-
 onMounted(async () => {
   await load()
-  if (mounted) statusRefreshTimer = setInterval(refreshSmartStatus, 20_000)
+  if (mounted) timer = setInterval(() => { if (ready.value && !saving.value && !statusLoading.value) void loadStatus() }, 5000)
+})
+onBeforeUnmount(() => {
+  mounted = false
+  controller.abort()
+  statusRequest++
+  if (timer) clearInterval(timer)
 })
 </script>

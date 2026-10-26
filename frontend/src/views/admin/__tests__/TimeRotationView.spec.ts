@@ -7,305 +7,142 @@ vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({ t: (key: string, params: Record<string, unknown> = {}) => {
     const value = key.replace('timeRotation.', '').split('.').reduce<unknown>((result, part) => result != null && typeof result === 'object' ? (result as Record<string, unknown>)[part] : undefined, timeRotation)
-    const text = typeof value === 'string' ? value : key
-    return text.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? ''))
+    return (typeof value === 'string' ? value : key).replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? ''))
   } })
 }))
-
 const { get, save, status, list, showSuccess } = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), status: vi.fn(), list: vi.fn(), showSuccess: vi.fn() }))
 vi.mock('@/api/admin/timeRotation', () => ({ timeRotationAPI: { get, save, status } }))
 vi.mock('@/api/admin/accounts', () => ({ list }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess }) }))
-const defaults = () => ({ enabled: false, revision: 4, slots: [
-  { start: '00:00', end: '08:00', account_ids: [] as number[], active_priority: 1, inactive_priority: 50 },
-  { start: '08:00', end: '16:00', account_ids: [] as number[], active_priority: 1, inactive_priority: 50 },
-  { start: '16:00', end: '24:00', account_ids: [] as number[], active_priority: 1, inactive_priority: 50 }
-] })
-const render = () => mount(TimeRotationView, { global: {
-  stubs: { AppLayout: { template: '<div><slot /></div>' } }
-} })
+const defaults = () => ({ enabled: false, revision: 4, mode: 'paced', slots: [], paced: { account_id: 1, start: '08:30', end: '18:30', rpm: 40, sustained_rpm: 8, burst_capacity: 40, max_concurrency: 12, max_wait_seconds: 15 } })
+const render = () => mount(TimeRotationView)
 beforeEach(() => {
   vi.clearAllMocks()
   get.mockResolvedValue(defaults())
   save.mockImplementation(async value => ({ ...value, revision: 5 }))
-  status.mockResolvedValue(null)
-  list.mockResolvedValue({ items: [{ id: 1, name: '账号甲', priority: 70 }, { id: 2, name: '影子账号', parent_account_id: 1, priority: 70 }], pages: 1 })
+  status.mockResolvedValue({ enabled: false, mode: 'paced', revision: 4, ready: true, protection: [] })
+  list.mockResolvedValue({ items: [{ id: 1, name: '账号甲', status: 'active', schedulable: true }, { id: 2, name: '影子账号', parent_account_id: 1 }], pages: 1 })
 })
-describe('时段轮候配置', () => {
-  it('有未保存编辑时点击刷新不会覆盖编辑内容', async () => {
-    const wrapper = render()
-    await flushPromises()
+describe('单账号接单规则', () => {
+  it('一个账号一个时段，排除影子账号，保存完整新规则和版本', async () => {
+    const wrapper = render(); await flushPromises()
+    expect(wrapper.findAll('[data-testid="paced-start"]')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="paced-account"] option[value="2"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('抽签')
     await wrapper.find('[data-testid="rotation-enabled"]').setValue(true)
-    await wrapper.find('button.btn-secondary').trigger('click')
-    await flushPromises()
-    expect(get).toHaveBeenCalledTimes(1)
-    expect(wrapper.find('[role="alert"]').text()).toContain('存在未保存的编辑')
-    wrapper.unmount()
-  })
-
-  it('加载三个时段、排除影子账号，并防止跨时段重复选择', async () => {
-    const wrapper = render()
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid^="rotation-slot-"]')).toHaveLength(3)
-    expect(wrapper.find('input[data-account-id="2"]').exists()).toBe(false)
-    await wrapper.find('[data-testid="rotation-slot-0"] input[data-account-id="1"]').setValue(true)
-    expect(wrapper.find('[data-testid="rotation-slot-1"] input[data-account-id="1"]').attributes('disabled')).toBeDefined()
-    await wrapper.find('[data-testid="rotation-enabled"]').setValue(true)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, revision: 4, slots: expect.arrayContaining([expect.objectContaining({ account_ids: [1] })]) }))
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, mode: 'paced', revision: 4, slots: [], request_limits: [], paced: defaults().paced }))
     expect(showSuccess).toHaveBeenCalled()
     wrapper.unmount()
   })
-  it('读取所有分页，后续页账号也能选择', async () => {
-    list.mockResolvedValueOnce({ items: [{ id: 1, name: '第一页', priority: 10 }], pages: 2 })
-    list.mockResolvedValueOnce({ items: [{ id: 3, name: '第二页', priority: 30 }], pages: 2 })
-    const wrapper = render()
-    await flushPromises()
+  it('已有启用旧规则须明确替换，不在读取时改变配置', async () => {
+    get.mockResolvedValue({ enabled: true, revision: 8, mode: 'smart', slots: [], smart: { account_ids: [1, 3] } })
+    const wrapper = render(); await flushPromises()
+    expect(save).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="legacy-notice"]').text()).toContain('替换全部旧轮候规则')
+    expect(wrapper.find('[data-testid="rotation-save"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('[data-testid="paced-account"]').setValue(1)
+    await wrapper.find('[data-testid="rotation-enabled"]').setValue(true)
+    await wrapper.find('[data-testid="replace-legacy"]').setValue(true)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ revision: 8, mode: 'paced', enabled: true }))
+    expect(save.mock.calls[0][0].smart).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('支持跨午夜，拒绝全天、相同时刻和不合理预算', async () => {
+    const wrapper = render(); await flushPromises()
+    await wrapper.find('[data-testid="paced-start"]').setValue('22:30')
+    await wrapper.find('[data-testid="paced-end"]').setValue('06:30')
+    expect(wrapper.find('[data-testid="schedule-summary"]').text()).toContain('接单 8.0 小时')
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    expect(save).toHaveBeenCalledTimes(1)
+    for (const [start, end] of [['00:00', '24:00'], ['06:30', '06:30'], ['06:30', '25:00']]) {
+      await wrapper.find('[data-testid="paced-start"]').setValue(start)
+      await wrapper.find('[data-testid="paced-end"]').setValue(end)
+      await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    }
+    expect(save).toHaveBeenCalledTimes(1)
+    await wrapper.find('[data-testid="paced-end"]').setValue('18:30')
+    await wrapper.find('[data-testid="sustained_rpm"]').setValue(41)
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[role="alert"]').text()).toContain('容量须为整数')
+    wrapper.unmount()
+  })
+  it('翻页加载账号，保留选中的搜索外账号', async () => {
+    list.mockResolvedValueOnce({ items: [{ id: 1, name: '第一页' }], pages: 2 })
+    list.mockResolvedValueOnce({ items: [{ id: 3, name: '第二页' }], pages: 2 })
+    const wrapper = render(); await flushPromises()
     expect(list).toHaveBeenCalledTimes(2)
+    await wrapper.find('[data-testid="account-search"]').setValue('第二页')
+    expect(wrapper.find('[data-testid="paced-account"] option[value="1"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('第二页')
     wrapper.unmount()
   })
-  it('非法时间拒绝保存，接口冲突时保留编辑内容并显示错误', async () => {
-    const wrapper = render()
-    await flushPromises()
-    const end = wrapper.find('[data-testid="rotation-slot-0"] input[type="text"]')
-    await end.setValue('00:00')
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    expect(wrapper.find('[role="alert"]').text()).toContain('请检查时间')
-    await end.setValue('07:30')
-    save.mockRejectedValue({ response: { data: { message: '配置已更新，请重新加载' } } })
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('[role="alert"]').text()).toContain('配置已更新')
-    expect((end.element as HTMLInputElement).value).toBe('07:30')
+  it('6RPM显示十秒补充并正确保存，拒绝超上限、零值及小数额度', async () => {
+    const wrapper = render(); await flushPromises()
+    await wrapper.find('[data-testid="sustained_rpm"]').setValue(6)
+    expect(wrapper.find('[data-testid="capacity-summary"]').text()).toContain('每 10.0 秒恢复 1 次')
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ paced: expect.objectContaining({ sustained_rpm: 6, burst_capacity: 40, rpm: 40 }) }))
+    for (const capacity of [41, 0, 1.5]) {
+      await wrapper.find('[data-testid="burst_capacity"]').setValue(capacity)
+      await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    }
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[role="alert"]').text()).toContain('持续 RPM 与突发额度')
     wrapper.unmount()
   })
-  it('加载失败时禁止保存，避免以空配置覆盖已有设置', async () => {
-    get.mockRejectedValue(new Error('断开连接'))
-    const wrapper = render()
-    await flushPromises()
+  it('额度耗尽时说明持续补充限制和预计等待', async () => {
+    status.mockResolvedValue({ enabled: true, mode: 'paced', revision: 4, ready: true, protection: [{ account_id: 1, state: 'account_rate_limited', used: 8, rpm: 40, in_flight: 0, paced: { available_tokens: 0.5, sustained_rpm: 8, burst_capacity: 40, max_concurrency: 12, waiting: 1, blocked_by: 'sustained', retry_after: 4, schedule_open: true, next_change_at: '2026-10-26T18:30:00+08:00' } }] })
+    const wrapper = render(); await flushPromises()
+    const message = wrapper.find('[data-testid="paced-status"]').text()
+    expect(message).toContain('等待持续额度补充')
+    expect(message).toContain('约 4 秒')
+    expect(message).toContain('0.5 / 40')
+    wrapper.unmount()
+  })
+  it('刷新保护未保存输入，冲突保留草稿并提供重新加载', async () => {
+    const wrapper = render(); await flushPromises()
+    await wrapper.find('[data-testid="max_concurrency"]').setValue(8)
+    await wrapper.find('[data-testid="rotation-reload"]').trigger('click')
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[role="alert"]').text()).toContain('存在未保存')
+    save.mockRejectedValue({ response: { status: 409 } })
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    expect(wrapper.find('[data-testid="reload-conflict"]').exists()).toBe(true)
+    expect((wrapper.find('[data-testid="max_concurrency"]').element as HTMLInputElement).value).toBe('8')
+    wrapper.unmount()
+  })
+  it('配置加载失败禁止保存，避免覆盖线上', async () => {
+    get.mockRejectedValue(new Error('不可达'))
+    const wrapper = render(); await flushPromises()
     expect(wrapper.find('[data-testid="rotation-save"]').attributes('disabled')).toBeDefined()
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
     wrapper.unmount()
   })
-  it('历史智能配置补齐健康规则，可选择账号池，并在预览失败时仍允许保存', async () => {
-    get.mockResolvedValue({ enabled: true, revision: 8, mode: 'smart', slots: [], smart: { account_ids: [], periods: [
-      { start: '00:00', end: '08:00', primary_count: 1 }, { start: '08:00', end: '10:00', primary_count: 2 }, { start: '10:00', end: '14:00', primary_count: 4 }, { start: '14:00', end: '18:00', primary_count: 4 }, { start: '18:00', end: '22:00', primary_count: 3 }, { start: '22:00', end: '24:00', primary_count: 2 }
-    ], rotation_minutes: 60, quota_reserve_percent: 10 } })
-    status.mockRejectedValue(new Error('预览不可用'))
-    const wrapper = render()
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid^="smart-period-"]')).toHaveLength(0)
-    expect((wrapper.find('[data-testid="ttft_threshold_seconds"]').element as HTMLInputElement).value).toBe('20')
-    expect((wrapper.find('[data-testid="cooldown_minutes"]').element as HTMLInputElement).value).toBe('30')
-    await wrapper.find('[data-smart-account-id="1"]').setValue(true)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ mode: 'smart', smart: expect.objectContaining({ account_ids: [1] }) }))
-    expect(wrapper.text()).toContain('暂时无法读取计划预览')
+  it('显示已保存用量，草稿修改不会改变状态卡片，未知计数不显示为零', async () => {
+    status.mockResolvedValue({ enabled: true, mode: 'paced', revision: 4, ready: true, protection: [{ account_id: 1, state: 'available', used: 7, rpm: 40, in_flight: 2, paced: { available_tokens: 12.5, sustained_rpm: 8, burst_capacity: 40, max_concurrency: 12, waiting: 3, blocked_by: 'available', retry_after: 0, schedule_open: true, next_change_at: '2026-10-26T18:30:00+08:00' } }] })
+    const wrapper = render(); await flushPromises()
+    await wrapper.find('[data-testid="rpm"]').setValue(50)
+    expect(wrapper.find('[data-testid="paced-status"]').text()).toContain('7 / 40')
+    expect(wrapper.find('[data-testid="paced-status"]').text()).toContain('12.5 / 40')
+    expect(wrapper.find('[data-testid="paced-status"]').text()).toContain('2 / 12')
+    status.mockRejectedValue(new Error('状态不可达'))
+    await wrapper.find('[data-testid="refresh-status"]').trigger('click'); await flushPromises()
+    expect(wrapper.find('[data-testid="paced-status"]').text()).not.toContain('7 / 40')
     wrapper.unmount()
   })
-})
-
-
-const smartDefaults = () => ({
-  ...defaults(), enabled: true, mode: 'smart',
-  smart: {
-    account_ids: [1, 999],
-    periods: [{ start: '00:00', end: '24:00', primary_count: 1 }],
-    rotation_minutes: 60, quota_reserve_percent: 10
-  }
-})
-const runningStatus = (revision = 4) => ({
-  mode: 'smart', enabled: true, ready: true, revision,
-  updated_at: '2026-09-30T01:00:00Z',
-  period: { start: '00:00', end: '24:00', primary_count: 1 },
-  next_rotation_at: '2026-09-30T02:00:00Z', scope: 'all',
-  accounts: [{ account_id: 1, name: '账号甲', role: 'cooling', reason: '连续首字变慢', original_priority: 7, effective_priority: 50, slow_streak: 3, healthy_streak: 0, last_ttft_ms: 0, last_duration_ms: null, cooldown_until: '2026-09-30T02:00:00Z' }]
-})
-
-describe('智能轮候状态与编辑边界', () => {
-  it('智能模式每 20 秒自动刷新状态', async () => {
-    vi.useFakeTimers()
-    let wrapper: ReturnType<typeof render> | undefined
-    try {
-      get.mockResolvedValue(smartDefaults())
-      status.mockResolvedValue(runningStatus())
-      wrapper = render()
-      await flushPromises()
-      status.mockClear()
-      status.mockResolvedValue(runningStatus(6))
-      await vi.advanceTimersByTimeAsync(20_000)
-      await flushPromises()
-      expect(status).toHaveBeenCalledTimes(1)
-    } finally {
-      wrapper?.unmount()
-      vi.useRealTimers()
-    }
-  })
-
-  it('允许保存非六段配置，缺失账号可以移除', async () => {
-    get.mockResolvedValue(smartDefaults())
-    const wrapper = render()
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid^="smart-period-"]')).toHaveLength(0)
-    expect(wrapper.text()).toContain('账号 #999（已删除或不再符合条件）')
-    await wrapper.find('[data-smart-remove-id="999"]').trigger('click')
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({
-      smart: expect.objectContaining({ account_ids: [1], periods: [{ start: '00:00', end: '24:00', primary_count: 1 }] })
-    }))
-    wrapper.unmount()
-  })
-
-  it('显示等待状态、优先级、北京时间及耗时，零毫秒不能显示为未知', async () => {
-    get.mockResolvedValue(smartDefaults())
-    status.mockResolvedValue(runningStatus())
-    const wrapper = render()
-    await flushPromises()
-    const preview = wrapper.find('[data-testid="rotation-status"]')
-    expect(preview.text()).toContain('已保存版本 4')
-    expect(preview.text()).toContain('09:00:00')
-    expect(preview.text()).toContain('10:00:00')
-    expect(preview.text()).toContain('未知')
-    expect(preview.text()).toContain('0.00s')
-    expect(preview.text()).toContain('轮候等待')
-    expect(preview.text()).toContain('50')
-    expect(preview.text()).toContain('原 7')
-    await wrapper.find('[data-testid="rotation-enabled"]').setValue(false)
-    expect(wrapper.find('[data-testid="status-state"]').text()).toContain('智能轮候已生效')
-    wrapper.unmount()
-  })
-
-  it.each([
-    { enabled: false, ready: true, message: '已保存配置处于停用状态' },
-    { enabled: true, ready: false, message: '等待配置同步或状态已过期' }
-  ])('明确展示未运行状态 $message，并隐藏过期角色', async ({ enabled, ready, message }) => {
-    get.mockResolvedValue(smartDefaults())
-    status.mockResolvedValue({ ...runningStatus(), enabled, ready })
-    const wrapper = render()
-    await flushPromises()
-    expect(wrapper.find('[data-testid="status-state"]').text()).toContain(message)
-    expect(wrapper.find('[data-testid="rotation-status"] table').exists()).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('保存后新状态不被更早发出的慢请求覆盖', async () => {
-    get.mockResolvedValue(smartDefaults())
-    status.mockResolvedValueOnce(runningStatus())
-    const wrapper = render()
-    await flushPromises()
-    let resolveOld: (value: ReturnType<typeof runningStatus>) => void = () => {}
+  it('保存期间晚到旧状态不能覆盖新版本', async () => {
+    let resolveOld!: (value: unknown) => void
     status.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
-    await wrapper.find('[data-testid="refresh-status"]').trigger('click')
-    status.mockResolvedValueOnce(runningStatus(5))
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('[data-testid="rotation-status"]').text()).toContain('已保存版本 5')
-    resolveOld(runningStatus(4))
-    await flushPromises()
-    expect(wrapper.find('[data-testid="rotation-status"]').text()).toContain('已保存版本 5')
-    wrapper.unmount()
-  })
-})
-
-
-describe('智能健康规则校验', () => {
-  it('拒绝单次慢请求触发和无法完成恢复的观察窗口，修正后保存新规则', async () => {
-    get.mockResolvedValue(smartDefaults())
-    const wrapper = render()
-    await flushPromises()
-    await wrapper.find('[data-testid="slow_request_count"]').setValue(1)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    await wrapper.find('[data-testid="slow_request_count"]').setValue(4)
-    await wrapper.find('[data-testid="sample_window_minutes"]').setValue(1)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    await wrapper.find('[data-testid="sample_window_minutes"]').setValue(10)
-    await wrapper.find('[data-testid="cooldown_minutes"]').setValue(45)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ smart: expect.objectContaining({ slow_request_count: 4, cooldown_minutes: 45 }) }))
-    wrapper.unmount()
-  })
-})
-
-describe('严格休息和单账号总限速', () => {
-  it('智能模式开启严格休息后显示排班，保存根账号总限速', async () => {
-    get.mockResolvedValue(smartDefaults())
-    status.mockResolvedValue({ ...runningStatus(), protection: [{ account_id: 1, state: 'account_rate_limited', rpm: 10, used: 10 }] })
-    const wrapper = render()
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid^="rotation-slot-"]')).toHaveLength(0)
-    await wrapper.find('[data-testid="strict-rest"]').setValue(true)
-    expect(wrapper.findAll('[data-testid^="rotation-slot-"]')).toHaveLength(3)
-    await wrapper.find('[data-testid="rotation-slot-0"] input[data-account-id="1"]').setValue(true)
-    await wrapper.find('[data-testid="add-account-limit"]').trigger('click')
-    await wrapper.find('select').setValue('1')
-    await wrapper.find('[data-testid="account-rpm"]').setValue(8)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ strict_rest: true, request_limits: [{ account_id: 1, rpm: 8 }] }))
-    expect(wrapper.find('[data-testid="protection-status"]').text()).toContain('总次数已达上限')
-    wrapper.unmount()
-  })
-
-  it('拒绝未选账号和零限速，旧配置默认不开启保护', async () => {
-    const wrapper = render()
-    await flushPromises()
-    expect((wrapper.find('[data-testid="strict-rest"]').element as HTMLInputElement).checked).toBe(false)
-    await wrapper.find('[data-testid="add-account-limit"]').trigger('click')
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    await wrapper.find('select').setValue('1')
-    await wrapper.find('[data-testid="account-rpm"]').setValue(0)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    expect(wrapper.find('[role="alert"]').text()).toContain('限速须为')
-    wrapper.unmount()
-  })
-})
-
-describe('随机休息配置', () => {
-  it('默认关闭，启用后验证账号与范围并完整保存配置', async () => {
-    const wrapper = render()
-    await flushPromises()
-    expect((wrapper.find('[data-testid="random-rest-enabled"]').element as HTMLInputElement).checked).toBe(false)
-    await wrapper.find('[data-testid="random-rest-enabled"]').setValue(true)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-testid="random-rest-account-2"]').exists()).toBe(false)
-    await wrapper.find('[data-testid="random-rest-account-1"]').setValue(true)
-    await wrapper.find('[data-testid="random-rest-probability_percent"]').setValue(101)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    expect(save).not.toHaveBeenCalled()
-    await wrapper.find('[data-testid="random-rest-probability_percent"]').setValue(30)
-    await wrapper.find('[data-testid="random-rest-max_work_minutes"]').setValue(0)
-    await wrapper.find('[data-testid="rotation-save"]').trigger('click')
-    await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ random_rest: {
-      enabled: true, account_ids: [1], check_interval_minutes: 5, probability_percent: 30,
-      min_rest_minutes: 3, max_rest_minutes: 8, max_work_minutes: 0
-    } }))
-    wrapper.unmount()
-  })
-
-  it('显示排空状态、在途数量与休息截止时间', async () => {
-    status.mockResolvedValue({ ...runningStatus(), protection: [
-      { account_id: 1, state: 'account_random_draining', rpm: 0, used: null, random_state: 'draining', in_flight: 2 },
-      { account_id: 3, state: 'account_random_resting', rpm: 0, used: null, random_state: 'resting', in_flight: 0, random_rest_until: '2026-10-23T08:00:00+08:00' }
-    ] })
-    const wrapper = render()
-    await flushPromises()
-    const text = wrapper.find('[data-testid="protection-status"]').text()
-    expect(text).toContain('暂停接单，等待在途结束')
-    expect(text).toContain('在途请求：2')
-    expect(text).toContain('休息至')
+    const wrapper = render(); await flushPromises()
+    status.mockResolvedValue({ enabled: false, mode: 'paced', ready: true, revision: 5, protection: [] })
+    await wrapper.find('[data-testid="rotation-save"]').trigger('click'); await flushPromises()
+    resolveOld({ enabled: true, mode: 'paced', ready: true, revision: 2, protection: [] }); await flushPromises()
+    expect(wrapper.find('[data-testid="paced-status"]').text()).toContain('已保存版本 5')
+    expect(wrapper.find('[data-testid="paced-status"]').text()).not.toContain('已保存版本 2')
     wrapper.unmount()
   })
 })

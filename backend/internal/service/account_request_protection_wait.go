@@ -49,6 +49,9 @@ func (s *AccountTimeRotationService) requestLimit(account *Account) int {
 	if err != nil || cfg == nil || !cfg.Enabled {
 		return 0
 	}
+	if cfg.Mode == "paced" && cfg.Paced != nil && cfg.Paced.AccountID == protectionRootID(account) {
+		return cfg.Paced.RPM
+	}
 	for _, limit := range cfg.RequestLimits {
 		if limit.AccountID == protectionRootID(account) {
 			return limit.RPM
@@ -60,6 +63,12 @@ func (s *AccountTimeRotationService) requestLimit(account *Account) int {
 // 只在新会话候选筛选时调用；粘性绑定仍使用原账号并在发送前等待。
 // 预留约 20% 的窗口容量，不增加实际发送上限；RPM=1 时不预留。
 func (s *AccountTimeRotationService) allowsNewSession(ctx context.Context, account *Account) bool {
+	if policy, err := s.pacedPolicy(account); err != nil {
+		return false
+	} else if policy != nil {
+		// 单账号没有承接预留额度的其他账号；统一在实际发送前有界排队。
+		return policy.scheduleError(time.Now()) == nil
+	}
 	if err := s.checkRandomRest(ctx, account); err != nil {
 		return false
 	}

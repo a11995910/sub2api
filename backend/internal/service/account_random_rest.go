@@ -144,8 +144,19 @@ func (s *AccountTimeRotationService) checkRandomRest(ctx context.Context, accoun
 // BeginProtectedRequest 必须与实际请求结束配对；限速排队不算在途请求。
 func (s *AccountTimeRotationService) BeginProtectedRequest(ctx context.Context, account *Account) (func(), error) {
 	noop := func() {}
+	if policy, err := s.pacedPolicy(account); err != nil {
+		return noop, err
+	} else if policy != nil {
+		return s.beginPacedRequest(ctx, account, policy)
+	}
 	if err := s.WaitAdmitRequest(ctx, account); err != nil {
 		return noop, err
+	}
+	// 老模式排队期间可能已切换；发送前不能漏掉新模式的共享容量准入。
+	if policy, err := s.pacedPolicy(account); err != nil {
+		return noop, err
+	} else if policy != nil {
+		return s.beginPacedRequest(ctx, account, policy)
 	}
 	policy := s.randomRestPolicy(account)
 	if policy == nil {

@@ -6,7 +6,8 @@ import timeRotation from '@/i18n/locales/zh/timeRotation'
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({ t: (key: string, params: Record<string, unknown> = {}) => {
-    const text = timeRotation[key.replace('timeRotation.', '') as keyof typeof timeRotation] || key
+    const value = key.replace('timeRotation.', '').split('.').reduce<unknown>((result, part) => result != null && typeof result === 'object' ? (result as Record<string, unknown>)[part] : undefined, timeRotation)
+    const text = typeof value === 'string' ? value : key
     return text.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? ''))
   } })
 }))
@@ -28,6 +29,15 @@ const render = () => mount(AccountTimeRotationHint, {
 
 beforeEach(() => { get.mockReset() })
 describe('账号编辑时段轮候提示', () => {
+  it('单账号模式展示时段和容量，不锁定优先级', async () => {
+    get.mockResolvedValue({ enabled: true, revision: 3, mode: 'paced', slots: [], paced: { account_id: 7, start: '08:30', end: '18:30', rpm: 40, sustained_rpm: 8, burst_capacity: 40 } })
+    const wrapper = render()
+    await flushPromises()
+    expect(wrapper.text()).toContain('08:30–18:30')
+    expect(wrapper.text()).toContain('8 RPM')
+    expect(wrapper.emitted('managed')?.at(-1)).toEqual([false])
+    wrapper.unmount()
+  })
   it('显示关联时段和优先级并锁定手工编辑', async () => {
     get.mockResolvedValue(config())
     const wrapper = render()

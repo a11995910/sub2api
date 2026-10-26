@@ -19,6 +19,7 @@ export interface AccountRandomRestConfig {
 }
 
 export interface AccountTimeRotationConfig {
+  paced?: AccountPacedConfig
   random_rest?: AccountRandomRestConfig
   enabled: boolean
   revision: number
@@ -26,8 +27,31 @@ export interface AccountTimeRotationConfig {
   request_limits?: { account_id: number; rpm: number }[]
   slots: AccountRotationSlot[]
   /** 未设置时兼容旧配置，等同于 manual。 */
-  mode?: 'manual' | 'smart'
+  mode?: 'manual' | 'smart' | 'paced'
   smart?: SmartTimeRotationConfig
+}
+
+export interface AccountPacedConfig {
+  account_id: number
+  start: string
+  end: string
+  rpm: number
+  sustained_rpm: number
+  burst_capacity: number
+  max_concurrency: number
+  max_wait_seconds: number
+}
+
+export interface AccountPacedStatus {
+  available_tokens: number
+  sustained_rpm: number
+  burst_capacity: number
+  max_concurrency: number
+  waiting: number
+  blocked_by: string
+  retry_after: number
+  next_change_at: string
+  schedule_open: boolean
 }
 
 export interface SmartRotationPeriod {
@@ -68,8 +92,8 @@ export interface TimeRotationStatusAccount {
 }
 
 export interface TimeRotationStatus {
-  protection?: { account_id: number; state: string; rpm: number; used: number | null; random_state?: string; random_rest_until?: string; in_flight?: number }[]
-  mode: 'manual' | 'smart'
+  protection?: { account_id: number; state: string; rpm: number; used: number | null; random_state?: string; random_rest_until?: string; in_flight?: number; paced?: AccountPacedStatus }[]
+  mode: 'manual' | 'smart' | 'paced'
   enabled: boolean
   revision: number
   ready: boolean

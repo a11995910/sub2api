@@ -66,6 +66,7 @@ type AccountRandomRestConfig struct {
 }
 
 type AccountTimeRotationConfig struct {
+	Paced         *AccountPacedConfig         `json:"paced,omitempty"`
 	RandomRest    *AccountRandomRestConfig    `json:"random_rest,omitempty"`
 	StrictRest    bool                        `json:"strict_rest"`
 	RequestLimits []AccountRequestLimit       `json:"request_limits"`
@@ -114,11 +115,22 @@ func rotationMinute(value string, allowEndOfDay bool) (int, error) {
 
 func (c *AccountTimeRotationConfig) Validate() error {
 	invalid := func(message string) error { return infraerrors.BadRequest("INVALID_TIME_ROTATION", message) }
+	if c.Mode == "paced" {
+		if err := c.Paced.validate(c.Enabled); err != nil {
+			return invalid(err.Error())
+		}
+		// 新模式只执行一个完整策略，旧的优先级、健康降权与随机休息不叠加。
+		c.Slots = []AccountRotationSlot{}
+		c.Smart, c.RandomRest = nil, nil
+		c.StrictRest = false
+		c.RequestLimits = []AccountRequestLimit{}
+		return nil
+	}
 	if c.Mode == "" {
 		c.Mode = "manual"
 	}
 	if c.Mode != "manual" && c.Mode != "smart" {
-		return invalid("轮候模式必须是 manual 或 smart")
+		return invalid("轮候模式必须是 paced、manual 或 smart")
 	}
 	if c.Smart == nil {
 		c.Smart = defaultSmartRotationConfig()
@@ -209,7 +221,7 @@ func (c *AccountTimeRotationConfig) Validate() error {
 // Priorities 使用左闭右开区间，支持跨午夜；不同账号组的时段允许重叠。
 func (c *AccountTimeRotationConfig) Priorities(now time.Time) map[int64]int {
 	result := make(map[int64]int)
-	if !c.Enabled || c.Mode == "smart" {
+	if !c.Enabled || c.Mode != "manual" {
 		return result
 	}
 	local := now.In(accountRotationLocation)
@@ -260,6 +272,7 @@ type AccountTimeRotationService struct {
 
 	// 只保存结束回调已执行、但 Redis 删除尚未确认的令牌，不接管其他实例的在途记录。
 	randomRestPendingReleases sync.Map
+	pacedPendingReleases      sync.Map
 }
 
 func NewAccountTimeRotationService(repo AccountTimeRotationRepository) *AccountTimeRotationService {
@@ -323,6 +336,10 @@ func cloneAccountTimeRotationConfig(config *AccountTimeRotationConfig) *AccountT
 		return nil
 	}
 	copyConfig := *config
+	if config.Paced != nil {
+		paced := *config.Paced
+		copyConfig.Paced = &paced
+	}
 	if config.RandomRest != nil {
 		r := *config.RandomRest
 		r.AccountIDs = append([]int64{}, r.AccountIDs...)
@@ -365,6 +382,7 @@ func (s *AccountTimeRotationService) Start() {
 						slog.Error("智能轮候状态恢复失败", "error", loadErr)
 					} else {
 						s.publish(result, time.Now())
+						s.retryPacedReleases(ctx)
 						s.tickRandomRest(ctx, result)
 						if saveErr := s.persistHealth(ctx); saveErr != nil {
 							slog.Error("智能轮候状态保存失败", "error", saveErr)
@@ -392,6 +410,7 @@ func (s *AccountTimeRotationService) Stop() {
 		s.wg.Wait()
 		// 补偿有独立的五秒预算，不挤占智能轮候状态持久化的超时。
 		s.retryRandomRestReleases(context.Background())
+		s.retryPacedReleases(context.Background())
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.persistHealth(ctx); err != nil {
@@ -402,6 +421,12 @@ func (s *AccountTimeRotationService) Stop() {
 
 // ProtectionAccountIDs 返回独立于手动/智能模式的保护账号。
 func (c *AccountTimeRotationConfig) ProtectionAccountIDs() []int64 {
+	if c.Mode == "paced" {
+		if c.Paced != nil && c.Paced.AccountID > 0 {
+			return []int64{c.Paced.AccountID}
+		}
+		return nil
+	}
 	ids := make(map[int64]bool)
 	if c.RandomRest != nil && c.RandomRest.Enabled {
 		for _, id := range c.RandomRest.AccountIDs {

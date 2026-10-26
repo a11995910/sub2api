@@ -316,3 +316,49 @@ func TestAccountProtectionReferencesValidatedOutsideSmartPool(t *testing.T) {
 		})
 	}
 }
+
+func TestAccountPacedRotationReplacesLegacyAndRestoresPriority(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	old := service.DefaultAccountTimeRotationConfig()
+	old.Enabled = true
+	old.Revision = 7
+	old.Slots[0].AccountIDs = []int64{1}
+	raw, err := json.Marshal(accountTimeRotationState{Config: *old, OriginalPriorities: map[int64]int{1: 70}})
+	require.NoError(t, err)
+	next := &service.AccountTimeRotationConfig{Enabled: true, Revision: 7, Mode: "paced", Paced: &service.AccountPacedConfig{AccountID: 2, Start: "08:30", End: "18:30", RPM: 40, SustainedRPM: 8, BurstCapacity: 40, MaxConcurrency: 12, MaxWaitSeconds: 15}}
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO settings").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WithArgs(accountTimeRotationKey).WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+	mock.ExpectQuery("SELECT id, priority.*FROM accounts.*FOR UPDATE").WithArgs("{1,2}").WillReturnRows(sqlmock.NewRows([]string{"id", "priority", "eligible"}).AddRow(1, 1, true).AddRow(2, 9, true))
+	mock.ExpectExec("UPDATE accounts SET priority").WithArgs(70, int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO scheduler_outbox").WithArgs(service.SchedulerOutboxEventAccountChanged, int64(1), nil, nil, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE settings SET value").WithArgs(rotationStateArgument{check: func(state accountTimeRotationState) bool {
+		return state.Config.Mode == "paced" && state.Config.Revision == 8 && state.Config.Paced.AccountID == 2 && len(state.OriginalPriorities) == 0 && len(state.Config.Slots) == 0
+	}}, accountTimeRotationKey).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	result, err := NewAccountTimeRotationRepository(db).Apply(context.Background(), next, time.Now())
+	require.NoError(t, err)
+	require.EqualValues(t, 8, result.Revision)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAccountPacedRotationRejectsNonRootAccount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	old := service.DefaultAccountTimeRotationConfig()
+	raw, err := json.Marshal(accountTimeRotationState{Config: *old})
+	require.NoError(t, err)
+	next := &service.AccountTimeRotationConfig{Enabled: true, Mode: "paced", Paced: &service.AccountPacedConfig{AccountID: 2, Start: "08:30", End: "18:30", RPM: 40, SustainedRPM: 8, BurstCapacity: 40, MaxConcurrency: 12, MaxWaitSeconds: 15}}
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO settings").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT value FROM settings.*FOR UPDATE").WithArgs(accountTimeRotationKey).WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
+	mock.ExpectQuery("SELECT id, priority.*FROM accounts.*FOR UPDATE").WithArgs("{2}").WillReturnRows(sqlmock.NewRows([]string{"id", "priority", "eligible"}).AddRow(2, 9, false))
+	mock.ExpectRollback()
+	_, err = NewAccountTimeRotationRepository(db).Apply(context.Background(), next, time.Now())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "不是独立 OpenAI OAuth")
+	require.NoError(t, mock.ExpectationsWereMet())
+}

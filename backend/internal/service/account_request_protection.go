@@ -99,6 +99,12 @@ func (s *AccountTimeRotationService) checkRequestProtection(account *Account, no
 		return nil
 	}
 	id := protectionRootID(account)
+	if cfg.Mode == "paced" {
+		if cfg.Paced != nil && cfg.Paced.AccountID == id {
+			return cfg.Paced.scheduleError(now)
+		}
+		return nil
+	}
 	if value, ok := s.protectionBlocks.Load(id); checkLimit && ok {
 		blocked := value.(accountProtectionBlock)
 		if blocked.revision == cfg.Revision && now.Before(blocked.until) {
@@ -259,13 +265,14 @@ type accountProtectionBlock struct {
 }
 
 type AccountProtectionStatus struct {
-	AccountID       int64      `json:"account_id"`
-	State           string     `json:"state"`
-	RPM             int        `json:"rpm"`
-	Used            *int       `json:"used"`
-	RandomState     string     `json:"random_state,omitempty"`
-	RandomRestUntil *time.Time `json:"random_rest_until,omitempty"`
-	InFlight        int        `json:"in_flight"`
+	Paced           *AccountPacedStatus `json:"paced,omitempty"`
+	AccountID       int64               `json:"account_id"`
+	State           string              `json:"state"`
+	RPM             int                 `json:"rpm"`
+	Used            *int                `json:"used"`
+	RandomState     string              `json:"random_state,omitempty"`
+	RandomRestUntil *time.Time          `json:"random_rest_until,omitempty"`
+	InFlight        int                 `json:"in_flight"`
 }
 
 var accountRequestUsage = redis.NewScript(`
@@ -276,6 +283,9 @@ return redis.call('ZCOUNT', KEYS[1], '('..tostring(now-60000), '+inf')
 
 // 状态读取不领取次数、不延长限速窗口。
 func (s *AccountTimeRotationService) ProtectionStatus(ctx context.Context, cfg *AccountTimeRotationConfig, account *Account, now time.Time) AccountProtectionStatus {
+	if cfg.Mode == "paced" && cfg.Paced != nil && cfg.Paced.AccountID == protectionRootID(account) {
+		return s.pacedStatus(ctx, cfg, account, now)
+	}
 	result := AccountProtectionStatus{AccountID: account.ID, State: "available"}
 	for _, limit := range cfg.RequestLimits {
 		if limit.AccountID == account.ID {
