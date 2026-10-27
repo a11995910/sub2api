@@ -83,7 +83,8 @@ func TestRecordUsage_ImageReasoningPricing(t *testing.T) {
 							require.InDelta(t, wantTotal*wantRate, userRepo.lastAmount, 1e-12)
 							require.Equal(t, forwardedEffort, usageRepo.lastLog.ReasoningEffort)
 							require.Equal(t, 2, usageRepo.lastLog.ImageCount)
-							require.Equal(t, string(mode), *usageRepo.lastLog.BillingMode)
+							// 图片按实际张数收费，价格卡的 per_request 配置也统一记录为图片计费。
+							require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 						})
 					}
 				}

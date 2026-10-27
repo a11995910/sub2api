@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"mime"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,15 +19,13 @@ const geminiImageOutputCounterKey = "gemini_image_output_counter"
 // Gemini SSE 既可能累积重发，也可能把多张图分散到不同 chunk；跨 payload 保存
 // 内容摘要可以同时避免重复计费和增量流少计费。
 type geminiImageOutputCounter struct {
-	digests        map[geminiInlineImageDigest]struct{}
-	sawInlineImage bool
+	digests map[geminiInlineImageDigest]struct{}
 }
 
 type geminiInlineImageDigest [sha256.Size]byte
 
 type geminiInlineImagePartRef struct {
-	candidate int
-	part      int
+	path string
 }
 
 // beginGeminiImageOutputObservation 在每次 Forward 开头重置计数器。
@@ -63,9 +62,7 @@ func observeGeminiImageOutputs(c *gin.Context, payload []byte) {
 	if counter.digests == nil {
 		counter.digests = make(map[geminiInlineImageDigest]struct{})
 	}
-	if scanGeminiInlineImageOutputs(payload, counter.digests, nil) {
-		counter.sawInlineImage = true
-	}
+	scanGeminiInlineImageOutputs(payload, counter.digests, nil)
 }
 
 func observedGeminiImageOutputs(c *gin.Context) int {
@@ -78,27 +75,32 @@ func observedGeminiImageOutputs(c *gin.Context) int {
 
 // resolveGeminiImageCount 决定本次请求按几张图计费。
 //
-// 优先用上游真正返回的内联图片数：走 GeminiMessagesCompatService 的账号多是
-// API Key + 自定义模型映射，客户端请求名和上游模型名都可能是站长自取的别名
-// （issue #5358 里的 nana-banana-2），isImageGenerationModel 的白名单必然判不出，
-// 于是 ImageCount=0，calculateRecordUsageCost 整条按次计费分支不触发，
-// 生图请求全部记 $0。
-//
-// 只有响应里数不出图时（例如上游用 fileData 引用而非 inlineData 回图，或聚合
-// 函数丢掉了图片 part）才退回既有的模型名启发式，保证老行为不回退；这里额外
-// 也认映射后的上游模型名，与 shouldSkipCodexPlanGatedImageModelCooldown 对
-// requestedModel / modelKey 双取的口径一致。
+// 已接入响应观测时只按真正返回的最终图片计数，兼容 inlineData 与 fileData，并按
+// 图片内容或引用去重。纯文本、空响应、thought 中间图片均不默认按一张收费。
+// 只有没有接入响应观测的旧调用方才保留模型名兜底。
 func resolveGeminiImageCount(c *gin.Context, originalModel, mappedModel string) int {
-	if counter := geminiImageOutputCounterFromContext(c); counter != nil && counter.sawInlineImage {
+	if counter := geminiImageOutputCounterFromContext(c); counter != nil {
 		return len(counter.digests)
-	}
-	if observed := observedGeminiImageOutputs(c); observed > 0 {
-		return observed
 	}
 	if isImageGenerationModel(originalModel) || isImageGenerationModel(mappedModel) {
 		return 1
 	}
 	return 0
+}
+
+// 图片意图与实际出图数量分别记录，避免零张图片落入文本 Token 计费。
+func isGeminiImageGenerationRequest(body []byte, originalModel, mappedModel string) bool {
+	if isImageGenerationModel(originalModel) || isImageGenerationModel(mappedModel) {
+		return true
+	}
+	for _, path := range []string{"generationConfig.responseModalities", "generationConfig.response_modalities", "generation_config.responseModalities", "generation_config.response_modalities"} {
+		for _, modality := range gjson.GetBytes(body, path).Array() {
+			if strings.EqualFold(strings.TrimSpace(modality.String()), "IMAGE") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // countGeminiInlineImageOutputs 统计一段 Gemini 响应 JSON 里的唯一最终图片。
@@ -126,8 +128,7 @@ func deduplicateGeminiInlineImageOutputs(payload []byte, seen map[geminiInlineIm
 	out := payload
 	// 从后向前删除，避免同一 parts 数组的下标在删除过程中偏移。
 	for i := len(duplicates) - 1; i >= 0; i-- {
-		ref := duplicates[i]
-		next, err := sjson.DeleteBytes(out, fmt.Sprintf("candidates.%d.content.parts.%d", ref.candidate, ref.part))
+		next, err := sjson.DeleteBytes(out, duplicates[i].path)
 		if err != nil {
 			return payload, 0
 		}
@@ -140,37 +141,76 @@ func scanGeminiInlineImageOutputs(
 	payload []byte,
 	seen map[geminiInlineImageDigest]struct{},
 	duplicates *[]geminiInlineImagePartRef,
-) bool {
+) {
 	if len(payload) == 0 || seen == nil || !gjson.ValidBytes(payload) {
-		return false
+		return
 	}
 
-	sawInlineImage := false
-	candidateIndex := 0
-	gjson.GetBytes(payload, "candidates").ForEach(func(_, candidate gjson.Result) bool {
-		partIndex := 0
-		candidate.Get("content.parts").ForEach(func(_, part gjson.Result) bool {
-			data, ok := geminiPartRawInlineImageData(part)
-			if ok {
-				sawInlineImage = true
-			}
-			if ok && !part.Get("thought").Bool() {
-				digest := geminiInlineImageDataDigest(data)
-				if _, exists := seen[digest]; exists {
-					if duplicates != nil {
-						*duplicates = append(*duplicates, geminiInlineImagePartRef{candidate: candidateIndex, part: partIndex})
+	var scan func(gjson.Result, string)
+	scan = func(value gjson.Result, prefix string) {
+		if value.IsArray() {
+			index := 0
+			value.ForEach(func(_, item gjson.Result) bool {
+				scan(item, fmt.Sprintf("%s%d.", prefix, index))
+				index++
+				return true
+			})
+			return
+		}
+		if inner := value.Get("response"); inner.IsObject() {
+			scan(inner, prefix+"response.")
+			return
+		}
+		candidateIndex := 0
+		value.Get("candidates").ForEach(func(_, candidate gjson.Result) bool {
+			partIndex := 0
+			candidate.Get("content.parts").ForEach(func(_, part gjson.Result) bool {
+				data, ok := geminiPartRawInlineImageData(part)
+				if !ok {
+					data, ok = geminiPartImageFileURI(part)
+					if ok {
+						data = "file-uri:" + data
 					}
-				} else {
-					seen[digest] = struct{}{}
 				}
-			}
-			partIndex++
+				if ok && !part.Get("thought").Bool() {
+					digest := geminiInlineImageDataDigest(data)
+					if _, exists := seen[digest]; exists {
+						if duplicates != nil {
+							*duplicates = append(*duplicates, geminiInlineImagePartRef{path: fmt.Sprintf("%scandidates.%d.content.parts.%d", prefix, candidateIndex, partIndex)})
+						}
+					} else {
+						seen[digest] = struct{}{}
+					}
+				}
+				partIndex++
+				return true
+			})
+			candidateIndex++
 			return true
 		})
-		candidateIndex++
-		return true
-	})
-	return sawInlineImage
+	}
+	scan(gjson.ParseBytes(payload), "")
+}
+
+// fileData 是 Gemini 的图片引用格式；只统计声明为图片的非空 URI，不把普通文本链接计为图片。
+func geminiPartImageFileURI(part gjson.Result) (string, bool) {
+	file := part.Get("fileData")
+	if !file.Exists() {
+		file = part.Get("file_data")
+	}
+	mimeType := file.Get("mimeType")
+	if !mimeType.Exists() {
+		mimeType = file.Get("mime_type")
+	}
+	if !isGeminiImageOutputMIMEType(mimeType.String()) {
+		return "", false
+	}
+	uri := file.Get("fileUri")
+	if !uri.Exists() {
+		uri = file.Get("file_uri")
+	}
+	value := strings.TrimSpace(uri.String())
+	return value, value != ""
 }
 
 func geminiInlineImageDataDigest(data string) geminiInlineImageDigest {
@@ -194,11 +234,17 @@ func geminiPartRawInlineImageData(part gjson.Result) (string, bool) {
 	if !mimeType.Exists() {
 		mimeType = inline.Get("mime_type")
 	}
-	if !isGeminiInlineImageMIMEType(strings.ToLower(strings.TrimSpace(mimeType.String()))) {
+	if !isGeminiImageOutputMIMEType(mimeType.String()) {
 		return "", false
 	}
 
 	// 只认真的带上了 base64 数据的 part，空壳 part 不计费。
 	data := strings.TrimSpace(inline.Get("data").String())
 	return data, data != ""
+}
+
+// 原生响应计数接受图片媒体类型及其参数，不改变兼容接口的图片展示白名单。
+func isGeminiImageOutputMIMEType(value string) bool {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(value))
+	return err == nil && strings.HasPrefix(mediaType, "image/") && len(mediaType) > len("image/")
 }

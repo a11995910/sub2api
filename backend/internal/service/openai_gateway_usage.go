@@ -272,7 +272,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		input.BillingModelSource,
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
+		cost.BillingMode == string(BillingModeImage) || result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
 			result.AudioUsage != nil || result.SearchCount > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
@@ -668,14 +668,29 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, webSearchMultiplier), nil
 	}
 
-	if result != nil && result.ImageCount > 0 {
+	imageRequest := result != nil && (result.ImageCount > 0 || isOpenAIImageGenerationModel(result.Model) || isOpenAIImageGenerationModel(result.UpstreamModel))
+	if result != nil && !imageRequest {
+		for _, candidate := range billingModels {
+			if resolved := s.resolveOpenAIChannelPricing(ctx, candidate, apiKey); resolved != nil && resolved.Mode == BillingModeImage {
+				imageRequest = true
+				break
+			}
+		}
+	}
+	if imageRequest {
+		if result.ImageCount <= 0 {
+			return &CostBreakdown{BillingMode: string(BillingModeImage)}, nil
+		}
 		// 优先匹配全部候选中的图片/按次渠道价，避免主计费模型为 token 时漏掉
 		// 上游实际图片模型的渠道定价。
 		if imageBillingModel, ok := s.resolveOpenAIImageBillingModel(ctx, apiKey, billingModels); ok {
 			return s.calculateOpenAIImageCost(ctx, imageBillingModel, apiKey, result, imageMultiplier), nil
 		}
-		// 渠道定价为 token 计费时走 token 路径，否则走图片计费。
-		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
+		// 生图分组原单价优先；没有配置图片单价的文本多模态渠道保留既有规则。
+		resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
+		if resolved == nil || resolved.Mode != BillingModeToken ||
+			apiKeyHasConfiguredImagePrice(apiKey, NormalizeImageBillingTierOrDefault(result.ImageSize)) ||
+			isOpenAIImageGenerationModel(result.Model) || isOpenAIImageGenerationModel(result.UpstreamModel) {
 			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
 		}
 	}
@@ -822,6 +837,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 			ReasoningEffort: optionalStringValue(result.ReasoningEffort),
 		})
 		if err == nil {
+			cost.BillingMode = string(BillingModeImage)
 			return cost
 		}
 	}
@@ -852,6 +868,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 			Resolved:        resolved,
 		})
 		if err == nil {
+			cost.BillingMode = string(BillingModeImage)
 			return cost
 		}
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)

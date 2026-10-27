@@ -80,6 +80,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	includeUsage bool,
 	startTime time.Time,
 ) (*ForwardResult, error) {
+	beginGeminiImageOutputObservation(c)
 	var req struct {
 		Model  string `json:"model"`
 		Stream bool   `json:"stream"`
@@ -266,6 +267,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 		}
 		collectedBytes, _ := json.Marshal(collected)
+		observeGeminiImageOutputs(c, collectedBytes)
 		if deduplicated, removed := deduplicateGeminiInlineImageOutputs(collectedBytes, nil); removed > 0 {
 			var normalized map[string]any
 			if err := json.Unmarshal(deduplicated, &normalized); err == nil {
@@ -291,12 +293,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		usage = &ClaudeUsage{}
 	}
 
-	imageCount := 0
+	imageCount := resolveGeminiImageCount(c, originalModel, mappedModel)
 	imageInputSize := s.extractImageInputSize(claudeBody)
 	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
-	if isImageGenerationModel(originalModel) {
-		imageCount = 1
-	}
 
 	return &ForwardResult{
 		UpstreamHeaders:          resp.Header,
@@ -308,6 +307,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		Duration:                 time.Since(startTime),
 		FirstTokenMs:             firstTokenMs,
 		ReasoningEffort:          reasoningEffort,
+		ImageGeneration:          isGeminiImageGenerationRequest(geminiReq, originalModel, mappedModel),
 		ImageCount:               imageCount,
 		ImageSize:                imageSize,
 		ImageInputSize:           imageInputSize,
@@ -469,6 +469,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 		}
 	}
 	respBody, _ = deduplicateGeminiInlineImageOutputs(respBody, nil)
+	observeGeminiImageOutputs(c, respBody)
 
 	var geminiResp map[string]any
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
@@ -636,6 +637,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 						}
 					}
 
+					observeGeminiImageOutputs(c, rawBytes)
 					var geminiResp map[string]any
 					if err := json.Unmarshal(rawBytes, &geminiResp); err == nil {
 						if firstChunk {
