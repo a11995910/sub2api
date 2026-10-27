@@ -209,20 +209,20 @@ func TestResolveGeminiImageCount(t *testing.T) {
 		require.Equal(t, 1, resolveGeminiImageCount(c, "nana-banana-2", "nana-banana-2"))
 	})
 
-	t.Run("falls back to requested model name", func(t *testing.T) {
+	t.Run("text-only image response has no billable image", func(t *testing.T) {
 		c := newGeminiImageTestContext(t)
 		beginGeminiImageOutputObservation(c)
 		observeGeminiImageOutputs(c, textOnly)
 
-		require.Equal(t, 1, resolveGeminiImageCount(c, "gemini-3-pro-image-preview", "gemini-3-pro-image-preview"))
+		require.Equal(t, 0, resolveGeminiImageCount(c, "gemini-3-pro-image-preview", "gemini-3-pro-image-preview"))
 	})
 
-	t.Run("falls back to mapped upstream model name", func(t *testing.T) {
+	t.Run("mapped image model does not charge a text-only response", func(t *testing.T) {
 		c := newGeminiImageTestContext(t)
 		beginGeminiImageOutputObservation(c)
 		observeGeminiImageOutputs(c, textOnly)
 
-		require.Equal(t, 1, resolveGeminiImageCount(c, "my-image-alias", "gemini-2.5-flash-image"))
+		require.Equal(t, 0, resolveGeminiImageCount(c, "my-image-alias", "gemini-2.5-flash-image"))
 	})
 
 	t.Run("text model stays unbilled", func(t *testing.T) {

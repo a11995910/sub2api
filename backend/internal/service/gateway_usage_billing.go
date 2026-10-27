@@ -801,7 +801,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		input.BillingModelSource,
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0,
+		cost.BillingMode == string(BillingModeImage) || result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
 		if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
 			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, pricingAt)
@@ -896,9 +896,17 @@ func (s *GatewayService) calculateRecordUsageCost(
 	imageMultiplier float64,
 	pricingAt time.Time,
 ) *CostBreakdown {
-	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
-	if result.ImageCount > 0 {
-		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
+	// 生图意图与出图张数独立判断。零张时不收费，禁止因漏识别而回退 Token 计费。
+	resolved := s.resolveChannelPricing(ctx, billingModel, apiKey)
+	if result.ImageGeneration || result.ImageCount > 0 || isImageGenerationModel(result.Model) ||
+		isImageGenerationModel(result.UpstreamModel) || (resolved != nil && resolved.Mode == BillingModeImage) {
+		if result.ImageCount <= 0 {
+			return &CostBreakdown{BillingMode: string(BillingModeImage)}
+		}
+		// 未配置图片单价的文本多模态渠道保留既有 Token 规则，不扩大生图分组的改动范围。
+		if resolved != nil && resolved.Mode == BillingModeToken &&
+			!apiKeyHasConfiguredImagePrice(apiKey, NormalizeImageBillingTierOrDefault(result.ImageSize)) &&
+			!result.ImageGeneration && !isImageGenerationModel(result.Model) && !isImageGenerationModel(result.UpstreamModel) {
 			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
 		}
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
@@ -1032,7 +1040,8 @@ func (s *GatewayService) calculateImageCost(
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveChannelPricing(ctx, billingModel, apiKey)
-	if resolved != nil && resolved.Source == PricingSourceGroup {
+	if resolved != nil && resolved.Source == PricingSourceGroup &&
+		(resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) {
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
@@ -1041,6 +1050,7 @@ func (s *GatewayService) calculateImageCost(
 			ReasoningEffort: optionalStringValue(result.ReasoningEffort),
 		})
 		if err == nil {
+			cost.BillingMode = string(BillingModeImage)
 			return cost
 		}
 	}
@@ -1048,7 +1058,8 @@ func (s *GatewayService) calculateImageCost(
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
 		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 	}
-	if resolved != nil && resolved.Source == PricingSourceChannel {
+	if resolved != nil && resolved.Source == PricingSourceChannel &&
+		(resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) {
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
 			OutputTokens:      result.Usage.OutputTokens,
@@ -1072,6 +1083,7 @@ func (s *GatewayService) calculateImageCost(
 			logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
 			return &CostBreakdown{ActualCost: 0}
 		}
+		cost.BillingMode = string(BillingModeImage)
 		return cost
 	}
 

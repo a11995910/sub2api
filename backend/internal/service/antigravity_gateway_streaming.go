@@ -40,6 +40,7 @@ func (s *AntigravityGatewayService) observeAntigravityGeminiSSELine(c *gin.Conte
 	// unwrap the same line for business processing, so unwrapping here would be
 	// duplicate work on every SSE event.
 	observer.ObserveGemini([]byte(payload))
+	observeGeminiImageOutputs(c, []byte(payload))
 }
 
 // antigravityClientWriter 封装流式响应的客户端写入，自动检测断开并标记。
@@ -907,6 +908,7 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 				continue
 			}
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(inner)
+			observeGeminiImageOutputs(c, inner)
 
 			var parsed map[string]any
 			if err := json.Unmarshal(inner, &parsed); err != nil {
@@ -1228,6 +1230,9 @@ func isImageGenerationModel(model string) bool {
 	modelLower := strings.ToLower(model)
 	// 移除 models/ 前缀
 	modelLower = strings.TrimPrefix(modelLower, "models/")
+	if modelLower == "gemini-nano-banana-2.1" || strings.HasPrefix(modelLower, "gemini-nano-banana-2.1-") {
+		return true
+	}
 
 	// 精确匹配或前缀匹配
 	return modelLower == "gemini-3.1-flash-image" ||
