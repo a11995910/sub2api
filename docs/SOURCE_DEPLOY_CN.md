@@ -27,6 +27,16 @@
 
 用户先在本地检查、合并、提交并普通推送 `main`，再使用 `ssh sub2api-migration-vps` 登录正式 VPS。staging 必须手工调用 `/opt/sub2api/scripts/release-staging`；prod 在 staging 验收和用户明确确认后直接调用 `/opt/sub2api/scripts/release-prod`。脚本保留资源、版本、健康和回滚门禁，但不会自行定时运行。
 
+## 请求体内存准入
+
+正式 VPS 的 staging 与 prod 在各自运行时 `.env` 中配置 `GATEWAY_MAX_INFLIGHT_BODY_BYTES=4294967296`（4 GiB）和 `GATEWAY_BODY_ADMISSION_WAIT_SECONDS=10`（10 秒）。这两项覆盖源码默认的 512 MiB 与 2 秒，适用于当前约 62 GiB 内存的主机；预算是活跃请求体的估算额度，不会在启动时直接分配 4 GiB 内存。`GATEWAY_MAX_INFLIGHT_BODY_READS=64` 与 `GATEWAY_MAX_BODY_SIZE=268435456` 继续保留并发读取和单请求大小保护。
+
+网关相关路由共享进程内请求体预算。JSON 读取阶段按请求体的 7 倍预留，规范化完成后按最终请求体的 4 倍收缩，租约持有到请求或异步任务结束。已知长度的压缩 JSON 按压缩原文加解压上限的 7 倍预留；解压上限为 64 MiB 时，仅解压部分就占约 448 MiB。因此，长对话、图片上下文和压缩请求并发时，即使主机实际内存充足，也可能等待不到预算。
+
+准入等待超时会返回 HTTP 429，访问日志记录 `ingress_reject_reason=body_memory_budget`；OpenAI 兼容响应的错误码为 `request_body_admission_exhausted`。该错误发生在上游转发之前，应与上游账号限流、额度不足区分。排查时使用请求 ID 关联访问日志，并检查生效环境变量、主机可用内存和容器占用；现有拒绝日志未记录请求体大小、压缩方式及当时预算占用，不能仅凭该标记断定单个请求过大或物理内存耗尽。
+
+参数在应用启动时读取，单独编辑 `.env` 不会立即生效。调整前在服务器 root-only 目录保存原配置和镜像信息，先通过隔离 staging 验证，再依照既有生产授权和发布门禁应用同一 commit/run。配置验证包括容器实际环境变量、固定公网 staging 入口、正式 HTTPS 入口、数据库连接和切换后的真实请求日志。回滚时须恢复原 `.env` 并重新创建应用容器，单纯切回原镜像不能恢复这两项参数。配置备份和发布日志只保存在服务器，不进入仓库。
+
 ## 图片 URL 本地存储
 
 分组选择 URL 图片响应后，服务会把最终图片写入 `IMAGE_STORAGE_PATH`。Docker 默认值为 `/app/data/generated-images`，该目录位于既有 `/app/data` 持久卷内；staging 和 prod 必须使用彼此独立的数据卷或宿主目录。
