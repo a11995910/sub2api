@@ -1,11 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
-import { formatOriginalCurrencyScaled, formatScaled, formatUSDScaled } from '../pricing'
+import { formatOriginalCurrencyScaled, formatScaled, formatUSDScaled, formatVideoMarketPrice } from '../pricing'
 
 vi.mock('@/i18n', () => ({
   i18n: { global: { t: () => '灵石' } },
 }))
 
 describe('价格格式化', () => {
+  it.each([
+    [0.586, '0.58 灵石'],
+    [0.585, '0.58 灵石'],
+    [1.125, '1.12 灵石'],
+    [0.29, '0.29 灵石'],
+    [0.3, '0.30 灵石'],
+    [0, '0.00 灵石'],
+    [1e-7, '0.00 灵石'],
+    [null, '-'],
+    [NaN, '-'],
+  ])('视频广场价格 %s 截断为 %s', (value, expected) => {
+    expect(formatVideoMarketPrice(value)).toBe(expected)
+  })
   it.each([
     [1e-10, 1, '$1e-10'],
     [1.25e-10, 1, '$1.25e-10'],

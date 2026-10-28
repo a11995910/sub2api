@@ -1261,6 +1261,13 @@ export default {
 
   // Model Market
   modelMarket: {
+    videoRules: {
+      fixedRequest: '每个任务按次收费，不乘生成时长；当前配置不区分分辨率价格。',
+      perSecond: '按秒收费，以下展示当前渠道配置的分辨率价格档位。参考素材是否另计费用以该上游规则及分组说明为准；价格档位不代表全部生成能力。',
+      precision: '展示价格截断至两位小数，实际扣费按配置完整精度计算。',
+      perRequest: '按次收费，以下展示当前渠道配置的分辨率价格档位，不乘生成时长。价格档位不代表全部生成能力。',
+      unconfigured: '未配置明确的视频计费规则，请联系管理员确认后调用。',
+    },
     title: '模型广场',
     description: '查看当前可调用模型、可用分组和倍率后的灵石价格。',
     searchPlaceholder: '搜索模型、平台或分组...',

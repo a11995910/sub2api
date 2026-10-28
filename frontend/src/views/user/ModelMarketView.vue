@@ -167,6 +167,11 @@
               </button>
             </div>
 
+            <p v-if="model.kind === 'video'" class="mt-3 whitespace-pre-line text-sm text-gray-600 dark:text-gray-300" data-testid="video-pricing-rules">
+              {{ videoPricingRules(model) }}
+              {{ t('modelMarket.videoRules.precision') }}
+            </p>
+
             <div
               class="mt-4"
               :class="model.kind === 'token' && model.pricing?.billing_mode !== BILLING_MODE_PER_REQUEST ? '' : 'grid grid-cols-1 gap-2 sm:grid-cols-3'"
@@ -193,7 +198,12 @@
               </template>
               <template v-else-if="model.kind === 'video'">
                 <PriceTile
-                  v-for="resolution in videoResolutionsForModel(model.name)"
+                  v-if="isFixedRequestVideo(model)"
+                  :label="t('modelMarket.columns.perRequest')"
+                  :value="formatVideoMarketPrice((model.pricing?.per_request_price ?? 0) * effectiveVideoRate(marketGroup.group))"
+                />
+                <PriceTile
+                  v-for="resolution in marketVideoResolutions(model)"
                   :key="resolution"
                   :label="formatVideoTierLabel(model, resolution, marketGroup.group)"
                   :value="formatVideoTier(model, resolution, marketGroup.group)"
@@ -250,7 +260,7 @@ import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
-import { formatOriginalCurrencyScaled, formatScaled } from '@/utils/pricing'
+import { formatOriginalCurrencyScaled, formatScaled, formatVideoMarketPrice } from '@/utils/pricing'
 import { formatMultiplier } from '@/utils/formatters'
 import {
   activePromoDiscountMultiplier,
@@ -640,28 +650,50 @@ function formatImageTierDiscount(
   return formatDiscountPercent(typeof value === 'number' ? value : null, 1, group, BILLING_MODE_IMAGE, currency)
 }
 
-function videoQuote(model: GroupMarketModel, resolution: VideoResolution, group: UserAvailableGroup) {
+function videoQuote(model: GroupMarketModel, resolution: string, group: UserAvailableGroup) {
   return resolveVideoPriceQuote({
     group,
     pricing: model.pricing,
     modelName: model.name,
-    resolution,
+    resolution: resolution as VideoResolution,
     userGroupRate: userGroupRates.value[group.id],
   })
 }
 
+function isFixedRequestVideo(model: GroupMarketModel): boolean {
+  return model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST &&
+    model.pricing.per_request_price != null && model.pricing.intervals.length === 0
+}
+
+function marketVideoResolutions(model: GroupMarketModel): string[] {
+  if (isFixedRequestVideo(model)) return []
+  const configured = model.pricing?.intervals
+    .map(interval => interval.tier_label)
+    .filter((label): label is string => Boolean(label?.trim())) ?? []
+  return configured.length ? [...new Set(configured)] : videoResolutionsForModel(model.name)
+}
+
+function videoPricingRules(model: GroupMarketModel): string {
+  if (isFixedRequestVideo(model)) return t('modelMarket.videoRules.fixedRequest')
+  const mode = model.pricing?.billing_mode
+  if (mode !== BILLING_MODE_VIDEO && mode !== BILLING_MODE_PER_REQUEST && mode !== BILLING_MODE_IMAGE) {
+    return t('modelMarket.videoRules.unconfigured')
+  }
+  return t(mode === BILLING_MODE_VIDEO ? 'modelMarket.videoRules.perSecond' : 'modelMarket.videoRules.perRequest')
+}
+
 function formatVideoTier(
   model: GroupMarketModel,
-  resolution: VideoResolution,
+  resolution: string,
   group: UserAvailableGroup,
 ): string {
   const resolved = videoQuote(model, resolution, group)
-  return resolved ? formatScaled(resolved.effectivePrice, 1) : '-'
+  return resolved ? formatVideoMarketPrice(resolved.effectivePrice) : '-'
 }
 
 function formatVideoTierLabel(
   model: GroupMarketModel,
-  resolution: VideoResolution,
+  resolution: string,
   group: UserAvailableGroup,
 ): string {
   const resolved = videoQuote(model, resolution, group)

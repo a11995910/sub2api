@@ -194,6 +194,52 @@ const IconStub = { template: '<span />' }
 const PlatformIconStub = { template: '<span />' }
 
 describe('ModelMarketView', () => {
+  it.each([
+    ['kling-4.0', ['720p', '1080p'], ['480p']],
+    ['minimax-h3-903', ['720p', '1080p'], ['480p']],
+    ['seedance-2.0', ['480p', '720p'], ['1080p']],
+    ['seedance-2.5', ['480p', '720p'], ['1080p']],
+    ['其他上游模型', ['2K', '4K'], ['480p', '720p']],
+  ])('模型 %s 按配置档位展示，不从名称推断', async (name, tiers, absent) => {
+    const group = groupFixture({ id: 8, name: '视频分组', platform: 'openai' })
+    getAvailableGroups.mockResolvedValue([group])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '测试渠道', description: '', platforms: [{
+        platform: 'openai', groups: [group], supported_models: [{
+          name, platform: 'openai', kind: 'video',
+          pricing: { ...videoPricingFixture(0.586), intervals: tiers.map(tier_label => ({ tier_label, per_request_price: 0.586 })) },
+        }],
+      }],
+    }])
+    const wrapper = mount(ModelMarketView, { global: { stubs: { AppLayout: AppLayoutStub, Icon: IconStub, PlatformIcon: PlatformIconStub } } })
+    await flushPromises()
+    const card = modelCard(wrapper, name)
+    for (const tier of tiers) expect(card.text()).toContain(`${tier} / 秒当前0.58 灵石`)
+    for (const tier of absent) expect(card.text()).not.toContain(`${tier} / 秒`)
+    expect(card.find('[data-testid="video-pricing-rules"]').exists()).toBe(true)
+  })
+
+  it('固定按次视频只展示一个单价', async () => {
+    const group = groupFixture({ id: 8, name: '视频分组', platform: 'openai' })
+    getAvailableGroups.mockResolvedValue([group])
+    getUserGroupRates.mockResolvedValue({})
+    getAvailableChannels.mockResolvedValue([{
+      name: '测试渠道', description: '', platforms: [{
+        platform: 'openai', groups: [group], supported_models: [{
+          name: 'wan-3.0', platform: 'openai', kind: 'video',
+          pricing: { ...videoPricingFixture(3.6), billing_mode: 'per_request', intervals: [] },
+        }],
+      }],
+    }])
+    const wrapper = mount(ModelMarketView, { global: { stubs: { AppLayout: AppLayoutStub, Icon: IconStub, PlatformIcon: PlatformIconStub } } })
+    await flushPromises()
+    const card = modelCard(wrapper, 'wan-3.0')
+    expect(card.text()).toContain('按次当前3.60 灵石')
+    expect(card.text()).not.toContain('480p /')
+    expect(card.text()).not.toContain('720p /')
+  })
+
   beforeEach(() => {
     getAvailableChannels.mockReset()
     getAvailableGroups.mockReset()
@@ -776,7 +822,7 @@ describe('ModelMarketView', () => {
       billingMode: 'image',
       defaultPrice: 2.1,
       intervalPrice: undefined,
-      expectedPrice: '2.1 灵石',
+      expectedPrice: '2.10 灵石',
       expectedUnit: '720p / 按次',
     },
   ])('视频价格卡展示$name及正确单位', async ({
@@ -937,7 +983,7 @@ describe('ModelMarketView', () => {
 
     const cardText = modelCard(wrapper, 'grok-imagine-video-1.5').text()
     expect(cardText).toContain('720p / 秒当前0.14 灵石')
-    expect(cardText).toContain('1080p / 秒当前0.14 灵石')
+    expect(cardText).not.toContain('1080p / 秒')
   })
 
   it('video-1.5 模型广场独立展示自身渠道价且不展示参考图费用', async () => {

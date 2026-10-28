@@ -1257,6 +1257,13 @@ export default {
 
   // Model Market
   modelMarket: {
+    videoRules: {
+      precision: 'Displayed prices are truncated to two decimal places. Billing uses the full configured precision.',
+      fixedRequest: 'Charged per task, not multiplied by duration. The current configuration uses one price across resolutions.',
+      perSecond: 'Charged per second. Prices below reflect configured resolution tiers. Reference-media charges depend on the upstream rules and group description; pricing tiers do not define all generation capabilities.',
+      perRequest: 'Charged per task at the configured resolution price, not multiplied by duration. Pricing tiers do not define all generation capabilities.',
+      unconfigured: 'Video billing rules are not explicitly configured. Contact the administrator before calling this model.',
+    },
     title: 'Model Market',
     description: 'Browse callable models, available groups, and multiplier-adjusted Spirit Stone pricing.',
     searchPlaceholder: 'Search models, platforms, or groups...',

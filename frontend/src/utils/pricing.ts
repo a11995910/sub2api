@@ -21,6 +21,14 @@ export function formatScaled(value: number | null, scale: number, minFractionDig
   return `${formatPriceNumber(value * scale, minFractionDigits)} ${i18n.global.t('common.currencyName')}`
 }
 
+export function formatVideoMarketPrice(value: number | null): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return '-'
+  const [coefficient, exponent = '0'] = value.toString().split('e')
+  const cents = Math.floor(Number(`${coefficient}e${Number(exponent) + 2}`))
+  if (!Number.isFinite(cents)) return '-'
+  return `${(cents / 100).toFixed(2)} ${i18n.global.t('common.currencyName')}`
+}
+
 /** 按比例格式化美元价格，供需要固定展示 USD 的官方参考价使用。 */
 export function formatUSDScaled(value: number | null, scale: number, minFractionDigits = 0): string {
   if (value == null) return '-'
