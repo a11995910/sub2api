@@ -201,7 +201,7 @@ describe('ModelMarketView', () => {
     ['seedance-2.5', ['480p', '720p'], ['1080p']],
     ['其他上游模型', ['2K', '4K'], ['480p', '720p']],
   ])('模型 %s 按配置档位展示，不从名称推断', async (name, tiers, absent) => {
-    const group = groupFixture({ id: 8, name: '视频分组', platform: 'openai' })
+    const group = groupFixture({ id: 8, name: '视频分组', platform: 'openai', allow_image_generation: true })
     getAvailableGroups.mockResolvedValue([group])
     getUserGroupRates.mockResolvedValue({})
     getAvailableChannels.mockResolvedValue([{
@@ -221,7 +221,7 @@ describe('ModelMarketView', () => {
   })
 
   it('固定按次视频只展示一个单价', async () => {
-    const group = groupFixture({ id: 8, name: '视频分组', platform: 'openai' })
+    const group = groupFixture({ id: 8, name: '视频分组', platform: 'openai', allow_image_generation: true })
     getAvailableGroups.mockResolvedValue([group])
     getUserGroupRates.mockResolvedValue({})
     getAvailableChannels.mockResolvedValue([{
@@ -1089,7 +1089,7 @@ describe('ModelMarketView', () => {
     expect(wrapper.text()).not.toContain('x3.00')
   })
 
-  it('历史视频渠道未命中当前分辨率且无默认价时显示无价格', async () => {
+  it('历史视频渠道仅展示已配置档位，不补充无价格分辨率', async () => {
     const videoGroup = groupFixture({
       id: 8,
       name: '视频分组',
@@ -1133,6 +1133,7 @@ describe('ModelMarketView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('720p / 按次当前-')
+    expect(wrapper.text()).toContain('480p / 按次当前1.8 灵石')
+    expect(wrapper.text()).not.toContain('720p / 按次')
   })
 })
