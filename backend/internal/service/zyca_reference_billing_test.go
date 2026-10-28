@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestZYCAReferenceBillingUsesProbedFractionalDurations(t *testing.T) {
+func TestZYCAReferenceBillingRoundsEachProbedDuration(t *testing.T) {
 	account := zycaTestAccount()
 	body := []byte(`{"model":"zyca-kling-4.0","prompt":"测试","duration":10,"reference_videos":["https://cdn.example/one.mp4","https://cdn.example/two.mp4","https://cdn.example/one.mp4"],"reference_duration":999}`)
 	calls := 0
@@ -28,18 +28,47 @@ func TestZYCAReferenceBillingUsesProbedFractionalDurations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 	snapshot := zycaReferenceSnapshot(ctx)
-	require.Equal(t, 5.5, snapshot.ReferenceSeconds)
-	require.Equal(t, 15.5, snapshot.BillableSeconds)
+	require.Equal(t, 6.0, snapshot.ReferenceSeconds)
+	require.Equal(t, 16.0, snapshot.BillableSeconds)
 	require.Equal(t, []float64{2.75, 2.75}, snapshot.ReferenceDurations)
 	factor, err := zycaReferenceBillingFactor(ctx, account.ID, "kling-4.0", 10)
 	require.NoError(t, err)
-	require.InDelta(t, 1.55, factor, 1e-9)
+	require.InDelta(t, 1.6, factor, 1e-9)
 	_, err = zycaReferenceBillingFactor(ctx, account.ID+1, "kling-4.0", 10)
 	require.Error(t, err)
 	_, err = zycaReferenceBillingFactor(ctx, account.ID, "seedance-2.5", 10)
 	require.Error(t, err)
 	_, err = zycaReferenceBillingFactor(ctx, account.ID, "kling-4.0", 5)
 	require.Error(t, err)
+}
+
+func TestZYCAReferenceBillingRoundingBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		durations []float64
+		expected  float64
+	}{
+		{"整数不增加", []float64{2, 3}, 5},
+		{"逐段取整而非合计取整", []float64{2.25, 2.5}, 6},
+		{"不足一秒", []float64{0.25, 0.5}, 2},
+		{"刚超过整数", []float64{2.000001, 3}, 6},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(`{"model":"zyca-seedance-2.0-mini","prompt":"测试","duration":4,"reference_videos":["https://cdn.example/one.mp4","https://cdn.example/two.mp4"]}`)
+			index := 0
+			ctx, err := prepareZYCAReferenceBillingContext(context.Background(), zycaTestAccount(), "seedance-2.0-mini", body, 4,
+				func(context.Context, string) (float64, string, error) {
+					duration := test.durations[index]
+					index++
+					return duration, "服务端内容摘要", nil
+				})
+			require.NoError(t, err)
+			snapshot := zycaReferenceSnapshot(ctx)
+			require.Equal(t, test.expected, snapshot.ReferenceSeconds)
+			require.Equal(t, 4+test.expected, snapshot.BillableSeconds)
+			require.Equal(t, test.durations, snapshot.ReferenceDurations)
+		})
+	}
 }
 
 func TestZYCAReferenceBillingIsolationAndFailure(t *testing.T) {
@@ -97,11 +126,11 @@ func TestZYCAReferenceBillingSnapshotReservation(t *testing.T) {
 			var usage VideoTaskUsageContext
 			require.NoError(t, json.Unmarshal(task.UsageContextJSON, &usage))
 			require.Equal(t, 30, task.DurationSeconds)
-			require.Equal(t, 35.25, usage.ZYCAReferenceBilling.BillableSeconds)
+			require.Equal(t, 36.0, usage.ZYCAReferenceBilling.BillableSeconds)
 			require.NotContains(t, string(task.UsageContextJSON), "cdn.example")
 			units := 1.0
 			if mode == BillingModeVideo {
-				units = 35.25
+				units = 36
 			}
 			require.InDelta(t, 0.3*units, task.EstimatedCost, 1e-9)
 			require.InDelta(t, 0.3*units, usage.CostSnapshot.TotalCost, 1e-9)

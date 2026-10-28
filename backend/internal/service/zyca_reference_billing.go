@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -66,7 +67,7 @@ func prepareZYCAReferenceBillingContext(ctx context.Context, account *Account, u
 		if err != nil || !validVideoStatsAmount(seconds) || seconds <= 0 || seconds > 3600 {
 			return ctx, fmt.Errorf("第 %d 个参考视频缺少有效的可信媒体元数据，请通过已配置的临时资源服务重新上传；任务未提交", index+1)
 		}
-		snapshot.ReferenceSeconds += seconds
+		snapshot.ReferenceSeconds += math.Ceil(seconds)
 		snapshot.ReferenceDurations = append(snapshot.ReferenceDurations, seconds)
 		snapshot.ReferenceContentSHA256 = append(snapshot.ReferenceContentSHA256, digest)
 	}
