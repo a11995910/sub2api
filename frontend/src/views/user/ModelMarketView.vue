@@ -168,7 +168,7 @@
             </div>
 
             <p v-if="model.kind === 'video'" class="mt-3 whitespace-pre-line text-sm text-gray-600 dark:text-gray-300" data-testid="video-pricing-rules">
-              {{ videoPricingRules(model) }}
+              {{ videoPricingRules(model, marketGroup.group) }}
               {{ t('modelMarket.videoRules.precision') }}
             </p>
 
@@ -198,12 +198,12 @@
               </template>
               <template v-else-if="model.kind === 'video'">
                 <PriceTile
-                  v-if="isFixedRequestVideo(model)"
+                  v-if="isFixedRequestVideo(model, marketGroup.group)"
                   :label="t('modelMarket.columns.perRequest')"
                   :value="formatVideoMarketPrice((model.pricing?.per_request_price ?? 0) * effectiveVideoRate(marketGroup.group))"
                 />
                 <PriceTile
-                  v-for="resolution in marketVideoResolutions(model)"
+                  v-for="resolution in marketVideoResolutions(model, marketGroup.group)"
                   :key="resolution"
                   :label="formatVideoTierLabel(model, resolution, marketGroup.group)"
                   :value="formatVideoTier(model, resolution, marketGroup.group)"
@@ -660,21 +660,27 @@ function videoQuote(model: GroupMarketModel, resolution: string, group: UserAvai
   })
 }
 
-function isFixedRequestVideo(model: GroupMarketModel): boolean {
+function isFixedRequestVideo(model: GroupMarketModel, group: UserAvailableGroup): boolean {
   return model.pricing?.billing_mode === BILLING_MODE_PER_REQUEST &&
-    model.pricing.per_request_price != null && model.pricing.intervals.length === 0
+    model.pricing.per_request_price != null && model.pricing.intervals.length === 0 &&
+    group.video_price_480p == null && group.video_price_720p == null && group.video_price_1080p == null
 }
 
-function marketVideoResolutions(model: GroupMarketModel): string[] {
-  if (isFixedRequestVideo(model)) return []
+function marketVideoResolutions(model: GroupMarketModel, group: UserAvailableGroup): string[] {
+  if (isFixedRequestVideo(model, group)) return []
   const configured = model.pricing?.intervals
     .map(interval => interval.tier_label)
     .filter((label): label is string => Boolean(label?.trim())) ?? []
-  return configured.length ? [...new Set(configured)] : videoResolutionsForModel(model.name)
+  const groupTiers = (['480p', '720p', '1080p'] as const)
+    .filter(resolution => group[`video_price_${resolution}`] != null)
+  return configured.length ? [...new Set([...configured, ...groupTiers])] : [...new Set([...videoResolutionsForModel(model.name), ...groupTiers])]
 }
 
-function videoPricingRules(model: GroupMarketModel): string {
-  if (isFixedRequestVideo(model)) return t('modelMarket.videoRules.fixedRequest')
+function videoPricingRules(model: GroupMarketModel, group: UserAvailableGroup): string {
+  if (isFixedRequestVideo(model, group)) return t('modelMarket.videoRules.fixedRequest')
+  if (group.video_price_480p != null || group.video_price_720p != null || group.video_price_1080p != null) {
+    return t('modelMarket.videoRules.groupOverrides')
+  }
   const mode = model.pricing?.billing_mode
   if (mode !== BILLING_MODE_VIDEO && mode !== BILLING_MODE_PER_REQUEST && mode !== BILLING_MODE_IMAGE) {
     return t('modelMarket.videoRules.unconfigured')

@@ -816,6 +816,16 @@ describe('ModelMarketView', () => {
       expectedUnit: '720p / 秒',
     },
     {
+      name: '分组按秒价格覆盖渠道固定按次价',
+      modelName: 'grok-imagine-video',
+      groupOverrides: { video_price_720p: 0.03 },
+      billingMode: 'per_request',
+      defaultPrice: 3.6,
+      intervalPrice: undefined,
+      expectedPrice: '0.03 灵石',
+      expectedUnit: '720p / 秒',
+    },
+    {
       name: '历史图片模式渠道默认价',
       modelName: 'grok-imagine-video',
       groupOverrides: {},

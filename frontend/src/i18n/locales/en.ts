@@ -1258,6 +1258,7 @@ export default {
   // Model Market
   modelMarket: {
     videoRules: {
+      groupOverrides: 'Explicit group resolution prices take precedence over channel prices. Each tier states whether billing is per second or per task. Reference-media rules depend on the upstream and group description.',
       precision: 'Displayed prices are truncated to two decimal places. Billing uses the full configured precision.',
       fixedRequest: 'Charged per task, not multiplied by duration. The current configuration uses one price across resolutions.',
       perSecond: 'Charged per second. Prices below reflect configured resolution tiers. Reference-media charges depend on the upstream rules and group description; pricing tiers do not define all generation capabilities.',
