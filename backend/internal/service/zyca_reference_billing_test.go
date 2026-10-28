@@ -76,9 +76,9 @@ func TestZYCAReferenceBillingSnapshotReservation(t *testing.T) {
 			account := zycaTestAccount()
 			svc := newOpenAIRecordUsageServiceForTest(nil, nil, nil, nil)
 			channel := Channel{ID: 1, Status: StatusActive, GroupIDs: []int64{100}, ModelPricing: []ChannelModelPricing{{
-				Models: []string{"zyca-kling-4.0"}, BillingMode: mode, PerRequestPrice: testPtrFloat64(0.3),
+				Platform: PlatformOpenAI, Models: []string{"zyca-kling-4.0"}, BillingMode: mode, PerRequestPrice: testPtrFloat64(0.3),
 			}}, AccountStatsPricingRules: []AccountStatsPricingRule{{GroupIDs: []int64{100}, Pricing: []ChannelModelPricing{{
-				Models: []string{"kling-4.0"}, BillingMode: mode, PerRequestPrice: testPtrFloat64(0.2),
+				Platform: PlatformOpenAI, Models: []string{"kling-4.0"}, BillingMode: mode, PerRequestPrice: testPtrFloat64(0.2),
 			}}}}}
 			svc.channelService = newTestChannelService(makeStandardRepo(channel, map[int64]string{100: PlatformOpenAI}))
 			svc.resolver = NewModelPricingResolver(svc.channelService, svc.billingService)
