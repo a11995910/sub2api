@@ -41,11 +41,12 @@ type pluginRoute struct {
 
 // PluginManager 管理插件安装、配置、进程生命周期和 OpenAI OAuth 能力绑定。
 type PluginManager struct {
-	repo      PluginRepository
-	encryptor SecretEncryptor
-	cfg       *config.Config
-	hostInfo  PluginHostInfo
-	installer *PluginPackageInstaller
+	requestProtection *AccountTimeRotationService
+	repo              PluginRepository
+	encryptor         SecretEncryptor
+	cfg               *config.Config
+	hostInfo          PluginHostInfo
+	installer         *PluginPackageInstaller
 	// kvStore 为运行中的插件提供通用宿主键值存储；为 nil 时不向插件暴露宿主服务。
 	kvStore PluginKVStore
 	// accountDirectory 为声明了对应能力的插件提供账号目录与出站身份解析（敏感能力）；
@@ -948,6 +949,9 @@ func (m *PluginManager) RoundTripOpenAIOAuth(ctx context.Context, request *http.
 	if !m.ShouldRouteOpenAIOAuth(account) {
 		return nil, false, nil
 	}
+	if err := m.requestProtection.checkPluginRequestProtection(account); err != nil {
+		return nil, true, err
+	}
 	route := m.route.Load()
 	if route == nil {
 		return nil, false, nil
@@ -964,6 +968,10 @@ func (m *PluginManager) RoundTripOpenAIOAuth(ctx context.Context, request *http.
 	}
 	if !route.runtime.beginRequest() {
 		return nil, true, errors.New("OpenAI OAuth 插件正在停止")
+	}
+	if err := m.requestProtection.checkPluginRequestProtection(account); err != nil {
+		route.runtime.finishRequest()
+		return nil, true, err
 	}
 	response, err := route.runtime.roundTrip(ctx, request, proxyURL, account)
 	if err != nil {

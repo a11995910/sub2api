@@ -14,6 +14,8 @@ const scheduledTestDefaultMaxWorkers = 10
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
+	candyTests     *CandyTestService
+	groupTests     *PelicanGroupTestService
 	planRepo       ScheduledTestPlanRepository
 	scheduledSvc   *ScheduledTestService
 	accountTestSvc *AccountTestService
@@ -60,6 +62,24 @@ func (s *ScheduledTestRunnerService) Start() {
 		if err != nil {
 			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] not started (invalid schedule): %v", err)
 			return
+		}
+		if s.groupTests != nil {
+			// 单独运行鹈鹕任务，避免长生成阻塞原有连接测试；跨轮次使用数据库租约去重。
+			_, _ = c.AddFunc("* * * * *", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+				defer cancel()
+				now := time.Now()
+				s.groupTests.Cleanup(ctx, now)
+				s.groupTests.RunDue(ctx, now)
+			})
+		}
+		if s.candyTests != nil {
+			// 糖果定时任务按配置的小时间隔执行，数据库租约负责跨实例去重。
+			_, _ = c.AddFunc("* * * * *", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				s.candyTests.RunDue(ctx, time.Now())
+			})
 		}
 		s.cron = c
 		s.cron.Start()

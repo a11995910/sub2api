@@ -71,6 +71,8 @@ type RelayExit struct {
 }
 
 type RelayOptions struct {
+	// 发送准入在网络写超时之前执行，排队不消耗实际写入时间。
+	BeforeWriteUpstream             func(context.Context, coderws.MessageType, []byte) error
 	WriteTimeout                    time.Duration
 	IdleTimeout                     time.Duration
 	UpstreamDrainTimeout            time.Duration
@@ -201,6 +203,11 @@ func Relay(
 	}
 
 	writeUpstream := func(msgType coderws.MessageType, payload []byte) error {
+		if options.BeforeWriteUpstream != nil {
+			if err := options.BeforeWriteUpstream(relayCtx, msgType, payload); err != nil {
+				return err
+			}
+		}
 		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
 		defer cancel()
 		return upstreamConn.WriteFrame(writeCtx, msgType, payload)

@@ -347,6 +347,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if c != nil && account.OpenAIRequestIntegrityMode() != "off" {
 		observeStagedOpenAIRequestIntegrity(c, account, payloadAsJSONBytes(payload), "responses_http_to_ws_final")
 	}
+	finishProtection, protectionErr := s.accountTimeRotation.BeginProtectedRequest(ctx, account)
+	if protectionErr != nil {
+		return nil, protectionErr
+	}
+	defer finishProtection()
 	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
@@ -372,6 +377,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	healthVisibleTTFT := s.smartRotationMeasuresVisibleTTFT(account)
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
@@ -652,7 +658,7 @@ readLoop:
 		if isTerminalEvent {
 			terminalEventCount++
 		}
-		if firstTokenMs == nil && isTokenEvent {
+		if firstTokenMs == nil && isTokenEvent && (!healthVisibleTTFT || openAIStreamDataStartsVisibleOutput(string(message), eventType)) {
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}

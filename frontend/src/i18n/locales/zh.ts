@@ -1,4 +1,13 @@
+import pelicanTests from './zh/pelicanTests'
+import candyTests from './zh/candyTests'
+import pelicanShowcase from './zh/pelicanShowcase'
+import timeRotation from './zh/timeRotation'
+
 export default {
+  pelicanTests,
+  candyTests,
+  pelicanShowcase,
+  timeRotation,
   // Home Page
   home: {
     viewOnGithub: '在 GitHub 上查看',
@@ -1041,6 +1050,8 @@ export default {
     cacheHit: '缓存命中',
     cacheCreate: '缓存写入',
     cacheHitRate: '缓存命中率',
+    upstreamResponseServiceTier: '上游响应档位',
+    upstreamResponseServiceTierUnknown: '未记录 / 未返回',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
     serviceTierUltrafast: 'Ultrafast',

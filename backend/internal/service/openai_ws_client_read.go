@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	coderws "github.com/coder/websocket"
@@ -55,6 +56,20 @@ func readOpenAIWSClientMessageWithTimeoutStart(
 
 	readDone := make(chan openAIWSClientReadResult, 1)
 	go func() {
+		if pump, ok := controlCtx.Value(accountProtectionWSKey{}).(*accountProtectionWSClient); ok && pump.conn == conn && pump.started.Load() {
+			select {
+			case result := <-pump.frames:
+				readDone <- result
+			case <-pump.done:
+				select {
+				case result := <-pump.frames:
+					readDone <- result
+				default:
+					readDone <- openAIWSClientReadResult{err: io.EOF}
+				}
+			}
+			return
+		}
 		messageType, payload, err := conn.Read(context.Background())
 		readDone <- openAIWSClientReadResult{messageType: messageType, payload: payload, err: err}
 	}()

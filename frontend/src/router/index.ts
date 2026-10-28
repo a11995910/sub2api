@@ -601,6 +601,42 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/intelligent-ops',
+    redirect: '/admin/intelligent-ops/time-rotation',
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/admin/intelligent-ops/account-tests',
+    alias: ['/admin/intelligent-ops/pelican-tests', '/admin/pelican-tests'],
+    name: 'AdminPelicanTests',
+    component: () => import('@/views/admin/PelicanTestsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '账号测智', titleKey: 'pelicanTests.title', descriptionKey: 'pelicanTests.description' }
+  },
+  {
+    path: '/pelican-showcase',
+    name: 'PelicanShowcase',
+    component: () => import('@/views/user/PelicanShowcaseView.vue'),
+    meta: { requiresAuth: true, title: '鹈鹕测智', titleKey: 'pelicanShowcase.title', descriptionKey: 'pelicanShowcase.description' }
+  },
+  {
+    path: '/admin/intelligent-ops/excel-bps',
+    name: 'AdminExcelBPS',
+    component: () => import('@/views/admin/ExcelBPSView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Excel / BPS 默认设置' }
+  },
+  {
+    path: '/admin/intelligent-ops/time-rotation',
+    name: 'AdminTimeRotation',
+    component: () => import('@/views/admin/TimeRotationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '账号轮候',
+      titleKey: 'timeRotation.title',
+      descriptionKey: 'timeRotation.description'
+    }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),

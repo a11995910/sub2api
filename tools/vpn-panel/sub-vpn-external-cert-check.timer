@@ -1,0 +1,10 @@
+[Unit]
+Description=每日检查外部 AnyTLS 固定证书有效期
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

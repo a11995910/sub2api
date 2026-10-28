@@ -11,6 +11,9 @@ import (
 
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
+	candyTestHandler *admin.CandyTestHandler,
+	pelicanGroupTestHandler *admin.PelicanGroupTestHandler,
+	timeRotationHandler *admin.AccountTimeRotationHandler,
 	dashboardHandler *admin.DashboardHandler,
 	userHandler *admin.UserHandler,
 	groupHandler *admin.GroupHandler,
@@ -54,12 +57,19 @@ func ProvideAdminHandlers(
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	settingService *service.SettingService,
 	openAIGatewayService *service.OpenAIGatewayService,
+	opencodeGoUsage *service.OpenCodeGoUsageService,
+	claudeResetCredits *service.ClaudeResetCreditService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
 	accountHandler.SetCodexTicketSettings(settingService)
 	accountHandler.SetCodexTicketGateway(openAIGatewayService)
+	accountHandler.SetOpenCodeGoUsageService(opencodeGoUsage)
+	accountHandler.SetClaudeResetCreditService(claudeResetCredits)
 	return &AdminHandlers{
+		CandyTest:              candyTestHandler,
+		PelicanGroupTest:       pelicanGroupTestHandler,
+		TimeRotation:           timeRotationHandler,
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
 		Group:                  groupHandler,
@@ -119,11 +129,13 @@ func ProvideGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
+	geminiCachedContentService *service.GeminiCachedContentService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
+	h.geminiCachedContentService = geminiCachedContentService
 	return h
 }
 
@@ -143,12 +155,14 @@ func ProvideOpenAIGatewayHandler(
 	videoTaskBilling *service.VideoTaskBillingService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
+	compositeResolver *service.CompositeRouteResolver,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetVideoTestTaskService(videoTestTasks)
 	gatewayService.SetVideoTaskBillingService(videoTaskBilling)
 	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, generatedImageStore, cfg)
+	h.compositeResolver = compositeResolver
 	h.securityAuditCoordinator = coordinator
 	h.videoTaskBilling = videoTaskBilling
 	h.grokMediaEligibilityProber = grokQuotaService
@@ -195,6 +209,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	pelicanShowcaseHandler *PelicanShowcaseHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	apiKeyHandler *APIKeyHandler,
@@ -229,6 +244,7 @@ func ProvideHandlers(
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
 	return &Handlers{
+		PelicanShowcase:  pelicanShowcaseHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		APIKey:           apiKeyHandler,
@@ -273,6 +289,9 @@ func ProvideAsyncImageHandler(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	NewPelicanShowcaseHandler,
+	admin.NewPelicanGroupTestHandler,
+	admin.NewCandyTestHandler,
 	wire.Bind(new(service.ImageTaskExecutor), new(*AsyncImageHandler)),
 	// Top-level handlers
 	NewAuthHandler,
@@ -332,6 +351,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewLotteryHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
+	admin.NewAccountTimeRotationHandler,
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,

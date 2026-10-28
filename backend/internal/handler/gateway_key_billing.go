@@ -63,7 +63,8 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	}
 
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now()))
+	supportsPromo := c.GetHeader(service.BillingPromoCapabilityHeader) == "1"
+	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now(), supportsPromo))
 }
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {
@@ -82,7 +83,7 @@ func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.A
 	}
 }
 
-func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.Time) keyBillingInfoResponse {
+func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.Time, supportsPromo bool) keyBillingInfoResponse {
 	groupRate := apiKey.Group.RateMultiplier
 	var userRate *float64
 	if resolvedRate != groupRate {
@@ -118,6 +119,17 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 		response.PromoDiscountEnd = apiKey.Group.PromoDiscountEnd
 		response.PromoDiscountRate = &apiKey.Group.PromoDiscountRate
 		response.AppliedPromoMultiplier = &appliedPromo
+	}
+	if !supportsPromo {
+		// 旧探针只认识 resolved × peak：将当前活动折扣折入三项基准倍率，
+		// 保持用户优先关系及有效倍率校验成立，仅调整响应，不修改计费配置。
+		response.GroupRateMultiplier *= appliedPromo
+		response.ResolvedRateMultiplier *= appliedPromo
+		if userRate != nil {
+			discountedUserRate := *userRate * appliedPromo
+			response.UserRateMultiplier = &discountedUserRate
+		}
+		response.EffectiveRateMultiplier = response.ResolvedRateMultiplier * appliedPeak
 	}
 	return response
 }

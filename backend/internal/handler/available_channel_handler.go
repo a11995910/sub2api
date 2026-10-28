@@ -81,6 +81,7 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // 订阅视觉加深），并展示默认倍率与高峰倍率规则；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
+	i18n                           service.GroupI18n
 	ID                             int64    `json:"id"`
 	Name                           string   `json:"name"`
 	Platform                       string   `json:"platform"`
@@ -216,6 +217,7 @@ func (h *AvailableChannelHandler) list(c *gin.Context, requireFeature bool) {
 		return
 	}
 
+	acceptLanguage := c.GetHeader("Accept-Language")
 	out := make([]userAvailableChannel, 0, len(channels))
 	accountsByGroup := make(map[int64][]service.Account)
 	for _, ch := range channels {
@@ -231,6 +233,7 @@ func (h *AvailableChannelHandler) list(c *gin.Context, requireFeature bool) {
 			response.ErrorFrom(c, err)
 			return
 		}
+		localizeUserAvailableGroups(visibleGroups, acceptLanguage)
 		sections := buildPlatformSections(ch, visibleGroups, accountsByGroup)
 		if len(sections) == 0 {
 			continue
@@ -243,6 +246,13 @@ func (h *AvailableChannelHandler) list(c *gin.Context, requireFeature bool) {
 	}
 
 	response.Success(c, out)
+}
+
+// localizeUserAvailableGroups 按请求首选语言本地化分组名称。
+func localizeUserAvailableGroups(groups []userAvailableGroup, acceptLanguage string) {
+	for i := range groups {
+		groups[i].Name = groups[i].i18n.LocalizeName(acceptLanguage, groups[i].Name)
+	}
 }
 
 // loadPersistentAccountsByGroup 读取分组中由持久配置启用的账号池。
@@ -364,6 +374,7 @@ func filterUserVisibleGroups(
 			continue
 		}
 		visible = append(visible, userAvailableGroup{
+			i18n:                           g.I18n,
 			ID:                             g.ID,
 			Name:                           g.Name,
 			Platform:                       g.Platform,

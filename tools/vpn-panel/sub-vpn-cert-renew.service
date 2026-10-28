@@ -1,0 +1,7 @@
+[Unit]
+Description=订阅管理 IP 证书续期
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sub-vpn/venv/bin/certbot renew --cert-name sub-vpn-ip --quiet --deploy-hook /opt/sub-vpn/current/install-ip-cert

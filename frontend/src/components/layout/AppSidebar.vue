@@ -756,6 +756,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/model-market', label: t('nav.modelMarket'), icon: ChannelIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/pelican-showcase', label: t('pelicanShowcase.title'), icon: ChartIcon, featureFlag: () => appStore.cachedPublicSettings?.pelican_showcase_enabled === true },
     ...customMenuItemsForUser.value.map(customMenuToNavItem),
     { path: '/model-test', label: t('nav.modelTest'), icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
@@ -819,6 +820,17 @@ const adminNavItems = computed((): NavItem[] => {
     // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    {
+      path: '/admin/intelligent-ops',
+      label: t('timeRotation.menu'),
+      icon: CogIcon,
+      expandOnly: true,
+      children: [
+        { path: '/admin/intelligent-ops/excel-bps', label: 'Excel / BPS 默认设置', icon: CogIcon },
+        { path: '/admin/intelligent-ops/time-rotation', label: t('timeRotation.title'), icon: CogIcon },
+        { path: '/admin/intelligent-ops/account-tests', label: t('pelicanTests.title'), icon: ChartIcon }
+      ]
+    },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/lottery', label: t('nav.lotteryManagement'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagLottery },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },

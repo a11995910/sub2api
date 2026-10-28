@@ -38,7 +38,7 @@ func TestImageBillingPolicy_PreservesGroupPriceAndActualCount(t *testing.T) {
 			openai := &OpenAIGatewayService{billingService: billing, resolver: newOpenAITokenImageChannelPricingResolverForTest(t, groupID, openaiModel)}
 			openaiCost, err := openai.calculateOpenAIRecordUsageCost(context.Background(),
 				&OpenAIForwardResult{Model: openaiModel, ImageCount: count, ImageSize: "4K"}, key,
-				[]string{openaiModel}, 0.3, 1, 1, 1, UsageTokens{InputTokens: 14734, OutputTokens: 16896}, "", nil, time.Time{})
+				[]string{openaiModel}, 0.3, 1, 1, 1, UsageTokens{InputTokens: 14734, OutputTokens: 16896}, "", nil, false, time.Time{})
 			require.NoError(t, err)
 			require.Equal(t, string(BillingModeImage), openaiCost.BillingMode)
 			require.InDelta(t, unitPrice*float64(count), openaiCost.ActualCost, 1e-12)
@@ -132,7 +132,7 @@ func TestImageBillingPolicy_OpenAIEmptyJSONDoesNotBillRequestedCount(t *testing.
 			svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, model)
 			cost, err := svc.calculateOpenAIRecordUsageCost(context.Background(), result,
 				&APIKey{GroupID: &groupID, Group: &Group{ID: groupID, ImagePrice1K: &price, ImagePrice2K: &price, ImagePrice4K: &price}},
-				[]string{model}, 1, 1, 1, 1, UsageTokens{InputTokens: 100, OutputTokens: 200}, "", nil, time.Time{})
+				[]string{model}, 1, 1, 1, 1, UsageTokens{InputTokens: 100, OutputTokens: 200}, "", nil, false, time.Time{})
 			require.NoError(t, err)
 			require.Equal(t, string(BillingModeImage), cost.BillingMode)
 			require.Zero(t, cost.ActualCost)

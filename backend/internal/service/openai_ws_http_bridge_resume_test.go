@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -104,6 +105,31 @@ func TestProxyOpenAIWSHTTPBridgeTurnLaterTurnDoesNotFailOverAfterDownstreamOutpu
 }
 
 func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t *testing.T) {
+	testOpenAIWSHTTPBridgeCurrentTurnReplacement(t, false)
+}
+
+func TestAccountRestWSHTTPBridgeRetriesCurrentTurnOnReplacementAccount(t *testing.T) {
+	testOpenAIWSHTTPBridgeCurrentTurnReplacement(t, true)
+}
+
+// 模拟发送前休息拒绝：旧账号第二轮不发往上游，新账号继续当前轮。
+type restingBridgeTestUpstream struct {
+	HTTPUpstream
+	sent bool
+}
+
+func (u *restingBridgeTestUpstream) Do(req *http.Request, proxyURL string, accountID int64, concurrency int) (*http.Response, error) {
+	if accountID == 129 && u.sent {
+		return nil, accountProtectionError("account_random_resting", "账号随机休息中", 60)
+	}
+	u.sent = true
+	return u.HTTPUpstream.Do(req, proxyURL, accountID, concurrency)
+}
+func (u *restingBridgeTestUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, concurrency)
+}
+
+func testOpenAIWSHTTPBridgeCurrentTurnReplacement(t *testing.T, resting bool) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
@@ -146,6 +172,10 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 		cache:            &stubGatewayCache{},
 		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
 		toolCorrector:    NewCodexToolCorrector(),
+	}
+	if resting {
+		upstream.responses = []*http.Response{upstream.responses[0], upstream.responses[2]}
+		svc.httpUpstream = &restingBridgeTestUpstream{HTTPUpstream: upstream}
 	}
 	account := &Account{
 		ID: 129, Name: "limited", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
@@ -250,6 +280,14 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 		require.NoError(t, proxyErr)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for replacement-account completion")
+	}
+	if resting {
+		require.Len(t, upstream.bodies, 2)
+		require.Contains(t, string(upstream.bodies[1]), "second")
+		require.NotContains(t, string(upstream.bodies[1]), "previous_response_id")
+		require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[1], "client_metadata.session_id").String())
+		require.Empty(t, upstream.requests[1].Header.Get(openAIWSTurnStateHeader))
+		return
 	}
 	require.Len(t, upstream.bodies, 3)
 	require.Contains(t, string(upstream.bodies[0]), "first")

@@ -254,7 +254,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceForUser(&records[i], parsed.Filters.UserID))
+		out = append(out, *dto.UsageLogFromServiceForUser(&records[i], parsed.Filters.UserID).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -400,7 +400,7 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromServiceForUser(record, subject.UserID))
+	response.Success(c, dto.UsageLogFromServiceForUser(record, subject.UserID).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Stats handles getting usage statistics

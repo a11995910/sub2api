@@ -1,7 +1,7 @@
 import { i18n } from '@/i18n'
 
 function formatPriceNumber(value: number, minFractionDigits = 0): string {
-  let s = value.toPrecision(10).replace(/\.?0+$/, '')
+  let s = Number(value.toPrecision(10)).toString()
   if (minFractionDigits > 0 && !s.includes('e')) {
     const dot = s.indexOf('.')
     const digits = dot === -1 ? 0 : s.length - dot - 1

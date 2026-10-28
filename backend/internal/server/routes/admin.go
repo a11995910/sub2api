@@ -113,6 +113,14 @@ func RegisterAdminRoutes(
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
 
+		registerPelicanShowcaseRoutes(admin, h)
+		admin.GET("/intelligent-ops/excel-bps", h.Admin.Setting.GetExcelBPSConfig)
+		admin.PUT("/intelligent-ops/excel-bps", h.Admin.Setting.SaveExcelBPSConfig)
+		// 智能运维：时段轮候
+		admin.GET("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Get)
+		admin.GET("/intelligent-ops/time-rotation/status", h.Admin.TimeRotation.Status)
+		admin.PUT("/intelligent-ops/time-rotation", h.Admin.TimeRotation.Save)
+
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
 
@@ -386,7 +394,12 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/upstream-billing-probe/batch", h.Admin.Account.ProbeUpstreamBillingBatch)
 		accounts.GET("/ollama-cloud-usage/settings", h.Admin.Account.GetOllamaCloudUsageSettings)
 		accounts.PUT("/ollama-cloud-usage/settings", h.Admin.Account.UpdateOllamaCloudUsageSettings)
+		accounts.GET("/opencode-go-usage/settings", h.Admin.Account.GetOpenCodeGoUsageSettings)
+		accounts.PUT("/opencode-go-usage/settings", h.Admin.Account.UpdateOpenCodeGoUsageSettings)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
+		accounts.GET("/:id/claude/reset-credits", h.Admin.Account.ClaudeResetCredits)
+		// Same protection as the Codex reset-quota route (admin auth, audit, compliance guard).
+		accounts.POST("/:id/claude/reset-credits/redeem", h.Admin.Account.RedeemClaudeResetCredit)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/:id/duplicate", h.Admin.Account.Duplicate)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
@@ -403,6 +416,9 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.DELETE("/:id/ollama-cloud-usage/session", h.Admin.Account.DeleteOllamaCloudUsageSession)
 		accounts.PUT("/:id/ollama-cloud-usage/auto-refresh", h.Admin.Account.SetOllamaCloudUsageAutoRefresh)
 		accounts.POST("/:id/ollama-cloud-usage/refresh", h.Admin.Account.RefreshOllamaCloudUsage)
+		accounts.GET("/:id/opencode-go-usage", h.Admin.Account.GetOpenCodeGoUsage)
+		accounts.PUT("/:id/opencode-go-usage/auto-refresh", h.Admin.Account.SetOpenCodeGoUsageAutoRefresh)
+		accounts.POST("/:id/opencode-go-usage/refresh", h.Admin.Account.RefreshOpenCodeGoUsage)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
@@ -481,6 +497,11 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		openai.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
 		openai.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
+		openai.GET("/accounts/:id/excel-auto-authorization", h.Admin.OpenAIOAuth.ExcelAutoStatus)
+		openai.PUT("/accounts/:id/excel-auto-authorization", h.Admin.OpenAIOAuth.SaveExcelAuto)
+		openai.GET("/accounts/:id/excel-authorization", h.Admin.OpenAIOAuth.ExcelAuthorizationStatus)
+		openai.POST("/accounts/:id/excel-authorization/url", h.Admin.OpenAIOAuth.GenerateExcelAccountAuthURL)
+		openai.POST("/accounts/:id/excel-authorization", h.Admin.OpenAIOAuth.ExchangeExcelAccountCode)
 		openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
 		openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
 		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
@@ -866,6 +887,7 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.GET("/lookup", h.Admin.Affiliate.LookupUsers)
 			users.POST("/batch-rate", h.Admin.Affiliate.BatchSetRate)
 			users.GET("/:user_id/overview", h.Admin.Affiliate.GetUserOverview)
+			users.POST("/:user_id/withdraw", h.Admin.Affiliate.WithdrawQuota)
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
@@ -931,4 +953,28 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 		}
 		c.Next()
 	}
+}
+
+func registerPelicanShowcaseRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/candy-tests/settings", h.Admin.CandyTest.GetSettings)
+	admin.GET("/candy-tests/accounts", h.Admin.CandyTest.ListAccounts)
+	admin.PUT("/candy-tests/settings", h.Admin.CandyTest.UpdateSettings)
+	admin.POST("/candy-tests/run", h.Admin.CandyTest.Run)
+	admin.POST("/candy-tests/stop", h.Admin.CandyTest.Stop)
+	admin.GET("/candy-tests/results", h.Admin.CandyTest.ListResults)
+	admin.GET("/candy-tests/results/:id", h.Admin.CandyTest.GetResult)
+	admin.POST("/pelican-account-tests/run", h.Admin.PelicanGroupTest.StartAccounts)
+	admin.POST("/pelican-account-tests/stop", h.Admin.PelicanGroupTest.StopAccounts)
+	admin.GET("/pelican-account-tests", h.Admin.PelicanGroupTest.ListAccountResults)
+	admin.GET("/pelican-account-tests/:id", h.Admin.PelicanGroupTest.GetAccountResult)
+	admin.GET("/pelican-showcase/settings", h.PelicanShowcase.GetSettings)
+	admin.PUT("/pelican-showcase/settings", h.PelicanShowcase.UpdateSettings)
+	admin.DELETE("/pelican-showcase/items/:id", h.PelicanShowcase.DeleteItem)
+	admin.GET("/pelican-group-tests", h.Admin.PelicanGroupTest.ListPlans)
+	admin.POST("/pelican-group-tests", h.Admin.PelicanGroupTest.CreatePlan)
+	admin.PUT("/pelican-group-tests/:id", h.Admin.PelicanGroupTest.UpdatePlan)
+	admin.DELETE("/pelican-group-tests/:id", h.Admin.PelicanGroupTest.DeletePlan)
+	admin.POST("/pelican-group-tests/:id/run", h.Admin.PelicanGroupTest.RunPlan)
+	admin.GET("/pelican-group-test-results", h.Admin.PelicanGroupTest.ListResults)
+	admin.GET("/pelican-group-test-results/:id", h.Admin.PelicanGroupTest.GetResult)
 }

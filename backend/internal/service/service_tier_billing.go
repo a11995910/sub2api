@@ -53,6 +53,8 @@ func serviceTierCostRank(tier string) (rank int, known bool) {
 		return 1, true
 	case "priority", "fast":
 		return 2, true
+	case "ultrafast":
+		return 3, true
 	default:
 		return 1, false
 	}
@@ -89,7 +91,7 @@ func ApplyOpenAIServiceTierBillingResolution(account *Account, result *OpenAIFor
 	if result == nil {
 		return ServiceTierBillingResolution{}
 	}
-	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), result.UpstreamResponseServiceTier)
+	resolution := ResolveOpenAIServiceTierBilling(account, optionalStringValue(result.ServiceTier), normalizeObservedOpenAIServiceTier(result.UpstreamResponseServiceTier))
 	if resolution.Downgraded {
 		billing := resolution.Billing
 		result.ServiceTier = &billing

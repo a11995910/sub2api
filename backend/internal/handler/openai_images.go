@@ -162,6 +162,18 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 
+	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
+	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: routingModel, BodyBytes: len(body), Kind: service.InflightEstimateImage, Units: parsed.N})
+	if inflightErr != nil {
+		status, code, message, retryAfter := billingErrorDetails(inflightErr)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	defer inflightDone()
+
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImagesEndpoint(service.WithOpenAIImageGenerationIntent(c.Request.Context()))
 
@@ -184,7 +196,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			sessionHash,
 			routingModel,
 			failedAccountIDs,
-			parsed.RequiredCapability,
+			parsed.RequiredCapabilityForModel(channelMapping.MappedModel),
 		)
 		if err != nil {
 			if failoverClientGone(c) {
@@ -422,7 +434,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), true, result.FirstTokenMs)
+			h.gatewayService.ReportOpenAIAccountForwardResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), true, result)
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), true, nil)
 		}

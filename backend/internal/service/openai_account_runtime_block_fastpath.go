@@ -99,6 +99,7 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
+		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
 	}
 	// Capacity shedding describes this request, not account health. Keep the
 	// account schedulable while the request-local retry budget handles recovery.
@@ -157,7 +158,8 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// Isolate a custom temporary-unschedulable match to the known upstream
 	// model before entering the generic account error path. This keeps the
 	// account available to other models and avoids the account runtime blocker.
-	if s.rateLimitService != nil && statusCode != http.StatusUnauthorized && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
+	if s.rateLimitService != nil && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
+		tempUnschedRulesApply(account, statusCode, responseBody, canonicalModel[0]) &&
 		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel[0]) {
 		return true
 	}
@@ -172,7 +174,8 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 	shouldDisable := s.rateLimitService.HandleUpstreamError(stateCtx, account, statusCode, headers, responseBody)
-	modelTempMatched := statusCode != http.StatusUnauthorized && tempUnschedulableModel(stateCtx, nil) != "" &&
+	tempModel := tempUnschedulableModel(stateCtx, nil)
+	modelTempMatched := tempModel != "" && tempUnschedRulesApply(account, statusCode, responseBody, tempModel) &&
 		len(matchTempUnschedulableRules(account, statusCode, responseBody)) > 0
 	if shouldDisable && !modelTempMatched {
 		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
@@ -556,6 +559,9 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s == nil {
 		return false
 	}
+	if s.accountTimeRotation.checkRequestProtection(account, time.Now(), false) != nil {
+		return true
+	}
 	requireCompact := len(compact) > 0 && compact[0]
 	if s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)) {
 		return true
@@ -613,4 +619,12 @@ func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account
 	// retry window before reaching this switch point. A global storm is useful
 	// telemetry, but must not prevent trying the bounded next-account budget.
 	return failedSwitches >= openAIOAuth429MaxAccountAttempts
+}
+
+// 只有配置了随机休息的账号才读取共享状态，不使用会掩盖刚开始休息的本地缓存。
+func (s *OpenAIGatewayService) isOpenAIAccountSchedulingBlocked(ctx context.Context, account *Account, requestedModel string, compact ...bool) bool {
+	if s == nil {
+		return false
+	}
+	return s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel, compact...) || s.accountTimeRotation.checkRandomRest(ctx, account) != nil
 }

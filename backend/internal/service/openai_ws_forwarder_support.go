@@ -78,6 +78,11 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	prewarmPayload["generate"] = false
 	prewarmPayloadJSON := payloadAsJSONBytes(prewarmPayload)
 
+	finishProtection, protectionErr := s.accountTimeRotation.BeginProtectedRequest(ctx, account)
+	if protectionErr != nil {
+		return protectionErr
+	}
+	defer finishProtection()
 	if err := lease.WriteJSONWithContextTimeout(ctx, prewarmPayload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
@@ -477,7 +482,7 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 		return nil, nil
 	}
 
-	result, acquireErr := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+	result, acquireErr := s.acquirePinnedAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
 		logOpenAIWSBindResponseAccountWarn(
 			derefGroupID(groupID),
@@ -556,6 +561,10 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
+	if s.accountTimeRotation.checkSessionRest(ctx, account) != nil {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return 0, nil, "", nil
+	}
 	// OAuth/SetupToken continuation state lives on the WSv2 session and cannot
 	// survive an HTTP fallback. Official API-key Responses HTTP requests are
 	// different: previous_response_id is supported by the provider and scoped to
@@ -571,7 +580,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return 0, nil, "", nil
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -610,7 +619,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
+		if requestedModel != "" && !supportsOpenAIRequestModel(latest, requestedModel, requireCompact) {
 			return 0, nil, "", nil
 		}
 		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -623,7 +632,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		if vetoed, _ := openAIProfitControlVetoReason(ctx, latest); vetoed {
 			return 0, nil, "", nil
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel, requireCompact) {
+		if s.isOpenAIAccountSchedulingBlocked(ctx, latest, requestedModel, requireCompact) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}

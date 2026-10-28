@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -53,6 +54,9 @@ const (
 
 // UpstreamBillingProbeMaxBatchSize limits one manual batch and one runner cycle.
 const UpstreamBillingProbeMaxBatchSize = upstreamBillingProbeMaxPerCycle
+
+// BillingPromoCapabilityHeader 值为 1 时声明客户端支持独立活动折扣字段。
+const BillingPromoCapabilityHeader = "X-Sub2API-Billing-Promo"
 
 // upstreamBillingRateSyncMaxMultiplier bounds the value the automatic
 // write-back may push into accounts.rate_multiplier.
@@ -631,7 +635,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "missing_api_key", 0)
 	}
 	baseURL := account.GetCredential("base_url")
-	if account.IsCNProvider() && account.IsAdaptiveAPIProtocol() {
+	if account.RoutesProtocolByInbound() && account.IsAdaptiveAPIProtocol() {
 		baseURL = account.GetCNProtocolBaseURL(APIProtocolChatCompletions)
 	}
 	if account.Platform == PlatformOpenAI {
@@ -677,6 +681,10 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	account.ApplyHeaderOverrides(req.Header)
+	// 能力声明必须在账号请求头覆写之后设置，避免拿到已折扣的基准后重复乘活动因子。
+	// 覆写会保留小写键，先清理同名头，防止与 Header.Set 生成的规范键同时发送。
+	deleteHeaderAllForms(req.Header, strings.ToLower(BillingPromoCapabilityHeader))
+	req.Header.Set(BillingPromoCapabilityHeader, "1")
 	var tlsProfile *tlsfingerprint.Profile
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(account)
@@ -1081,16 +1089,7 @@ func decodeUpstreamBillingProbeSnapshot(extra map[string]any) *UpstreamBillingPr
 // type=apikey by the admin form, so only pre-existing type=upstream rows
 // cannot turn the probe on.
 func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
-	if accountType != AccountTypeAPIKey {
-		return false
-	}
-	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
-		return true
-	default:
-		return false
-	}
+	return accountType == AccountTypeAPIKey && domain.IsConcretePlatform(platform)
 }
 
 func isUpstreamBillingProbeAccount(account *Account) bool {
@@ -1125,6 +1124,9 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"bigmodel.cn",
 	"deepseek.com",
 	"opencode.ai",
+	"typesafe.ai",
+	"commandcode.ai",
+	"cline.bot",
 }
 
 func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {
@@ -1176,6 +1178,12 @@ func (s *UpstreamBillingProbeService) currentTime() time.Time {
 }
 
 func nextProbeDelay(intervalMinutes int, retryAfterDuration time.Duration) time.Duration {
+	if retryAfterDuration < 0 {
+		retryAfterDuration = 0
+	}
+	if retryAfterDuration > upstreamBillingProbeMaxDelay {
+		retryAfterDuration = upstreamBillingProbeMaxDelay
+	}
 	interval := time.Duration(intervalMinutes) * time.Minute
 	if interval < upstreamBillingProbeMinIntervalMinutes*time.Minute {
 		interval = upstreamBillingProbeMinIntervalMinutes * time.Minute
@@ -1191,8 +1199,8 @@ func nextProbeDelay(intervalMinutes int, retryAfterDuration time.Duration) time.
 		interval += time.Duration(rand.Int64N(int64(jitterRange)*2+1)) - jitterRange
 	}
 	if retryAfterDuration > interval {
-		// Retry-After is an explicit upstream instruction; do not shorten it
-		// with the local maximum delay.
+		// Retry-After is an explicit upstream instruction; honor it over the
+		// local backoff interval, clamped to the same 24h ceiling.
 		return retryAfterDuration
 	}
 	if interval > upstreamBillingProbeMaxDelay {
@@ -1204,8 +1212,7 @@ func nextProbeDelay(intervalMinutes int, retryAfterDuration time.Duration) time.
 // unsupportedProbeDelay 拉长 unsupported 账号的重探间隔，让无效候选自然退出
 // 热队列，不再和真正接入 sub2api 的中转账号抢每周期的探测名额。
 // 仍按 upstreamBillingProbeMaxDelay 封顶，保证上游后来接入 sub2api 时最迟一天
-// 内会被重新发现；base 本身已达上限（例如 Retry-After 明确要求更久）时原样返回，
-// 不缩短上游指令。
+// 内会被重新发现；base 本身亦受 24h 封顶保护。
 func unsupportedProbeDelay(intervalMinutes int, retryAfterDuration time.Duration) time.Duration {
 	base := nextProbeDelay(intervalMinutes, retryAfterDuration)
 	if base >= upstreamBillingProbeMaxDelay {

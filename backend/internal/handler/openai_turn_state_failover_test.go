@@ -135,3 +135,20 @@ func TestTurnStateWebSocketFailoverRetainsLocalReason(t *testing.T) {
 	require.Equal(t, "turn_state_unavailable", streamErr.Code)
 	require.Equal(t, message, streamErr.Message)
 }
+
+func TestAccountProtectionFailoverClientResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, status := range []int{429, 503} {
+		failure := &service.UpstreamFailoverError{StatusCode: status, ClientStatusCode: status, Reason: "account_request_protection", ClientMessage: "账号保护拒绝新请求", ResponseBody: []byte(`{"error":{"code":"account_rate_limited"}}`), ResponseHeaders: http.Header{"Retry-After": []string{"12"}}}
+		for _, handle := range []func(*gin.Context, *service.UpstreamFailoverError, bool){(&OpenAIGatewayHandler{}).handleFailoverExhausted, (&OpenAIGatewayHandler{}).handleAnthropicFailoverExhausted} {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+			handle(c, failure, false)
+			require.Equal(t, status, w.Code)
+			require.Contains(t, w.Body.String(), "账号保护拒绝新请求")
+			require.Equal(t, "12", w.Header().Get("Retry-After"))
+		}
+		require.False(t, shouldReportOpenAIWSProxyAccountFailure(failure))
+	}
+}

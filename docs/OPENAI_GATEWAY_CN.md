@@ -242,3 +242,9 @@ OpenAI 账号可根据 Codex 用量窗口自动从调度候选中临时排除。
 - OpenAI 调度与配额自动暂停：`backend/internal/service/openai_gateway_service.go`、`backend/internal/service/openai_account_scheduler.go`
 - 账号创建与编辑界面：`frontend/src/components/account/CreateAccountModal.vue`、`frontend/src/components/account/EditAccountModal.vue`
 - 运维高级设置界面：`frontend/src/views/admin/ops/components/OpsSettingsDialog.vue`
+
+### 上游响应档位审计
+
+用量记录的 `service_tier` 是最终计费档位；`upstream_response_service_tier` 独立保存上游响应声明的档位，保留未知值及别名，不从请求档位或计费档位回填。管理端用量表的费用详情同时展示两者。Responses 流式请求以终结事件声明为准，不将 `response.created` 回显的请求档位当成处理结果；非流式 JSON 和 Chat Completions 则读取响应声明。
+
+迁移 245 仅新增可空 TEXT 列，不回填历史数据，不改变 Fast 请求注入或计费规则。字段为空表示历史未记录、上游未声明或观察结果存在冲突，不能解释成 default。OAuth 响应为 default 时仍保留现有计费规则；本字段只供审计，不承诺实际加速效果。回滚应用可保留新增列，无需删除数据或恢复全库。

@@ -18,6 +18,7 @@ import (
 type AvailableGroupRef struct {
 	ID                 int64
 	Name               string
+	I18n               GroupI18n
 	Platform           string
 	SubscriptionType   string
 	RateMultiplier     float64
@@ -117,6 +118,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			VideoPrice480P:                 g.VideoPrice480P,
 			VideoPrice720P:                 g.VideoPrice720P,
 			VideoPrice1080P:                g.VideoPrice1080P,
+			I18n:                           g.I18n,
 		}
 	}
 

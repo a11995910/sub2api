@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -78,6 +79,7 @@ var openaiAllowedHeaders = map[string]bool{
 	"accept-language":         true,
 	"content-type":            true,
 	"conversation_id":         true,
+	"openai-beta":             true,
 	"user-agent":              true,
 	"originator":              true,
 	"session_id":              true,
@@ -235,8 +237,10 @@ type OpenAIUsage struct {
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
-	RequestID  string
-	ResponseID string
+	// 本地限速等待单独计量，不能误判为上游首字慢。
+	LocalAdmissionWait time.Duration
+	RequestID          string
+	ResponseID         string
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage
@@ -455,6 +459,13 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
+	excelBPSImagesMu       sync.Mutex
+	excelBPSImages         *basispoints.ImageRelay
+	excelBPSAttachments    basispoints.AttachmentCache
+	excelBPSImageAdmission excelBPSImageAdmission
+	excelBPSModelCooldowns excelBPSModelCooldowns
+	excelBPSCooldownUntil  sync.Map
+
 	accountRepo           AccountRepository
 	groupRepo             GroupRepository
 	usageLogRepo          UsageLogRepository
@@ -483,6 +494,7 @@ type OpenAIGatewayService struct {
 	settingService        *SettingService
 	generatedImageStore   *GeneratedImageStore
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	accountTimeRotation   *AccountTimeRotationService
 	videoTestTaskService  *VideoTestTaskService
 	videoTaskBilling      *VideoTaskBillingService
 	liveAttestation       liveattestation.Provider
@@ -539,6 +551,14 @@ type OpenAIGatewayService struct {
 	openaiCodexTicketProbeSlots  chan struct{}
 	openaiCodexTurnStateOrigins  sync.Map
 	openaiCodexTurnStateWrites   atomic.Uint64
+}
+
+// SetAccountTimeRotationService 注入智能时段轮候服务。采用 setter 保持现有测试和
+// 其他调用方对网关构造函数的兼容，生产 wire 会在两个服务都创建后完成注入。
+func (s *OpenAIGatewayService) SetAccountTimeRotationService(rotation *AccountTimeRotationService) {
+	if s != nil {
+		s.accountTimeRotation = rotation
+	}
 }
 
 func (s *OpenAIGatewayService) SetGeneratedImageStore(store *GeneratedImageStore) {
@@ -673,7 +693,14 @@ func (s *OpenAIGatewayService) GetChannelForGroup(ctx context.Context, groupID *
 	return s.channelService.GetChannelForGroup(ctx, *groupID)
 }
 
+// isCodexImageGenerationBridgeEnabled 决定是否为 Codex 客户端自动注入 hosted
+// image_generation 工具。该工具是 OpenAI Responses 专属能力，Kimi / DeepSeek /
+// MiniMax 等经 OpenAI 网关转发的原生 Responses 上游不识别，注入后会被 400 拒绝，
+// 因此非 OpenAI 平台账号一律不桥接，后续再按账号 → 渠道 → 全局的优先级取开关。
 func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.Context, account *Account, apiKey *APIKey) bool {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
 	if override := account.CodexImageGenerationBridgeOverride(); override != nil {
 		return *override
 	}
@@ -757,6 +784,9 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
+	if s != nil {
+		_ = s.CloseExcelBPSImages()
+	}
 	if s != nil && s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}
@@ -1274,6 +1304,9 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			return "", "", err
 		}
 		account = credAccount
+	}
+	if account.IsExcelOAuth() {
+		return "", "", errors.New("Excel OAuth 凭据仅允许用于 BPS")
 	}
 	switch account.Type {
 	case AccountTypeOAuth:

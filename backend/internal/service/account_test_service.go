@@ -188,10 +188,17 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	if err != nil {
 		return nil, err
 	}
+	// The shared discovery response is the raw upstream catalog. Project it
+	// through the account mapping before exposing it in the admin picker so
+	// configured aliases remain public names and unconfigured models stay out.
+	projectedBody, err := projectAccountModelsBody(response.Body, account, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("project OpenAI account models: %w", err)
+	}
 	var payload struct {
 		Data []openai.Model `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body, &payload); err != nil {
+	if err := json.Unmarshal(projectedBody, &payload); err != nil {
 		return nil, fmt.Errorf("decode OpenAI account models: %w", err)
 	}
 	// Every entry in the picker is labelled by the same rule: the upstream display
@@ -211,20 +218,40 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	// Add locally supported image choices only to the OAuth test picker; keep the
 	// shared upstream catalog and API-key discovery authoritative.
 	if account != nil && account.IsOpenAIOAuthLike() {
+		passthrough := account.IsOpenAIPassthroughEnabled()
 		seen := make(map[string]bool, len(payload.Data))
 		for _, model := range payload.Data {
 			seen[model.ID] = true
 		}
 		for _, model := range openai.DefaultModels {
 			if IsGPTImageGenerationModel(model.ID) && account.IsModelSupported(model.ID) && !seen[model.ID] {
+				if !passthrough && !IsGPTImageGenerationModel(account.GetMappedModel(model.ID)) {
+					continue
+				}
 				payload.Data = append(payload.Data, model)
 				seen[model.ID] = true
 			}
 		}
-		for model := range account.GetModelMapping() {
-			if IsGPTImageGenerationModel(model) && !strings.Contains(model, "*") && !seen[model] {
-				payload.Data = append(payload.Data, openai.Model{ID: model, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(model)})
+		// Image models that a configured alias points at are absent from the Codex
+		// manifest, so the projection alone cannot surface them. Resolve each public
+		// name to its target and keep the entry when that target is an image model.
+		// Judging by the target rather than the public name keeps a lookalike name
+		// (for example an alias spelled "gpt-image-*" that maps to a text model)
+		// from being synthesized into the picker.
+		// Passthrough keeps native image names without applying mapping targets.
+		for publicID := range account.GetModelMapping() {
+			if strings.Contains(publicID, "*") || seen[publicID] {
+				continue
 			}
+			target := publicID
+			if !passthrough {
+				target = account.GetMappedModel(publicID)
+			}
+			if !IsGPTImageGenerationModel(target) {
+				continue
+			}
+			payload.Data = append(payload.Data, openai.Model{ID: publicID, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(publicID)})
+			seen[publicID] = true
 		}
 	}
 	return payload.Data, nil
@@ -272,7 +299,7 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 }
 
 // generateSessionString generates a Claude Code style session string.
-// The output format is determined by the UA version in claude.DefaultHeaders,
+// The output format is determined by the UA version in claude.DefaultHeaders(),
 // ensuring consistency between the user_id format and the UA sent to upstream.
 func generateSessionString() (string, error) {
 	b := make([]byte, 32)
@@ -281,7 +308,7 @@ func generateSessionString() (string, error) {
 	}
 	hex64 := hex.EncodeToString(b)
 	sessionUUID := uuid.New().String()
-	uaVersion := ExtractCLIVersion(claude.DefaultHeaders["User-Agent"])
+	uaVersion := ExtractCLIVersion(claude.DefaultHeaders()["User-Agent"])
 	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
 }
 
@@ -332,13 +359,27 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
 // opts is optional media (image/audio data URLs for real generation / STT).
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
+	initAccountTestLogger(c, accountID, modelID, mode)
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
+		if candyTestRequested(c) {
+			return &candyTestSkippedError{reason: "无法读取账号最新状态，已跳过测试"}
+		}
 		return s.sendErrorAndEnd(c, "Account not found")
+	}
+	bindAccountTestPlatform(c, account)
+	if candyTestRequested(c) && (account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
+		return &candyTestSkippedError{reason: "账号类型已变更，不再是 GPT OAuth 主账号，已跳过测试"}
+	}
+
+	if candyTestRequested(c) {
+		if err := s.checkCandyAccountAvailable(ctx, account, modelID); err != nil {
+			return err
+		}
 	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
@@ -356,7 +397,8 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
-	if account.IsCNProvider() {
+	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
+	if account.RoutesProtocolByInbound() {
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
@@ -385,43 +427,54 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
-	if account.IsOpenCodeGo() {
-		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
+	// 按模型分流的多模型聚合平台（OpenCode、Command Code 等）。
+	if account.routesByModel() {
+		return s.testModelRoutedAccountConnection(c, account, modelID, prompt)
+	}
+
+	if account.IsTypeSafe() {
+		return s.testTypeSafeAccountConnection(c, account, prompt)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-// testOpenCodeGoAccountConnection probes the native endpoint for the selected
-// model. Adaptive accounts (the default) follow OpenCodeGoModelProtocol:
+// testModelRoutedAccountConnection probes the native endpoint for the selected
+// model on providers that route by model (see ProviderRoutingByModel). Adaptive
+// accounts (the default) follow the provider's protocol rules, e.g. OpenCode Go:
 // grok/gpt/muse-spark → Responses, minimax/qwen → Anthropic, everything else
 // (including deepseek-v4-flash) → Chat Completions. A pinned api_protocol
 // overrides that catalog. Falling through to the generic Claude tester used
 // credentials.base_url + /v1/messages?beta=true, which 404s as HTML on
 // https://opencode.ai/zen/go/v1/v1/messages.
-func (s *AccountTestService) testOpenCodeGoAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) testModelRoutedAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
-		testModelID = DefaultOpenCodeGoTestModel
+		testModelID = account.providerDefaultTestModel()
+	}
+	if testModelID == "" {
+		testModelID = openai.DefaultTestModel
 	}
 	testModelID = account.GetMappedModel(testModelID)
-	proto := account.GetAPIProtocol()
-	switch proto {
-	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:
-	default:
-		proto = openCodeGoNativeProtocol(account, testModelID)
+	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(testModelID) {
+		return fmt.Errorf("model %q is not supported on OpenCode standard gateway (gemini models require Google SDK endpoint, jev models require System One endpoint)", testModelID)
 	}
-	switch proto {
+	// 与网关同一判定（含上游模型目录）；测试没有入站协议，取模型的首选协议。
+	protocol := account.resolveModelRoutedProtocol(testModelID)
+	if s.openaiGatewayService != nil {
+		protocol = s.openaiGatewayService.resolveUpstreamProtocolFor(c.Request.Context(), account, "", testModelID)
+	}
+	switch protocol {
 	case APIProtocolAnthropic:
 		return s.testCNProviderAnthropicConnection(c, account, testModelID)
 	case APIProtocolResponses:
-		return s.testOpenCodeGoResponsesConnection(c, account, testModelID)
+		return s.testModelRoutedResponsesConnection(c, account, testModelID)
 	default:
 		return s.testCNProviderChatCompletionsConnection(c, account, testModelID, prompt)
 	}
 }
 
-func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
+func (s *AccountTestService) testModelRoutedResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
@@ -437,6 +490,9 @@ func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, a
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = account.providerDefaultTestModel()
+	}
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
 	}
@@ -517,6 +573,9 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// Create Claude Code style payload (same for all account types)
 	payload, err := createTestPayload(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payload, err = createPelicanClaudePayload(testModelID, options.prompt, options.reasoningEffort)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -535,7 +594,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	// Apply Claude Code client headers
-	for key, value := range claude.DefaultHeaders {
+	for key, value := range claude.DefaultHeaders() {
 		req.Header.Set(key, value)
 	}
 
@@ -595,6 +654,9 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	c.Writer.Flush()
 
 	payload, err := createTestPayload(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payload, err = createPelicanClaudePayload(testModelID, options.prompt, options.reasoningEffort)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -682,6 +744,10 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		"max_tokens":  256,
 		"temperature": 1,
 	}
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		bedrockPayload["max_tokens"] = pelicanClaudeMaxTokens
+		bedrockPayload["messages"] = []map[string]any{{"role": "user", "content": []map[string]any{{"type": "text", "text": options.prompt}}}}
+	}
 	bedrockBody, _ := json.Marshal(bedrockPayload)
 
 	// Use non-streaming endpoint (response is standard Claude JSON)
@@ -757,10 +823,13 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
 
-	// Default to openai.DefaultTestModel for OpenAI testing
+	// 鹈鹕和糖果测智使用专用默认模型，普通测试沿用原默认值。
 	testModelID := modelID
 	if testModelID == "" {
 		testModelID = openai.DefaultTestModel
+		if account.Platform == PlatformOpenAI && pelicanTestRequested(c) {
+			testModelID = AccountIntelligenceDefaultModel
+		}
 	}
 
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
@@ -768,6 +837,13 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	// /responses wire and does NOT apply the legacy compact-only mapping
 	// (post-#5641 semantics: compact_model_mapping is /responses/compact-only).
 	testModelID = account.GetMappedModel(testModelID)
+	if candyTestRequested(c) && isOpenAIImageModel(testModelID) {
+		return s.sendErrorAndEnd(c, "糖果测试映射到图像模型，无法进行整数答题")
+	}
+	// 鹈鹕和糖果测试显式启用 Excel 后必须验证该协议，失败不能转回 Codex。
+	if pelicanTestRequested(c) && (account.Extra["openai_excel_bps"] == true || account.IsExcelOAuth()) {
+		return s.testIntelligenceExcelBPS(c, account, testModelID)
+	}
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
@@ -802,6 +878,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		isOAuth = true
 		// Agent Identity signs each request and does not retain the OAuth token.
 		if !credentialAccount.IsOpenAIAgentIdentity() {
+			if credentialAccount.IsExcelOAuth() {
+				return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
+			}
 			authToken = credentialAccount.GetOpenAIAccessToken()
 		}
 		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -847,6 +926,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payload = createPelicanOpenAIPayload(upstreamTestModelID, isOAuth, options.prompt, options.reasoningEffort)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -1210,6 +1292,9 @@ func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx con
 	s.prepareGrokTestSSE(c)
 
 	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok {
+		payloadBytes, err = json.Marshal(createPelicanOpenAIPayload(testModelID, false, options.prompt, options.reasoningEffort))
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
 	}
@@ -2089,6 +2174,12 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Flush()
 
 	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	if pelicanUsageFromContext(ctx) != nil {
+		payload["stream_options"] = map[string]any{"include_usage": true}
+	}
+	if options, ok := pelicanTestOptionsFromContext(ctx); ok && options.reasoningEffort != "" {
+		payload["reasoning_effort"] = options.reasoningEffort
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2102,6 +2193,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	// 官方 OpenCode / Command Code 上游收敛为规范客户端 UA，与真实转发路径一致。
+	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
@@ -2156,6 +2250,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	case credentialAccount.IsOAuth():
 		isOAuth = true
 		if !credentialAccount.IsOpenAIAgentIdentity() {
+			if credentialAccount.IsExcelOAuth() {
+				return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
+			}
 			authToken = credentialAccount.GetOpenAIAccessToken()
 		}
 		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -2417,12 +2514,12 @@ func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Accou
 		}
 		return s.testClaudeAccountConnection(c, account, modelID)
 	}
-	return s.testAntigravityAccountConnection(c, account, modelID)
+	return s.testAntigravityAccountConnection(c, account, modelID, prompt)
 }
 
 // testAntigravityAccountConnection tests an Antigravity account's connection
 // 支持 Claude 和 Gemini 两种协议，使用非流式请求
-func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
 
 	testModelID := antigravityConnectionTestModel(modelID)
@@ -2441,8 +2538,8 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 
-	// 调用 AntigravityGatewayService.TestConnection（复用协议转换逻辑）
-	result, err := s.antigravityGatewayService.TestConnection(ctx, account, testModelID)
+	// 调用 AntigravityGatewayService.TestConnectionWithPrompt（复用协议转换逻辑）
+	result, err := s.antigravityGatewayService.TestConnectionWithPrompt(ctx, account, testModelID, prompt)
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
@@ -2450,6 +2547,13 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	// 发送响应内容
 	if result.Text != "" {
 		s.sendEvent(c, TestEvent{Type: "content", Text: result.Text})
+	}
+	for _, img := range result.Images {
+		s.sendEvent(c, TestEvent{
+			Type:     "image",
+			ImageURL: img.ImageURL,
+			MimeType: img.MimeType,
+		})
 	}
 
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
@@ -2538,14 +2642,7 @@ func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, accoun
 }
 
 func (s *AccountTestService) buildGeminiServiceAccountRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
-	if s.geminiTokenProvider == nil {
-		return nil, fmt.Errorf("gemini token provider not configured")
-	}
-	accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get service account access token: %w", err)
-	}
-	fullURL, err := buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, "streamGenerateContent", true)
+	fullURL, err := buildVertexGeminiAccountURL(account, modelID, "streamGenerateContent", true)
 	if err != nil {
 		return nil, err
 	}
@@ -2554,7 +2651,9 @@ func (s *AccountTestService) buildGeminiServiceAccountRequest(ctx context.Contex
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if err := setVertexGeminiAuth(ctx, req, account, s.geminiTokenProvider); err != nil {
+		return nil, fmt.Errorf("failed to authenticate vertex request: %w", err)
+	}
 	return req, nil
 }
 
@@ -2646,6 +2745,7 @@ func createGeminiTestPayload(modelID string, prompt string) []byte {
 // processGeminiStream processes SSE stream from Gemini API
 func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "gemini")
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -2663,6 +2763,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 		}
 
 		jsonStr := strings.TrimPrefix(line, "data: ")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -2774,13 +2875,25 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 // processClaudeStream processes the SSE stream from Claude API
 func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "anthropic")
+	// 鹈鹕作答需要完整正文，输出预算耗尽或拒答时保留失败原因。
+	pelican := pelicanTestRequested(c)
+	stopReason, refusalCategory := "", ""
+	complete := func() error {
+		if pelican {
+			if failure := pelicanClaudeStopFailure(stopReason, refusalCategory); failure != "" {
+				return s.sendErrorAndEnd(c, failure)
+			}
+		}
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
+				return complete()
 			}
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
@@ -2791,9 +2904,9 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		}
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return complete()
 		}
 
 		var data map[string]any
@@ -2810,9 +2923,17 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
+		case "message_delta":
+			if delta, ok := data["delta"].(map[string]any); ok {
+				if reason, ok := delta["stop_reason"].(string); ok {
+					stopReason = reason
+				}
+				if details, ok := delta["stop_details"].(map[string]any); ok {
+					refusalCategory, _ = details["category"].(string)
+				}
+			}
 		case "message_stop":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return complete()
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {
@@ -2829,6 +2950,7 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 // OpenAI-compatible Chat Completions API.
 func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "chat")
 	seenJSON := false
 	seenFinish := false
 
@@ -2855,6 +2977,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 		}
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
@@ -2904,6 +3027,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
 func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	usage := startPelicanTestStream(c, "openai")
 	seenCompleted := false
 
 	for {
@@ -2925,6 +3049,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		}
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		usage.read(jsonStr)
 		if jsonStr == "[DONE]" {
 			if seenCompleted {
 				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
@@ -2935,6 +3060,9 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 		var data map[string]any
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			if candyTestRequested(c) {
+				return s.sendErrorAndEnd(c, "糖果测试流包含无法解析的事件")
+			}
 			continue
 		}
 
@@ -2947,8 +3075,17 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
 		case "response.completed", "response.done":
+			if candyTestRequested(c) {
+				if message := candyResponseCompletionError(data); message != "" {
+					return s.sendErrorAndEnd(c, message)
+				}
+			}
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
+		case "response.refusal.delta", "response.refusal.done":
+			if candyTestRequested(c) {
+				return s.sendErrorAndEnd(c, "模型拒绝回答糖果题")
+			}
 		case "response.failed":
 			errorMsg := "OpenAI response failed"
 			if responseData, ok := data["response"].(map[string]any); ok {
@@ -3080,6 +3217,9 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	authToken := ""
 	if !credentialAccount.IsOpenAIAgentIdentity() {
+		if credentialAccount.IsExcelOAuth() {
+			return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
+		}
 		authToken = credentialAccount.GetOpenAIAccessToken()
 	}
 	if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -3220,6 +3360,11 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "test_start" && event.Model != "" && c.Request != nil {
+		if usage := pelicanUsageFromContext(c.Request.Context()); usage != nil {
+			usage.model = event.Model
+		}
+	}
 	if event.Type == "test_complete" {
 		if suppress, ok := c.Get(accountTestSuppressCompletionContextKey); ok {
 			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
@@ -3237,7 +3382,7 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 
 // sendErrorAndEnd sends an error event and ends the stream
 func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) error {
-	log.Printf("Account test error: %s", errorMsg)
+	logAccountTestError(c, errorMsg)
 	s.sendEvent(c, TestEvent{Type: "error", Error: errorMsg})
 	return fmt.Errorf("%s", errorMsg)
 }
@@ -3250,6 +3395,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
+	ginCtx.Set(accountTestBackgroundKey, true)
 
 	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
 

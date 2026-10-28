@@ -253,6 +253,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   zhipu: 'Zhipu GLM',
   deepseek: 'DeepSeek',
   minimax: 'MiniMax',
+  typesafe: 'TypeSafe / Jev',
 }
 
 const platformLabel = (p: string) => PLATFORM_LABELS[p] ?? p
@@ -278,6 +279,8 @@ const platformCards = computed<FusedPlatformCard[]>(() => {
   for (const [platform, q] of byQuota) {
     if (hasAnyLimit(q)) platforms.add(platform)
   }
+
+  const PLATFORM_ORDER = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'typesafe']
   const cards: FusedPlatformCard[] = []
 
   for (const p of platforms) {
@@ -292,7 +295,18 @@ const platformCards = computed<FusedPlatformCard[]>(() => {
     })
   }
 
-  cards.sort((a, b) => b.total_actual_cost - a.total_actual_cost)
+  cards.sort((a, b) => {
+    // TypeSafe 是新增平台，固定放在未知平台之前；其余平台仍按实际用量降序。
+    const aTypeSafe = a.platform === 'typesafe' ? 0 : 1
+    const bTypeSafe = b.platform === 'typesafe' ? 0 : 1
+    if (aTypeSafe !== bTypeSafe) return aTypeSafe - bTypeSafe
+    const aOrder = PLATFORM_ORDER.indexOf(a.platform)
+    const bOrder = PLATFORM_ORDER.indexOf(b.platform)
+    if (a.total_actual_cost === b.total_actual_cost && aOrder >= 0 && bOrder >= 0 && aOrder !== bOrder) {
+      return aOrder - bOrder
+    }
+    return b.total_actual_cost - a.total_actual_cost
+  })
 
   // __other__ 补差逻辑：只对 by_platform 有 usage 数据的总和计算
 

@@ -1,0 +1,25 @@
+[Unit]
+Description=Sub2API 独立订阅管理后台
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sub-vpn
+Group=sub-vpn
+WorkingDirectory=/opt/sub-vpn/current
+Environment=VPN_DATA_DIR=/var/lib/sub-vpn
+Environment=VPN_PUBLIC_URL=https://38.47.115.99/vpn
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/sub-vpn/venv/bin/uvicorn app:app --host 127.0.0.1 --port 18181 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-access-log
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sub-vpn
+
+[Install]
+WantedBy=multi-user.target

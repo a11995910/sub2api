@@ -82,6 +82,7 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	timeRotation *service.AccountTimeRotationService,
 	entClient *ent.Client,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
@@ -99,10 +100,12 @@ func provideCleanup(
 	accountExpiry *service.AccountExpiryService,
 	cnProviderBalanceCheck *service.CNProviderBalanceCheckService,
 	codexVersionSync *service.OpenAICodexVersionSyncService,
+	claudeCodeVersionSync *service.ClaudeCodeVersionSyncService,
 	proxyExpiry *service.ProxyExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
+	geminiCachedContent *service.GeminiCachedContentService,
 	batchImageCleanup *service.BatchImageCleanupService,
 	generatedImageCleanup *service.GeneratedImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
@@ -127,6 +130,7 @@ func provideCleanup(
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
+	opencodeGoUsage *service.OpenCodeGoUsageService,
 	auditLog *service.AuditLogService,
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
@@ -233,6 +237,12 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"AccountTimeRotationService", func() error {
+				if timeRotation != nil {
+					timeRotation.Stop()
+				}
+				return nil
+			}},
 			{"SchedulerSnapshotService", func() error {
 				if schedulerSnapshot != nil {
 					schedulerSnapshot.Stop()
@@ -248,6 +258,12 @@ func provideCleanup(
 			{"IdempotencyCleanupService", func() error {
 				if idempotencyCleanup != nil {
 					idempotencyCleanup.Stop()
+				}
+				return nil
+			}},
+			{"GeminiCachedContentService", func() error {
+				if geminiCachedContent != nil {
+					geminiCachedContent.Stop()
 				}
 				return nil
 			}},
@@ -291,6 +307,10 @@ func provideCleanup(
 			}},
 			{"OpenAICodexVersionSyncService", func() error {
 				codexVersionSync.Stop()
+				return nil
+			}},
+			{"ClaudeCodeVersionSyncService", func() error {
+				claudeCodeVersionSync.Stop()
 				return nil
 			}},
 			{"ProxyExpiryService", func() error {
@@ -404,6 +424,12 @@ func provideCleanup(
 			{"OllamaCloudUsageService", func() error {
 				if ollamaCloudUsage != nil {
 					ollamaCloudUsage.Stop()
+				}
+				return nil
+			}},
+			{"OpenCodeGoUsageService", func() error {
+				if opencodeGoUsage != nil {
+					opencodeGoUsage.Stop()
 				}
 				return nil
 			}},

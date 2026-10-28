@@ -333,11 +333,79 @@ func TestUpstreamBillingProbeSuccessPersistsSanitizedSnapshot(t *testing.T) {
 	require.Equal(t, "https://upstream.example/v1/sub2api/billing", upstream.lastReq.URL.String())
 	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
 	require.Equal(t, "Bearer sk-sensitive", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "1", upstream.lastReq.Header.Get(BillingPromoCapabilityHeader))
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.lastReq.Context()))
 
 	persisted := decodeUpstreamBillingProbeSnapshot(account.Extra)
 	require.NotNil(t, persisted)
 	require.Equal(t, snapshot.Status, persisted.Status)
+}
+
+func TestUpstreamBillingProbePromoCapabilitySurvivesHeaderOverrides(t *testing.T) {
+	for _, override := range []string{"", "0", "1"} {
+		t.Run(fmt.Sprintf("覆写=%q", override), func(t *testing.T) {
+			account := &Account{
+				ID: 17, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+				Credentials: map[string]any{
+					"api_key": "sk-test", "base_url": "https://upstream.example/v1",
+					credKeyHeaderOverrideEnabled: true,
+					credKeyHeaderOverrides: map[string]any{
+						strings.ToLower(BillingPromoCapabilityHeader): override,
+						"x-probe-test": "保留自定义头",
+					},
+				},
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey: true, UpstreamBillingRateSyncEnabledExtraKey: true,
+				},
+			}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+					"object":"sub2api.key_billing", "schema_version":1, "billing_scope":"token",
+					"group_rate_multiplier":0.8, "user_rate_multiplier":0.6, "resolved_rate_multiplier":0.6,
+					"peak_rate_enabled":true, "peak_start":"09:00", "peak_end":"18:00",
+					"peak_rate_multiplier":1.5, "applied_peak_multiplier":1.5, "timezone":"UTC",
+					"promo_discount_enabled":true, "promo_discount_start":"2026-07-13T10:00:00Z",
+					"promo_discount_end":"2026-07-13T12:00:00Z", "promo_discount_rate":0.8,
+					"applied_promo_multiplier":0.8, "effective_rate_multiplier":0.72,
+					"observed_at":"2026-07-13T11:00:00Z"
+				}`)),
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			observedAt := time.Date(2026, time.July, 13, 11, 0, 0, 0, time.UTC)
+			svc.now = func() time.Time { return observedAt }
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+			require.NoError(t, err)
+			require.Equal(t, "1", upstream.lastReq.Header.Get(BillingPromoCapabilityHeader))
+			capabilityHeaders := 0
+			for name, values := range upstream.lastReq.Header {
+				if strings.EqualFold(name, BillingPromoCapabilityHeader) {
+					capabilityHeaders++
+					require.Equal(t, []string{"1"}, values)
+				}
+			}
+			require.Equal(t, 1, capabilityHeaders)
+			require.Equal(t, "保留自定义头", getHeaderRaw(upstream.lastReq.Header, "x-probe-test"))
+			require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+			// 静态列只同步折前基准，展示随高峰和活动窗口现算，不能重复打折或冻结折扣。
+			require.NotNil(t, snapshot.SyncedRateMultiplier)
+			require.Equal(t, 0.6, *snapshot.SyncedRateMultiplier)
+			require.NotNil(t, account.RateMultiplier)
+			require.Equal(t, 0.6, *account.RateMultiplier)
+			for _, tc := range []struct {
+				hour int
+				rate float64
+			}{
+				{9, 0.9}, {10, 0.72}, {11, 0.72}, {12, 0.9}, {18, 0.6},
+			} {
+				rate, ok := upstreamBillingRateAt(snapshot.Data, time.Date(2026, time.July, 13, tc.hour, 0, 0, 0, time.UTC))
+				require.True(t, ok)
+				require.InDelta(t, tc.rate, rate, 1e-12)
+			}
+		})
+	}
 }
 
 func TestUpstreamBillingProbeAdaptiveCNUsesChatProtocolBaseURL(t *testing.T) {
@@ -767,13 +835,13 @@ func TestUpstreamBillingProbeFailurePreservesLastSuccessAndRetryAfter(t *testing
 	require.Equal(t, initialRate, *account.RateMultiplier)
 }
 
-func TestUpstreamBillingProbeRetryAfterIsNotShortened(t *testing.T) {
+func TestUpstreamBillingProbeRetryAfterIsCappedAtMaxDelay(t *testing.T) {
 	delay := nextProbeDelay(30, 48*time.Hour)
-	require.Equal(t, 48*time.Hour, delay)
+	require.Equal(t, upstreamBillingProbeMaxDelay, delay)
 }
 
 // unsupported 的重探间隔明显长于普通失败，但始终有上界：上游后来接入 sub2api
-// 时最迟一天内会被重新发现，且不会缩短上游 Retry-After 指令。
+// 时最迟一天内会被重新发现，且上游超长 Retry-After 亦受 24h 封顶保护。
 func TestUpstreamBillingProbeUnsupportedDelayIsStretchedAndBounded(t *testing.T) {
 	// 默认 30 分钟 interval：普通失败 24~36 分钟，unsupported 为其 8 倍。
 	stretched := unsupportedProbeDelay(30, 0)
@@ -785,8 +853,8 @@ func TestUpstreamBillingProbeUnsupportedDelayIsStretchedAndBounded(t *testing.T)
 	require.LessOrEqual(t, unsupportedProbeDelay(upstreamBillingProbeMaxIntervalMinutes, 0), upstreamBillingProbeMaxDelay)
 	require.Positive(t, unsupportedProbeDelay(upstreamBillingProbeMinIntervalMinutes, 0))
 
-	// Retry-After 更长时原样保留，不被封顶缩短；更短时至少不早于该指令。
-	require.Equal(t, 48*time.Hour, unsupportedProbeDelay(30, 48*time.Hour))
+	// Retry-After 更长时受封顶保护，不超过 upstreamBillingProbeMaxDelay；更短时至少不早于该指令。
+	require.Equal(t, upstreamBillingProbeMaxDelay, unsupportedProbeDelay(30, 48*time.Hour))
 	require.GreaterOrEqual(t, unsupportedProbeDelay(30, time.Hour), time.Hour)
 }
 

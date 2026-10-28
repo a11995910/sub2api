@@ -151,7 +151,7 @@ func TestNativeAnthropicChatStreamForcesAdjustedUsage(t *testing.T) {
 	}
 
 	result, err := svc.handleCCStreamingFromNativeAnthropic(
-		resp, c, "test-model", "test-model", "test-model", nil, time.Now(), false,
+		resp, c, "test-model", "test-model", "test-model", nil, time.Now(),
 	)
 
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestAnthropicAdapterAliasUsageSyncsConverterState(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(cacheHitAnthropicAliasSSE()))}
 
 		result, err := (&GatewayService{cache: cache}).handleCCStreamingFromAnthropic(
-			resp, c, "test-model", "test-model", nil, time.Now(), false,
+			resp, c, "test-model", "test-model", nil, time.Now(),
 		)
 
 		require.NoError(t, err)
@@ -206,7 +206,7 @@ func TestAnthropicAdapterAliasUsageSyncsConverterState(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(cacheHitAnthropicAliasSSE()))}
 
 		result, err := (&OpenAIGatewayService{cache: cache}).handleCCStreamingFromNativeAnthropic(
-			resp, c, "test-model", "test-model", "test-model", nil, time.Now(), false,
+			resp, c, "test-model", "test-model", "test-model", nil, time.Now(),
 		)
 
 		require.NoError(t, err)
@@ -294,7 +294,7 @@ func TestAnthropicAdaptersTerminalOnlyStreamDoesNotAdjust(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(cacheHitAnthropicTerminalOnlySSE()))}
 
 		result, err := (&GatewayService{cache: cache}).handleCCStreamingFromAnthropic(
-			resp, c, "test-model", "test-model", nil, time.Now(), false,
+			resp, c, "test-model", "test-model", nil, time.Now(),
 		)
 
 		require.NoError(t, err)
@@ -326,7 +326,7 @@ func TestAnthropicAdaptersTerminalOnlyStreamDoesNotAdjust(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(cacheHitAnthropicTerminalOnlySSE()))}
 
 		result, err := (&OpenAIGatewayService{cache: cache}).handleCCStreamingFromNativeAnthropic(
-			resp, c, "test-model", "test-model", "test-model", nil, time.Now(), false,
+			resp, c, "test-model", "test-model", "test-model", nil, time.Now(),
 		)
 
 		require.NoError(t, err)
@@ -429,7 +429,7 @@ func TestNativeAnthropicStreamsSkipNonSuccessfulTerminals(t *testing.T) {
 			}
 
 			result, err := svc.handleCCStreamingFromNativeAnthropic(
-				resp, c, "test-model", "test-model", "test-model", nil, time.Now(), false,
+				resp, c, "test-model", "test-model", "test-model", nil, time.Now(),
 			)
 
 			require.NoError(t, err)
@@ -489,7 +489,7 @@ func TestGatewayAnthropicStreamsSkipNonSuccessfulTerminals(t *testing.T) {
 			}
 
 			result, err := svc.handleCCStreamingFromAnthropic(
-				resp, c, "test-model", "test-model", nil, time.Now(), false,
+				resp, c, "test-model", "test-model", nil, time.Now(),
 			)
 
 			require.NoError(t, err)
@@ -869,12 +869,13 @@ func TestAntigravityCompatTerminalOnlyStreamDoesNotAdjust(t *testing.T) {
 
 			result, err := tt.call(svc, c, resp)
 
-			require.NoError(t, err)
-			require.NotNil(t, result)
+			// 没有正文的终态流应允许切换上游，不得提前提交响应或划拨缓存。
+			var failover *UpstreamFailoverError
+			require.ErrorAs(t, err, &failover)
+			require.Nil(t, result)
 			require.Zero(t, cache.callCount())
 			require.Nil(t, OpenAIStreamCacheHitAdjustmentFromContext(c))
-			require.Equal(t, 94, result.usage.CacheReadInputTokens)
-			require.Contains(t, recorder.Body.String(), `"cached_tokens":94`)
+			require.Empty(t, recorder.Body.String())
 		})
 	}
 }

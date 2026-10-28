@@ -232,6 +232,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyBalanceLowNotifyRechargeURL,
 		SettingKeyAccountQuotaNotifyEnabled,
 		SettingKeyChannelMonitorEnabled,
+		SettingKeyPelicanShowcaseEnabled,
 		SettingKeyChannelMonitorMode,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
@@ -374,6 +375,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		BalanceLowNotifyRechargeURL:         settings[SettingKeyBalanceLowNotifyRechargeURL],
 
 		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
+		PelicanShowcaseEnabled:               settings[SettingKeyPelicanShowcaseEnabled] == "true",
 		ChannelMonitorMode:                   normalizeChannelMonitorMode(settings[SettingKeyChannelMonitorMode]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		ChannelMonitorHideThroughput:         !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput]),
@@ -651,6 +653,7 @@ type PublicSettingsInjectionPayload struct {
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
 	// that hid the "可用渠道" menu on page refresh.
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
+	PelicanShowcaseEnabled               bool   `json:"pelican_showcase_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	// ChannelMonitorHideThroughput is public so the user UI can hide RPM/TPM
@@ -749,6 +752,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BalanceLowNotifyRechargeURL:         settings.BalanceLowNotifyRechargeURL,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		PelicanShowcaseEnabled:               settings.PelicanShowcaseEnabled,
 		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,

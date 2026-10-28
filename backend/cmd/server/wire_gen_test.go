@@ -41,6 +41,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	)
 	accountExpirySvc := service.NewAccountExpiryService(nil, time.Second)
 	codexVersionSyncSvc := service.NewOpenAICodexVersionSyncService(nil, nil, nil, time.Second)
+	claudeCodeVersionSyncSvc := service.NewClaudeCodeVersionSyncService(nil, nil, nil, time.Second)
 	proxyExpirySvc := service.NewProxyExpiryService(nil, time.Second)
 	subscriptionExpirySvc := service.NewSubscriptionExpiryService(nil, time.Second)
 	pricingSvc := service.NewPricingService(cfg, nil)
@@ -51,6 +52,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
 
 	cleanup := provideCleanup(
+		service.NewAccountTimeRotationService(nil), // 验证未启动的轮候服务可安全停止
 		nil, // entClient
 		nil, // redis
 		&service.OpsMetricsCollector{},
@@ -68,10 +70,12 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		accountExpirySvc,
 		nil, // cnProviderBalanceCheck
 		codexVersionSyncSvc,
+		claudeCodeVersionSyncSvc,
 		proxyExpirySvc,
 		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
 		idempotencyCleanupSvc,
+		service.NewGeminiCachedContentService(nil, nil, cfg),
 		&service.BatchImageCleanupService{},
 		nil, // generatedImageCleanup
 		nil, // batchImageWorker
@@ -96,6 +100,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // quotaFlusher
 		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
+		nil, // opencodeGoUsage
 		nil, // auditLog
 		nil, // openAIAutoReset
 		nil, // promptAudit

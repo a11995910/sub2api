@@ -1,4 +1,13 @@
+import pelicanTests from './en/pelicanTests'
+import candyTests from './en/candyTests'
+import pelicanShowcase from './en/pelicanShowcase'
+import timeRotation from './en/timeRotation'
+
 export default {
+  pelicanTests,
+  candyTests,
+  pelicanShowcase,
+  timeRotation,
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',
@@ -1037,6 +1046,8 @@ export default {
     cacheHit: 'Cache Hit',
     cacheCreate: 'Cache Write',
     cacheHitRate: 'Cache Hit Rate',
+    upstreamResponseServiceTier: 'Upstream response tier',
+    upstreamResponseServiceTierUnknown: 'Not recorded / not returned',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
     serviceTierUltrafast: 'Ultrafast',

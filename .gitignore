@@ -137,8 +137,8 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/UPSTREAM_0_2_8_COMPATIBILITY_CN.md
 .worktrees/
-!docs/ANTIGRAVITY_ATTRIBUTION_429.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
@@ -150,6 +150,8 @@ docs/*
 !docs/SOURCE_DEPLOY_CN.md
 !docs/THIRD_PARTY_NOTICES_CN.md
 !docs/VPS_MIGRATION_CN.md
+!docs/SHOP_JUMP_CN.md
+!docs/AUXILIARY_APPS_CN.md
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/ASYNC_IMAGE_TASKS_CN.md
 !docs/VIDEO_TASK_BILLING_CN.md
@@ -157,6 +159,9 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/CONTENT_MODERATION_CN.md
 !docs/PLUGIN_DEVELOPMENT.md
+!docs/EXCEL_BRIDGE_CN.md
+!docs/EXCEL_BPS_CN.md
+!docs/ACCOUNT_INTELLIGENCE_TESTS_CN.md
 !docs/LOTTERY.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/codex-credits.md
@@ -187,3 +192,5 @@ issues/
 /plugins/**/*.private
 /plugins/**/*.key
 /plugins/**/*.pem
+
+!docs/ACCOUNT_TIME_ROTATION_CN.md

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -135,6 +136,99 @@ func TestGatewayHandlerKeyBillingInfoUsesUserOverride(t *testing.T) {
 	require.Equal(t, 0.5, got.EffectiveRateMultiplier)
 }
 
+func TestGatewayHandlerKeyBillingInfoNegotiatesPromo(t *testing.T) {
+	for _, header := range []string{"", "1", "0"} {
+		for _, promo := range []struct {
+			name    string
+			enabled bool
+			start   time.Duration
+			end     time.Duration
+			applied float64
+		}{
+			{"活动内", true, -time.Hour, time.Hour, 0.8},
+			{"已关闭", false, -time.Hour, time.Hour, 1},
+			{"未开始", true, time.Hour, 2 * time.Hour, 1},
+			{"已结束", true, -2 * time.Hour, -time.Hour, 1},
+		} {
+			for _, user := range []struct {
+				name string
+				rate *float64
+			}{
+				{"无专属", nil},
+				{"有专属", keyBillingRatePtr(0.5)},
+				{"零倍率", keyBillingRatePtr(0)},
+			} {
+				for _, peakEnabled := range []bool{false, true} {
+					t.Run(fmt.Sprintf("头=%q/%s/%s/高峰=%t", header, promo.name, user.name, peakEnabled), func(t *testing.T) {
+						now := timezone.Now()
+						start, end := now.Add(promo.start), now.Add(promo.end)
+						groupID := int64(7)
+						group := &service.Group{
+							ID: groupID, RateMultiplier: 0.75,
+							SubscriptionType: service.SubscriptionTypeSubscription,
+							PeakRateEnabled:  peakEnabled, PeakStart: "00:00", PeakEnd: "23:59", PeakRateMultiplier: 1.5,
+							PromoDiscountEnabled: promo.enabled, PromoDiscountStart: &start, PromoDiscountEnd: &end, PromoDiscountRate: 0.8,
+						}
+						apiKey := &service.APIKey{UserID: 11, GroupID: &groupID, Group: group}
+						c, w := newKeyBillingContext(apiKey)
+						if header != "" {
+							c.Request.Header.Set(service.BillingPromoCapabilityHeader, header)
+						}
+						newKeyBillingHandler(&keyBillingUserGroupRateRepo{rate: user.rate}).KeyBillingInfo(c)
+
+						require.Equal(t, http.StatusOK, w.Code)
+						require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+						var got keyBillingInfoResponse
+						require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+						base := 0.75
+						if user.rate != nil {
+							base = *user.rate
+						}
+						foldedPromo := 1.0
+						if header != "1" {
+							foldedPromo = promo.applied
+						}
+						require.InDelta(t, 0.75*foldedPromo, got.GroupRateMultiplier, 1e-12)
+						require.InDelta(t, base*foldedPromo, got.ResolvedRateMultiplier, 1e-12)
+						if user.rate == nil {
+							require.Nil(t, got.UserRateMultiplier)
+							require.NotContains(t, w.Body.String(), "user_rate_multiplier")
+							require.Equal(t, got.GroupRateMultiplier, got.ResolvedRateMultiplier)
+						} else {
+							require.NotNil(t, got.UserRateMultiplier)
+							require.Equal(t, *got.UserRateMultiplier, got.ResolvedRateMultiplier)
+							require.Equal(t, base, *user.rate)
+						}
+						appliedPeak := group.PeakMultiplierAt(got.ObservedAt)
+						require.InDelta(t, base*appliedPeak*promo.applied, got.EffectiveRateMultiplier, 1e-12)
+						if header != "1" {
+							// 复现旧探针的有效倍率校验，未知 promo 字段不参与计算。
+							require.InDelta(t, got.ResolvedRateMultiplier*appliedPeak, got.EffectiveRateMultiplier, 1e-12)
+						}
+						require.Equal(t, promo.enabled, got.PromoDiscountEnabled)
+						if promo.enabled {
+							require.NotNil(t, got.PromoDiscountStart)
+							require.NotNil(t, got.PromoDiscountEnd)
+							require.True(t, start.Equal(*got.PromoDiscountStart))
+							require.True(t, end.Equal(*got.PromoDiscountEnd))
+							require.Equal(t, keyBillingRatePtr(0.8), got.PromoDiscountRate)
+							require.Equal(t, &promo.applied, got.AppliedPromoMultiplier)
+						} else {
+							require.Nil(t, got.PromoDiscountRate)
+							require.Nil(t, got.AppliedPromoMultiplier)
+						}
+						require.Equal(t, 0.75, group.RateMultiplier)
+					})
+				}
+			}
+		}
+	}
+}
+
+func keyBillingRatePtr(rate float64) *float64 {
+	return &rate
+}
+
 func TestBuildKeyBillingInfoAppliesPeakMultiplier(t *testing.T) {
 	groupID := int64(7)
 	apiKey := &service.APIKey{
@@ -152,7 +246,7 @@ func TestBuildKeyBillingInfoAppliesPeakMultiplier(t *testing.T) {
 	now := time.Date(2026, time.July, 12, 10, 0, 0, 0, timezone.Location())
 	userRate := 0.8
 
-	got := buildKeyBillingInfo(apiKey, userRate, now)
+	got := buildKeyBillingInfo(apiKey, userRate, now, true)
 
 	require.Equal(t, 1.2, got.GroupRateMultiplier)
 	require.NotNil(t, got.UserRateMultiplier)
@@ -202,7 +296,7 @@ func TestKeyBillingInfoJSONKeepsZeroPeakMultiplierWhenEnabled(t *testing.T) {
 		},
 	}
 	now := time.Date(2026, time.July, 12, 12, 0, 0, 0, timezone.Location())
-	encoded, err := json.Marshal(buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, now))
+	encoded, err := json.Marshal(buildKeyBillingInfo(apiKey, apiKey.Group.RateMultiplier, now, true))
 	require.NoError(t, err)
 
 	var fields map[string]json.RawMessage

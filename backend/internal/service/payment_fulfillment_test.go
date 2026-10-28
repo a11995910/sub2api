@@ -157,6 +157,10 @@ func (r *paymentFulfillmentAffiliateRepoStub) TransferQuotaToBalance(context.Con
 	panic("unexpected TransferQuotaToBalance call")
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) WithdrawQuota(context.Context, int64, float64, string) (*AffiliateWithdrawResult, error) {
+	panic("unexpected WithdrawQuota call")
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
 	panic("unexpected ListInvitees call")
 }
@@ -966,6 +970,36 @@ func TestPaymentNotificationRejectsAmountMismatchBeforeFulfillment(t *testing.T)
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusPending, reloaded.Status)
+}
+
+func TestPaymentNotificationRejectsBlankProviderTradeNoBeforeFulfillment(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusPending, time.Now())
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	err = svc.HandlePaymentNotification(ctx, &payment.PaymentNotification{
+		TradeNo: "   ",
+		OrderID: order.OutTradeNo,
+		Amount:  order.PayAmount,
+		Status:  payment.NotificationStatusSuccess,
+	}, payment.TypeEasyPay)
+	require.EqualError(t, err, "missing provider trade number")
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+	audits, err := client.PaymentAuditLog.Query().Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10))).All(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+	require.Equal(t, "PAYMENT_INVALID_TRADE_NO", audits[len(audits)-1].Action)
 }
 
 func TestExecuteBalanceFulfillmentRejectsCodeUsedByAnotherUser(t *testing.T) {

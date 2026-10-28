@@ -65,6 +65,11 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
+	NewPelicanShowcaseRepository,
+	NewPelicanGroupTestRepository,
+	NewPelicanAccountTestRepository,
+	NewCandyTestRepository,
+	NewAccountTimeRotationRepository,
 	NewUserRepository,
 	NewAPIKeyRepository,
 	NewGroupRepository,
@@ -89,6 +94,7 @@ var ProviderSet = wire.NewSet(
 	NewUsageLogRepository,
 	NewUsageBillingRepository,
 	NewBatchImageRepository,
+	NewGeminiCachedContentRepository,
 	NewIdempotencyRepository,
 	NewUsageCleanupRepository,
 	NewDashboardAggregationRepository,
@@ -169,7 +175,7 @@ var ProviderSet = wire.NewSet(
 	NewProxyExitInfoProber,
 	NewClaudeUsageFetcher,
 	NewClaudeOAuthClient,
-	NewHTTPUpstream,
+	ProvideProtectedHTTPUpstream,
 	NewOpenAIOAuthClient,
 	NewOpenAIReferralClient,
 	NewGrokOAuthClient,
@@ -240,4 +246,9 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 // 提供：*redis.Client
 func ProvideRedis(cfg *config.Config) *redis.Client {
 	return InitRedis(cfg)
+}
+
+// 统一模型 HTTP 出口的账号保护，覆盖普通、流式、图片及账号测试请求。
+func ProvideProtectedHTTPUpstream(cfg *config.Config, rotation *service.AccountTimeRotationService, accounts service.AccountRepository) service.HTTPUpstream {
+	return service.NewProtectedHTTPUpstream(NewHTTPUpstream(cfg), rotation, accounts)
 }

@@ -289,6 +289,19 @@ describe('KeyUsageView subscription feature flag', () => {
     return wrapper
   }
 
+  it('卸载后停止环形动画，避免继续访问已销毁的页面', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = await mountAndQuery()
+      await vi.advanceTimersByTimeAsync(1)
+      wrapper.unmount()
+      await vi.runAllTimersAsync()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('labels the wallet row "Subscription Type" while subscriptions are enabled', async () => {
     const wrapper = await mountAndQuery()
 

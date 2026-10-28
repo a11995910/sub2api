@@ -112,7 +112,7 @@ GitHub workflow 都不得代替用户执行以上步骤。
 
 ### 本地检查要求
 
-- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.0**。升级 Go 时必须同步更新 `backend/go.mod`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
+- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.2**。升级 Go 时必须同步更新 `backend/go.mod`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
 - golangci-lint 本地使用 **v2.13**。
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 

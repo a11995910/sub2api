@@ -458,7 +458,7 @@ func TestProbeCodexTicket332RequiresHTTP200(t *testing.T) {
 // 所有无票账号都会被 fail_closed 误判为不可调度，而这些请求实际不需要票。
 func TestOpenAICodexTicketGate_CompactRequestUsesForwardOutboundModel(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
-		OpenAICompactModel: "gpt-5.5",
+		OpenAICompactModel: "gpt-6-luna",
 		OpenAICodexTicket: config.OpenAICodexTicketConfig{
 			Enabled:      true,
 			TargetLength: 292,
@@ -471,16 +471,21 @@ func TestOpenAICodexTicketGate_CompactRequestUsesForwardOutboundModel(t *testing
 
 	// 出站模型预测必须与 Forward 的解析链一致。
 	require.Equal(t, "gpt-6-astra", svc.openAICodexTicketOutboundModel(account, "gpt-6-astra", false))
-	require.Equal(t, "gpt-5.5", svc.openAICodexTicketOutboundModel(account, "gpt-6-astra", true))
+	require.Equal(t, "gpt-6-luna", svc.openAICodexTicketOutboundModel(account, "gpt-6-astra", true))
 
 	// 普通请求：出站仍是门控模型且无票 → fail_closed 必须拦号。
 	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-6-astra", false))
 
-	// compact 请求：出站已被改写成非门控的 gpt-5.5 → 不得拦号。
+	// compact 请求：出站已被改写成非门控的 gpt-6-luna → 不得拦号。
 	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-6-astra", true))
 
 	// 回归锚点：按客户端原始模型判定（旧实现的口径）在 compact 下必然误拦。
 	require.True(t, svc.openAICodexTicketBlocksAccount(account, canonicalOpenAIAccountSchedulingModel(account, "gpt-6-astra")))
+
+	// 退役的订阅模型不能充当 compact 兜底，门票门控应回到实际出站模型。
+	svc.cfg.Gateway.OpenAICompactModel = "gpt-5.5"
+	require.Equal(t, "gpt-6-astra", svc.openAICodexTicketOutboundModel(account, "gpt-6-astra", true))
+	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-6-astra", true))
 }
 
 // 对照模式互斥，健康采集上下文不得复用已有票污染探测结果。
