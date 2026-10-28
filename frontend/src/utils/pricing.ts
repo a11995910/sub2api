@@ -26,7 +26,7 @@ export function formatVideoMarketPrice(value: number | null): string {
   const [coefficient, exponent = '0'] = value.toString().split('e')
   const cents = Math.floor(Number(`${coefficient}e${Number(exponent) + 2}`))
   if (!Number.isFinite(cents)) return '-'
-  return `${(cents / 100).toFixed(2)} ${i18n.global.t('common.currencyName')}`
+  return `${cents / 100} ${i18n.global.t('common.currencyName')}`
 }
 
 /** 按比例格式化美元价格，供需要固定展示 USD 的官方参考价使用。 */

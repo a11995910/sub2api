@@ -235,7 +235,7 @@ describe('ModelMarketView', () => {
     const wrapper = mount(ModelMarketView, { global: { stubs: { AppLayout: AppLayoutStub, Icon: IconStub, PlatformIcon: PlatformIconStub } } })
     await flushPromises()
     const card = modelCard(wrapper, 'wan-3.0')
-    expect(card.text()).toContain('按次当前3.60 灵石')
+    expect(card.text()).toContain('按次当前3.6 灵石')
     expect(card.text()).not.toContain('480p /')
     expect(card.text()).not.toContain('720p /')
   })
@@ -822,7 +822,7 @@ describe('ModelMarketView', () => {
       billingMode: 'image',
       defaultPrice: 2.1,
       intervalPrice: undefined,
-      expectedPrice: '2.10 灵石',
+      expectedPrice: '2.1 灵石',
       expectedUnit: '720p / 按次',
     },
   ])('视频价格卡展示$name及正确单位', async ({
@@ -983,7 +983,7 @@ describe('ModelMarketView', () => {
 
     const cardText = modelCard(wrapper, 'grok-imagine-video-1.5').text()
     expect(cardText).toContain('720p / 秒当前0.14 灵石')
-    expect(cardText).not.toContain('1080p / 秒')
+    expect(cardText).toContain('1080p / 秒当前0.14 灵石')
   })
 
   it('video-1.5 模型广场独立展示自身渠道价且不展示参考图费用', async () => {
