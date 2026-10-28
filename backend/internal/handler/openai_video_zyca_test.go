@@ -49,6 +49,10 @@ func (r *zycaHandlerBillingRepo) ReserveAndCreate(_ context.Context, task *servi
 
 type zycaHandlerCostEstimator struct{ input service.VideoTaskReserveInput }
 
+func (e *zycaHandlerCostEstimator) EstimateVideoCostForAccount(ctx context.Context, _ *service.Account, key *service.APIKey, model, resolution string, duration int) (*service.CostBreakdown, error) {
+	return e.EstimateVideoCost(ctx, key, model, resolution, duration)
+}
+
 func (e *zycaHandlerCostEstimator) EstimateVideoCost(context.Context, *service.APIKey, string, string, int) (*service.CostBreakdown, error) {
 	return &service.CostBreakdown{TotalCost: 2, ActualCost: 2}, nil
 }
@@ -75,6 +79,28 @@ func TestZYCAReservationUsesFinalAccountMappedModelForCost(t *testing.T) {
 	require.Equal(t, "minimax-h3", task.UpstreamModel)
 	require.Equal(t, "minimax-h3", estimator.input.UpstreamModel)
 	require.Same(t, account, estimator.input.Account)
+}
+
+func TestZYCAReferenceProbeFailurePreventsReservation(t *testing.T) {
+	for _, reserveEnabled := range []bool{true, false} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+		service.SetOpenAIVideoContext(c, service.OpenAIVideoContext{Model: "zyca-kling-4.0", Resolution: "720p", DurationSeconds: 10})
+		account := zycaHandlerAccount()
+		account.Credentials["model_mapping"] = map[string]any{"zyca-kling-4.0": "kling-4.0"}
+		repo, estimator := &zycaHandlerBillingRepo{}, &zycaHandlerCostEstimator{}
+		handler := &OpenAIGatewayHandler{}
+		if reserveEnabled {
+			handler.videoTaskBilling = service.NewVideoTaskBillingService(repo, estimator, nil)
+		}
+		body := []byte(`{"model":"zyca-kling-4.0","prompt":"测试","duration":10,"reference_videos":["http://127.0.0.1/private.mp4"]}`)
+		task, err := handler.reserveOpenAIVideoTask(c, &service.APIKey{ID: 11, User: &service.User{ID: 7}}, account, nil,
+			service.ChannelMappingResult{}, "zyca-kling-4.0", time.Now(), body)
+		require.ErrorContains(t, err, "任务未提交")
+		require.Nil(t, task)
+		require.Nil(t, repo.task)
+		require.Nil(t, estimator.input.Account)
+	}
 }
 
 func (r *zycaHandlerBillingRepo) UpdatePoll(_ context.Context, _ int64, outcome service.VideoTaskOutcome, _ time.Time) (*service.VideoTaskBilling, error) {

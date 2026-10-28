@@ -39,6 +39,10 @@ func (h *OpenAIGatewayHandler) reserveOpenAIVideoTask(
 		forwardModel = strings.TrimSpace(mapping.MappedModel)
 	}
 	upstreamModel := account.GetMappedModel(forwardModel)
+	billingCtx, err := h.gatewayService.PrepareZYCAReferenceBillingContext(c.Request.Context(), account, upstreamModel, body, meta.DurationSeconds)
+	if err != nil {
+		return nil, err
+	}
 	if h.videoTaskBilling == nil || !shouldReserveOpenAIVideoBilling(c, apiKey, subscription) {
 		if h.gatewayService == nil {
 			return nil, errors.New("视频计费服务不可用")
@@ -55,11 +59,11 @@ func (h *OpenAIGatewayHandler) reserveOpenAIVideoTask(
 			return nil, nil
 		}
 		// 按秒/按次视频先校验成本；售价使用入口模型，不随上游映射改变。
-		cost, err := h.gatewayService.EstimateVideoCostForAccount(c.Request.Context(), account, apiKey, model, meta.Resolution, meta.DurationSeconds)
+		cost, err := h.gatewayService.EstimateVideoCostForAccount(billingCtx, account, apiKey, model, meta.Resolution, meta.DurationSeconds)
 		if err != nil {
 			return nil, err
 		}
-		stats, err := h.gatewayService.EstimateVideoAccountStats(c.Request.Context(), service.VideoTaskReserveInput{
+		stats, err := h.gatewayService.EstimateVideoAccountStats(billingCtx, service.VideoTaskReserveInput{
 			Account: account, AccountID: account.ID, GroupID: apiKey.GroupID,
 			Model: model, UpstreamModel: upstreamModel,
 			Resolution: meta.Resolution, DurationSeconds: meta.DurationSeconds,
@@ -90,7 +94,7 @@ func (h *OpenAIGatewayHandler) reserveOpenAIVideoTask(
 	if err != nil {
 		return nil, err
 	}
-	task, err := h.videoTaskBilling.Reserve(c.Request.Context(), service.VideoTaskReserveInput{
+	task, err := h.videoTaskBilling.Reserve(billingCtx, service.VideoTaskReserveInput{
 		RequestID:           requestID,
 		Platform:            account.Platform,
 		UserID:              apiKey.User.ID,

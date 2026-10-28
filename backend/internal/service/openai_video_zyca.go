@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -22,9 +23,33 @@ type zycaVideoModelProfile struct {
 	maxImages, maxVideos, maxAudios int
 	maxReferences                   int
 	requiresReference               map[string]bool
+	allowedSeconds                  map[int]bool
+	allowedRatios                   []string
+	maxPromptRunes                  int
 }
 
 var zycaVideoModelProfiles = map[string]zycaVideoModelProfile{
+	"wan-3.0": {
+		minSeconds: 5, maxSecondsByResolution: map[string]int{VideoBillingResolution480P: 30, VideoBillingResolution720P: 30},
+		allowedSeconds: map[int]bool{5: true, 10: true, 15: true, 30: true},
+		maxImages:      10, maxVideos: 5, maxAudios: 5, maxPromptRunes: 5000,
+	},
+	"kling-4.0": {
+		minSeconds: 3, maxSecondsByResolution: map[string]int{VideoBillingResolution720P: 30, VideoBillingResolution1080P: 30},
+		maxImages: 10, maxVideos: 5, maxAudios: 3,
+	},
+	"seedance-2.5": {
+		minSeconds: 4, maxSecondsByResolution: map[string]int{VideoBillingResolution480P: 30, VideoBillingResolution720P: 30},
+		maxImages: 30, maxVideos: 10, maxAudios: 10,
+	},
+	"seedance-2.0": {
+		minSeconds: 4, maxSecondsByResolution: map[string]int{VideoBillingResolution480P: 15, VideoBillingResolution720P: 15},
+		maxImages: 9, maxVideos: 3, maxAudios: 3, allowedRatios: []string{"16:9", "9:16"},
+	},
+	"seedance-2.0-mini": {
+		minSeconds: 4, maxSecondsByResolution: map[string]int{VideoBillingResolution480P: 15, VideoBillingResolution720P: 15},
+		maxImages: 9, maxVideos: 3, maxAudios: 3, allowedRatios: []string{"16:9", "9:16"},
+	},
 	"auto-video": {
 		minSeconds: 1, maxSecondsByResolution: map[string]int{VideoBillingResolution720P: 12}, maxImages: 5,
 	},
@@ -83,13 +108,16 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 	for _, field := range []string{"duration", "seconds"} {
 		if value, exists := payload[field]; exists {
 			seconds, err := strconv.Atoi(fmt.Sprint(value))
-			if err != nil || seconds < profile.minSeconds || seconds > maxSeconds {
+			if err != nil || seconds < profile.minSeconds || seconds > maxSeconds || (profile.allowedSeconds != nil && !profile.allowedSeconds[seconds]) {
 				return OpenAIVideoPreparedRequest{}, fmt.Errorf("%s 必须为 %d 到 %d 的整数秒", field, profile.minSeconds, maxSeconds)
 			}
 		}
 	}
-	if request.DurationSeconds < profile.minSeconds || request.DurationSeconds > maxSeconds {
+	if request.DurationSeconds < profile.minSeconds || request.DurationSeconds > maxSeconds || (profile.allowedSeconds != nil && !profile.allowedSeconds[request.DurationSeconds]) {
 		return OpenAIVideoPreparedRequest{}, fmt.Errorf("视频时长必须为 %d 到 %d 秒", profile.minSeconds, maxSeconds)
+	}
+	if profile.maxPromptRunes > 0 && utf8.RuneCountInString(request.Prompt) > profile.maxPromptRunes {
+		return OpenAIVideoPreparedRequest{}, fmt.Errorf("提示词超过模型允许的 %d 字符", profile.maxPromptRunes)
 	}
 	referenceCount := len(request.ImageURLs) + len(request.VideoURLs) + len(request.AudioURLs)
 	if len(request.ImageURLs) > profile.maxImages || len(request.VideoURLs) > profile.maxVideos || len(request.AudioURLs) > profile.maxAudios ||
@@ -106,6 +134,16 @@ func PrepareZYCAVideoCreateBody(payload map[string]any, request OpenAIVideoReque
 	size, err := zycaVideoSize(payload, resolution)
 	if err != nil {
 		return OpenAIVideoPreparedRequest{}, err
+	}
+	if len(profile.allowedRatios) > 0 && size != "" {
+		allowed := false
+		for _, ratio := range profile.allowedRatios {
+			candidate, _ := zycaVideoSize(map[string]any{"aspect_ratio": ratio}, resolution)
+			allowed = allowed || size == candidate
+		}
+		if !allowed {
+			return OpenAIVideoPreparedRequest{}, fmt.Errorf("模型仅支持画面比例 %s", strings.Join(profile.allowedRatios, "、"))
+		}
 	}
 	parameters := map[string]any{"seconds": request.DurationSeconds, "resolution": resolution}
 	if request.GenerateAudio != nil {

@@ -19,6 +19,7 @@ type VideoTaskUsageContext struct {
 	PricingAt            time.Time
 	CostSnapshot         *CostBreakdown
 	AccountStatsSnapshot *VideoAccountStatsSnapshot
+	ZYCAReferenceBilling *ZYCAReferenceBillingSnapshot `json:",omitempty"`
 	ChannelUsageFields
 }
 

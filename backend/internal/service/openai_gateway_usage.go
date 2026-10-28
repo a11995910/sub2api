@@ -413,6 +413,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.VideoCount = result.VideoCount
 		usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
 		videoDurationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
+		if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA && result.VideoDurationSeconds > 0 {
+			videoDurationSeconds = result.VideoDurationSeconds
+		}
 		usageLog.VideoDurationSeconds = &videoDurationSeconds
 	}
 	if cost != nil {
@@ -965,7 +968,24 @@ func (s *OpenAIGatewayService) EstimateVideoCostForAccount(
 	model, resolution string,
 	durationSeconds int,
 ) (*CostBreakdown, error) {
-	requireExplicitPrice := ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA || VideoResolutionRequiresExplicitPrice(resolution)
+	if ResolveOpenAIVideoRequestProfile(account) == OpenAIVideoRequestProfileZYCA {
+		factor, err := zycaReferenceBillingFactor(ctx, account.ID, "", durationSeconds)
+		if err != nil {
+			return nil, err
+		}
+		cost, err := s.estimateZYCAVideoCost(ctx, apiKey, model, resolution, durationSeconds)
+		if err != nil {
+			return nil, err
+		}
+		if cost != nil && cost.BillingMode == string(BillingModeVideo) {
+			applyCostBreakdownMultiplier(cost, factor)
+		}
+		if cost == nil || !validVideoStatsAmount(cost.TotalCost) || !validVideoStatsAmount(cost.ActualCost) {
+			return nil, errors.New("ZYCA 视频费用超出有效范围")
+		}
+		return cost, nil
+	}
+	requireExplicitPrice := VideoResolutionRequiresExplicitPrice(resolution)
 	return s.estimateVideoCost(ctx, apiKey, model, resolution, durationSeconds, requireExplicitPrice)
 }
 

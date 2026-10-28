@@ -167,6 +167,10 @@ type VideoTaskCostEstimator interface {
 	EstimateVideoAccountStats(ctx context.Context, input VideoTaskReserveInput, totalCost float64) (*VideoAccountStatsSnapshot, error)
 }
 
+type videoTaskAccountCostEstimator interface {
+	EstimateVideoCostForAccount(ctx context.Context, account *Account, apiKey *APIKey, model, resolution string, durationSeconds int) (*CostBreakdown, error)
+}
+
 type VideoTaskReserveInput struct {
 	RequestID           string
 	Platform            string
@@ -213,7 +217,17 @@ func (s *VideoTaskBillingService) Reserve(ctx context.Context, input VideoTaskRe
 	if input.RequestID == "" || input.Platform == "" || input.UserID <= 0 || input.APIKeyID <= 0 || input.AccountID <= 0 || input.APIKey == nil || input.Model == "" {
 		return nil, errors.New("video task reservation input is invalid")
 	}
-	cost, err := s.estimator.EstimateVideoCost(ctx, input.APIKey, input.Model, input.Resolution, input.DurationSeconds)
+	var cost *CostBreakdown
+	var err error
+	if ResolveOpenAIVideoRequestProfile(input.Account) == OpenAIVideoRequestProfileZYCA {
+		estimator, ok := s.estimator.(videoTaskAccountCostEstimator)
+		if !ok || input.Account.ID != input.AccountID {
+			return nil, errors.New("ZYCA 视频账号计费服务不可用或账号不匹配")
+		}
+		cost, err = estimator.EstimateVideoCostForAccount(ctx, input.Account, input.APIKey, input.Model, input.Resolution, input.DurationSeconds)
+	} else {
+		cost, err = s.estimator.EstimateVideoCost(ctx, input.APIKey, input.Model, input.Resolution, input.DurationSeconds)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +244,13 @@ func (s *VideoTaskBillingService) Reserve(ctx context.Context, input VideoTaskRe
 		}
 	}
 	usageContext.CostSnapshot = &costSnapshot
+	usageContext.ZYCAReferenceBilling = nil
+	if ResolveOpenAIVideoRequestProfile(input.Account) == OpenAIVideoRequestProfileZYCA {
+		if _, err := zycaReferenceBillingFactor(ctx, input.AccountID, input.UpstreamModel, input.DurationSeconds); err != nil {
+			return nil, err
+		}
+		usageContext.ZYCAReferenceBilling = zycaReferenceSnapshot(ctx)
+	}
 	usageContext.AccountStatsSnapshot, err = s.estimator.EstimateVideoAccountStats(ctx, input, cost.TotalCost)
 	if err != nil {
 		return nil, err
