@@ -76,9 +76,30 @@ func resolveVideoAccountStatsCost(
 			if err != nil {
 				return nil, fmt.Errorf("视频上游模型 %s: %w", model, err)
 			}
+			if required {
+				factor, err := zycaReferenceBillingFactor(ctx, accountID, model, duration)
+				if err != nil {
+					return nil, err
+				}
+				*cost *= factor
+				if !validVideoStatsAmount(*cost) {
+					return nil, errors.New("ZYCA 视频成本超出有效范围")
+				}
+			}
 			return cost, nil
 		}
 		if required {
+			if pricing.BillingMode == BillingModePerRequest {
+				price, err := zycaFixedVideoPrice(pricing)
+				if err != nil {
+					return nil, err
+				}
+				cost := price * float64(count)
+				if count <= 0 || !validVideoStatsAmount(cost) {
+					return nil, errors.New("ZYCA 视频按次成本无效")
+				}
+				return &cost, nil
+			}
 			return missing()
 		}
 		// 保留其他协议历史按次计费规则，视频不尝试 token 默认价。
