@@ -3241,6 +3241,27 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
+      <div v-if="form.platform === 'openai'">
+        <label for="create-openai-transport-cooldown" class="input-label">
+          {{ t('admin.accounts.openaiTransportCooldown') }}
+        </label>
+        <input
+          id="create-openai-transport-cooldown"
+          v-model.number="openaiTransportCooldownSeconds"
+          data-testid="openai-transport-cooldown"
+          type="number"
+          min="1"
+          max="86400"
+          step="1"
+          placeholder="600"
+          aria-describedby="create-openai-transport-cooldown-hint"
+          class="input"
+        />
+        <p id="create-openai-transport-cooldown-hint" class="input-hint">
+          {{ t('admin.accounts.openaiTransportCooldownHint') }}
+        </p>
+      </div>
+
       <UpstreamRequestIdHeaderField
         v-model="upstreamRequestIdHeader"
         :platform="form.platform"
@@ -4261,6 +4282,7 @@ const oauthStepTitle = computed(() => {
 // Platform-specific hints for API Key type
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
+const openaiTransportCooldownSeconds = ref<number | ''>('')
 const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefined>(extra: T): T | Record<string, unknown> => {
   if (form.platform === 'openai' && accountCategory.value === 'oauth-based') extra = writeExcelBPSAccount(extra, excelBPS.value) as T
   const name = upstreamRequestIdHeader.value.trim()
@@ -5651,6 +5673,7 @@ const resetForm = () => {
   videoRequestProfile.value = 'auto'
   apiKeyValue.value = ''
   upstreamRequestIdHeader.value = ''
+  openaiTransportCooldownSeconds.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5760,6 +5783,13 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
+  const cooldown = openaiTransportCooldownSeconds.value
+  if (cooldown !== '' && (!Number.isInteger(cooldown) || cooldown < 1 || cooldown > 86400)) {
+    throw new Error(t('admin.accounts.openaiTransportCooldownInvalid'))
+  }
+  if (cooldown !== '') {
+    extra.openai_transport_error_cooldown_seconds = cooldown
+  }
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -5959,6 +5989,12 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  const cooldown = openaiTransportCooldownSeconds.value
+  if (form.platform === 'openai' && cooldown !== '' &&
+      (!Number.isInteger(cooldown) || cooldown < 1 || cooldown > 86400)) {
+    appStore.showError(t('admin.accounts.openaiTransportCooldownInvalid'))
+    return
+  }
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {

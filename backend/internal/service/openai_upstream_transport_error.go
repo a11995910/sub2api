@@ -2,21 +2,72 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"strings"
 	"syscall"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-// openAITransportErrorTempUnschedDuration is how long an account is temporarily
-// unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
+// 未单独配置的账号保持原有的十分钟代理／网络故障冷却。
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
+
+const OpenAITransportErrorCooldownSecondsExtraKey = "openai_transport_error_cooldown_seconds"
+
+// transportErrorCooldownSeconds 严格校验整数秒，不能截断小数或溢出后再转换。
+func transportErrorCooldownSeconds(value any) (int64, bool) {
+	var seconds float64
+	switch v := value.(type) {
+	case int:
+		seconds = float64(v)
+	case int64:
+		seconds = float64(v)
+	case float64:
+		seconds = v
+	case json.Number:
+		var err error
+		seconds, err = v.Float64()
+		if err != nil {
+			return 0, false
+		}
+	default:
+		return 0, false
+	}
+	if seconds < 1 || seconds > 86400 || seconds != math.Trunc(seconds) {
+		return 0, false
+	}
+	return int64(seconds), true
+}
+
+// ValidateOpenAITransportErrorCooldownExtra 允许缺省或 null 恢复默认值。
+func ValidateOpenAITransportErrorCooldownExtra(extra map[string]any) error {
+	value := extra[OpenAITransportErrorCooldownSecondsExtraKey]
+	if value == nil {
+		return nil
+	}
+	if _, valid := transportErrorCooldownSeconds(value); !valid {
+		return infraerrors.BadRequest("INVALID_OPENAI_TRANSPORT_ERROR_COOLDOWN", "代理／网络故障冷却时间必须为 1—86400 的整数秒，或留空使用默认 600 秒")
+	}
+	return nil
+}
+
+// OpenAITransportErrorCooldown 只影响本账号后续新触发的连接故障冷却。
+func (a *Account) OpenAITransportErrorCooldown() time.Duration {
+	if a != nil && a.Platform == PlatformOpenAI {
+		if seconds, valid := transportErrorCooldownSeconds(a.Extra[OpenAITransportErrorCooldownSecondsExtraKey]); valid {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return openAITransportErrorTempUnschedDuration
+}
 
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
@@ -183,7 +234,7 @@ func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Co
 	if s == nil || account == nil {
 		return
 	}
-	until := time.Now().Add(openAITransportErrorTempUnschedDuration)
+	until := time.Now().Add(account.OpenAITransportErrorCooldown())
 	reason := "upstream transport error (proxy/network): " + safeErr
 
 	// Immediate in-memory block so this process skips the account until the

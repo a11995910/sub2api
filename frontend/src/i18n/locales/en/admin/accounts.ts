@@ -662,6 +662,9 @@ export default {
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
       upstreamRequestIdHeader: 'Upstream ID',
+      openaiTransportCooldown: 'Proxy/network failure cooldown (seconds)',
+      openaiTransportCooldownHint: 'For connection failures such as refused proxy connections, proxy authentication failures, or DNS failures on this account. Enter an integer from 1 to 86400; leave empty for 600 seconds. Applies to future failures; an active cooldown keeps its original expiry.',
+      openaiTransportCooldownInvalid: 'Enter a whole number from 1 to 86400 seconds, or leave empty for the default 600 seconds',
       upstreamRequestIdHeaderPlaceholder: 'Leave empty to record nothing',
       upstreamRequestIdHeaderHelp: {
         intro: 'Name of the response header in which the direct upstream declares its request ID. The value is recorded in the "Upstream ID" column of the usage log; leave empty to record nothing.',

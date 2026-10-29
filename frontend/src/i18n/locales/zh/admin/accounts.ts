@@ -753,6 +753,9 @@ export default {
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
       upstreamRequestIdHeader: '上游ID',
+      openaiTransportCooldown: '代理／网络故障冷却时间（秒）',
+      openaiTransportCooldownHint: '仅针对本账号的代理拒连、鉴权、DNS 等连接故障。填写 1—86400 的整数；留空默认 600 秒。对下一次故障生效，已开始的冷却不变。',
+      openaiTransportCooldownInvalid: '代理／网络故障冷却时间必须为 1—86400 的整数秒，或留空使用默认 600 秒',
       upstreamRequestIdHeaderPlaceholder: '留空不记录',
       upstreamRequestIdHeaderHelp: {
         intro: '填写直接上游在响应头中声明请求标识的头名，记录到用量明细的“上游ID”列；留空则不记录。',

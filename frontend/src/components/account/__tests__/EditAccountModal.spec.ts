@@ -335,6 +335,57 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it.each(['oauth', 'setup-token', 'apikey'])('%s 账号读取并单独保存代理故障冷却', async (type) => {
+    const account = { ...buildAccount(), type, extra: { openai_transport_error_cooldown_seconds: 30, unrelated: true } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const input = wrapper.get('[data-testid="openai-transport-cooldown"]')
+    expect((input.element as HTMLInputElement).value).toBe('30')
+    await input.setValue('120')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      openai_transport_error_cooldown_seconds: 120, unrelated: true
+    })
+    wrapper.unmount()
+  })
+
+  it('清空冷却使用 null 恢复默认，切换账号不能沿用上一账号的值', async () => {
+    const account = { ...buildAccount(), extra: { openai_transport_error_cooldown_seconds: 30 } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="openai-transport-cooldown"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_transport_error_cooldown_seconds).toBeNull()
+    await wrapper.setProps({ account: { ...buildAccount(), id: 2 } })
+    expect((wrapper.get('[data-testid="openai-transport-cooldown"]').element as HTMLInputElement).value).toBe('')
+    await wrapper.setProps({ account: { ...account, id: 3, extra: { openai_transport_error_cooldown_seconds: 45 } } })
+    expect((wrapper.get('[data-testid="openai-transport-cooldown"]').element as HTMLInputElement).value).toBe('45')
+    wrapper.unmount()
+  })
+
+  it.each(['0', '-1', '1.5', '86401'])('编辑时拒绝非法冷却 %s 秒', async (value) => {
+    updateAccountMock.mockReset()
+    showErrorMock.mockReset()
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="openai-transport-cooldown"]').setValue(value)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.openaiTransportCooldownInvalid')
+    wrapper.unmount()
+  })
+
+  it('其他平台不显示代理网络冷却入口', () => {
+    const wrapper = mountModal({ ...buildAccount(), platform: 'anthropic' })
+    expect(wrapper.find('[data-testid="openai-transport-cooldown"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it.each([true, false])('轮候受管状态为 %s 时正确控制优先级编辑和提交', async (managed) => {
     const account = buildOpenAIOAuthParentAccount()
     updateAccountMock.mockReset().mockResolvedValue(account)

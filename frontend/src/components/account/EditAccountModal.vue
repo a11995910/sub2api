@@ -1775,6 +1775,27 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
+      <div v-if="account.platform === 'openai'">
+        <label for="edit-openai-transport-cooldown" class="input-label">
+          {{ t('admin.accounts.openaiTransportCooldown') }}
+        </label>
+        <input
+          id="edit-openai-transport-cooldown"
+          v-model.number="openaiTransportCooldownSeconds"
+          data-testid="openai-transport-cooldown"
+          type="number"
+          min="1"
+          max="86400"
+          step="1"
+          placeholder="600"
+          aria-describedby="edit-openai-transport-cooldown-hint"
+          class="input"
+        />
+        <p id="edit-openai-transport-cooldown-hint" class="input-hint">
+          {{ t('admin.accounts.openaiTransportCooldownHint') }}
+        </p>
+      </div>
+
       <UpstreamRequestIdHeaderField
         v-model="upstreamRequestIdHeader"
         :platform="account.platform"
@@ -3827,6 +3848,7 @@ const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
+const openaiTransportCooldownSeconds = ref<number | ''>('')
 const readUpstreamRequestIdHeader = (extra: unknown): string => {
   const value = (extra as Record<string, unknown> | undefined)?.upstream_request_id_header
   return typeof value === 'string' ? value : ''
@@ -4377,6 +4399,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
+  openaiTransportCooldownSeconds.value = typeof extra?.openai_transport_error_cooldown_seconds === 'number'
+    ? extra.openai_transport_error_cooldown_seconds : ''
 	openAIImagesUrlToB64JsonEnabled.value = extra?.images_url_to_b64_json === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
@@ -5386,6 +5410,12 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
+  const cooldown = openaiTransportCooldownSeconds.value
+  if (props.account.platform === 'openai' && cooldown !== '' &&
+      (!Number.isInteger(cooldown) || cooldown < 1 || cooldown > 86400)) {
+    appStore.showError(t('admin.accounts.openaiTransportCooldownInvalid'))
+    return
+  }
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
@@ -5958,6 +5988,7 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      newExtra.openai_transport_error_cooldown_seconds = cooldown === '' ? null : cooldown
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
         newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)

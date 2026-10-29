@@ -415,6 +415,9 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if err := ValidateOpenAITransportErrorCooldownExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	if err := ValidateOpenAIRequestIntegrityExtra(accountExtra); err != nil {
 		return nil, err
 	}
@@ -494,6 +497,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := ValidateOpenAITransportErrorCooldownExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -602,6 +608,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
+		if err := ValidateOpenAITransportErrorCooldownExtra(input.Extra); err != nil {
+			return nil, err
+		}
 		if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
 			return nil, err
 		}
@@ -736,6 +745,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		normalizedExtra = MergeOpenAICodexTicketExtra(RedactOpenAICodexTicketExtra(normalizedExtra), account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
+		// 其他入口编辑 extra 时保留单账号冷却；显式 null 才恢复默认值。
+		if _, provided := input.Extra[OpenAITransportErrorCooldownSecondsExtraKey]; !provided {
+			if value, exists := account.Extra[OpenAITransportErrorCooldownSecondsExtraKey]; exists {
+				normalizedExtra[OpenAITransportErrorCooldownSecondsExtraKey] = value
+			}
+		}
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
@@ -957,6 +972,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if err := ValidateOpenAITransportErrorCooldownExtra(updates); err != nil {
+		return err
+	}
 	if err := ValidateOpenAIRequestIntegrityExtra(updates); err != nil {
 		return err
 	}
@@ -995,6 +1013,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if err := ValidateOpenAITransportErrorCooldownExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
 		return nil, err
 	}

@@ -567,6 +567,33 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testi
 	}
 }
 
+func TestSchedulerCacheTransportCooldownRefresh(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	account := service.Account{ID: 77, Platform: service.PlatformOpenAI, Extra: map[string]any{
+		service.OpenAITransportErrorCooldownSecondsExtraKey: 30,
+		"unrelated": true,
+	}}
+	bucket := service.SchedulerBucket{GroupID: 77, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	for _, value := range []any{30, 120, nil} {
+		account.Extra[service.OpenAITransportErrorCooldownSecondsExtraKey] = value
+		require.NoError(t, cache.SetAccount(ctx, &account))
+		full, err := cache.GetAccount(ctx, account.ID)
+		require.NoError(t, err)
+		require.NotNil(t, full)
+		snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+		require.NoError(t, err)
+		require.True(t, hit)
+		require.Len(t, snapshot, 1)
+		require.Equal(t, account.OpenAITransportErrorCooldown(), full.OpenAITransportErrorCooldown())
+		require.Equal(t, account.OpenAITransportErrorCooldown(), snapshot[0].OpenAITransportErrorCooldown())
+		require.NotContains(t, snapshot[0].Extra, "unrelated")
+	}
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsModelRateLimits(t *testing.T) {
 	account := service.Account{
 		ID:       90,

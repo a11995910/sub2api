@@ -92,6 +92,7 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
+  methods: { reset() {} },
   emits: ['import-codex-session', 'import-codex-pat'],
   template: `
     <div>
@@ -203,6 +204,58 @@ async function openCodexImportStep(toggleClicks = 0) {
 }
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
+  it.each(['', '30', '86400'])('单账号冷却 %s 秒随新建账号保存', async (value) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('冷却测试')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-key')
+    await wrapper.get('[data-testid="openai-transport-cooldown"]').setValue(value)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const extra = createAccountMock.mock.calls[0]?.[0]?.extra
+    if (value === '') expect(extra).not.toHaveProperty('openai_transport_error_cooldown_seconds')
+    else expect(extra.openai_transport_error_cooldown_seconds).toBe(Number(value))
+    wrapper.unmount()
+  })
+
+  it.each(['0', '-1', '1.5', '86401'])('新建时拒绝非法冷却 %s 秒', async (value) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('冷却测试')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-key')
+    await wrapper.get('[data-testid="openai-transport-cooldown"]').setValue(value)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('OAuth Codex 导入沿用账号冷却，重新打开新建窗口恢复默认', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OAuth 冷却测试')
+    await wrapper.get('[data-testid="openai-transport-cooldown"]').setValue('45')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_transport_error_cooldown_seconds).toBe(45)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect((wrapper.get('[data-testid="openai-transport-cooldown"]').element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('非 OpenAI 平台隐藏代理网络冷却入口', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    expect(wrapper.find('[data-testid="openai-transport-cooldown"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
