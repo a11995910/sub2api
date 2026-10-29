@@ -204,6 +204,70 @@ func TestToUserSupportedModels_MarksVideoPricingKind(t *testing.T) {
 	require.Equal(t, modelKindVideo, models[0].Kind)
 }
 
+func TestAnnotateSupportedModelGroups_ZYCAWanPerRequest(t *testing.T) {
+	for _, profile := range []string{"zyca", "legacy", "unified_json"} {
+		t.Run(profile, func(t *testing.T) {
+			models := []userSupportedModel{{Name: "public-wan", Platform: service.PlatformOpenAI, Kind: modelKindToken,
+				Pricing: &userSupportedModelPricing{BillingMode: string(service.BillingModePerRequest)}}}
+			groups := []userAvailableGroup{{ID: 94, Platform: service.PlatformOpenAI, AllowImageGeneration: true}}
+			accounts := map[int64][]service.Account{94: {{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+				Credentials: map[string]any{"video_request_profile": profile, "model_mapping": map[string]any{"public-wan": "wan-3.0"}}}}}
+			result := annotateSupportedModelGroups(models, groups, accounts)
+			if profile != "zyca" {
+				require.Empty(t, result)
+				return
+			}
+			require.Len(t, result, 1)
+			require.Equal(t, modelKindVideo, result[0].Kind)
+			require.Equal(t, []int64{94}, result[0].GroupIDs)
+			require.Equal(t, string(service.BillingModePerRequest), result[0].Pricing.BillingMode)
+		})
+	}
+}
+
+func TestAnnotateSupportedModelGroups_WanKindsRemainGroupScoped(t *testing.T) {
+	models := []userSupportedModel{{Name: "wan-3.0", Platform: service.PlatformOpenAI, Kind: modelKindToken,
+		Pricing: &userSupportedModelPricing{BillingMode: string(service.BillingModePerRequest)}}}
+	groups := []userAvailableGroup{{ID: 94, Platform: service.PlatformOpenAI, AllowImageGeneration: true}, {ID: 95, Platform: service.PlatformOpenAI}}
+	accounts := map[int64][]service.Account{}
+	for _, group := range groups {
+		profile := "legacy"
+		if group.ID == 94 {
+			profile = "zyca"
+		}
+		accounts[group.ID] = []service.Account{{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{"video_request_profile": profile, "model_mapping": map[string]any{"wan-3.0": "wan-3.0"}}}}
+	}
+	result := annotateSupportedModelGroups(models, groups, accounts)
+	require.Len(t, result, 2)
+	require.Equal(t, modelKindVideo, result[0].Kind)
+	require.Equal(t, []int64{94}, result[0].GroupIDs)
+	require.Equal(t, modelKindToken, result[1].Kind)
+	require.Equal(t, []int64{95}, result[1].GroupIDs)
+}
+
+func TestExclusiveVideoDescriptionIsolation(t *testing.T) {
+	account := service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"video_request_profile": "zyca", "model_mapping": map[string]any{"public-wan": "wan-3.0"}}}
+	require.Contains(t, exclusiveVideoDescription("public-wan", []service.Account{account}), "参考视频不额外计费")
+	legacy := service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"video_request_profile": "legacy", "model_mapping": map[string]any{"public-wan": "wan-3.0"}}}
+	require.Empty(t, exclusiveVideoDescription("public-wan", []service.Account{account, legacy}))
+	require.Empty(t, exclusiveVideoDescription("unknown", []service.Account{account}))
+	models := []userSupportedModel{{Name: "public-wan", Kind: modelKindToken,
+		Pricing: &userSupportedModelPricing{BillingMode: string(service.BillingModePerRequest)}}}
+	for _, exclusive := range []bool{false, true} {
+		result := annotateSupportedModelGroups(models, []userAvailableGroup{{ID: 94, Platform: service.PlatformOpenAI,
+			AllowImageGeneration: true, IsExclusive: exclusive}}, map[int64][]service.Account{94: {account}})
+		require.Len(t, result, 1)
+		if exclusive {
+			require.Contains(t, result[0].DescriptionsByGroup[94], "支持5、10、15、30秒")
+		} else {
+			require.Empty(t, result[0].DescriptionsByGroup)
+		}
+	}
+}
+
 func TestAnnotateSupportedModelGroups_UsesPersistentAccountPool(t *testing.T) {
 	transientReset := time.Now().Add(time.Hour)
 	models := []userSupportedModel{

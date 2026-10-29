@@ -149,11 +149,12 @@ type userPricingIntervalDTO struct {
 
 // userSupportedModel 用户可见的支持模型条目。
 type userSupportedModel struct {
-	Name     string                     `json:"name"`
-	Platform string                     `json:"platform"`
-	Kind     string                     `json:"kind"`
-	Pricing  *userSupportedModelPricing `json:"pricing"`
-	GroupIDs []int64                    `json:"group_ids"`
+	Name                string                     `json:"name"`
+	Platform            string                     `json:"platform"`
+	Kind                string                     `json:"kind"`
+	Pricing             *userSupportedModelPricing `json:"pricing"`
+	GroupIDs            []int64                    `json:"group_ids"`
+	DescriptionsByGroup map[int64]string           `json:"descriptions_by_group,omitempty"`
 }
 
 // userChannelPlatformSection 单渠道内某个平台的子视图：用户可见的分组 + 该平台
@@ -454,20 +455,74 @@ func annotateSupportedModelGroups(
 	out := make([]userSupportedModel, 0, len(models))
 	for _, model := range models {
 		model.GroupIDs = nil
-		for _, group := range filterGroupsForModelKind(groups, model.Kind) {
+		model.DescriptionsByGroup = nil
+		originalKind := model.Kind
+		byKind := make(map[string]int)
+		for _, group := range groups {
 			accounts := accountsByGroup[group.ID]
 			for i := range accounts {
+				kind := originalKind
+				if model.Pricing != nil && model.Pricing.BillingMode == string(service.BillingModePerRequest) &&
+					service.ResolveOpenAIVideoRequestProfile(&accounts[i]) == service.OpenAIVideoRequestProfileZYCA &&
+					accounts[i].GetMappedModel(model.Name) == "wan-3.0" {
+					kind = modelKindVideo
+				}
+				if len(filterGroupsForModelKind([]userAvailableGroup{group}, kind)) == 0 {
+					continue
+				}
 				if accounts[i].IsModelSupported(model.Name) {
-					model.GroupIDs = append(model.GroupIDs, group.ID)
+					position, exists := byKind[kind]
+					if !exists {
+						entry := model
+						entry.Kind = kind
+						entry.DescriptionsByGroup = make(map[int64]string)
+						position = len(out)
+						byKind[kind] = position
+						out = append(out, entry)
+					}
+					out[position].GroupIDs = append(out[position].GroupIDs, group.ID)
+					if group.IsExclusive {
+						if description := exclusiveVideoDescription(model.Name, accounts); description != "" {
+							out[position].DescriptionsByGroup[group.ID] = description
+						}
+					}
 					break
 				}
 			}
 		}
-		if len(model.GroupIDs) > 0 {
-			out = append(out, model)
-		}
 	}
 	return out
+}
+
+func exclusiveVideoDescription(model string, accounts []service.Account) string {
+	description := ""
+	for index := range accounts {
+		account := &accounts[index]
+		if !account.IsModelSupported(model) {
+			continue
+		}
+		if service.ResolveOpenAIVideoRequestProfile(account) != service.OpenAIVideoRequestProfileZYCA {
+			return ""
+		}
+		candidate := ""
+		switch account.GetMappedModel(model) {
+		case "kling-4.0":
+			candidate = "支持3–30秒，720p/1080p，最多10图、5视频、3音频。参考视频可选。传参考视频时，参考视频的时长也会计入费用。"
+		case "seedance-2.5":
+			candidate = "支持4–30秒，480p/720p，最多30图、10视频、10音频。参考视频可选。传参考视频时，参考视频的时长也会计入费用。"
+		case "seedance-2.0", "seedance-2.0-mini":
+			candidate = "支持4–15秒，480p/720p，16:9或9:16，最多9图、3视频、3音频。参考视频可选。传参考视频时，参考视频的时长也会计入费用。"
+		case "minimax-h3-903":
+			candidate = "支持1–15秒，720p/1080p，最多9图、3音频。不支持参考视频。"
+		case "wan-3.0":
+			candidate = "支持5、10、15、30秒，480p/720p，最多10图、5视频、5音频。参考视频可选。按次收费，参考视频不额外计费。"
+		}
+		if candidate == "" || (description != "" && description != candidate) {
+			return ""
+		}
+		description = candidate
+	}
+	return description
 }
 
 // toUserSupportedModels 将 service 层支持模型转换为用户 DTO（字段白名单）。

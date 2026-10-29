@@ -169,7 +169,6 @@
 
             <p v-if="model.kind === 'video'" class="mt-3 whitespace-pre-line text-sm text-gray-600 dark:text-gray-300" data-testid="video-pricing-rules">
               {{ videoPricingRules(model, marketGroup.group) }}
-              {{ t('modelMarket.videoRules.precision') }}
             </p>
 
             <div
@@ -323,6 +322,7 @@ const PriceTile = defineComponent({
 })
 
 interface GroupMarketModel {
+  description?: string
   key: string
   name: string
   platform: string
@@ -465,6 +465,7 @@ const marketGroups = computed<MarketGroup[]>(() => {
               platform: modelPlatform,
               kind,
               pricing: model.pricing,
+              description: model.descriptions_by_group?.[group.id],
             })
           }
         }
@@ -677,6 +678,7 @@ function marketVideoResolutions(model: GroupMarketModel, group: UserAvailableGro
 }
 
 function videoPricingRules(model: GroupMarketModel, group: UserAvailableGroup): string {
+  if (model.description?.trim()) return model.description
   if (isFixedRequestVideo(model, group)) return t('modelMarket.videoRules.fixedRequest')
   if (group.video_price_480p != null || group.video_price_720p != null || group.video_price_1080p != null) {
     return t('modelMarket.videoRules.groupOverrides')

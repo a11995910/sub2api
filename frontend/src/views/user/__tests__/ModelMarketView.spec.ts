@@ -228,6 +228,7 @@ describe('ModelMarketView', () => {
       name: '测试渠道', description: '', platforms: [{
         platform: 'openai', groups: [group], supported_models: [{
           name: 'wan-3.0', platform: 'openai', kind: 'video',
+          descriptions_by_group: { 8: '支持5、10、15、30秒。参考视频可选。', 9: '其他分组说明' },
           pricing: { ...videoPricingFixture(3.6), billing_mode: 'per_request', intervals: [] },
         }],
       }],
@@ -236,6 +237,8 @@ describe('ModelMarketView', () => {
     await flushPromises()
     const card = modelCard(wrapper, 'wan-3.0')
     expect(card.text()).toContain('按次当前3.6 灵石')
+    expect(card.text()).toContain('支持5、10、15、30秒。参考视频可选。')
+    expect(card.text()).not.toContain('其他分组说明')
     expect(card.text()).not.toContain('480p /')
     expect(card.text()).not.toContain('720p /')
   })

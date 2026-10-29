@@ -88,6 +88,7 @@ export interface UserSupportedModelPricing {
 }
 
 export interface UserSupportedModel {
+  descriptions_by_group?: Record<number, string>
   name: string
   platform: string
   /** token = 文本/普通按次，image = 图片，video = 视频。旧后端可能没有该字段，前端需兜底。 */

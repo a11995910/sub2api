@@ -1258,12 +1258,12 @@ export default {
   // Model Market
   modelMarket: {
     videoRules: {
-      groupOverrides: 'Explicit group resolution prices take precedence over channel prices. Each tier states whether billing is per second or per task. Reference-media rules depend on the upstream and group description.',
+      groupOverrides: 'See below for pricing by resolution. See the group description for video parameters and reference-media requirements.',
       precision: 'Displayed prices are truncated to two decimal places. Billing uses the full configured precision.',
-      fixedRequest: 'Charged per task, not multiplied by duration. The current configuration uses one price across resolutions.',
-      perSecond: 'Charged per second. Prices below reflect configured resolution tiers. Reference-media charges depend on the upstream rules and group description; pricing tiers do not define all generation capabilities.',
-      perRequest: 'Charged per task at the configured resolution price, not multiplied by duration. Pricing tiers do not define all generation capabilities.',
-      unconfigured: 'Video billing rules are not explicitly configured. Contact the administrator before calling this model.',
+      fixedRequest: 'Charged once per generation, regardless of duration, at the same price across resolutions.',
+      perSecond: 'Charged per second. See below for prices by resolution and the group description for video parameters and reference-video billing.',
+      perRequest: 'Charged per generation, not by duration. See below for prices by resolution and the group description for video parameters and reference-media requirements.',
+      unconfigured: 'Video pricing is unavailable. Contact the administrator before use.',
     },
     title: 'Model Market',
     description: 'Browse callable models, available groups, and multiplier-adjusted Spirit Stone pricing.',
