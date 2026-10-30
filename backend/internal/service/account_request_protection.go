@@ -100,7 +100,7 @@ func (s *AccountTimeRotationService) checkRequestProtection(account *Account, no
 	}
 	id := protectionRootID(account)
 	if cfg.Mode == "paced" {
-		if cfg.Paced != nil && cfg.Paced.AccountID == id {
+		if pacedAccountSelected(cfg.Paced, id) {
 			return cfg.Paced.scheduleError(now)
 		}
 		return nil
@@ -283,7 +283,7 @@ return redis.call('ZCOUNT', KEYS[1], '('..tostring(now-60000), '+inf')
 
 // 状态读取不领取次数、不延长限速窗口。
 func (s *AccountTimeRotationService) ProtectionStatus(ctx context.Context, cfg *AccountTimeRotationConfig, account *Account, now time.Time) AccountProtectionStatus {
-	if cfg.Mode == "paced" && cfg.Paced != nil && cfg.Paced.AccountID == protectionRootID(account) {
+	if cfg.Mode == "paced" && pacedAccountSelected(cfg.Paced, protectionRootID(account)) {
 		return s.pacedStatus(ctx, cfg, account, now)
 	}
 	result := AccountProtectionStatus{AccountID: account.ID, State: "available"}

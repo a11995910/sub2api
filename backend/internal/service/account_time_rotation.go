@@ -338,6 +338,9 @@ func cloneAccountTimeRotationConfig(config *AccountTimeRotationConfig) *AccountT
 	copyConfig := *config
 	if config.Paced != nil {
 		paced := *config.Paced
+		if config.Paced.AccountIDs != nil {
+			paced.AccountIDs = append([]int64{}, config.Paced.AccountIDs...)
+		}
 		copyConfig.Paced = &paced
 	}
 	if config.RandomRest != nil {
@@ -422,8 +425,8 @@ func (s *AccountTimeRotationService) Stop() {
 // ProtectionAccountIDs 返回独立于手动/智能模式的保护账号。
 func (c *AccountTimeRotationConfig) ProtectionAccountIDs() []int64 {
 	if c.Mode == "paced" {
-		if c.Paced != nil && c.Paced.AccountID > 0 {
-			return []int64{c.Paced.AccountID}
+		if c.Paced != nil {
+			return append([]int64(nil), pacedAccountIDs(c.Paced)...)
 		}
 		return nil
 	}

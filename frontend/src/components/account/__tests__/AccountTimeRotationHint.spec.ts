@@ -38,6 +38,16 @@ describe('账号编辑时段轮候提示', () => {
     expect(wrapper.emitted('managed')?.at(-1)).toEqual([false])
     wrapper.unmount()
   })
+  it('多选策略内账号显示提示，未选账号不显示', async () => {
+    get.mockResolvedValue({ enabled: true, revision: 3, mode: 'paced', slots: [], paced: { account_ids: [1, 7], start: '08:30', end: '18:30', rpm: 40, sustained_rpm: 8, burst_capacity: 40 } })
+    const wrapper = render(); await flushPromises()
+    expect(wrapper.text()).toContain('08:30–18:30')
+    await wrapper.setProps({ accountId: 1 }); await flushPromises()
+    expect(wrapper.find('[data-testid="time-rotation-hint"]').exists()).toBe(true)
+    await wrapper.setProps({ accountId: 9 }); await flushPromises()
+    expect(wrapper.find('[data-testid="time-rotation-hint"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('显示关联时段和优先级并锁定手工编辑', async () => {
     get.mockResolvedValue(config())
     const wrapper = render()

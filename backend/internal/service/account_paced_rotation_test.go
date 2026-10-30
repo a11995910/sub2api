@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -279,15 +280,15 @@ func TestAccountPacedLuaReplayAndRedisScheduleBoundary(t *testing.T) {
 	now := time.Date(2026, 10, 26, 18, 29, 59, 0, accountRotationLocation)
 	cfg.Paced.Start, cfg.Paced.End = "08:30", "18:30"
 	mr.SetTime(now)
-	first, err := svc.runPaced(ctx, cfg.Paced, "admit", "同一请求")
+	first, err := svc.runPaced(ctx, cfg.Paced, 1, "admit", "同一请求")
 	require.NoError(t, err)
 	require.Equal(t, "admitted", first.reason)
-	second, err := svc.runPaced(ctx, cfg.Paced, "admit", "同一请求")
+	second, err := svc.runPaced(ctx, cfg.Paced, 1, "admit", "同一请求")
 	require.NoError(t, err)
 	require.Equal(t, "admitted", second.reason)
 	require.EqualValues(t, 1, rdb.ZCard(ctx, pacedKeys(1)[0]).Val())
 	mr.SetTime(now.Add(time.Second))
-	next, err := svc.runPaced(ctx, cfg.Paced, "admit", "下班后请求")
+	next, err := svc.runPaced(ctx, cfg.Paced, 1, "admit", "下班后请求")
 	require.NoError(t, err)
 	require.Equal(t, "resting", next.reason)
 	require.EqualValues(t, 1, rdb.ZCard(ctx, pacedKeys(1)[1]).Val())
@@ -378,7 +379,7 @@ func TestAccountPacedBurstThenSustainedRate(t *testing.T) {
 			for i := 0; i < rate; i++ {
 				admit()
 			}
-			usage, err := svc.runPaced(ctx, cfg.Paced, "read", "")
+			usage, err := svc.runPaced(ctx, cfg.Paced, 1, "read", "")
 			require.NoError(t, err)
 			require.Equal(t, "sustained", usage.reason)
 			require.Zero(t, usage.units)
@@ -391,13 +392,13 @@ func TestAccountPacedBurstThenSustainedRate(t *testing.T) {
 				mr.SetTime(base.Add(time.Minute + time.Duration(i)*interval))
 				admit()
 			}
-			usage, err = svc.runPaced(ctx, cfg.Paced, "read", "")
+			usage, err = svc.runPaced(ctx, cfg.Paced, 1, "read", "")
 			require.NoError(t, err)
 			require.Equal(t, rate, usage.minute)
 			require.Zero(t, usage.units)
 			// 无请求时只补充到桶容量，不制造流量。
 			mr.SetTime(base.Add(40 * time.Minute))
-			usage, err = svc.runPaced(ctx, cfg.Paced, "read", "")
+			usage, err = svc.runPaced(ctx, cfg.Paced, 1, "read", "")
 			require.NoError(t, err)
 			require.Equal(t, 40*60000, usage.units)
 			require.Zero(t, usage.minute)
@@ -433,7 +434,7 @@ func TestAccountPacedSharedTokensAcrossInstancesAndShadows(t *testing.T) {
 	}
 	wg.Wait()
 	require.EqualValues(t, 5, count.Load())
-	usage, err := svc.runPaced(context.Background(), cfg.Paced, "read", "")
+	usage, err := svc.runPaced(context.Background(), cfg.Paced, 1, "read", "")
 	require.NoError(t, err)
 	require.Zero(t, usage.units)
 	require.Zero(t, usage.active)
@@ -544,4 +545,100 @@ func TestAccountPacedLegacyConfigAndBucketInitialization(t *testing.T) {
 	require.NoError(t, rdb.HSet(ctx, pacedKeys(1)[3], "units", "损坏").Err())
 	_, err = svc.BeginProtectedRequest(ctx, protectionTestAccount(1))
 	pacedErrorCode(t, err, "account_protection_unavailable")
+}
+
+func TestAccountPacedMultipleAccountsValidationAndCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		ids      []int64
+		legacy   int64
+		enabled  bool
+		valid    bool
+		expected []int64
+	}{
+		{"兼容单账号", nil, 1, true, true, []int64{1}},
+		{"多选覆盖旧字段", []int64{2, 3}, 1, true, true, []int64{2, 3}},
+		{"停用可清空且不恢复旧字段", []int64{}, 1, false, true, nil},
+		{"启用必须选账号", []int64{}, 1, true, false, nil},
+		{"重复账号", []int64{1, 1}, 0, true, false, nil},
+		{"零账号", []int64{0}, 0, false, false, nil},
+		{"负账号", []int64{-1}, 0, false, false, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &AccountTimeRotationConfig{Enabled: tc.enabled, Mode: "paced", Paced: &AccountPacedConfig{AccountID: tc.legacy, AccountIDs: tc.ids, Start: "08:30", End: "18:30", RPM: 40, SustainedRPM: 8, BurstCapacity: 40, MaxConcurrency: 12}}
+			if !tc.valid {
+				require.Error(t, cfg.Validate())
+				return
+			}
+			require.NoError(t, cfg.Validate())
+			require.Equal(t, tc.expected, cfg.ProtectionAccountIDs())
+			cloned := cloneAccountTimeRotationConfig(cfg)
+			raw, err := json.Marshal(cloned)
+			require.NoError(t, err)
+			var restored AccountTimeRotationConfig
+			require.NoError(t, json.Unmarshal(raw, &restored))
+			require.NoError(t, restored.Validate())
+			require.Equal(t, tc.expected, restored.ProtectionAccountIDs())
+			if len(cloned.Paced.AccountIDs) > 0 {
+				cloned.Paced.AccountIDs[0] = 99
+				require.Equal(t, tc.expected, cfg.ProtectionAccountIDs(), "快照必须深复制账号列表")
+			}
+		})
+	}
+}
+
+func TestAccountPacedMultipleAccountsKeepIndependentCapacity(t *testing.T) {
+	svc, _, rdb, cfg := pacedFixture(t)
+	cfg.Paced.AccountIDs = []int64{1, 3}
+	cfg.Paced.BurstCapacity, cfg.Paced.MaxConcurrency = 1, 1
+	require.NoError(t, cfg.Validate())
+	svc.publish(cfg, time.Now())
+	ctx := context.Background()
+	first, second := protectionTestAccount(1), protectionTestAccount(3)
+	shadow := protectionTestAccount(4)
+	shadow.ParentAccountID = &second.ID
+	releaseFirst, err := svc.BeginProtectedRequest(ctx, first)
+	require.NoError(t, err)
+	defer releaseFirst()
+	_, err = svc.BeginProtectedRequest(ctx, first)
+	pacedErrorCode(t, err, "account_rate_limited")
+	// 首个根账号耗尽额度后，另一个根账号仍可通过自己的影子账号发送。
+	releaseSecond, err := svc.BeginProtectedRequest(ctx, shadow)
+	require.NoError(t, err)
+	defer releaseSecond()
+	_, err = svc.BeginProtectedRequest(ctx, second)
+	pacedErrorCode(t, err, "account_rate_limited")
+	for _, account := range []*Account{first, second, shadow} {
+		state := svc.ProtectionStatus(ctx, cfg, account, time.Now())
+		require.NotNil(t, state.Used)
+		require.Equal(t, 1, *state.Used)
+		require.Equal(t, 1, state.InFlight)
+	}
+	releaseFirst()
+	require.EqualValues(t, 0, rdb.ZCard(ctx, pacedKeys(first.ID)[1]).Val())
+	require.EqualValues(t, 1, rdb.ZCard(ctx, pacedKeys(second.ID)[1]).Val())
+	// 移除账号后不再准入计数，但已开始请求仍能清理自己的在途记录。
+	cfg.Paced.AccountIDs = []int64{1}
+	svc.publish(cfg, time.Now())
+	done, err := svc.BeginProtectedRequest(ctx, second)
+	require.NoError(t, err)
+	done()
+	releaseSecond()
+	require.EqualValues(t, 0, rdb.ZCard(ctx, pacedKeys(second.ID)[1]).Val())
+	require.EqualValues(t, 1, rdb.ZCard(ctx, pacedKeys(second.ID)[0]).Val())
+}
+
+func TestAccountPacedMultipleAccountsShareSchedule(t *testing.T) {
+	svc, _, _, cfg := pacedFixture(t)
+	now := time.Now().In(accountRotationLocation)
+	cfg.Paced.AccountIDs = []int64{1, 3}
+	cfg.Paced.Start, cfg.Paced.End = now.Add(time.Hour).Format("15:04"), now.Add(2*time.Hour).Format("15:04")
+	svc.publish(cfg, now)
+	shadow := protectionTestAccount(4)
+	rootID := int64(3)
+	shadow.ParentAccountID = &rootID
+	for _, account := range []*Account{protectionTestAccount(1), protectionTestAccount(3), shadow} {
+		pacedErrorCode(t, svc.CheckRequestProtection(account, now), "account_resting")
+	}
+	require.NoError(t, svc.CheckRequestProtection(protectionTestAccount(9), now))
 }

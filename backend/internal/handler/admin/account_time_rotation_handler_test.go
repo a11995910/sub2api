@@ -190,20 +190,23 @@ func TestAccountProtectionStatusManualAndGroupScope(t *testing.T) {
 }
 
 func TestAccountPacedStatusPreservesUnknownCountersAndGroupScope(t *testing.T) {
-	cfg := &service.AccountTimeRotationConfig{Enabled: true, Mode: "paced", Revision: 9, Paced: &service.AccountPacedConfig{AccountID: 1, Start: "08:30", End: "18:30", RPM: 40, SustainedRPM: 8, BurstCapacity: 40, MaxConcurrency: 12, MaxWaitSeconds: 15}}
+	cfg := &service.AccountTimeRotationConfig{Enabled: true, Mode: "paced", Revision: 9, Paced: &service.AccountPacedConfig{AccountIDs: []int64{1, 2}, Start: "08:30", End: "18:30", RPM: 40, SustainedRPM: 8, BurstCapacity: 40, MaxConcurrency: 12, MaxWaitSeconds: 15}}
 	repo := &rotationStatusConfigRepo{config: cfg}
-	accounts := &rotationStatusAccountRepo{accounts: []*service.Account{{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, GroupIDs: []int64{73}}}}
+	accounts := &rotationStatusAccountRepo{accounts: []*service.Account{{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, GroupIDs: []int64{73}}, {ID: 2, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, GroupIDs: []int64{74}}}}
 	router, _ := newRotationStatusRouter(t, repo, accounts, true)
 	result := readRotationStatus(t, router, "")
 	require.True(t, result.Ready)
 	require.Equal(t, "paced", result.Mode)
 	require.Empty(t, result.Accounts)
-	require.Len(t, result.Protection, 1)
+	require.Len(t, result.Protection, 2)
 	require.Equal(t, "account_protection_unavailable", result.Protection[0].State)
 	require.Nil(t, result.Protection[0].Used, "Redis未连接不能把未知用量当零")
 	require.Equal(t, 8, result.Protection[0].Paced.SustainedRPM)
 	require.Equal(t, 12, result.Protection[0].Paced.MaxConcurrency)
-	require.Empty(t, readRotationStatus(t, router, "?group_id=74").Protection)
+	group := readRotationStatus(t, router, "?group_id=74")
+	require.Len(t, group.Protection, 1)
+	require.EqualValues(t, 2, group.Protection[0].AccountID)
+	require.Empty(t, readRotationStatus(t, router, "?group_id=75").Protection)
 	repo.config.Revision++
 	require.False(t, readRotationStatus(t, router, "").Ready)
 }

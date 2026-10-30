@@ -45,7 +45,7 @@ watch(() => props.accountId, async (id, _, onCleanup) => {
     const mode = config.mode || 'manual'
     slot.value = mode === 'manual' ? config.slots.find(item => item.account_ids.includes(id)) || null : null
     smartManaged.value = mode === 'smart' && Boolean(config.smart?.account_ids.includes(id))
-    paced.value = mode === 'paced' && config.paced?.account_id === id ? config.paced : null
+    paced.value = mode === 'paced' && config.paced && (config.paced.account_ids ?? (config.paced.account_id ? [config.paced.account_id] : [])).includes(id) ? config.paced : null
     enabled.value = config.enabled
     // 智能轮候只展示受管状态，不锁定账号编辑页的数据库 priority。
     emit('managed', Boolean(slot.value && enabled.value))

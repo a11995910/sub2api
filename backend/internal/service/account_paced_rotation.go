@@ -13,9 +13,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// AccountPacedConfig 将一个根账号的接单时段和发送容量放在同一策略中。
+// AccountPacedConfig 为所选根账号配置统一时段和各自独立的发送容量。
 type AccountPacedConfig struct {
-	AccountID     int64  `json:"account_id"`
+	// AccountIDs 是启用同一接单策略的根账号列表。
+	AccountIDs []int64 `json:"account_ids"`
+	// AccountID 仅在缺少 AccountIDs 时兼容历史单账号配置。
+	AccountID     int64  `json:"account_id,omitempty"`
 	Start         string `json:"start"`
 	End           string `json:"end"`
 	RPM           int    `json:"rpm"`
@@ -28,12 +31,54 @@ type AccountPacedConfig struct {
 	MaxWaitSeconds   int `json:"max_wait_seconds"`
 }
 
+func pacedAccountSelected(p *AccountPacedConfig, id int64) bool {
+	if p == nil || id <= 0 {
+		return false
+	}
+	for _, selected := range pacedAccountIDs(p) {
+		if selected == id {
+			return true
+		}
+	}
+	return false
+}
+
+func pacedAccountIDs(p *AccountPacedConfig) []int64 {
+	if p == nil {
+		return nil
+	}
+	if p.AccountIDs != nil {
+		return p.AccountIDs
+	}
+	if p.AccountID > 0 {
+		return []int64{p.AccountID}
+	}
+	return nil
+}
+
 func (p *AccountPacedConfig) validate(enabled bool) error {
 	if p == nil {
-		return fmt.Errorf("请填写单账号接单规则")
+		return fmt.Errorf("请填写账号接单规则")
 	}
-	if p.AccountID < 0 || (enabled && p.AccountID == 0) {
-		return fmt.Errorf("启用前请选择一个独立 OpenAI OAuth 根账号")
+	if p.AccountIDs != nil {
+		p.AccountID = 0
+	}
+	if p.AccountID < 0 {
+		return fmt.Errorf("接单账号 ID 无效")
+	}
+	selectedIDs := pacedAccountIDs(p)
+	if enabled && len(selectedIDs) == 0 {
+		return fmt.Errorf("启用前请选择至少一个独立 OpenAI OAuth 根账号")
+	}
+	seen := make(map[int64]struct{}, len(selectedIDs))
+	for _, id := range selectedIDs {
+		if id <= 0 {
+			return fmt.Errorf("接单账号 ID 无效")
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("接单账号不能重复选择")
+		}
+		seen[id] = struct{}{}
 	}
 	start, err := rotationMinute(p.Start, false)
 	if err != nil {
@@ -98,7 +143,7 @@ func (s *AccountTimeRotationService) pacedPolicy(account *Account) (*AccountPace
 	if err != nil {
 		return nil, err
 	}
-	if cfg == nil || !cfg.Enabled || cfg.Mode != "paced" || cfg.Paced == nil || cfg.Paced.AccountID != protectionRootID(account) {
+	if cfg == nil || !cfg.Enabled || cfg.Mode != "paced" || cfg.Paced == nil || !pacedAccountSelected(cfg.Paced, protectionRootID(account)) {
 		return nil, nil
 	}
 	return cfg.Paced, nil
@@ -196,7 +241,7 @@ func pacedKeys(id int64) []string {
 	return []string{key + ":history", key + ":active", key + ":waiters", key + ":bucket"}
 }
 
-func (s *AccountTimeRotationService) runPaced(ctx context.Context, p *AccountPacedConfig, op, token string) (pacedUsage, error) {
+func (s *AccountTimeRotationService) runPaced(ctx context.Context, p *AccountPacedConfig, accountID int64, op, token string) (pacedUsage, error) {
 	var usage pacedUsage
 	unavailable := func() (pacedUsage, error) {
 		return usage, accountProtectionWaitError("account_protection_unavailable", "账号接单状态暂不可用，请稍后重试")
@@ -204,11 +249,14 @@ func (s *AccountTimeRotationService) runPaced(ctx context.Context, p *AccountPac
 	if s.protectionRedis == nil {
 		return unavailable()
 	}
+	if accountID <= 0 {
+		return unavailable()
+	}
 	start, _ := rotationMinute(p.Start, false)
 	end, _ := rotationMinute(p.End, true)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	values, err := accountPacedWindow.Run(ctx, s.protectionRedis, pacedKeys(p.AccountID), op, token, p.RPM, p.SustainedRPM, p.BurstCapacity, p.MaxConcurrency, start, end).StringSlice()
+	values, err := accountPacedWindow.Run(ctx, s.protectionRedis, pacedKeys(accountID), op, token, p.RPM, p.SustainedRPM, p.BurstCapacity, p.MaxConcurrency, start, end).StringSlice()
 	if err != nil || len(values) != 6 {
 		return unavailable()
 	}
@@ -272,7 +320,8 @@ func (s *AccountTimeRotationService) beginPacedRequest(ctx context.Context, acco
 	defer endClientWait()
 	started := time.Now()
 	deadline := started.Add(time.Duration(initial.MaxWaitSeconds) * time.Second)
-	token, id := rand.Text(), initial.AccountID
+	id := protectionRootID(account)
+	token := rand.Text()
 	queued, attempted, admitted := false, false, false
 	lastRetry := 1
 	defer func() {
@@ -314,7 +363,7 @@ func (s *AccountTimeRotationService) beginPacedRequest(ctx context.Context, acco
 		if queued {
 			opCtx, opCancel = context.WithDeadline(ctx, deadline)
 		}
-		usage, err := s.runPaced(opCtx, policy, "admit", token)
+		usage, err := s.runPaced(opCtx, policy, id, "admit", token)
 		opCancel()
 		if err != nil {
 			if ctx.Err() != nil {
@@ -387,7 +436,7 @@ func (s *AccountTimeRotationService) pacedStatus(ctx context.Context, cfg *Accou
 	if !cfg.Enabled {
 		return result
 	}
-	usage, err := s.runPaced(ctx, p, "read", "")
+	usage, err := s.runPaced(ctx, p, protectionRootID(account), "read", "")
 	if err != nil {
 		result.State = "account_protection_unavailable"
 		return result

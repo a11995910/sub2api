@@ -32,7 +32,10 @@ export interface AccountTimeRotationConfig {
 }
 
 export interface AccountPacedConfig {
-  account_id: number
+  /** 多选的独立 OpenAI OAuth 根账号；旧服务端可能只返回 account_id。 */
+  account_ids?: number[] | null
+  /** 兼容历史单账号配置。 */
+  account_id?: number
   start: string
   end: string
   rpm: number

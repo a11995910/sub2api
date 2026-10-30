@@ -49,7 +49,7 @@ func (s *AccountTimeRotationService) requestLimit(account *Account) int {
 	if err != nil || cfg == nil || !cfg.Enabled {
 		return 0
 	}
-	if cfg.Mode == "paced" && cfg.Paced != nil && cfg.Paced.AccountID == protectionRootID(account) {
+	if cfg.Mode == "paced" && pacedAccountSelected(cfg.Paced, protectionRootID(account)) {
 		return cfg.Paced.RPM
 	}
 	for _, limit := range cfg.RequestLimits {

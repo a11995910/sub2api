@@ -33,16 +33,22 @@
               <h2 class="font-semibold">{{ t('timeRotation.paced.schedule') }}</h2>
               <label class="flex items-center gap-2 text-sm"><input v-model="enabled" type="checkbox" :disabled="saving" data-testid="rotation-enabled" />{{ t('timeRotation.enabled') }}</label>
             </div>
-            <label class="block text-sm">
-              {{ t('timeRotation.paced.account') }}
-              <input v-model="query" type="search" class="input mt-2" :placeholder="t('timeRotation.search')" :disabled="saving" data-testid="account-search" />
-              <select v-model.number="policy.account_id" class="input mt-2" :disabled="saving" data-testid="paced-account">
-                <option :value="0">{{ t('timeRotation.paced.chooseAccount') }}</option>
-                <option v-for="account in candidates" :key="account.id" :value="account.id">{{ account.name }} · #{{ account.id }}</option>
-                <option v-if="policy.account_id && !accounts.some(a => a.id === policy.account_id)" :value="policy.account_id">{{ t('timeRotation.missingAccount', { id: policy.account_id }) }}</option>
-              </select>
-            </label>
-            <p v-if="selectedAccount && (selectedAccount.status !== 'active' || !selectedAccount.schedulable)" class="text-sm text-amber-700">{{ t('timeRotation.paced.accountUnavailable') }}</p>
+            <fieldset class="text-sm" :disabled="saving">
+              <legend>{{ t('timeRotation.paced.chooseAccount') }}</legend>
+              <input v-model="query" type="search" class="input mt-2" :placeholder="t('timeRotation.search')" :aria-label="t('timeRotation.search')" data-testid="account-search" />
+              <div class="mt-2 max-h-60 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-dark-600" data-testid="paced-account">
+                <label v-for="account in candidates" :key="account.id" class="flex cursor-pointer items-center gap-2 rounded p-2 hover:bg-gray-50 dark:hover:bg-dark-800">
+                  <input v-model="policy.account_ids" type="checkbox" :value="account.id" />
+                  <span>{{ account.name }} · #{{ account.id }}</span>
+                </label>
+                <label v-for="id in selectedAccountIdsMissing" :key="`missing-${id}`" class="flex items-center gap-2 p-2 text-amber-700">
+                  <input v-model="policy.account_ids" type="checkbox" :value="id" />
+                  <span>{{ t('timeRotation.missingAccount', { id }) }}</span>
+                </label>
+              </div>
+              <p class="mt-2 text-xs text-gray-500">{{ t('timeRotation.paced.selectedCount', { count: selectedAccountIds.length }) }} · {{ t('timeRotation.paced.account') }}</p>
+            </fieldset>
+            <p v-if="selectedAccounts.some(account => account.status !== 'active' || !account.schedulable)" class="text-sm text-amber-700">{{ t('timeRotation.paced.accountUnavailable') }}</p>
             <div class="grid grid-cols-2 gap-4">
               <label class="text-sm">{{ t('timeRotation.start') }}<input v-model="policy.start" class="input mt-2" type="time" :disabled="saving" data-testid="paced-start" /></label>
               <label class="text-sm">{{ t('timeRotation.end') }}<input v-model="policy.end" class="input mt-2" type="text" placeholder="18:30" :disabled="saving" data-testid="paced-end" /></label>
@@ -80,13 +86,15 @@
           <p v-if="statusError || !status" class="text-sm text-amber-700">{{ t('timeRotation.statusUnavailable') }}</p>
           <template v-else>
             <p class="text-sm">{{ t('timeRotation.savedRevision', { n: status.revision }) }} · {{ statusMessage }}</p>
-            <template v-if="live && live.paced && status.ready && status.mode === 'paced'">
-              <p class="text-sm font-medium">{{ accountName(live.account_id) }} · {{ liveState }}</p>
-              <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                <div v-for="metric in liveMetrics" :key="metric.label" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800"><p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold tabular-nums">{{ metric.value }}</p></div>
+            <template v-if="liveItems.length && status.ready && status.mode === 'paced'">
+              <div v-for="item in liveItems" :key="item.account_id" class="space-y-3">
+                <p class="text-sm font-medium">{{ accountName(item.account_id) }} · {{ liveState(item) }}</p>
+                <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <div v-for="metric in liveMetrics(item)" :key="metric.label" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800"><p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold tabular-nums">{{ metric.value }}</p></div>
+                </div>
+                <p v-if="item.paced" class="text-sm text-gray-500">{{ t(item.paced.schedule_open ? 'timeRotation.paced.closesAt' : 'timeRotation.paced.opensAt', { time: formatTime(item.paced.next_change_at) }) }}</p>
+                <p v-if="item.paced && item.paced.retry_after > 0 && item.state === 'account_rate_limited'" class="text-sm text-amber-700">{{ t('timeRotation.paced.blocked', { reason: t(`timeRotation.paced.reasons.${item.paced.blocked_by}`), seconds: item.paced.retry_after }) }}</p>
               </div>
-              <p class="text-sm text-gray-500">{{ t(live.paced.schedule_open ? 'timeRotation.paced.closesAt' : 'timeRotation.paced.opensAt', { time: formatTime(live.paced.next_change_at) }) }}</p>
-              <p v-if="live.paced.retry_after > 0 && live.state === 'account_rate_limited'" class="text-sm text-amber-700">{{ t('timeRotation.paced.blocked', { reason: t(`timeRotation.paced.reasons.${live.paced.blocked_by}`), seconds: live.paced.retry_after }) }}</p>
             </template>
           </template>
           <p class="text-xs leading-5 text-gray-500">{{ t('timeRotation.paced.statusHint') }}</p>
@@ -108,7 +116,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const defaults = (): AccountPacedConfig => ({ account_id: 0, start: '08:30', end: '18:30', rpm: 40, sustained_rpm: 8, burst_capacity: 40, max_concurrency: 12, max_wait_seconds: 15 })
+const defaults = (): AccountPacedConfig => ({ account_ids: [], start: '08:30', end: '18:30', rpm: 40, sustained_rpm: 8, burst_capacity: 40, max_concurrency: 12, max_wait_seconds: 15 })
 const fields = [
   { key: 'sustained_rpm', min: 1, max: 10000 }, { key: 'burst_capacity', min: 1, max: 10000 },
   { key: 'rpm', min: 1, max: 10000 }, { key: 'max_concurrency', min: 1, max: 1000 },
@@ -136,18 +144,25 @@ let mounted = true
 const serialize = () => JSON.stringify({ enabled: enabled.value, paced: policy.value })
 const dirty = computed(() => ready.value && snapshot.value !== serialize())
 const replacingLegacy = computed(() => Boolean(saved.value?.enabled && saved.value.mode !== 'paced'))
-const selectedAccount = computed(() => accounts.value.find(a => a.id === policy.value.account_id))
-const candidates = computed(() => accounts.value.filter(a => a.id === policy.value.account_id || !query.value.trim() || `${a.name} ${a.id}`.toLowerCase().includes(query.value.trim().toLowerCase())))
-const live = computed(() => status.value?.protection?.find(item => item.account_id === saved.value?.paced?.account_id))
+const selectedAccountIds = computed(() => {
+  return policy.value.account_ids ?? []
+})
+const selectedAccounts = computed(() => accounts.value.filter(a => selectedAccountIds.value.includes(a.id)))
+const selectedAccountIdsMissing = computed(() => selectedAccountIds.value.filter(id => !accounts.value.some(a => a.id === id)))
+const candidates = computed(() => accounts.value.filter(a => selectedAccountIds.value.includes(a.id) || !query.value.trim() || `${a.name} ${a.id}`.toLowerCase().includes(query.value.trim().toLowerCase())))
+const liveItems = computed(() => {
+  const p = saved.value?.paced
+  const ids = p?.account_ids ?? (p?.account_id ? [p.account_id] : [])
+  return status.value?.protection?.filter(item => ids.includes(item.account_id)) || []
+})
 const statusMessage = computed(() => {
   if (!status.value?.ready) return t('timeRotation.paced.statusStale')
   if (!status.value.enabled) return t('timeRotation.statusDisabled')
   if (status.value.mode !== 'paced') return t('timeRotation.paced.legacyRunning')
   return t('timeRotation.paced.statusReady')
 })
-const liveState = computed(() => t(`timeRotation.paced.states.${live.value?.state || 'account_protection_unavailable'}`))
-const liveMetrics = computed(() => {
-  const item = live.value
+function liveState(item: NonNullable<TimeRotationStatus['protection']>[number]) { return t(`timeRotation.paced.states.${item.state || 'account_protection_unavailable'}`) }
+function liveMetrics(item: NonNullable<TimeRotationStatus['protection']>[number]) {
   const p = item?.paced
   const known = item && item.used != null && item.state !== 'account_protection_unavailable'
   return [
@@ -157,7 +172,7 @@ const liveMetrics = computed(() => {
     { label: t('timeRotation.paced.fields.max_concurrency'), value: known && p ? `${item.in_flight} / ${p.max_concurrency}` : '—' },
     { label: t('timeRotation.paced.waiting'), value: known && p ? String(p.waiting) : '—' }
   ]
-})
+}
 function minute(value: string, end = false) {
   if (end && value === '24:00') return 1440
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return -1
@@ -172,7 +187,8 @@ const scheduleParts = computed(() => {
 const workMinutes = computed(() => scheduleParts.value.reduce((sum, part) => sum + part.length, 0))
 function valid() {
   const p = policy.value
-  return Number.isSafeInteger(p.account_id) && p.account_id >= 0 && (!enabled.value || (p.account_id > 0 && !!selectedAccount.value)) &&
+  return selectedAccountIds.value.every(id => Number.isSafeInteger(id) && id > 0) &&
+    (!enabled.value || (selectedAccountIds.value.length > 0 && selectedAccounts.value.length === selectedAccountIds.value.length)) &&
     workMinutes.value > 0 && workMinutes.value < 1440 && fields.every(f => Number.isInteger(p[f.key]) && p[f.key] >= f.min && p[f.key] <= f.max) &&
     p.sustained_rpm <= p.rpm && p.burst_capacity <= p.rpm
 }
@@ -183,7 +199,10 @@ function formatTime(value: string) {
 }
 function apply(value: AccountTimeRotationConfig) {
   saved.value = value
-  policy.value = value.mode === 'paced' && value.paced ? { ...value.paced } : defaults()
+  if (value.mode === 'paced' && value.paced) {
+    const ids = value.paced.account_ids != null ? [...value.paced.account_ids] : (value.paced.account_id ? [value.paced.account_id] : [])
+    policy.value = { ...value.paced, account_id: undefined, account_ids: ids }
+  } else policy.value = defaults()
   enabled.value = value.mode === 'paced' && value.enabled
   replaceConfirmed.value = false
   snapshot.value = serialize()
