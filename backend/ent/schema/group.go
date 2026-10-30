@@ -145,7 +145,7 @@ func (Group) Fields() []ent.Field {
 		field.Float("cache_hit_target_tolerance_percent").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(5,2)"}).
 			Default(0.5).
-			Comment("缓存命中率目标容差百分比；累计值超过目标加容差时回调到目标"),
+			Comment("缓存命中率目标容差百分比；限制单条请求平滑纠正历史偏差的幅度"),
 		field.Float("cache_hit_half_life_days").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(8,2)"}).
 			Default(1.0).

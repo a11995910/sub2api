@@ -76,14 +76,18 @@ end
 local prompt_total = historical_prompt + prompt_delta
 local cache_available = historical_cache + cache_delta
 local target_allowed = math.floor(prompt_total * target / 10000)
-local trigger = target + tolerance
-local trigger_allowed = math.floor(prompt_total * trigger / 10000)
-local shifted = 0
-if cache_available > trigger_allowed then
-	-- 容差带允许历史累计暂时高于目标；触发时只能重分类本次请求实际拥有的缓存读取 token，
-	-- 不能回溯改写已落库请求，否则 Redis 累计会与真实账单不一致。
-	shifted = math.min(math.ceil(cache_available - target_allowed), cache_delta)
-end
+-- 每条分摊自身超过配置目标的部分，历史偏差只按本条的提示词权重逐步纠正。
+-- 纠偏幅度受管理员配置的容差约束，不再把历史差额集中补扣到某一条请求。
+local history_error = historical_cache - historical_prompt * target / 10000
+local request_tolerance = prompt_delta * tolerance / 10000
+local correction = history_error * prompt_delta / prompt_total
+correction = math.max(-request_tolerance, math.min(request_tolerance, correction))
+local smooth_shift = cache_delta - prompt_delta * target / 10000 + correction
+-- 累计低于目标时保留原有额度；取整后仍保留至少一个真实缓存 token，避免小请求被清空。
+-- 上游原本没有缓存时不生成缓存。仅使用已有目标和容差，不引入额外比例或默认上限。
+local shifted = math.min(math.max(0, cache_delta - 1),
+	math.max(0, math.floor(smooth_shift + 0.5)),
+	math.max(0, math.ceil(cache_available - target_allowed)))
 local cache_kept = cache_available - shifted
 local result_prompt = math.floor(prompt_total + 0.5)
 local result_cache = math.floor(cache_kept + 0.5)

@@ -2515,7 +2515,7 @@ export default {
         cacheHitTargetTolerancePercent: 'Tolerance band',
         cacheHitHalfLifeDays: 'History half-life',
         daysUnit: 'days',
-        cacheHitTargetPercentHint: 'Defaults to a 90% target, ±0.50% tolerance, and a 1-day history half-life. Other protocols, non-streaming, WebSocket, compact, input_tokens, image, and video requests are unaffected.',
+        cacheHitTargetPercentHint: 'Spread adjustments across requests using the configured target. Correct historical drift gradually within the configured tolerance while preserving some upstream cache for each request. Insufficient upstream cache cannot be raised to the target. Other protocols, non-streaming, WebSocket, compact, input_tokens, image, and video requests are unaffected.',
         cacheHitTargetPercentInvalid: 'Target cache hit rate must be between 0.01% and 100%.',
         cacheHitTargetTolerancePercentInvalid: 'Tolerance must be between 0% and 50%, and target ± tolerance must remain between 0% and 100%.',
         cacheHitHalfLifeDaysInvalid: 'History half-life must be between 0.01 and 365 days.'

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 
@@ -43,12 +44,15 @@ func (m *memoryCacheHitTargetTracker) AdjustCacheHitToTarget(
 	cacheAvailable := state[1] + cacheReadTokens
 	targetAllowed := (promptTotal/cacheHitTargetBasisPoints)*targetBasisPoints +
 		(promptTotal%cacheHitTargetBasisPoints)*targetBasisPoints/cacheHitTargetBasisPoints
-	triggerBasisPoints := targetBasisPoints + toleranceBasisPoints
-	triggerAllowed := (promptTotal/cacheHitTargetBasisPoints)*triggerBasisPoints +
-		(promptTotal%cacheHitTargetBasisPoints)*triggerBasisPoints/cacheHitTargetBasisPoints
-	shifted := int64(0)
-	if cacheAvailable > triggerAllowed {
-		shifted = min(cacheAvailable-targetAllowed, cacheReadTokens)
+	// 此替身用于流式计费链路；控制器的实际 Lua 算法由 repository 的 Redis 测试覆盖。
+	historyError := float64(state[1]) - float64(state[0])*float64(targetBasisPoints)/10000
+	requestTolerance := float64(promptTokens) * float64(toleranceBasisPoints) / 10000
+	correction := historyError * float64(promptTokens) / float64(promptTotal)
+	correction = math.Max(-requestTolerance, math.Min(requestTolerance, correction))
+	smoothShift := float64(cacheReadTokens) - float64(promptTokens)*float64(targetBasisPoints)/10000 + correction
+	shifted := min(cacheReadTokens-1, int64(math.Floor(smoothShift+0.5)), cacheAvailable-targetAllowed)
+	if shifted < 0 {
+		shifted = 0
 	}
 	cacheKept := cacheAvailable - shifted
 	m.states[key] = [2]int64{promptTotal, cacheKept}
@@ -307,14 +311,14 @@ func TestApplyCacheHitTargetToInput_ToleranceAndIntegerRecovery(t *testing.T) {
 	}
 	tracker := &memoryCacheHitTargetTracker{}
 
-	// 9 个全命中 token 触发后受整数粒度限制，只能保留 8 个，累计为 88.89%。
+	// 9 个全命中 token 按目标分摊后受整数粒度限制，只能保留 8 个，累计为 88.89%。
 	first := &UsageTokens{CacheReadTokens: 9}
 	adjustment, err := applyCacheHitTargetToInput(context.Background(), first, apiKey, 103, tracker)
 	require.NoError(t, err)
 	require.Equal(t, 1, adjustment.ShiftedTokens)
 	require.InDelta(t, 88.8889, adjustment.CumulativeHitPercent, 0.0001)
 
-	// 下一次命中会自然回升到 90%，未超过 90.5% 上沿，因此不再划拨。
+	// 下一次命中自然回升到 90%，且只有 1 个真实缓存 token，因此保留原值。
 	second := &UsageTokens{CacheReadTokens: 1}
 	adjustment, err = applyCacheHitTargetToInput(context.Background(), second, apiKey, 103, tracker)
 	require.NoError(t, err)
@@ -322,10 +326,12 @@ func TestApplyCacheHitTargetToInput_ToleranceAndIntegerRecovery(t *testing.T) {
 	require.Equal(t, 1, second.CacheReadTokens)
 	require.InDelta(t, 90, adjustment.CumulativeHitPercent, 1e-9)
 
-	// 单个全新累计恰好位于容差上沿也不触发。
+	// 全新累计位于容差上沿时立即分摊自身超额，避免积攒后集中划拨。
 	boundary := &UsageTokens{InputTokens: 19, CacheReadTokens: 181}
 	adjustment, err = applyCacheHitTargetToInput(context.Background(), boundary, apiKey, 104, tracker)
 	require.NoError(t, err)
-	require.Zero(t, adjustment.ShiftedTokens)
-	require.Equal(t, 181, boundary.CacheReadTokens)
+	require.Equal(t, 1, adjustment.ShiftedTokens)
+	require.Equal(t, 180, boundary.CacheReadTokens)
+	require.Equal(t, 20, boundary.InputTokens)
+	require.InDelta(t, 90, adjustment.CumulativeHitPercent, 1e-9)
 }

@@ -2566,7 +2566,7 @@ export default {
         cacheHitTargetTolerancePercent: '容差带',
         cacheHitHalfLifeDays: '历史半衰期',
         daysUnit: '天',
-        cacheHitTargetPercentHint: '默认目标 90%、容差 ±0.50%、历史半衰期 1 天；其他协议、非流式、WebSocket、compact、input_tokens、图片和视频请求均不生效。',
+        cacheHitTargetPercentHint: '按设定目标逐条分摊，历史偏差在容差范围内逐步纠正，不会为追赶累计目标清空单条缓存。上游缓存不足时无法补足目标；其他协议、非流式、WebSocket、compact、input_tokens、图片和视频请求均不生效。',
         cacheHitTargetPercentInvalid: '目标命中率必须在 0.01% 到 100% 之间',
         cacheHitTargetTolerancePercentInvalid: '容差必须在 0% 到 50% 之间，且目标加减容差必须保持在 0% 到 100% 之间',
         cacheHitHalfLifeDaysInvalid: '历史半衰期必须在 0.01 天到 365 天之间',

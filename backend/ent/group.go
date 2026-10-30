@@ -82,7 +82,7 @@ type Group struct {
 	CacheHitQuarterToInputEnabled bool `json:"cache_hit_quarter_to_input_enabled,omitempty"`
 	// 缓存命中率目标上限百分比；启用累计控制后生效
 	CacheHitTargetPercent float64 `json:"cache_hit_target_percent,omitempty"`
-	// 缓存命中率目标容差百分比；累计值超过目标加容差时回调到目标
+	// 缓存命中率目标容差百分比；限制单条请求平滑纠正历史偏差的幅度
 	CacheHitTargetTolerancePercent float64 `json:"cache_hit_target_tolerance_percent,omitempty"`
 	// 缓存命中率累计状态的时间半衰期（天）；历史权重按时间指数衰减
 	CacheHitHalfLifeDays float64 `json:"cache_hit_half_life_days,omitempty"`
