@@ -66,7 +66,7 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.client.post(endpoint,headers={'Origin':''}).status_code,403)
         response=self.client.post(endpoint)
         self.assertEqual(response.status_code,200)
-        self.assertEqual(response.json(),{'connection':'tester:proxy-secret@192.0.2.10:1080'})
+        self.assertEqual(response.json(),{'connection':'tester:proxy-secret@192.0.2.10:1080','protocol':'socks5'})
         self.assertEqual(response.headers['Cache-Control'],'no-store')
         self.assertEqual(self.client.post('/vpn/api/nodes/999999/connection').status_code,404)
         self.client.post('/vpn/api/logout')
@@ -78,21 +78,56 @@ class PanelTests(unittest.TestCase):
             ('socks5','账@号','密:码@ /%','proxy.example','账@号:密:码@ /%@proxy.example:1080'),
             ('http','','','192.0.2.10',':@192.0.2.10:1080'),
             ('https','tester','proxy-secret','2001:db8::10','tester:proxy-secret@[2001:db8::10]:1080'),
-            ('anytls','','node-secret','192.0.2.11',':node-secret@192.0.2.11:1080'),
-            ('ss','','ss-secret','192.0.2.12',':ss-secret@192.0.2.12:1080'),
         )):
             with self.subTest(protocol=protocol):
                 body=self.node();body.update(name='格式测试'+str(index),protocol=protocol,username=username,password=password,host=host,cipher='aes-256-gcm' if protocol=='ss' else '',enabled=False)
                 self.assertEqual(self.client.post('/vpn/api/nodes',json=body).status_code,200)
                 node=self.client.get('/vpn/api/state').json()['nodes'][-1]
                 endpoint='/vpn/api/nodes/'+str(node['id'])+'/connection'
-                self.assertEqual(self.client.post(endpoint).json(),{'connection':expected})
+                self.assertEqual(self.client.post(endpoint).json(),{'connection':expected,'protocol':protocol})
                 body['password']='changed-secret'
                 self.assertEqual(self.client.put('/vpn/api/nodes/'+str(node['id']),json=body).status_code,200)
                 host_part='['+host+']' if ':' in host else host
-                self.assertEqual(self.client.post(endpoint).json(),{'connection':username+':changed-secret@'+host_part+':1080'})
+                self.assertEqual(self.client.post(endpoint).json(),{'connection':username+':changed-secret@'+host_part+':1080','protocol':protocol})
                 self.client.delete('/vpn/api/nodes/'+str(node['id']))
                 self.assertEqual(self.client.post(endpoint).status_code,404)
+
+    def test_vpn_application_credentials_preserve_subscription_and_secrets(self):
+        self.login()
+        application = self.node(enabled=False)
+        self.client.post('/vpn/api/nodes', json=application)
+        target = self.client.get('/vpn/api/state').json()['nodes'][0]
+        vpn = {**self.node(), 'name': 'VPN 节点', 'protocol': 'anytls', 'username': '',
+               'password': 'vpn-only-secret', 'port': 24444, 'fingerprint': 'ab'*32}
+        self.client.post('/vpn/api/nodes', json=vpn)
+        source = self.client.get('/vpn/api/state').json()['nodes'][-1]
+        endpoint = '/vpn/api/nodes/'+str(source['id'])
+        self.assertEqual(self.client.post(endpoint+'/connection').status_code, 400)
+        before = self.client.get('/vpn/sub/test-token').text
+        vpn['application_proxy_id'] = target['id']
+        self.assertEqual(self.client.put(endpoint, json=vpn).status_code, 200)
+        response = self.client.post(endpoint+'/connection')
+        self.assertEqual(response.json(), {'connection': 'tester:proxy-secret@192.0.2.10:1080', 'protocol': 'socks5'})
+        self.assertEqual(response.headers['Cache-Control'], 'no-store')
+        self.assertEqual(self.client.get('/vpn/sub/test-token').text, before)
+        listing = self.client.get('/vpn/api/state').text
+        self.assertNotIn('proxy-secret', listing)
+        self.assertNotIn('vpn-only-secret', listing)
+        # 旧客户端未提交关联字段时，普通编辑不能清空已设置的关联。
+        del vpn['application_proxy_id']
+        self.assertEqual(self.client.put(endpoint, json=vpn).status_code, 200)
+        self.assertEqual(self.client.post(endpoint+'/connection').status_code, 200)
+        application['password'] = 'rotated-secret'
+        self.client.put('/vpn/api/nodes/'+str(target['id']), json=application)
+        self.assertIn('rotated-secret', self.client.post(endpoint+'/connection').json()['connection'])
+        # 被引用的应用代理不能删除或改为不兼容协议。
+        self.assertEqual(self.client.delete('/vpn/api/nodes/'+str(target['id'])).status_code, 409)
+        self.assertEqual(self.client.put('/vpn/api/nodes/'+str(target['id']), json={**application, 'protocol': 'anytls'}).status_code, 400)
+        for invalid in (source['id'], 999999):
+            self.assertEqual(self.client.put(endpoint, json={**vpn, 'application_proxy_id': invalid}).status_code, 400)
+        self.assertEqual(self.client.put(endpoint, json={**vpn, 'application_proxy_id': None}).status_code, 200)
+        self.assertEqual(self.client.post(endpoint+'/connection').status_code, 400)
+        self.assertEqual(self.client.delete('/vpn/api/nodes/'+str(target['id'])).status_code, 200)
 
     def test_rotation_and_formats(self):
         self.login();self.client.post('/vpn/api/nodes',json=self.node())

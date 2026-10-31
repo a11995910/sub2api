@@ -74,6 +74,8 @@ def init():
             c.execute("ALTER TABLE nodes ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
         if 'location_auto' not in columns:
             c.execute('ALTER TABLE nodes ADD COLUMN location_auto INTEGER NOT NULL DEFAULT 0')
+        if 'application_proxy_id' not in columns:
+            c.execute('ALTER TABLE nodes ADD COLUMN application_proxy_id INTEGER')
     os.chmod(DATA / 'panel.db', 0o600)
 
 
@@ -184,6 +186,7 @@ class Node(BaseModel):
     note: str = Field(default='', max_length=500)
     location: str = Field(default='', max_length=100)
     fingerprint: str = Field(default='', max_length=95)
+    application_proxy_id: int | None = Field(default=None, ge=1)
 
     def values_checked(self):
         data = self.model_dump()
@@ -211,6 +214,16 @@ def save_node(body, node_id=None):
         previous = c.execute('SELECT * FROM nodes WHERE id=?', (node_id,)).fetchone() if node_id else None
         if node_id and not previous:
             raise HTTPException(404, '节点不存在')
+        if previous and 'application_proxy_id' not in body.model_fields_set:
+            data['application_proxy_id'] = previous['application_proxy_id']
+        if data['protocol'] not in ('anytls', 'ss'):
+            data['application_proxy_id'] = None
+        if data['application_proxy_id']:
+            target = c.execute('SELECT protocol FROM nodes WHERE id=?', (data['application_proxy_id'],)).fetchone()
+            if data['application_proxy_id'] == node_id or not target or target['protocol'] not in ('http', 'https', 'socks5'):
+                raise HTTPException(400, '应用代理必须关联另一个 HTTP、HTTPS 或 SOCKS5 节点')
+        if previous and data['protocol'] not in ('http', 'https', 'socks5') and c.execute('SELECT 1 FROM nodes WHERE application_proxy_id=? LIMIT 1', (node_id,)).fetchone():
+            raise HTTPException(400, '此节点正作为应用代理使用，请先解除关联再修改协议')
         if previous and 'fingerprint' not in body.model_fields_set and data['protocol'] == 'anytls':
             data['fingerprint'] = previous['fingerprint']
         if previous and 'location' not in body.model_fields_set:
@@ -267,11 +280,16 @@ def create_node(body: Node):
 @app.post(BASE + '/api/nodes/{node_id}/connection')
 def node_connection(node_id: int):
     with db() as c:
-        row = c.execute('SELECT username,password,host,port FROM nodes WHERE id=?', (node_id,)).fetchone()
-    if not row:
-        raise HTTPException(404, '节点不存在')
+        row = c.execute('SELECT * FROM nodes WHERE id=?', (node_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, '节点不存在')
+        if row['protocol'] in ('anytls', 'ss'):
+            target = c.execute('SELECT * FROM nodes WHERE id=?', (row['application_proxy_id'],)).fetchone()
+            if not target or target['protocol'] not in ('http', 'https', 'socks5'):
+                raise HTTPException(400, '此节点仅支持 VPN，请使用订阅导入；如需应用账密，请先在编辑中关联 HTTP/SOCKS5 应用代理')
+            row = target
     host = '[' + row['host'] + ']' if ':' in row['host'] else row['host']
-    return {'connection': f'{row["username"]}:{row["password"]}@{host}:{row["port"]}'}
+    return {'connection': f'{row["username"]}:{row["password"]}@{host}:{row["port"]}', 'protocol': row['protocol']}
 
 
 @app.put(BASE + '/api/nodes/{node_id}')
@@ -287,6 +305,8 @@ def delete_node(node_id: int):
             raise HTTPException(404, '节点不存在')
         if row['managed']:
             raise HTTPException(400, '自建节点不能删除，可从订阅中停用')
+        if c.execute('SELECT 1 FROM nodes WHERE application_proxy_id=? LIMIT 1', (node_id,)).fetchone():
+            raise HTTPException(409, '此节点正作为应用代理使用，请先在关联节点中解除应用代理')
         c.execute('DELETE FROM nodes WHERE id=?', (node_id,))
     return {'ok': True}
 

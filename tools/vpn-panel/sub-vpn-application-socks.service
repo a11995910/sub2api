@@ -1,0 +1,20 @@
+[Unit]
+Description=带独立认证的应用 SOCKS5 代理
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sub-vpn
+Group=sub-vpn
+ExecStart=/usr/local/bin/sub-vpn-sing-box run -c /var/lib/sub-vpn/application-socks.json
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
