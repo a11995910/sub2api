@@ -12,7 +12,7 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// geminiImageOutputCounterKey 是请求级内联图片计数器挂在 gin.Context 上的键。
+// geminiImageOutputCounterKey 是请求级图片计数器挂在 gin.Context 上的键。
 const geminiImageOutputCounterKey = "gemini_image_output_counter"
 
 // geminiImageOutputCounter 按图片内容记录一次转发里 Gemini 上游真正回吐的图片。
@@ -51,7 +51,7 @@ func geminiImageOutputCounterFromContext(c *gin.Context) *geminiImageOutputCount
 	return counter
 }
 
-// observeGeminiImageOutputs 观测一段上游响应（整份或单个 chunk）里的内联图片。
+// observeGeminiImageOutputs 观测一段上游响应（整份或单个 chunk）里的图片。
 // 调用点与 upstreamResponseModelObserver.ObserveGemini 一一对应——那里拿得到
 // 解包后的上游响应体，这里需要的是同一份字节。
 func observeGeminiImageOutputs(c *gin.Context, payload []byte) {
@@ -209,6 +209,9 @@ func geminiPartImageFileURI(part gjson.Result) (string, bool) {
 	if !uri.Exists() {
 		uri = file.Get("file_uri")
 	}
+	if uri.Type != gjson.String {
+		return "", false
+	}
 	value := strings.TrimSpace(uri.String())
 	return value, value != ""
 }
@@ -239,7 +242,11 @@ func geminiPartRawInlineImageData(part gjson.Result) (string, bool) {
 	}
 
 	// 只认真的带上了 base64 数据的 part，空壳 part 不计费。
-	data := strings.TrimSpace(inline.Get("data").String())
+	raw := inline.Get("data")
+	if raw.Type != gjson.String {
+		return "", false
+	}
+	data := strings.TrimSpace(raw.String())
 	return data, data != ""
 }
 

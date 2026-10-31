@@ -120,6 +120,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageResponseFormat(groupIn.ImageResponseFormat).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
+		SetImageCountBilling(groupIn.ImageCountBilling).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
 		SetCacheHitTargetPercent(groupIn.CacheHitTargetPercent).
@@ -325,6 +326,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageResponseFormat(groupIn.ImageResponseFormat).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
+		SetImageCountBilling(groupIn.ImageCountBilling).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetCacheHitQuarterToInputEnabled(groupIn.CacheHitQuarterToInput).
 		SetCacheHitTargetPercent(groupIn.CacheHitTargetPercent).

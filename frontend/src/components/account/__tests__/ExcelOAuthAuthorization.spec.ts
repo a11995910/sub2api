@@ -9,7 +9,7 @@ describe('Excel 独立授权', () => {
     vi.spyOn(excelOAuthAPI, 'status').mockResolvedValue({ authorized: false, primary: false })
     vi.spyOn(excelOAuthAPI, 'generate').mockResolvedValue({ auth_url: 'https://auth.openai.com/oauth/authorize?state=test-state', session_id: 'test-session' })
     const exchange = vi.spyOn(excelOAuthAPI, 'exchange').mockResolvedValue()
-    const wrapper = mount(ExcelOAuthAuthorization, { props: { accountId: 12 } })
+    const wrapper = mount(ExcelOAuthAuthorization, { props: { accountId: 12 }, global: { stubs: { ExcelAutoAuthorization: true } } })
     await flushPromises()
     await wrapper.get('button').trigger('click'); await flushPromises()
     await wrapper.get('textarea').setValue('https://bps.openai.com/callback?code=test-code&state=wrong')
@@ -25,7 +25,7 @@ describe('Excel 独立授权', () => {
   it('切换编辑账号后清除旧授权链接，忽略迟到状态', async () => {
     let resolve!: (value: { authorized: boolean; primary: boolean }) => void
     vi.spyOn(excelOAuthAPI, 'status').mockImplementation(id => id === 1 ? new Promise(r => { resolve = r }) : Promise.resolve({ authorized: false, primary: false }))
-    const wrapper = mount(ExcelOAuthAuthorization, { props: { accountId: 1 } })
+    const wrapper = mount(ExcelOAuthAuthorization, { props: { accountId: 1 }, global: { stubs: { ExcelAutoAuthorization: true } } })
     await wrapper.setProps({ accountId: 2 }); await flushPromises()
     resolve({ authorized: true, primary: true }); await flushPromises()
     expect(wrapper.text()).toContain('生成授权链接')

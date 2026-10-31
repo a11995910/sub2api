@@ -72,6 +72,7 @@ type APIKeyAuthGroupSnapshot struct {
 	AllowImageGeneration            bool                          `json:"allow_image_generation"`
 	ImageResponseFormat             string                        `json:"image_response_format"`
 	AllowBatchImageGeneration       bool                          `json:"allow_batch_image_generation"`
+	ImageCountBilling               bool                          `json:"image_count_billing"`
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	CacheHitQuarterToInput          bool                          `json:"cache_hit_quarter_to_input_enabled"`
 	CacheHitTargetPercent           float64                       `json:"cache_hit_target_percent"`

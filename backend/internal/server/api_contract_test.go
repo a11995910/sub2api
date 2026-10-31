@@ -384,6 +384,7 @@ func TestAPIContracts(t *testing.T) {
 						"audio_realtime_price_per_min": null,
 						"allow_image_generation": false,
 						"allow_batch_image_generation": false,
+						"image_count_billing": false,
 						"batch_image_discount_multiplier": 0,
 						"batch_image_hold_multiplier": 0,
 						"cache_hit_quarter_to_input_enabled": false,

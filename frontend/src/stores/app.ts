@@ -390,6 +390,7 @@ export const useAppStore = defineStore('app', () => {
         checkin_extra_reward_4: 0,
         checkin_extra_reward_16: 0,
         allow_user_view_error_requests: false,
+        mcp_enabled: false,
       })
     }
 

@@ -56,6 +56,7 @@ type Handlers struct {
 	PelicanShowcase  *PelicanShowcaseHandler
 	Auth             *AuthHandler
 	User             *UserHandler
+	MCPOAuth         *MCPOAuthHandler
 	APIKey           *APIKeyHandler
 	Usage            *UsageHandler
 	OAuthAccountPool *OAuthAccountPoolHandler

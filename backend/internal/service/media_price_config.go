@@ -1,5 +1,17 @@
 package service
 
+// imageCountBillingEnabled 表示该分组强制按实际出图张数计费，即使渠道是 token 计费。
+func imageCountBillingEnabled(apiKey *APIKey) bool {
+	return apiKey != nil && apiKey.Group != nil && apiKey.Group.ImageCountBilling
+}
+
+// imageCountBillingApplies 判断分组按张计费开关是否作用于本次请求。
+// 开关只影响专用图片端点；混合的 Responses/Chat/WS 请求继续遵循原有定价，
+// 未配置定制图片价的文本多模态请求不因该开关改为按张计费。
+func imageCountBillingApplies(apiKey *APIKey, imageEndpoint bool) bool {
+	return imageEndpoint && imageCountBillingEnabled(apiKey)
+}
+
 func imagePriceConfigFromAPIKey(apiKey *APIKey) *ImagePriceConfig {
 	if apiKey == nil || apiKey.Group == nil {
 		return nil

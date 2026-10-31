@@ -671,7 +671,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, webSearchMultiplier), nil
 	}
 
-	imageRequest := result != nil && (result.ImageCount > 0 || isOpenAIImageGenerationModel(result.Model) || isOpenAIImageGenerationModel(result.UpstreamModel))
+	imageRequest := result != nil && (result.ImageEndpoint || result.ImageCount > 0 || isOpenAIImageGenerationModel(result.Model) || isOpenAIImageGenerationModel(result.UpstreamModel))
 	if result != nil && !imageRequest {
 		for _, candidate := range billingModels {
 			if resolved := s.resolveOpenAIChannelPricing(ctx, candidate, apiKey); resolved != nil && resolved.Mode == BillingModeImage {
@@ -691,7 +691,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		}
 		// 生图分组原单价优先；没有配置图片单价的文本多模态渠道保留既有规则。
 		resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
-		if resolved == nil || resolved.Mode != BillingModeToken ||
+		if imageCountBillingApplies(apiKey, result.ImageEndpoint) || resolved == nil || resolved.Mode != BillingModeToken ||
 			apiKeyHasConfiguredImagePrice(apiKey, NormalizeImageBillingTierOrDefault(result.ImageSize)) ||
 			isOpenAIImageGenerationModel(result.Model) || isOpenAIImageGenerationModel(result.UpstreamModel) {
 			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil

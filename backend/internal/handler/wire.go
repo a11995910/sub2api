@@ -212,6 +212,7 @@ func ProvideHandlers(
 	pelicanShowcaseHandler *PelicanShowcaseHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
+	mcpOAuthHandler *MCPOAuthHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	oauthAccountPoolHandler *OAuthAccountPoolHandler,
@@ -247,6 +248,7 @@ func ProvideHandlers(
 		PelicanShowcase:  pelicanShowcaseHandler,
 		Auth:             authHandler,
 		User:             userHandler,
+		MCPOAuth:         mcpOAuthHandler,
 		APIKey:           apiKeyHandler,
 		Usage:            usageHandler,
 		OAuthAccountPool: oauthAccountPoolHandler,
@@ -296,6 +298,7 @@ var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
+	NewMCPOAuthHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewOAuthAccountPoolHandler,

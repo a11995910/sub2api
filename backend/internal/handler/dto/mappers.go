@@ -305,6 +305,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageResponseFormat:             g.ImageResponseFormat,
 		AllowBatchImageGeneration:       g.AllowBatchImageGeneration,
+		ImageCountBilling:               g.ImageCountBilling,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		CacheHitQuarterToInput:          g.CacheHitQuarterToInput,
 		CacheHitTargetPercent:           g.CacheHitTargetPercent,
@@ -530,8 +531,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
-	// 提取账号配额限制（apikey / bedrock 类型有效）
-	if a.IsAPIKeyOrBedrock() {
+	// 提取账号配额限制（apikey / bedrock / service_account 类型有效）
+	if a.SupportsAccountQuota() {
 		if limit := a.GetQuotaLimit(); limit > 0 {
 			out.QuotaLimit = &limit
 			used := a.GetQuotaUsed()

@@ -268,9 +268,8 @@ var ErrModelPricingUnavailable = errors.New("pricing not found")
 // ---- DeepSeek 官方低谷价（$/token）----
 // 2026-09-10 官方公告：DeepSeek-V4.1-Flash（新名 deepseek-flash）大幅降价，
 // Flash 低谷价降为 $0.15/$0.60/$0.003 per MTok（输入缓存未命中/输出/缓存命中）；
-// deepseek-v4-pro 名义价格暂不变，但自北京时间 2026-09-14 12:00（04:00 UTC）起
-// 其请求被上游路由到 V4.1-Flash 并按 Flash 价计费（见 deepseekProBilledAsFlash）。
-// Source: https://api-docs.deepseek.com/news/news260910
+// 官方后续确认 2026-09-14 后继续提供 deepseek-v4-pro，计费方式保持不变。
+// Source: https://api-docs.deepseek.com/updates/
 //
 //	https://api-docs.deepseek.com/quick_start/pricing
 //
@@ -310,21 +309,6 @@ func deepseekPeakMultiplierAt(now time.Time) float64 {
 		return 2.0
 	}
 	return 1.0
-}
-
-// deepseekProRoutesToFlashAt：官方公告自北京时间 2026-09-14 12:00（04:00 UTC）起，
-// 所有 deepseek-v4-pro 请求被上游路由到 V4.1-Flash 并按 Flash 价计费（直至未来
-// V4.1 Pro 上线）。Source: https://api-docs.deepseek.com/news/news260910
-var deepseekProRoutesToFlashAt = time.Date(2026, 9, 14, 4, 0, 0, 0, time.UTC)
-
-// deepseekProBilledAsFlash 报告指定计费时点 deepseek-v4-pro 是否已按 Flash 价
-// 计费：计费时点到达或晚于切换时点返回 true；零值时点回退当前时刻（与峰谷
-// 倍率的取时点方式一致，见 calculateTokenCost）。
-func deepseekProBilledAsFlash(pricingAt time.Time) bool {
-	if pricingAt.IsZero() {
-		pricingAt = timezone.Now()
-	}
-	return !pricingAt.Before(deepseekProRoutesToFlashAt)
 }
 
 // isDeepSeekProModel 判断模型名是否归入 deepseek-v4-pro 档（含版本化名称，
@@ -605,6 +589,20 @@ func (s *BillingService) initFallbackPricing() {
 	}
 
 	// GPT-6 Sol/Luna official rates, 2026-09-22.
+	s.fallbackPrices["gpt-6.1-terra"] = &ModelPricing{
+		InputPricePerToken:                 1e-6,
+		InputPricePerTokenPriority:         2e-6,
+		OutputPricePerToken:                5e-6,
+		OutputPricePerTokenPriority:        10e-6,
+		CacheCreationPricePerToken:         1.25e-6,
+		CacheCreationPricePerTokenPriority: 2.5e-6,
+		CacheReadPricePerToken:             0.05e-6,
+		CacheReadPricePerTokenPriority:     0.1e-6,
+		CacheCreationPriceExplicit:         true,
+		LongContextInputThreshold:          272_000,
+		LongContextInputMultiplier:         2,
+		LongContextOutputMultiplier:        1.5,
+	}
 	s.fallbackPrices["gpt-6.1-sol"] = &ModelPricing{
 		InputPricePerToken:                 2e-6,
 		InputPricePerTokenPriority:         4e-6,
@@ -1001,6 +999,20 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextOutputMultiplier:   2,
 	}
 
+	// xAI Grok 4.7 Fast (Cursor and Grok Build only): the same model on faster
+	// infrastructure at $4 input / $1 cached input / $12 output below 200k;
+	// long-context rates are $6 / $1.50 / $18 (1.5x of the Fast base card).
+	s.fallbackPrices["grok-4.7-fast"] = &ModelPricing{
+		InputPricePerToken:            4e-6,
+		OutputPricePerToken:           12e-6,
+		CacheReadPricePerToken:        1e-6,
+		SupportsCacheBreakdown:        false,
+		LongContextInputThreshold:     200000,
+		LongContextThresholdInclusive: true,
+		LongContextInputMultiplier:    1.5,
+		LongContextOutputMultiplier:   1.5,
+	}
+
 	// xAI Grok 4.3: $1.25 input / $0.20 cached / $2.50 output below 200k;
 	// long-context rates are $2.50 / $0.40 / $5.
 	s.fallbackPrices["grok-4.3"] = &ModelPricing{
@@ -1265,7 +1277,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	// OpenAI（GPT-5 / Codex 族）：仅匹配已知型号，避免未知 OpenAI 型号误计价。
 	if normalized := normalizeKnownOpenAICodexModel(modelLower); normalized != "" {
 		switch normalized {
-		case "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna":
+		case "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna":
 			return s.fallbackPrices[normalized]
 		case "gpt-6-astra":
 			return s.fallbackPrices["gpt-6-astra"]
@@ -1299,6 +1311,11 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["grok-4.6"]
 	case "grok-4.7", "grok-4.7-latest":
 		return s.fallbackPrices["grok-4.7"]
+	// Grok 4.7 Fast IDs (grok-4.7-fast, and the Grok Build ID
+	// grok-4.7-build-fast). Without these cases both fall into the unknown-Grok
+	// family card and bill at the standard 4.7 rate (#8119).
+	case "grok-4.7-fast", "grok-4.7-build-fast":
+		return s.fallbackPrices["grok-4.7-fast"]
 	case "grok-4.5", "grok-4.5-latest":
 		return s.fallbackPrices["grok-4.5"]
 	case "grok-3-mini":
@@ -1392,7 +1409,6 @@ func (s *BillingService) HasIdentifiedTokenPricing(model string) bool {
 
 // GetModelPricing 获取模型价格配置
 func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
-	// 无显式计费时点，DeepSeek pro→Flash 切换按当前时刻判定。
 	return s.getModelPricingAt(model, timezone.Now())
 }
 
@@ -1408,9 +1424,8 @@ func (s *BillingService) CacheStoragePricePerTokenHour(model string) float64 {
 	return builtinGeminiCacheStoragePrice(model)
 }
 
-// getModelPricingAt 是 GetModelPricing 的带计费时点内部变体：pricingAt 显式
-// 驱动 DeepSeek pro→Flash 切换判定（切换点前 Pro 价、之后 Flash 价），使
-// 展示/估算路径可与历史补账同刻复算，测试也能用固定时点钉住断言。
+// getModelPricingAt 保留带计费时点的内部调用接口。DeepSeek 默认低谷价
+// 仅由模型决定，峰谷倍率由统一计费入口按请求时点处理。
 func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
@@ -1438,7 +1453,7 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 				InputPricePerTokenPriority:         litellmPricing.InputCostPerTokenPriority,
 				OutputPricePerToken:                litellmPricing.OutputCostPerToken,
 				OutputPricePerTokenPriority:        litellmPricing.OutputCostPerTokenPriority,
-				CacheCreationPriceExplicit:         (openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model)) && litellmPricing.CacheCreationInputTokenCostExplicit,
+				CacheCreationPriceExplicit:         (openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model)) && litellmPricing.CacheCreationInputTokenCostExplicit,
 				CacheCreationPricePerToken:         litellmPricing.CacheCreationInputTokenCost,
 				CacheCreationPricePerTokenPriority: litellmPricing.CacheCreationInputTokenCostPriority,
 				CacheReadPricePerToken:             litellmPricing.CacheReadInputTokenCost,
@@ -1637,8 +1652,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 		return nil, fmt.Errorf("no pricing available for model: %s: %w", input.Model, ErrModelPricingUnavailable)
 	}
 
-	// 计费时点：优先请求级 PricingAt（历史补账与 DeepSeek pro→Flash 切换判定
-	// 同源），零值回退当前时刻。
+	// 峰谷计费时点：优先请求级 PricingAt，零值回退当前时刻。
 	pricingAt := input.PricingAt
 	if pricingAt.IsZero() {
 		pricingAt = timezone.Now()
@@ -1943,20 +1957,18 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	// 共享 fallbackPrices 指针。
 	// 档位判定：含 "deepseek-v4-pro" 的版本化名称（如 deepseek-v4-pro-0813）归 pro 档，
 	// 其余 deepseek-*（含已停服的 chat/reasoner 与未知型号）统一归 flash 档。
-	// 2026-09-14 04:00 UTC 起上游把 pro 请求路由到 V4.1-Flash，pro 档改按
-	// Flash 三档价计费；历史时点（早于切换时刻）仍按 Pro 价。
+	// 官方后续保留了 Pro 服务及其计费方式，Pro 不按日期切换成 Flash 价。
 	// 高峰时段倍率不在本函数处理，由 calculateTokenCost 按 deepseekPeakMultiplierAt
 	// 对默认价卡另行叠加（分组/渠道自定义定价不叠加）。
 	if defaultCatalog && isDeepSeekModel(model) {
 		cloned := *pricing
-		if isDeepSeekProModel(model) && !deepseekProBilledAsFlash(pricingAt) {
+		if isDeepSeekProModel(model) {
 			cloned.InputPricePerToken = deepseekProOffPeakInputPrice
 			cloned.OutputPricePerToken = deepseekProOffPeakOutputPrice
 			cloned.CacheReadPricePerToken = deepseekProOffPeakCacheRead
 		} else {
 			// deepseek-flash（= V4.1-Flash）、deepseek-v4-flash /
-			// deepseek-v4-flash-vision-exp 与其余 deepseek-* 共用 flash 价；
-			// 切换时点之后的 pro 请求同样按 flash 价计费。
+			// deepseek-v4-flash-vision-exp 与其余 deepseek-* 共用 flash 价。
 			cloned.InputPricePerToken = deepseekFlashOffPeakInputPrice
 			cloned.OutputPricePerToken = deepseekFlashOffPeakOutputPrice
 			cloned.CacheReadPricePerToken = deepseekFlashOffPeakCacheRead
@@ -1967,7 +1979,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	clearUnsupportedFast := defaultCatalog && !supportsFast && isOpenAIModelSubjectToFastPolicy(model)
 
 	normalized := normalizeKnownOpenAICodexModel(model)
-	usesCacheWritePremium := isOpenAIGPT56Model(normalized) || (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized))
+	usesCacheWritePremium := isOpenAIGPT56Model(normalized) || (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized) || openai.IsGPT61TerraModelSpelling(normalized))
 	needsCacheCreationPolicy := usesCacheWritePremium && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
 	needsOpus55FastMultiplier := claude.IsOpus55(model) && pricing.FastMultiplier == nil
@@ -1975,7 +1987,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	needsUltrafastMultiplier := isOpenAIGPT6AstraModel(normalized) && pricing.UltrafastMultiplier != 6
 	// 默认目录中 GPT-6 Sol/Luna 与 GPT-6.1 Sol 的显式免费缓存写入覆盖旧 priority 价。
 	// 渠道独立档位报价仍保留运营者配置。
-	needsFreeCacheWritePriority := defaultCatalog && (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized)) &&
+	needsFreeCacheWritePriority := defaultCatalog && (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized) || openai.IsGPT61TerraModelSpelling(normalized)) &&
 		pricing.CacheCreationPriceExplicit && pricing.CacheCreationPricePerToken == 0 && pricing.CacheCreationPricePerTokenPriority != 0
 	if !clearUnsupportedFast && !needsCacheCreationPolicy && !needsFastFallback && !needsOpus55FastMultiplier && !needsUltrafastMultiplier && !needsFreeCacheWritePriority {
 		return pricing

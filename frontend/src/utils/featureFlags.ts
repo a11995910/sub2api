@@ -144,6 +144,12 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Daily Check-in',
   }),
+  // 只读能力：由部署配置 MCP_PUBLIC_URL 控制。
+  mcp: defineFlag({
+    key: 'mcp_enabled',
+    mode: 'opt-in',
+    label: 'MCP',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

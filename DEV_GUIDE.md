@@ -112,8 +112,19 @@ GitHub workflow 都不得代替用户执行以上步骤。
 
 ### 本地检查要求
 
-- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.2**。升级 Go 时必须同步更新 `backend/go.mod`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
+- Go 版本必须与 `backend/go.mod` 一致，当前为 **1.27.3**。升级 Go 时必须同步更新 `backend/go.mod`、`Dockerfile`、`deploy/Dockerfile`、`deploy/Dockerfile.dev` 和 `backend/Dockerfile`；固定版本由 `deploy/tests/go-toolchain-consistency-test.sh` 校验。
 - golangci-lint 本地使用 **v2.13**。
+- Go 1.27.3 需要同版本工具链构建 linter；v2.13.2 原依赖的 `x/tools v0.49.0` 无法读取新版导出数据。遇到 `export data version 5` 或 linter 构建版本过低时，在仓库外的临时模块构建兼容工具，不修改项目依赖：
+
+  ```sh
+  lint_build_dir=$(mktemp -d)
+  cd "$lint_build_dir"
+  GOTOOLCHAIN=go1.27.3 go mod init sub2api.local/lint
+  GOTOOLCHAIN=go1.27.3 go get github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 golang.org/x/tools@v0.51.0
+  GOTOOLCHAIN=go1.27.3 go build -o "$lint_build_dir/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+  # 返回本项目 backend 目录后，使用该绝对路径执行增量检查。
+  ```
+
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
 ### 本地测试命令

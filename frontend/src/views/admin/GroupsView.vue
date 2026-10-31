@@ -1034,6 +1034,20 @@
               />
               {{ t(imagePricingI18nKey(createForm.platform, "independentMultiplier")) }}
             </label>
+            <label
+              v-if="
+                createForm.allow_image_generation &&
+                (createForm.platform === 'composite' || createForm.platform === 'openai')
+              "
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="createForm.image_count_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.perImageBilling") }}
+            </label>
           </div>
           <div
             v-if="createForm.image_rate_independent"
@@ -2836,6 +2850,20 @@
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               {{ t(imagePricingI18nKey(editForm.platform, "independentMultiplier")) }}
+            </label>
+            <label
+              v-if="
+                editForm.allow_image_generation &&
+                (editForm.platform === 'composite' || editForm.platform === 'openai')
+              "
+              class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <input
+                v-model="editForm.image_count_billing"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {{ t("admin.groups.imagePricing.perImageBilling") }}
             </label>
           </div>
           <div
@@ -4919,6 +4947,7 @@ import {
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
 import {
+  defaultAllowImageGenerationForPlatform,
   getDefaultImagePreviewPrice,
   getDefaultVideoPreviewPrice,
   getImagePricePlaceholder,
@@ -5553,6 +5582,7 @@ const createForm = reactive({
   allow_image_generation: false,
 	image_response_format: "b64_json" as "b64_json" | "url",
   allow_batch_image_generation: false,
+  image_count_billing: false,
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
   cache_hit_target_percent: 90,
@@ -5930,6 +5960,7 @@ const editForm = reactive({
   allow_image_generation: false,
 	image_response_format: "b64_json" as "b64_json" | "url",
   allow_batch_image_generation: false,
+  image_count_billing: false,
   image_rate_independent: false,
   cache_hit_quarter_to_input_enabled: false,
   cache_hit_target_percent: 90,
@@ -6002,6 +6033,7 @@ type ImagePricingFormState = {
   platform: GroupPlatform;
   allow_image_generation: boolean;
   allow_batch_image_generation: boolean;
+  image_count_billing: boolean;
   rate_multiplier: number;
   image_rate_independent: boolean;
   image_rate_multiplier: number;
@@ -6148,7 +6180,12 @@ const editWebSearchFinalPricePreview = computed(() =>
 const resetDisabledBatchImagePricing = (
   form: Pick<
     ImagePricingFormState,
-    "platform" | "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
+    | "platform"
+    | "allow_image_generation"
+    | "allow_batch_image_generation"
+    | "image_count_billing"
+    | "batch_image_discount_multiplier"
+    | "batch_image_hold_multiplier"
   >,
 ) => {
   if (form.platform !== "gemini" || !form.allow_image_generation) {
@@ -6157,6 +6194,12 @@ const resetDisabledBatchImagePricing = (
   if (!form.allow_batch_image_generation) {
     form.batch_image_discount_multiplier = 0.5;
     form.batch_image_hold_multiplier = 0.6;
+  }
+  if (
+    !form.allow_image_generation ||
+    (form.platform !== "composite" && form.platform !== "openai")
+  ) {
+    form.image_count_billing = false;
   }
 };
 
@@ -6414,6 +6457,7 @@ const closeCreateModal = () => {
   createForm.allow_image_generation = false;
 	createForm.image_response_format = "b64_json";
   createForm.allow_batch_image_generation = false;
+  createForm.image_count_billing = false;
   createForm.image_rate_independent = false;
   createForm.cache_hit_quarter_to_input_enabled = false;
   createForm.cache_hit_target_percent = 90;
@@ -6817,6 +6861,7 @@ const handleEdit = async (group: AdminGroup) => {
 	editForm.image_response_format = group.image_response_format || "b64_json";
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
+  editForm.image_count_billing = group.image_count_billing ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.cache_hit_quarter_to_input_enabled =
     group.cache_hit_quarter_to_input_enabled ?? false;
@@ -7646,6 +7691,7 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     }
+    createForm.allow_image_generation = defaultAllowImageGenerationForPlatform(newVal);
     resetDisabledBatchImagePricing(createForm);
     resetModelAllowlistState(createModelAllowlistState);
     loadModelAllowlistCandidates("create", 0, newVal);

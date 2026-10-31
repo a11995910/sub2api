@@ -702,21 +702,67 @@ func TestAdminService_CreateGroup_DefaultsGrokMediaGenerationEnabled(t *testing.
 	require.True(t, group.AllowImageGeneration)
 }
 
-func TestAdminService_CreateGroup_PreservesNonGrokImageGenerationDisabled(t *testing.T) {
+func TestAdminService_CreateGroup_DefaultsGeminiFamilyImageGenerationEnabled(t *testing.T) {
+	for _, platform := range []string{PlatformGemini, PlatformAntigravity} {
+		t.Run(platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:           platform + "-images",
+				Description:    "Gemini family group",
+				Platform:       platform,
+				RateMultiplier: 1.0,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.NotNil(t, repo.created)
+			require.True(t, repo.created.AllowImageGeneration)
+			require.True(t, group.AllowImageGeneration)
+			require.False(t, repo.created.AllowBatchImageGeneration)
+		})
+	}
+}
+
+func TestAdminService_CreateGroup_PreservesImageGenerationDisabledWithoutPlatformDefault(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformComposite} {
+		t.Run(platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:           platform + "-text",
+				Description:    "Group without image default",
+				Platform:       platform,
+				RateMultiplier: 1.0,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.NotNil(t, repo.created)
+			require.False(t, repo.created.AllowImageGeneration)
+			require.False(t, group.AllowImageGeneration)
+		})
+	}
+}
+
+func TestAdminService_CreateGroup_DisablesBatchImageForNonGeminiPlatform(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}
 
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:           "anthropic-text",
-		Description:    "Anthropic text group",
-		Platform:       PlatformAnthropic,
-		RateMultiplier: 1.0,
+		Name:                      "openai-image",
+		Description:               "OpenAI image group",
+		Platform:                  PlatformOpenAI,
+		RateMultiplier:            1.0,
+		AllowImageGeneration:      true,
+		AllowBatchImageGeneration: true,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
-	require.False(t, repo.created.AllowImageGeneration)
-	require.False(t, group.AllowImageGeneration)
+	require.True(t, repo.created.AllowImageGeneration)
+	require.False(t, repo.created.AllowBatchImageGeneration)
+	require.False(t, group.AllowBatchImageGeneration)
 }
 
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新

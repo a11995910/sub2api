@@ -72,6 +72,8 @@ const (
 	FieldImageResponseFormat = "image_response_format"
 	// FieldAllowBatchImageGeneration holds the string denoting the allow_batch_image_generation field in the database.
 	FieldAllowBatchImageGeneration = "allow_batch_image_generation"
+	// FieldImageCountBilling holds the string denoting the image_count_billing field in the database.
+	FieldImageCountBilling = "image_count_billing"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldCacheHitQuarterToInputEnabled holds the string denoting the cache_hit_quarter_to_input_enabled field in the database.
@@ -289,6 +291,7 @@ var Columns = []string{
 	FieldAllowImageGeneration,
 	FieldImageResponseFormat,
 	FieldAllowBatchImageGeneration,
+	FieldImageCountBilling,
 	FieldImageRateIndependent,
 	FieldCacheHitQuarterToInputEnabled,
 	FieldCacheHitTargetPercent,
@@ -426,6 +429,8 @@ var (
 	ImageResponseFormatValidator func(string) error
 	// DefaultAllowBatchImageGeneration holds the default value on creation for the "allow_batch_image_generation" field.
 	DefaultAllowBatchImageGeneration bool
+	// DefaultImageCountBilling holds the default value on creation for the "image_count_billing" field.
+	DefaultImageCountBilling bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
 	// DefaultCacheHitQuarterToInputEnabled holds the default value on creation for the "cache_hit_quarter_to_input_enabled" field.
@@ -651,6 +656,11 @@ func ByImageResponseFormat(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowBatchImageGeneration orders the results by the allow_batch_image_generation field.
 func ByAllowBatchImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowBatchImageGeneration, opts...).ToFunc()
+}
+
+// ByImageCountBilling orders the results by the image_count_billing field.
+func ByImageCountBilling(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageCountBilling, opts...).ToFunc()
 }
 
 // ByImageRateIndependent orders the results by the image_rate_independent field.

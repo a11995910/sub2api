@@ -142,6 +142,7 @@ type Group struct {
 	BatchImageHoldMultiplier       float64 `json:"batch_image_hold_multiplier"`
 	VideoRateIndependent           bool    `json:"video_rate_independent"`
 	VideoRateMultiplier            float64 `json:"video_rate_multiplier"`
+	ImageCountBilling              bool    `json:"image_count_billing"`
 	// 高峰时段倍率配置
 	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
 	PeakStart          string  `json:"peak_start"`
@@ -398,6 +399,9 @@ type Account struct {
 
 	GroupIDs []int64  `json:"group_ids,omitempty"`
 	Groups   []*Group `json:"groups,omitempty"`
+
+	// 仅账号详情填充。列表和公共 mapper 不计算，避免把目录诊断扩散到调度响应。
+	GrokModelDiagnostics *service.GrokModelDiagnostics `json:"grok_model_diagnostics,omitempty"`
 }
 
 type AnthropicForwardingRisk struct {

@@ -76,6 +76,8 @@ type Group struct {
 	ImageResponseFormat string `json:"image_response_format,omitempty"`
 	// 是否允许该分组使用批量图片生成能力
 	AllowBatchImageGeneration bool `json:"allow_batch_image_generation,omitempty"`
+	// 图片生成是否按实际出图张数计费
+	ImageCountBilling bool `json:"image_count_billing,omitempty"`
 	// 图片生成是否使用独立倍率；false 表示共享分组有效倍率
 	ImageRateIndependent bool `json:"image_rate_independent,omitempty"`
 	// 是否启用按用户和分组累计控制缓存命中率；字段名为历史兼容保留
@@ -304,7 +306,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldI18n, group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelAllowlist, group.FieldCodexModelsManifestConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldPromoDiscountEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldPromoDiscountEnabled, group.FieldIsExclusive, group.FieldOauthPoolVisible, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageCountBilling, group.FieldImageRateIndependent, group.FieldCacheHitQuarterToInputEnabled, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldForceOpenaiFast, group.FieldFreeOpenaiFast, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldPromoDiscountRate, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldCacheHitTargetPercent, group.FieldCacheHitTargetTolerancePercent, group.FieldCacheHitHalfLifeDays, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
@@ -512,6 +514,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_batch_image_generation", values[i])
 			} else if value.Valid {
 				_m.AllowBatchImageGeneration = value.Bool
+			}
+		case group.FieldImageCountBilling:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field image_count_billing", values[i])
+			} else if value.Valid {
+				_m.ImageCountBilling = value.Bool
 			}
 		case group.FieldImageRateIndependent:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -1021,6 +1029,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_batch_image_generation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowBatchImageGeneration))
+	builder.WriteString(", ")
+	builder.WriteString("image_count_billing=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageCountBilling))
 	builder.WriteString(", ")
 	builder.WriteString("image_rate_independent=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageRateIndependent))

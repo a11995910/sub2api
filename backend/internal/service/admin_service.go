@@ -274,6 +274,7 @@ type CreateGroupInput struct {
 	BatchImageHoldMultiplier       *float64
 	VideoRateIndependent           bool
 	VideoRateMultiplier            *float64
+	ImageCountBilling              bool
 	// 高峰时段倍率配置（PeakRateMultiplier 为 nil 时按 1.0 处理）
 	PeakRateEnabled    bool
 	PeakStart          string
@@ -367,6 +368,7 @@ type UpdateGroupInput struct {
 	BatchImageHoldMultiplier       *float64
 	VideoRateIndependent           *bool
 	VideoRateMultiplier            *float64
+	ImageCountBilling              *bool
 	// 高峰时段倍率配置（nil 表示不修改）
 	PeakRateEnabled    *bool
 	PeakStart          *string
@@ -432,6 +434,7 @@ type UpdateGroupInput struct {
 }
 
 type CreateAccountInput struct {
+	ProxyMode          string // 受限写入在验权后选择代理。
 	Name               string
 	Notes              *string
 	Platform           string
@@ -464,6 +467,7 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
+	ProxyMode             string // 受限写入在验权后选择代理。
 	Name                  string
 	Notes                 *string
 	Type                  string // Account type: oauth, setup-token, apikey

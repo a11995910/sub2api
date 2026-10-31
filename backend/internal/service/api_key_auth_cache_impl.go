@@ -14,8 +14,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// 升级快照版本，淘汰旧白名单语义及缺少定制字段的缓存。
-const apiKeyAuthSnapshotVersion = 29
+// 升级快照版本，淘汰缺少按张计费及定制字段的缓存。
+const apiKeyAuthSnapshotVersion = 30
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -395,6 +395,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
 			ImageResponseFormat:             apiKey.Group.ImageResponseFormat,
 			AllowBatchImageGeneration:       apiKey.Group.AllowBatchImageGeneration,
+			ImageCountBilling:               apiKey.Group.ImageCountBilling,
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
 			CacheHitQuarterToInput:          apiKey.Group.CacheHitQuarterToInput,
 			CacheHitTargetPercent:           apiKey.Group.CacheHitTargetPercent,
@@ -512,6 +513,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
 			ImageResponseFormat:             imageResponseFormat,
 			AllowBatchImageGeneration:       snapshot.Group.AllowBatchImageGeneration,
+			ImageCountBilling:               snapshot.Group.ImageCountBilling,
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,
 			CacheHitQuarterToInput:          snapshot.Group.CacheHitQuarterToInput,
 			CacheHitTargetPercent:           snapshot.Group.CacheHitTargetPercent,
