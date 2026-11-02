@@ -144,7 +144,7 @@ func TestBuildOpenAIWSHeadersNamespacesCodexIdentityByOAuthAccount(t *testing.T)
 		headers, _, err := service.buildOpenAIWSHeaders(
 			context.Background(), c, account, "token",
 			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
-			true, "", "", "client-session", "", "",
+			true, "", "client-session", "", "",
 		)
 		require.NoError(t, err)
 		return headers

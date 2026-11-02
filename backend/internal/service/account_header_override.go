@@ -56,7 +56,6 @@ var headerOverrideBlockedNames = map[string]struct{}{
 	"sec-websocket-accept":     {},
 	"session_id":               {},
 	"conversation_id":          {},
-	"x-codex-turn-state":       {},
 	"x-codex-turn-metadata":    {},
 	"chatgpt-account-id":       {},
 	"x-claude-code-session-id": {},

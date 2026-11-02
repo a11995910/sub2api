@@ -38,20 +38,7 @@ OpenAI 粘性会话会让同一会话尽量沿用上一次绑定账号。负载�
 
 ## 请求完整性与账号测试
 
-OpenAI OAuth／SetupToken 账号编辑页只提供“关闭”和“292/332 门票”。新建独立账号默认关闭；存量健康头异常补试、首发注入及旧替换开关不再生效，页面回显关闭。需要采集门票时显式选择 292/332 模式，并在系统设置开启总开关、配置采集来源。已启用门票的账号保留原设置。
-
-管理员通过 `POST /api/v1/admin/accounts` 创建账号时，可在原有请求中合并以下字段；认证头仍为 `x-api-key`，账号名称、平台、类型和 OAuth 凭据沿用现有格式：
-
-```json
-{
-  "extra": {
-    "openai_turn_state_mode": "codex_ticket",
-    "openai_codex_ticket_fail_closed": true
-  }
-}
-```
-
-批量创建每个账号的 `extra` 与 `POST /api/v1/admin/accounts/import/codex-session` 顶层 `extra` 使用相同策略。模式只接受 `off` 或 `codex_ticket`，显式传入已移除模式会返回 `400 INVALID_TURN_STATE_SETTING`。旧健康头的库存和动态采集接口已下线；历史表及设置保留但不再运行采集、领取、首发或补试，也不会自动转为门票来源。完整策略见[状态头模式与对比](OPENAI_GATEWAY_CN.md#状态头模式与对比)。
+OpenAI OAuth／SetupToken 账号编辑页不再提供状态头策略、缺票暂停或 292/332 门票状态。创建、编辑和批量更新会清理历史门票字段，普通账号请求不会采集、绑定或注入门票。
 
 OpenAI 账号编辑页提供“请求完整性观察”，默认“观察”，可以按账号关闭；设置保存于 `extra.request_integrity_mode`，仅接受 `observe`、`off`。它记录 Responses 转发中变化的字段名，不记录对话正文，不阻断请求，也不更改“Codex 指纹收敛”选择。覆盖范围、跳过条件与日志含义见 [OpenAI 网关功能说明](OPENAI_GATEWAY_CN.md#请求完整性观察)。
 
@@ -152,13 +139,4 @@ Anthropic 和 OpenAI 平台的 `api_key` 类型账号支持请求头覆写。管
 - Handler 测试覆盖创建 Anthropic OAuth/SetupToken 账号时自动写入保守 `base_rpm`、`max_sessions`、`session_idle_timeout_minutes`，且不影响 Anthropic API Key 账号。
 - 服务测试覆盖网关调试日志对认证头、Claude Code session、metadata 用户标识和 prompt cache key 的脱敏。
 - 组件测试覆盖多个 Agent Identity 文件导入、camelCase 字段兼容、与 Sub2API 导出数据混选拒绝，以及部分成功后刷新账号列表。
-- 状态头策略测试覆盖新账号默认关闭、旧模式停用、非法模式拒绝，以及 292/332 门票绑定与 HTTP／WebSocket 复用。
 - 服务与组件测试覆盖国产供应商模式/协议组合、默认端点、额度和余额响应解析、代理与出站 URL 校验、并发探测合并、快照落盘失败以及不支持的供应商组合。
-
-### 292/332 门票模式
-
-账号 `extra.openai_turn_state_mode` 仅支持 `off` 与 `codex_ticket`。
-
-292/332 门票模式默认同时兼容 292 和 332 字符的状态头，要求 HTTP 200、`gAAAAA` 前缀、采集响应成功完成且声明模型与实际请求一致，账号摘要显示实际门票长度。模型不一致、缺少模型声明或采集流失败时不保存门票。业务 JSON／SSE 与两种 WebSocket 转发发现模型不一致时，立即淘汰本代门票及代理绑定并显示失效原因，下一轮重新采集；已转发内容不自动回放。该模式使用系统设置中的独立采集来源与总开关，可选择固定代理地址或批量 IP 提取接口。批量接口每轮提取一次，最多四个账号／模型目标并行，各目标逐个尝试代理，取得有效票即停，每账号模型保留一张票及成功代理，后续业务持续使用这一组绑定，直到门票过期或绑定失效后重新采集。供应商必须使用固定或粘性出口（关闭提前换 IP），粘性时长应覆盖门票期限；轮换入口不能保证实际 IP 一致。旧票没有代理信息时会重新采集，重启可恢复完整绑定。账号摘要每五秒显示就绪状态、剩余期限、采集中及批次进度、最近安全结果和预计下次尝试时间；编辑中的未保存字段不会被轮询覆盖。默认缺票暂停，可按账号关闭缺票拦截。模型列表、长度和期限在 `gateway.openai_codex_ticket` 配置；`refresh_before_seconds` 仅保留兼容，不再提前换票和换出口。
-
-完整行为和边界见[292/332 门票模式](OPENAI_GATEWAY_CN.md#292332-门票模式)。

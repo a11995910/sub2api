@@ -844,10 +844,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		isCodexCLI = true
 	}
-	turnState := ""
 	turnMetadata := ""
 	if c != nil {
-		turnState = strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 		turnMetadata = strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader))
 	}
 	headers, _, buildHdrErr := s.buildOpenAIWSHeaders(
@@ -857,7 +855,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		token,
 		wsDecision,
 		isCodexCLI,
-		turnState,
 		turnMetadata,
 		promptCacheKey,
 		gjson.GetBytes(firstClientMessage, "model").String(),
@@ -869,15 +866,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
-	}
-	accountProxyURL := proxyURL
-	ticket, ticketErr := s.bindOpenAICodexTicket(ctx, account, capturedSessionModel, headers)
-	if ticketErr != nil {
-		return ticketErr
-	}
-	observeTicket := s.observeOpenAICodexTicketBinding(account, ticket)
-	if ticket != nil {
-		proxyURL = s.openAICodexTicketRequestProxy(ctx, ticket, proxyURL)
 	}
 
 	dialer := s.getOpenAIWSPassthroughDialer()
@@ -896,9 +884,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
 		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
-		if observeTicket != nil {
-			observeTicket(dialCtx, statusCode, err, nil)
-		}
 		cancelDial()
 		if err == nil {
 			break
@@ -942,9 +927,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	upstreamFrameConn, ok := upstreamConn.(openaiwsv2.FrameConn)
 	if !ok {
 		return errors.New("openai ws passthrough upstream connection does not support frame relay")
-	}
-	if observeTicket != nil {
-		upstreamFrameConn = &openAICodexTicketFrameConn{FrameConn: upstreamFrameConn, observe: observeTicket}
 	}
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,
@@ -1128,13 +1110,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if model == "" {
 				model = capturedSessionModel
 			}
-			if ticket != nil && (isResponseCreate || eventType == "session.update") {
-				current := s.lookupOpenAICodexTicket(account, model)
-				if proxyURL != s.openAICodexTicketRequestProxy(ctx, ticket, accountProxyURL) || !current.valid(time.Now(), s.openAICodexTicketConfig().TargetLength) || ticket.Model != model || current.State != ticket.State || current.ProxyURL != ticket.ProxyURL || !current.CapturedAt.Equal(ticket.CapturedAt) {
-					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "门票或绑定出口已变化，请重新连接", ErrOpenAICodexTicketUnavailable)
-				}
-			}
-
 			frameIntegrity.expectMappedModel(model)
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)

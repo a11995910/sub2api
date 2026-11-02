@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -127,36 +126,5 @@ func testForwardChatCompletionsCancellation(t *testing.T, responseModel string) 
 		require.ErrorIs(t, stream.ctx.Err(), context.Canceled)
 	case <-time.After(time.Second):
 		t.Fatal("ForwardAsChatCompletions did not cancel upstream before closing the body")
-	}
-}
-
-func TestCodexTicketProbeCancelsBeforeClosingCompletedStream(t *testing.T) {
-	for _, model := range []string{"gpt-6-astra", "gpt-5.6-luna"} {
-		t.Run(model, func(t *testing.T) {
-			body := newContextBoundBlockingReadCloser([]byte(codexTicketSuccessSSE(model)))
-			t.Cleanup(body.forceUnblock)
-			svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, &codexTicketFuncUpstream{do: func(req *http.Request) (*http.Response, error) {
-				body.ctx = req.Context()
-				response := codexTicketResponse()
-				response.Body = body
-				return response, nil
-			}})
-			result := make(chan error, 1)
-			go func() {
-				_, _, err := svc.fireOpenAICodexTicketProbe(context.Background(), ticketTestAccount(41), "test-token", "gpt-6-astra", "", 5*time.Second)
-				result <- err
-			}()
-			select {
-			case err := <-result:
-				if model == "gpt-6-astra" {
-					require.NoError(t, err)
-				} else {
-					require.ErrorIs(t, err, errCodexTicketModelMismatch)
-				}
-				require.ErrorIs(t, body.ctx.Err(), context.Canceled)
-			case <-time.After(time.Second):
-				t.Fatal("模型验证结束后必须先取消请求再关闭流，不能等待上游断开")
-			}
-		})
 	}
 }

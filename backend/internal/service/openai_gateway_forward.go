@@ -95,20 +95,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = reasoningBody
 		}
 	}
-	// BPS 必须先于 Codex 请求清洗和门票注入，保留客户端工具与完整历史。
-	bpsEnabled, bpsErr := s.excelBPSRouteEnabled(ctx, account, gjson.GetBytes(body, "model").String())
-	if bpsErr != nil {
-		MarkResponseCommitted(c)
-		writeExcelBPSOutputError(c, "responses", false, 503, "basispoints_settings_unavailable", bpsErr.Error())
-		return nil, bpsErr
-	}
-	if bpsEnabled && account.excelBPSNativeFallbackReason(body) == "" {
-		return s.forwardExcelBPS(ctx, c, account, body, startTime)
-	}
-	if account.IsExcelOAuth() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "excel_oauth_route_unavailable", "message": "Excel OAuth 仅支持已启用的 Excel/BPS 路由，请检查全局开关和账号模型范围"}})
-		return nil, fmt.Errorf("Excel OAuth 路由不可用")
-	}
 	responsesLite := account.IsOpenAI() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader))
 	if responsesLite {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(body, account)
@@ -1498,13 +1484,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			}
 		}
 	}
-	// 客户端回带的 x-codex-turn-state 若已知由其他账号铸造（failover 换号），
-	// 剥离后再出站——异账号 blob 与本账号的（指纹收敛后）出站身份自相矛盾。
-	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
-	if err := s.bindOpenAICodexTicketRequest(req, account, extractOpenAICodexTicketModel(body)); err != nil {
-		return nil, err
-	}
-	s.observeOpenAICodexTicketRequestModel(c, req, account)
 	if account.UsesOpenAICodexProtocol() {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。

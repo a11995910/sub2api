@@ -33,7 +33,6 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
-	r.GET("/api/bps-images/:id", h.OpenAIGateway.ExcelBPSImage)
 	bodyBudget := middleware.NewBodyMemoryBudget(
 		cfg.Gateway.MaxInflightBodyBytes,
 		cfg.Gateway.BodyAdmissionWaitSeconds,

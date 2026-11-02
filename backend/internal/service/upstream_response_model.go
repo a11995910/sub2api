@@ -29,9 +29,6 @@ type upstreamResponseModelObserver struct {
 	first    string
 	terminal string
 	conflict bool
-	// 门票使用已有模型审计结果补充失效判定，覆盖超过轻量观察器缓存上限的响应。
-	codexTicketModelObserved func(string)
-
 	// firstTier holds the first non-terminal tier declaration; it is discarded
 	// when later non-terminal declarations disagree. terminalTier comes from a
 	// terminal event and always wins.
@@ -72,9 +69,6 @@ func normalizeObservedUpstreamResponseModel(model string) string {
 
 func (o *upstreamResponseModelObserver) ObserveOpenAI(payload []byte, eventType string) {
 	model := firstValidTrimmedGJSONString(payload, "response.model", "model")
-	if o.codexTicketModelObserved != nil && model != "" {
-		o.codexTicketModelObserved(model)
-	}
 	terminal := isUpstreamResponseModelTerminalEvent(eventType)
 	o.Observe(model, terminal)
 	// 上游 service_tier 与 model 同帧出现；无 model 时不记录，避免误把旁路字段当成结果。

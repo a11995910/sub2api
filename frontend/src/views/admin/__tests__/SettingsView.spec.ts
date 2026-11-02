@@ -757,30 +757,18 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
-  it("网关服务不再展示或提交门票配置，其他 Codex 设置可正常保存", async () => {
+  it("网关服务其他 Codex 设置可正常保存", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
-      openai_codex_ticket_enabled: true,
-      openai_codex_ticket_model_mismatch_invalidation: true,
-      openai_codex_ticket_use_harvest_proxy: false,
-      openai_codex_ticket_harvest_proxy_url: "http://saved.example.com:8080",
-      openai_codex_ticket_harvest_proxy_configured: true,
-      openai_codex_ticket_harvest_proxy_mode: "extract",
-      openai_codex_ticket_harvest_extract_url: "https://extract.example.com/••••",
-      openai_codex_ticket_harvest_extract_configured: true,
-      openai_codex_ticket_harvest_extract_protocol: "http",
       min_codex_version: "0.120.0",
     });
     const wrapper = mountView();
     await flushPromises();
-    expect(wrapper.find('[id^="codex-ticket-"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain("admin.settings.gatewayForwarding.codexTicketEnabled");
     expect(wrapper.text()).toContain("admin.settings.gatewayForwarding.codexClientRestrictionTitle");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
     const saved = updateSettings.mock.calls[0]?.[0];
     expect(saved).toBeDefined();
-    expect(Object.keys(saved).filter(key => key.startsWith("openai_codex_ticket_"))).toEqual([]);
     expect(saved.min_codex_version).toBe("0.120.0");
     wrapper.unmount();
   });

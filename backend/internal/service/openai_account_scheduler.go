@@ -384,9 +384,6 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
-	if s != nil && s.service != nil {
-		ctx = s.service.withExcelBPSSelection(ctx)
-	}
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
@@ -1910,12 +1907,6 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}) {
 		return false, "shadow_parent_unhealthy"
 	}
-	if s != nil && s.service != nil {
-		ctx = s.service.withExcelBPSSelection(ctx)
-	}
-	if !excelBPSSelectionAllows(ctx, account, req.RequestedModel, req.RequireCompact) {
-		return false, "excel_bps_route_unavailable"
-	}
 	if req.RequestedModel != "" && !supportsOpenAIRequestModel(account, req.RequestedModel, req.RequireCompact) {
 		return false, "model_not_supported"
 	}
@@ -2316,18 +2307,13 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (selection *AccountSelectionResult, decision OpenAIAccountScheduleDecision, err error) {
-	ctx = s.withExcelBPSSelection(ctx)
 	defer func() {
 		if err == nil && selection != nil && selection.Account != nil {
 			account := selection.Account
-			model := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
 			selection.CheckAvailability = func() error {
 				if err := s.accountTimeRotation.checkSessionRest(ctx, account); err != nil {
 					s.ClearRestingAccountBinding(ctx, groupID, sessionHash, previousResponseID, err)
 					return err
-				}
-				if s.openAICodexTicketBlocksAccount(account, model) {
-					return wrapOpenAITurnStateUnavailable(ErrOpenAICodexTicketUnavailable)
 				}
 				return nil
 			}

@@ -245,7 +245,6 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
 	}
-	applyOpenAITurnStateCreateDefault(account)
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {

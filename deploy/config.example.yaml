@@ -363,27 +363,6 @@ gateway:
   # GPT-5.5 is API-only after its ChatGPT Codex retirement; subscription
   # requests skip this retired fallback and keep their selected model.
   openai_compact_model: "gpt-5.5"
-  # 独立 292/332 门票实验：只对账号选择 codex_ticket 模式时生效。
-  # 后台可热更新总开关和来源；成功门票与代理按账号模型绑定，到期或失效后重采。
-  # 保持实际出口需使用固定或粘性 IP，关闭供应商提前换 IP，粘性时长须覆盖 ttl_seconds。
-  # 采集验证 HTTP 200、长度、前缀、模型声明与成功终态；模型一致校验可在后台关闭。
-  openai_codex_ticket:
-    enabled: false
-    target_length: 292 # 292 或 332 均兼容两种长度；其他值仅接受指定长度
-    ttl_seconds: 3600
-    refresh_before_seconds: 600 # 仅保留配置兼容，不再提前换票或换出口
-    harvest_proxy_url: ""
-    harvest_proxy_mode: "proxy" # proxy 固定代理；extract 批量提取
-    harvest_extract_url: "" # HTTPS 文本提取接口，仅写运行时配置，勿将实际凭据提交到仓库
-    harvest_extract_protocol: "http" # 无协议的 IP:端口使用 http / https / socks5h
-    harvest_probe_interval_seconds: 6 # 账号发现间隔；各账号模型失败后独立等待此间隔
-    harvest_attempt_timeout_seconds: 25
-    harvest_proxy_concurrency: 3 # 每账号模型并发采票数，范围 1–8；固定代理为 1
-    harvest_global_concurrency: 8 # 全进程并发采票上限，范围 1–32；最多 4 个目标同时提取或采集
-    fail_closed: true
-    models:
-      - gpt-6-astra
-      - gpt-5.6-sol
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600

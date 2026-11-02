@@ -202,7 +202,6 @@ func TestBuildOpenAIWSHeadersSendsOAuthRoutingHintOnly(t *testing.T) {
 			true,
 			"",
 			"",
-			"",
 			"gpt-5.6-codex",
 			tier,
 		)
@@ -250,7 +249,7 @@ func TestOpenAIRoutingDiagnosticsUseFinalDerivedValuesOnly(t *testing.T) {
 	decision := OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2}
 	_, _, err = svc.buildOpenAIWSHeaders(
 		context.Background(), c, account, "oauth-secret", decision, true,
-		"", "", "", "gpt-5.6-codex", "fast",
+		"", "", "gpt-5.6-codex", "fast",
 	)
 	require.NoError(t, err)
 

@@ -17,7 +17,6 @@ const (
 	openAIWSBetaV1Value = "responses_websockets=2026-02-04"
 	openAIWSBetaV2Value = "responses_websockets=2026-02-06"
 
-	openAIWSTurnStateHeader    = "x-codex-turn-state"
 	openAIWSTurnMetadataHeader = "x-codex-turn-metadata"
 
 	openAIWSLogValueMaxLen      = 160

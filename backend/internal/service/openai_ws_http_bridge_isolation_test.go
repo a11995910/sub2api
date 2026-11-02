@@ -50,7 +50,6 @@ func (b *httpBridgeIsolationBody) Close() error {
 
 type httpBridgeIsolationRequest struct {
 	input []string
-	state string
 }
 
 type httpBridgeIsolationUpstream struct {
@@ -100,7 +99,7 @@ func (u *httpBridgeIsolationUpstream) Do(req *http.Request, _ string, _ int64, _
 		return nil, fmt.Errorf("missing bridge input")
 	}
 	u.mu.Lock()
-	u.requests = append(u.requests, httpBridgeIsolationRequest{input: texts, state: req.Header.Get(openAIWSTurnStateHeader)})
+	u.requests = append(u.requests, httpBridgeIsolationRequest{input: texts})
 	u.mu.Unlock()
 
 	id := texts[0]
@@ -120,7 +119,6 @@ func (u *httpBridgeIsolationUpstream) Do(req *http.Request, _ string, _ int64, _
 	}
 	suffix := fmt.Sprintf("data: {\"type\":\"response.completed\",\"response\":{\"id\":%q,\"status\":\"completed\",\"output\":%s,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n", responseID, output)
 	headers := http.Header{"Content-Type": []string{"text/event-stream"}}
-	headers.Set(openAIWSTurnStateHeader, "turn-"+id)
 	responseBody := io.NopCloser(strings.NewReader(prefix + suffix))
 	if turn == 1 {
 		responseBody = &httpBridgeIsolationBody{ctx: u.ctx, prefix: bytes.NewReader([]byte(prefix)), suffix: bytes.NewReader([]byte(suffix)), release: u.firstRelease, closed: make(chan struct{})}
@@ -160,7 +158,6 @@ func TestOpenAIWSHTTPBridgeSessionIsolationAcrossSameSessionHash(t *testing.T) {
 		return c
 	}
 	seedHash := svc.GenerateSessionHash(newContext(httptest.NewRequest(http.MethodGet, "/v1/responses", nil)), nil)
-	stateStore.BindSessionTurnState(groupID, seedHash, "sentinel-turn-state", time.Hour)
 	stateStore.BindSessionConn(groupID, seedHash, "sentinel-native-conn", time.Hour)
 
 	serverResults := make(chan error, 2)
@@ -238,12 +235,9 @@ func TestOpenAIWSHTTPBridgeSessionIsolationAcrossSameSessionHash(t *testing.T) {
 	require.ElementsMatch(t, []httpBridgeIsolationRequest{
 		{input: []string{"alpha"}},
 		{input: []string{"beta"}},
-		{input: []string{"alpha", "call_alpha", "alpha-result"}, state: "turn-alpha"},
-		{input: []string{"beta", "call_beta", "beta-result"}, state: "turn-beta"},
+		{input: []string{"alpha", "call_alpha", "alpha-result"}},
+		{input: []string{"beta", "call_beta", "beta-result"}},
 	}, requests)
-	gotState, ok := stateStore.GetSessionTurnState(groupID, seedHash)
-	require.True(t, ok)
-	require.Equal(t, "sentinel-turn-state", gotState)
 	gotConn, ok := stateStore.GetSessionConn(groupID, seedHash)
 	require.True(t, ok)
 	require.Equal(t, "sentinel-native-conn", gotConn)

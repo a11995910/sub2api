@@ -454,9 +454,6 @@ describe('validateHeaderOverrideRows session isolation headers', () => {
   it('rejects per-request session headers', () => {
     expect(validateHeaderOverrideRows([{ name: 'session_id', value: '' }])).toBe('blockedName')
     expect(validateHeaderOverrideRows([{ name: 'Conversation_ID', value: '' }])).toBe('blockedName')
-    expect(validateHeaderOverrideRows([{ name: 'x-codex-turn-state', value: '' }])).toBe(
-      'blockedName'
-    )
     expect(validateHeaderOverrideRows([{ name: 'X-Claude-Code-Session-Id', value: '' }])).toBe(
       'blockedName'
     )

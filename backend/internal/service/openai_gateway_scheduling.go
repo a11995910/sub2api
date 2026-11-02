@@ -440,9 +440,6 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
-	if !excelBPSSelectionAllows(ctx, account, requestedModel, requireCompact) {
-		return "excel_bps_route_unavailable"
-	}
 	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return "model_not_supported"
 	}
@@ -910,7 +907,6 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHit(ctx 
 }
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsStickyHitFromAccounts(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool, preloadedAccounts []Account, accountsLoaded bool) (*Account, bool, error) {
-	ctx = s.withExcelBPSSelection(ctx)
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -1946,7 +1942,6 @@ func (s *OpenAIGatewayService) ClearRestingAccountBinding(ctx context.Context, g
 		}
 		if sessionHash != "" {
 			store.DeleteSessionConn(derefGroupID(groupID), sessionHash)
-			store.DeleteSessionTurnState(derefGroupID(groupID), sessionHash)
 		}
 	}
 }

@@ -6,7 +6,7 @@ export default {
   singleAccountHint: 'Runs only the selected account using the saved question and group rules. Results appear below. Scheduled tests still include all accounts.',
   runSingle: 'Test selected OAuth account',
   title: 'Candy test',
-  hint: 'Test all or one GPT OAuth account. Unavailable accounts are skipped; requests consume upstream quota. Accounts with Excel enabled use Excel and display errors on failure.',
+  hint: 'Test all or one GPT OAuth account. Unavailable accounts are skipped; requests consume upstream quota.',
   scope: 'GPT OAuth root accounts only; Spark derived accounts are excluded.',
   prompt: 'Test question',
   resetPrompt: 'Restore default question and answer',

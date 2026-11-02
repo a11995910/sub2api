@@ -1839,18 +1839,6 @@ func TestParseOpsSSEFailure_TopLevelErrorsAndUnknownStatus(t *testing.T) {
 			wantStatus: http.StatusBadGateway,
 		},
 		{
-			name:       "健康头库存不足",
-			body:       "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"server_error\",\"code\":\"turn_state_unavailable\",\"message\":\"健康头不足\"}}}\n\n",
-			wantType:   "server_error",
-			wantStatus: http.StatusServiceUnavailable,
-		},
-		{
-			name:       "当前账号健康头次数耗尽",
-			body:       "event: error\ndata: {\"error\":{\"type\":\"server_error\",\"code\":\"turn_state_budget_exhausted\",\"message\":\"当前账号次数耗尽\"}}\n\n",
-			wantType:   "server_error",
-			wantStatus: http.StatusServiceUnavailable,
-		},
-		{
 			name:       "explicit terminal status",
 			body:       "event: error\ndata: {\"type\":\"error\",\"status_code\":429,\"code\":\"new_rate_code\",\"message\":\"slow down\"}\n\n",
 			wantType:   "api_error",

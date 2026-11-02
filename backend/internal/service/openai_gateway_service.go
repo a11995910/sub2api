@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/service/basispoints"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -27,7 +26,6 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -85,7 +83,6 @@ var openaiAllowedHeaders = map[string]bool{
 	"session_id":              true,
 	"x-codex-beta-features":   true,
 	"x-codex-installation-id": true,
-	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
 	responsesLiteHeaderKey:    true,
@@ -104,7 +101,6 @@ var openaiPassthroughAllowedHeaders = map[string]bool{
 	"session_id":              true,
 	"x-codex-beta-features":   true,
 	"x-codex-installation-id": true,
-	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
 	responsesLiteHeaderKey:    true,
@@ -462,13 +458,6 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	excelBPSImagesMu       sync.Mutex
-	excelBPSImages         *basispoints.ImageRelay
-	excelBPSAttachments    basispoints.AttachmentCache
-	excelBPSImageAdmission excelBPSImageAdmission
-	excelBPSModelCooldowns excelBPSModelCooldowns
-	excelBPSCooldownUntil  sync.Map
-
 	accountRepo           AccountRepository
 	groupRepo             GroupRepository
 	usageLogRepo          UsageLogRepository
@@ -535,25 +524,6 @@ type OpenAIGatewayService struct {
 	openAIModelsCache                   openAIModelsCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
-	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
-	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
-	// 剥离跨账号回带（openai_codex_turn_state.go）。
-	openaiCodexTicketLocks       [64]sync.Mutex
-	openaiCodexTickets           sync.Map
-	openaiCodexTicketHarvest     openAICodexTicketHarvestState
-	openaiCodexTicketFlight      singleflight.Group
-	openaiCodexTicketLifecycleMu sync.Mutex
-	openaiCodexTicketCancel      context.CancelFunc
-	openaiCodexTicketDone        chan struct{}
-	openaiCodexTicketStopped     bool
-	openaiCodexTicketContext     context.Context
-	openaiCodexTicketJobs        map[string]*openAICodexTicketJob
-	openaiCodexTicketWorkers     sync.WaitGroup
-	openaiCodexTicketLimitsOnce  sync.Once
-	openaiCodexTicketTargetSlots chan struct{}
-	openaiCodexTicketProbeSlots  chan struct{}
-	openaiCodexTurnStateOrigins  sync.Map
-	openaiCodexTurnStateWrites   atomic.Uint64
 }
 
 // SetAccountTimeRotationService 注入智能时段轮候服务。采用 setter 保持现有测试和
@@ -658,7 +628,6 @@ func NewOpenAIGatewayService(
 	if openAITokenProvider != nil {
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
-	svc.StartOpenAICodexTicketHarvester()
 	svc.logOpenAIWSModeBootstrap()
 	return svc
 }
@@ -787,9 +756,6 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
-	if s != nil {
-		_ = s.CloseExcelBPSImages()
-	}
 	if s != nil && s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}
@@ -851,13 +817,6 @@ func (s *OpenAIGatewayService) getOpenAIWSProtocolResolver() OpenAIWSProtocolRes
 func classifyOpenAIWSReconnectReason(err error) (string, bool) {
 	if err == nil {
 		return "", false
-	}
-	// 本地库存或请求预算不足，原账号重连不会改善；交给调度层选择其他账号。
-	var failoverErr *UpstreamFailoverError
-	if errors.As(err, &failoverErr) {
-		if code, _, ok := failoverErr.OpenAITurnStateClientError(); ok {
-			return code, false
-		}
 	}
 	var fallbackErr *openAIWSFallbackError
 	if !errors.As(err, &fallbackErr) || fallbackErr == nil {
@@ -1307,9 +1266,6 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			return "", "", err
 		}
 		account = credAccount
-	}
-	if account.IsExcelOAuth() {
-		return "", "", errors.New("Excel OAuth 凭据仅允许用于 BPS")
 	}
 	switch account.Type {
 	case AccountTypeOAuth:

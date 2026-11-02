@@ -1,6 +1,6 @@
 export default {
   title: '糖果测试',
-  hint: '支持全部或单个 GPT OAuth 主账号测试；不可用账号会跳过，实际调用会消耗上游额度。开启 Excel 的账号使用 Excel，失败直接显示错误。',
+  hint: '支持全部或单个 GPT OAuth 主账号测试；不可用账号会跳过，实际调用会消耗上游额度。',
   scope: '仅测试 GPT OAuth 主账号，不包含 Spark 派生账号。',
   testScope: '本次测试范围',
   allAccounts: '全部 OAuth',

@@ -262,7 +262,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyEnableClientDatelineNormalization:                  "true",
 		SettingKeyAntigravityUserAgentVersion:                        "",
 		SettingKeyOpenAICodexUserAgent:                               "",
-		SettingKeyOpenAICodexTicketHarvestProxyURL:                   "",
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
@@ -904,24 +903,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
 	result.OpenAITTFTMode = normalizeOpenAITTFTMode(settings[SettingKeyOpenAITTFTMode])
-	if v, ok := settings[SettingKeyOpenAICodexTicketEnabled]; ok && v != "" {
-		result.OpenAICodexTicketEnabled = v == "true"
-	} else if s.cfg != nil {
-		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
-	}
-	result.OpenAICodexTicketModelMismatchInvalidation = settings[SettingKeyOpenAICodexTicketModelMismatchInvalidation] != "false"
-	result.OpenAICodexTicketUseHarvestProxy = settings[SettingKeyOpenAICodexTicketUseHarvestProxy] != "false"
-	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
-	source := OpenAICodexTicketHarvestSource{}
-	if s.cfg != nil {
-		source.Mode = s.cfg.Gateway.OpenAICodexTicket.HarvestProxyMode
-		source.ExtractURL = s.cfg.Gateway.OpenAICodexTicket.HarvestExtractURL
-		source.ExtractProtocol = s.cfg.Gateway.OpenAICodexTicket.HarvestExtractProtocol
-	}
-	source = openAICodexTicketHarvestSourceFromSettings(settings, source)
-	result.OpenAICodexTicketHarvestProxyMode = source.Mode
-	result.OpenAICodexTicketHarvestExtractURL = source.ExtractURL
-	result.OpenAICodexTicketHarvestExtractProtocol = source.ExtractProtocol
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {

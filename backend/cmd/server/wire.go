@@ -339,12 +339,6 @@ func provideCleanup(
 				billingCache.Stop()
 				return nil
 			}},
-			{"OpenAICodexTicketHarvester", func() error {
-				if openAIGateway != nil {
-					openAIGateway.StopOpenAICodexTicketHarvester()
-				}
-				return nil
-			}},
 			{"UsageRecordWorkerPool", func() error {
 				if usageRecordWorkerPool != nil {
 					usageRecordWorkerPool.Stop()

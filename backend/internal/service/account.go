@@ -1922,9 +1922,6 @@ func (a *Account) GetOpenAISessionID() string {
 }
 
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
-	if a.IsExcelOAuth() && capability == OpenAIEndpointCapabilityLive {
-		return false
-	}
 	if a == nil {
 		return false
 	}
@@ -2115,9 +2112,6 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
-	if capability != "" && a.IsExcelOAuth() {
-		return false
-	}
 	if capability == "" {
 		return true
 	}

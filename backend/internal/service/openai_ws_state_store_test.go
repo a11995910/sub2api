@@ -62,23 +62,6 @@ func TestOpenAIWSStateStore_ResponseConnTTL(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestOpenAIWSStateStore_SessionTurnStateTTL(t *testing.T) {
-	store := NewOpenAIWSStateStore(nil)
-	store.BindSessionTurnState(9, "session_hash_1", "turn_state_1", 30*time.Millisecond)
-
-	state, ok := store.GetSessionTurnState(9, "session_hash_1")
-	require.True(t, ok)
-	require.Equal(t, "turn_state_1", state)
-
-	// group 隔离
-	_, ok = store.GetSessionTurnState(10, "session_hash_1")
-	require.False(t, ok)
-
-	time.Sleep(60 * time.Millisecond)
-	_, ok = store.GetSessionTurnState(9, "session_hash_1")
-	require.False(t, ok)
-}
-
 func TestOpenAIWSStateStore_SessionConnTTL(t *testing.T) {
 	store := NewOpenAIWSStateStore(nil)
 	store.BindSessionConn(9, "session_hash_conn_1", "conn_1", 30*time.Millisecond)

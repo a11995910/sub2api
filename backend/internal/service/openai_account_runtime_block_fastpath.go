@@ -562,10 +562,6 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s.accountTimeRotation.checkRequestProtection(account, time.Now(), false) != nil {
 		return true
 	}
-	requireCompact := len(compact) > 0 && compact[0]
-	if s.openAICodexTicketBlocksAccount(account, s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)) {
-		return true
-	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {
 		if accountPersistedSchedulingCooldownActive(account) {

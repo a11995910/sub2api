@@ -170,10 +170,6 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 	if isAccountProtectionError(err) {
 		return err
 	}
-	var stateErr *openAITurnStateFailoverError
-	if errors.As(err, &stateErr) {
-		return err
-	}
 	if isClientCanceledTransportError(ctx, err) {
 		return err
 	}

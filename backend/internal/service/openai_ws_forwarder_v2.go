@@ -64,10 +64,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	payload := s.buildOpenAIWSCreatePayload(reqBody, account)
 	payloadStrategy, removedKeys := applyOpenAIWSRetryPayloadStrategy(payload, attempt)
-	turnState := ""
 	turnMetadata := ""
 	if c != nil && c.Request != nil {
-		turnState = strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 		turnMetadata = strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader))
 	}
 	setOpenAIWSTurnMetadata(payload, turnMetadata)
@@ -125,16 +123,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		sessionHash, legacySessionHash = openAIWSSessionHashesFromID(promptCacheKey)
 		attachOpenAILegacySessionHashToGin(c, legacySessionHash)
 	}
-	// 与 WS 接入路径共用执行作用域：codex 多智能体共用 session-id，turn state 与
-	// store=false 的连接绑定必须按线程隔离，同一线程在两条路径之间也才能共享状态。
+	// 与 WS 接入路径共用执行作用域：codex 多智能体共用 session-id，store=false
+	// 的连接绑定必须按线程隔离，同一线程在两条路径之间也才能共享状态。
 	// 作用域由 Forward 从改写前的原始请求算出后传入，reqBody 此时已带账号 namespace。
 	if executionScope = strings.TrimSpace(executionScope); executionScope != "" {
 		sessionHash = executionScope
-	}
-	if turnState == "" && stateStore != nil && sessionHash != "" {
-		if savedTurnState, ok := stateStore.GetSessionTurnState(groupID, sessionHash); ok {
-			turnState = savedTurnState
-		}
 	}
 	preferredConnID := ""
 	if stateStore != nil && previousResponseID != "" {
@@ -158,7 +151,6 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		token,
 		decision,
 		isCodexCLI,
-		turnState,
 		turnMetadata,
 		promptCacheKey,
 		openAIWSPayloadString(payload, "model"),
@@ -168,15 +160,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return nil, fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
 	logOpenAIWSModeDebug(
-		"acquire_start account_id=%d account_type=%s transport=%s preferred_conn_id=%s has_previous_response_id=%v session_hash=%s has_turn_state=%v turn_state_len=%d has_turn_metadata=%v turn_metadata_len=%d store_disabled=%v store_disabled_conn_mode=%s retry_last_reason=%s force_new_conn=%v header_user_agent=%s header_openai_beta=%s header_originator=%s header_accept_language=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v has_chatgpt_account_id=%v has_authorization=%v has_session_id=%v has_conversation_id=%v proxy_enabled=%v",
+		"acquire_start account_id=%d account_type=%s transport=%s preferred_conn_id=%s has_previous_response_id=%v session_hash=%s has_turn_metadata=%v turn_metadata_len=%d store_disabled=%v store_disabled_conn_mode=%s retry_last_reason=%s force_new_conn=%v header_user_agent=%s header_openai_beta=%s header_originator=%s header_accept_language=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v has_chatgpt_account_id=%v has_authorization=%v has_session_id=%v has_conversation_id=%v proxy_enabled=%v",
 		account.ID,
 		account.Type,
 		normalizeOpenAIWSLogValue(string(decision.Transport)),
 		truncateOpenAIWSLogValue(preferredConnID, openAIWSIDValueMaxLen),
 		previousResponseID != "",
 		truncateOpenAIWSLogValue(sessionHash, 12),
-		turnState != "",
-		len(turnState),
 		turnMetadata != "",
 		len(turnMetadata),
 		storeDisabled,
@@ -202,7 +192,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, s.openAIWSAcquireTimeout())
 	defer acquireCancel()
 
-	lease, err := s.acquireOpenAIWSWithCodexTicket(acquireCtx, openAIWSAcquireRequest{
+	lease, err := s.getOpenAIWSConnPool().Acquire(acquireCtx, openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,
 		Headers: wsHeaders,
@@ -218,7 +208,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			}
 			return ""
 		}(),
-	}, mappedModel)
+	})
 	if err != nil {
 		var agentDialErr *openAIWSDialError
 		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &agentDialErr) && isAgentIdentityTaskInvalidWSDialError(agentDialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
@@ -284,7 +274,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 	if previousResponseID != "" {
 		logOpenAIWSModeInfo(
-			"continuation_probe account_id=%d account_type=%s conn_id=%s previous_response_id=%s previous_response_id_kind=%s preferred_conn_id=%s conn_reused=%v store_disabled=%v session_hash=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_turn_state=%v turn_state_len=%d has_prompt_cache_key=%v",
+			"continuation_probe account_id=%d account_type=%s conn_id=%s previous_response_id=%s previous_response_id_kind=%s preferred_conn_id=%s conn_reused=%v store_disabled=%v session_hash=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v",
 			account.ID,
 			account.Type,
 			truncateOpenAIWSLogValue(connID, openAIWSIDValueMaxLen),
@@ -298,8 +288,6 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			openAIWSHeaderValueForLog(wsHeaders, "conversation_id"),
 			normalizeOpenAIWSLogValue(sessionResolution.SessionSource),
 			normalizeOpenAIWSLogValue(sessionResolution.ConversationSource),
-			turnState != "",
-			len(turnState),
 			promptCacheKey != "",
 		)
 	}
@@ -309,23 +297,6 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		c.Set(OpsOpenAIWSConnReusedKey, lease.Reused())
 		if connID != "" {
 			c.Set(OpsOpenAIWSConnIDKey, connID)
-		}
-	}
-
-	handshakeTurnState := strings.TrimSpace(lease.HandshakeHeader(openAIWSTurnStateHeader))
-	logOpenAIWSModeDebug(
-		"handshake account_id=%d conn_id=%s has_turn_state=%v turn_state_len=%d",
-		account.ID,
-		connID,
-		handshakeTurnState != "",
-		len(handshakeTurnState),
-	)
-	if handshakeTurnState != "" {
-		if stateStore != nil && sessionHash != "" {
-			stateStore.BindSessionTurnState(groupID, sessionHash, handshakeTurnState, s.openAIWSSessionStickyTTL())
-		}
-		if c != nil {
-			c.Header(http.CanonicalHeaderKey(openAIWSTurnStateHeader), handshakeTurnState)
 		}
 	}
 
@@ -557,14 +528,6 @@ readLoop:
 					c.Set(OpsOpenAIWSConnIDKey, connID)
 					c.Set(OpsOpenAIWSConnReusedKey, false)
 				}
-				handshakeTurnState = strings.TrimSpace(lease.HandshakeHeader(openAIWSTurnStateHeader))
-				if stateStore != nil && sessionHash != "" {
-					stateStore.DeleteSessionTurnState(groupID, sessionHash)
-					stateStore.BindSessionTurnState(groupID, sessionHash, handshakeTurnState, s.openAIWSSessionStickyTTL())
-				}
-				if c != nil {
-					s.relayOpenAICodexTurnState(c, account, lease.HandshakeHeaders())
-				}
 			}
 			if readErr == nil {
 				if documents, repaired := splitOpenAIConcatenatedJSONDocuments(message); repaired {
@@ -719,7 +682,7 @@ readLoop:
 			)
 			if fallbackReason == "previous_response_not_found" {
 				logOpenAIWSModeInfo(
-					"previous_response_not_found_diag account_id=%d account_type=%s conn_id=%s previous_response_id=%s previous_response_id_kind=%s response_id=%s event_idx=%d req_stream=%v store_disabled=%v conn_reused=%v session_hash=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_turn_state=%v turn_state_len=%d has_prompt_cache_key=%v err_code=%s err_type=%s err_message=%s",
+					"previous_response_not_found_diag account_id=%d account_type=%s conn_id=%s previous_response_id=%s previous_response_id_kind=%s response_id=%s event_idx=%d req_stream=%v store_disabled=%v conn_reused=%v session_hash=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v err_code=%s err_type=%s err_message=%s",
 					account.ID,
 					account.Type,
 					connID,
@@ -735,8 +698,6 @@ readLoop:
 					openAIWSHeaderValueForLog(wsHeaders, "conversation_id"),
 					normalizeOpenAIWSLogValue(sessionResolution.SessionSource),
 					normalizeOpenAIWSLogValue(sessionResolution.ConversationSource),
-					turnState != "",
-					len(turnState),
 					promptCacheKey != "",
 					errCode,
 					errType,

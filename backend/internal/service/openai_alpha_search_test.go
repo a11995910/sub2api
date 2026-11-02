@@ -126,7 +126,6 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	c.Request.Header.Set("Session_ID", "session-client")
 	c.Request.Header.Set("Conversation_ID", "conversation-client")
 	c.Request.Header.Set("X-Codex-Beta-Features", "feature-a")
-	c.Request.Header.Set("X-Codex-Turn-State", "turn-state")
 	c.Request.Header.Set(responsesLiteHeaderKey, "true")
 	c.Request.Header.Set("X-Codex-Turn-Metadata", `{"turn_id":"turn-1"}`)
 
@@ -171,7 +170,6 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	)
 	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("Originator"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Beta-Features"))
-	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Turn-State"))
 	require.Empty(t, upstream.lastReq.Header.Get(responsesLiteHeaderKey))
 	require.Empty(t, upstream.lastReq.Header.Get("Accept-Language"))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())

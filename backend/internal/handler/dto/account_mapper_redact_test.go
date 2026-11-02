@@ -2,9 +2,7 @@ package dto
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -103,30 +101,19 @@ func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	require.Nil(t, got.CredentialsStatus)
 }
 
-func TestAccountFromServiceShallow_RedactsCodexTurnTicketState(t *testing.T) {
-	blob := "gAAAAA" + strings.Repeat("B", 286)
+func TestAccountFromServiceShallow_RedactsLegacyPrivateExtra(t *testing.T) {
 	src := &service.Account{
 		ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
 		Extra: map[string]any{
-			"codex_harvest_proxy_url": "http://user:legacy-proxy-secret@proxy.example.com:8080",
-			"codex_turn_ticket:gpt-6-astra": map[string]any{
-				"state":       blob,
-				"length":      292,
-				"model":       "gpt-6-astra",
-				"captured_at": time.Now().Add(-time.Minute),
-				"expires_at":  time.Now().Add(time.Hour),
-				"attempts":    3,
-			},
+			"codex_harvest_proxy_url":       "http://user:legacy-secret@proxy.example.com:8080",
+			"codex_turn_ticket:gpt-6-astra": map[string]any{"state": "legacy-ticket"},
+			"ordinary":                      "kept",
 		},
 	}
 	got := AccountFromServiceShallow(src)
-	require.NotContains(t, got.Extra, "codex_turn_ticket:gpt-6-astra")
-	raw, err := json.Marshal(got)
-	require.NoError(t, err)
-	require.NotContains(t, string(raw), blob)
-	require.NotContains(t, string(raw), "legacy-proxy-secret")
 	require.NotContains(t, got.Extra, "codex_harvest_proxy_url")
-	require.Contains(t, src.Extra, "codex_harvest_proxy_url")
+	require.NotContains(t, got.Extra, "codex_turn_ticket:gpt-6-astra")
+	require.Equal(t, "kept", got.Extra["ordinary"])
 }
 
 func TestAccountFromService_RedactsGrokModelDiagnostics(t *testing.T) {

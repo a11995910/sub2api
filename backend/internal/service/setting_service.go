@@ -177,34 +177,24 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	scopedAdminKeyRepo                       ScopedAdminKeyRepository
-	openAICodexTicketPolicyMu                sync.Mutex
-	openAICodexTicketPolicyCache             *cachedOpenAICodexTicketPolicy
-	openAICodexTicketEnabledCache            atomic.Value
-	openAICodexTicketEnabledSF               singleflight.Group
-	openAICodexTicketHarvestProxyCache       atomic.Value
-	openAICodexTicketHarvestProxySF          singleflight.Group
-	openAICodexTicketHarvestSourceCache      atomic.Value
-	openAICodexTicketHarvestSourceSF         singleflight.Group
-	openAICodexTicketHarvestSourceMu         sync.Mutex
-	openAICodexTicketHarvestSourceGeneration uint64
-	settingRepo                              SettingRepository
-	settingsGroupReader                      SettingsGroupReader
-	proxyRepo                                ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                                      *config.Config
-	onUpdate                                 func() // Callback when settings are updated (for cache invalidation)
-	version                                  string // Application version
-	webSearchManagerBuilder                  WebSearchManagerBuilder
-	antigravityUAVersionCache                atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF                   singleflight.Group
-	openAICodexUACache                       atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF                          singleflight.Group
-	openAICodexVersionCache                  atomic.Value // *cachedOpenAICodexClientVersion
-	openAICodexVersionSF                     singleflight.Group
-	codexRestrictionPolicyCache              atomic.Value // *cachedCodexRestrictionPolicy
-	codexRestrictionPolicySF                 singleflight.Group
-	claudeCodeVersionCache                   atomic.Value // *cachedClaudeCodeClientVersion
-	claudeCodeVersionSF                      singleflight.Group
+	scopedAdminKeyRepo          ScopedAdminKeyRepository
+	settingRepo                 SettingRepository
+	settingsGroupReader         SettingsGroupReader
+	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                         *config.Config
+	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
+	version                     string // Application version
+	webSearchManagerBuilder     WebSearchManagerBuilder
+	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF      singleflight.Group
+	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF             singleflight.Group
+	openAICodexVersionCache     atomic.Value // *cachedOpenAICodexClientVersion
+	openAICodexVersionSF        singleflight.Group
+	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF    singleflight.Group
+	claudeCodeVersionCache      atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF         singleflight.Group
 
 	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime

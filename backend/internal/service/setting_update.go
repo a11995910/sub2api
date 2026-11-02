@@ -525,25 +525,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("%s must be one of: %s/%s", SettingKeyOpenAITTFTMode, OpenAITTFTModeSemantic, OpenAITTFTModeVisible)
 	}
 	updates[SettingKeyOpenAITTFTMode] = mode
-	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
-	updates[SettingKeyOpenAICodexTicketModelMismatchInvalidation] = strconv.FormatBool(settings.OpenAICodexTicketModelMismatchInvalidation)
-	updates[SettingKeyOpenAICodexTicketUseHarvestProxy] = strconv.FormatBool(settings.OpenAICodexTicketUseHarvestProxy)
-	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
-		return nil, err
-	}
-	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
-	source := normalizeOpenAICodexTicketHarvestSource(OpenAICodexTicketHarvestSource{
-		Mode:            settings.OpenAICodexTicketHarvestProxyMode,
-		ProxyURL:        settings.OpenAICodexTicketHarvestProxyURL,
-		ExtractURL:      settings.OpenAICodexTicketHarvestExtractURL,
-		ExtractProtocol: settings.OpenAICodexTicketHarvestExtractProtocol,
-	})
-	if err := ValidateOpenAICodexTicketHarvestSource(source); err != nil {
-		return nil, err
-	}
-	updates[SettingKeyOpenAICodexTicketHarvestProxyMode] = source.Mode
-	updates[SettingKeyOpenAICodexTicketHarvestExtractURL] = source.ExtractURL
-	updates[SettingKeyOpenAICodexTicketHarvestExtractProtocol] = source.ExtractProtocol
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
@@ -845,9 +826,6 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// 版本号缓存只做失效，不在此重算：生效值还取决于自动同步写入的 synced 键，
 	// 这里没有它的最新值，重算会把同步结果覆盖成陈旧值。
 	s.InvalidateOpenAICodexClientVersionCache()
-	s.InvalidateOpenAICodexTicketPolicyCache()
-	s.InvalidateOpenAICodexTicketEnabledCache()
-	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	s.InvalidateClaudeCodeClientVersionCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

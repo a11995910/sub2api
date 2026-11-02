@@ -2089,8 +2089,6 @@ func inferStreamFailureStatus(c *gin.Context, parsed parsedOpsError) int {
 		}
 	}
 	switch strings.TrimSpace(parsed.Code) {
-	case "turn_state_unavailable", "turn_state_budget_exhausted":
-		return http.StatusServiceUnavailable
 	case "rate_limit_exceeded":
 		return http.StatusTooManyRequests
 	case "permission_denied", "permission_error", "insufficient_permissions", "cyber_policy", "content_policy":

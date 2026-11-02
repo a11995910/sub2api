@@ -840,10 +840,6 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if candyTestRequested(c) && isOpenAIImageModel(testModelID) {
 		return s.sendErrorAndEnd(c, "糖果测试映射到图像模型，无法进行整数答题")
 	}
-	// 鹈鹕和糖果测试显式启用 Excel 后必须验证该协议，失败不能转回 Codex。
-	if pelicanTestRequested(c) && (account.Extra["openai_excel_bps"] == true || account.IsExcelOAuth()) {
-		return s.testIntelligenceExcelBPS(c, account, testModelID)
-	}
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
@@ -878,9 +874,6 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		isOAuth = true
 		// Agent Identity signs each request and does not retain the OAuth token.
 		if !credentialAccount.IsOpenAIAgentIdentity() {
-			if credentialAccount.IsExcelOAuth() {
-				return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
-			}
 			authToken = credentialAccount.GetOpenAIAccessToken()
 		}
 		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -2250,9 +2243,6 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	case credentialAccount.IsOAuth():
 		isOAuth = true
 		if !credentialAccount.IsOpenAIAgentIdentity() {
-			if credentialAccount.IsExcelOAuth() {
-				return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
-			}
 			authToken = credentialAccount.GetOpenAIAccessToken()
 		}
 		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
@@ -3225,9 +3215,6 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	authToken := ""
 	if !credentialAccount.IsOpenAIAgentIdentity() {
-		if credentialAccount.IsExcelOAuth() {
-			return s.sendErrorAndEnd(c, "Excel OAuth 不支持原生 Codex 测试，请通过 BPS 请求验证")
-		}
 		authToken = credentialAccount.GetOpenAIAccessToken()
 	}
 	if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {

@@ -145,10 +145,7 @@ func testOpenAIWSHTTPBridgeCurrentTurnReplacement(t *testing.T, resting bool) {
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{
 			StatusCode: http.StatusOK,
-			Header: http.Header{
-				"Content-Type":          []string{"text/event-stream"},
-				openAIWSTurnStateHeader: []string{"old-account-state"},
-			},
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 			Body: io.NopCloser(strings.NewReader(
 				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_first\",\"output\":[{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"first-ok\"}]},{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"inspect\",\"arguments\":\"{}\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
 			)),
@@ -286,7 +283,6 @@ func testOpenAIWSHTTPBridgeCurrentTurnReplacement(t *testing.T, resting bool) {
 		require.Contains(t, string(upstream.bodies[1]), "second")
 		require.NotContains(t, string(upstream.bodies[1]), "previous_response_id")
 		require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[1], "client_metadata.session_id").String())
-		require.Empty(t, upstream.requests[1].Header.Get(openAIWSTurnStateHeader))
 		return
 	}
 	require.Len(t, upstream.bodies, 3)
@@ -297,5 +293,4 @@ func testOpenAIWSHTTPBridgeCurrentTurnReplacement(t *testing.T, resting bool) {
 	require.Contains(t, string(upstream.bodies[2]), "second")
 	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[2], "client_metadata.session_id").String())
 	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[2], "client_metadata.thread_id").String())
-	require.Empty(t, upstream.requests[2].Header.Get(openAIWSTurnStateHeader))
 }

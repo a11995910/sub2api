@@ -7197,8 +7197,6 @@
 
 	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
-          <ExcelBPSSettings v-if="activeTab === 'features'" />
-
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -9344,7 +9342,6 @@
 </template>
 
 <script setup lang="ts">
-import ExcelBPSSettings from '@/components/admin/ExcelBPSSettings.vue'
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { listPlatformIds } from "@/constants/platformCatalog";
 import { useI18n } from "vue-i18n";
@@ -10090,7 +10087,6 @@ type SettingsForm = Omit<
   | "wechat_connect_mobile_enabled"
   | "smtp_fallbacks"
   | "openai_oauth_scheduling_rate_multiplier"
-  | `openai_codex_ticket_${string}`
 > & {
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
@@ -11501,7 +11497,7 @@ async function loadSettings() {
       settings.payment_load_balance_strategy || "round-robin";
     // Only assign non-null values from backend (null means unconfigured, keep defaults)
     for (const [key, value] of Object.entries(settings)) {
-      if (!key.startsWith("openai_codex_ticket_") && value !== null && value !== undefined) {
+      if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
     }

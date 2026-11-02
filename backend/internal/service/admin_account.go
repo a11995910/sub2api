@@ -421,13 +421,6 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if err := ValidateOpenAIRequestIntegrityExtra(accountExtra); err != nil {
 		return nil, err
 	}
-	if err := ValidateOpenAICodexTicketExtra(accountExtra); err != nil {
-		return nil, err
-	}
-	if err := validateOpenAITurnStatePolicy(accountExtra); err != nil {
-		return nil, err
-	}
-	accountExtra = RedactOpenAICodexTicketExtra(accountExtra)
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -454,7 +447,6 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 	}
-	applyOpenAITurnStateCreateDefault(account)
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
 			return nil, ErrUpstreamBillingProbeAccountInvalid
@@ -556,9 +548,6 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
-	if err := validateExcelBPSAccount(account); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_EXCEL_BPS", err.Error())
-	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -614,12 +603,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 		if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
-			return nil, err
-		}
-		if err := ValidateOpenAICodexTicketExtra(input.Extra); err != nil {
-			return nil, err
-		}
-		if err := validateOpenAITurnStatePolicy(input.Extra); err != nil {
 			return nil, err
 		}
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -750,7 +733,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
-		normalizedExtra = MergeOpenAICodexTicketExtra(RedactOpenAICodexTicketExtra(normalizedExtra), account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		// 其他入口编辑 extra 时保留单账号冷却；显式 null 才恢复默认值。
 		if _, provided := input.Extra[OpenAITransportErrorCooldownSecondsExtraKey]; !provided {
@@ -919,9 +901,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// AdminAccountRepository.
 		updater, _ = s.accountRepo.(AccountBillingSettingsRepository)
 	}
-	if err := validateExcelBPSAccount(account); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_EXCEL_BPS", err.Error())
-	}
 	if updater != nil {
 		if err := updater.UpdateWithAccountBillingSettings(
 			ctx,
@@ -985,13 +964,6 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	if err := ValidateOpenAIRequestIntegrityExtra(updates); err != nil {
 		return err
 	}
-	if err := ValidateOpenAICodexTicketExtra(updates); err != nil {
-		return err
-	}
-	if err := validateOpenAITurnStatePolicy(updates); err != nil {
-		return err
-	}
-	updates = RedactOpenAICodexTicketExtra(updates)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -1026,14 +998,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if err := ValidateOpenAIRequestIntegrityExtra(input.Extra); err != nil {
 		return nil, err
 	}
-	if err := ValidateOpenAICodexTicketExtra(input.Extra); err != nil {
-		return nil, err
-	}
-	if err := validateOpenAITurnStatePolicy(input.Extra); err != nil {
-		return nil, err
-	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
-	input.Extra = RedactOpenAICodexTicketExtra(input.Extra)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)

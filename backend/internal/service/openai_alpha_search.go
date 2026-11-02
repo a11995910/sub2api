@@ -447,7 +447,6 @@ func stripOpenAIAlphaSearchResponsesHeaders(headers http.Header) {
 		"Session_ID",
 		"Conversation_ID",
 		"X-Codex-Beta-Features",
-		"X-Codex-Turn-State",
 		responsesLiteHeaderKey,
 	} {
 		headers.Del(key)

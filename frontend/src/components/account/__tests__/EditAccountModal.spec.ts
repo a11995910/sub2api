@@ -320,7 +320,6 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
     },
     global: {
       stubs: {
-        ExcelBPSAccountSettings: true,
         RouterLink: true,
         BaseDialog: BaseDialogStub,
         Select: SelectStub,
@@ -402,48 +401,6 @@ describe('EditAccountModal', () => {
     expect(saved).toBeDefined()
     if (managed) expect(saved).not.toHaveProperty('priority')
     else expect(saved.priority).toBe(account.priority)
-    wrapper.unmount()
-  })
-
-  it.each(['healthy_retry', 'healthy_preflight'])('旧模式 %s 不再展示策略且保存仍清理废弃健康头配置', async (mode) => {
-    const account = { ...buildOpenAIOAuthParentAccount(), extra: {
-      openai_turn_state_mode: mode,
-      openai_healthy_turn_state_replace: true,
-      openai_healthy_turn_state_record: true,
-      openai_healthy_turn_state_fail_closed: true
-    } }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    const wrapper = mountModal(account)
-    expect(wrapper.find('[data-testid="edit-turn-state-mode"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="healthy-state-settings"]').exists()).toBe(false)
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    const saved = updateAccountMock.mock.calls[0]?.[1]?.extra
-    expect(saved.openai_turn_state_mode).toBe('off')
-    for (const key of ['openai_healthy_turn_state_replace', 'openai_healthy_turn_state_record', 'openai_healthy_turn_state_fail_closed']) {
-      expect(saved).not.toHaveProperty(key)
-    }
-    wrapper.unmount()
-  })
-
-  it.each(['oauth', 'setup-token'])('%s 账号不再显示状态头策略，编辑其他字段保留已有门票配置', async (type) => {
-    const account = { ...buildOpenAIOAuthParentAccount(), type, extra: {
-      openai_turn_state_mode: 'codex_ticket',
-      openai_codex_ticket_fail_closed: false
-    } }
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-    const wrapper = mountModal(account)
-    expect(wrapper.find('[data-testid="edit-turn-state-mode"]').exists()).toBe(false)
-    expect(wrapper.find('#edit-codex-ticket-fail-closed').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="codex-ticket-status"]').exists()).toBe(false)
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
-      openai_turn_state_mode: 'codex_ticket',
-      openai_codex_ticket_fail_closed: false
-    })
     wrapper.unmount()
   })
 

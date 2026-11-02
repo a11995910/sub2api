@@ -794,7 +794,7 @@ func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
 	if e == nil {
 		return false
 	}
-	if e.Reason == openAITurnStateUnavailableReason || e.Reason == accountProtectionReason {
+	if e.Reason == accountProtectionReason {
 		return false
 	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount

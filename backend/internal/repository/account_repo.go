@@ -53,7 +53,6 @@ type accountRepository struct {
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
-	"codex_turn_ticket:",
 	"codex_primary_",
 	"codex_secondary_",
 	"codex_5h_",
@@ -745,14 +744,7 @@ func lockAndMergeAccountProbeExtra(
 		return nil, err
 	}
 
-	var currentExtra map[string]any
-	if len(currentExtraJSON) > 0 {
-		if err := json.Unmarshal(currentExtraJSON, &currentExtra); err != nil {
-			logger.LegacyPrintf("repository.account", "账号额外字段解析失败，跳过门票保留: id=%d", account.ID)
-			currentExtra = nil
-		}
-	}
-	extra := service.MergeOpenAICodexTicketExtra(copyJSONMap(normalizeJSONMap(account.Extra)), currentExtra)
+	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,
@@ -1026,36 +1018,10 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		// 已处于外部事务中（ErrTxStarted），复用当前 client
 		txClient = r.client
 	}
-	// 软删除不会触发 Excel 表的 ON DELETE CASCADE。先锁账号行，
-	// 与保存授权/登录资料的账号行锁串行化，再在同一事务内清除密文。
-	rows, err := txClient.QueryContext(ctx, "SELECT id FROM accounts WHERE id=$1 FOR UPDATE", id)
-	if err != nil {
-		return err
-	}
-	if rows.Next() {
-		var lockedID int64
-		if err := rows.Scan(&lockedID); err != nil {
-			_ = rows.Close()
-			return err
-		}
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
 	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
 		return err
 	}
 	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
-		return err
-	}
-	if _, err := txClient.ExecContext(ctx, "DELETE FROM account_excel_oauth_grants WHERE account_id = $1", id); err != nil {
-		return err
-	}
-	if _, err := txClient.ExecContext(ctx, "DELETE FROM account_excel_auto_authorizations WHERE account_id = $1", id); err != nil {
 		return err
 	}
 	if _, err := txClient.Account.Delete().Where(dbaccount.IDEQ(id)).Exec(ctx); err != nil {

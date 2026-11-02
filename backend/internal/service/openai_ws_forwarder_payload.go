@@ -82,7 +82,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	token string,
 	decision OpenAIWSProtocolDecision,
 	isCodexCLI bool,
-	turnState string,
 	turnMetadata string,
 	promptCacheKey string,
 	routingModel string,
@@ -137,12 +136,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		if sessionResolution.ConversationID != "" {
 			headers.Set("conversation_id", sessionResolution.ConversationID)
 		}
-	}
-	if state := strings.TrimSpace(turnState); state != "" {
-		headers.Set(openAIWSTurnStateHeader, state)
-	}
-	if err := s.applyOpenAICodexTicket(ctx, account, routingModel, headers); err != nil {
-		return nil, sessionResolution, err
 	}
 	if metadata := strings.TrimSpace(turnMetadata); metadata != "" {
 		headers.Set(openAIWSTurnMetadataHeader, metadata)

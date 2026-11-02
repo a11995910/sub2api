@@ -139,17 +139,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	compatReplayTrimmed := false
 	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel)
-	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel) && !account.isExcelBPSEnabledForUpstreamModel(billingModel)
+	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel)
 	previousResponseID := ""
 	if compatContinuationEnabled {
 		previousResponseID = s.getOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
 	}
 	compatContinuationDisabled := compatContinuationEnabled &&
 		s.isOpenAICompatSessionContinuationDisabled(ctx, c, account, promptCacheKey)
-	compatTurnState := ""
-	// ChatGPT/Codex credentials rely on session_id + x-codex-turn-state; trimming to a
-	// sliding 12-message window makes the cached prefix stall at system/tools.
-	// Keep full replay there so upstream prompt caching can grow turn by turn.
+	// ChatGPT/Codex credentials keep the full replay so upstream prompt caching can grow turn by turn.
 	if compatReplayGuardEnabled && !account.UsesOpenAICodexProtocol() && previousResponseID == "" && !compatContinuationDisabled {
 		compatReplayTrimmed = applyAnthropicCompatFullReplayGuard(&anthropicReq)
 	}
@@ -209,29 +206,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			zap.String("compat_previous_response_id", truncateOpenAIWSLogValue(previousResponseID, openAIWSIDValueMaxLen)),
 		)
 	}
-	if compatTurnState != "" {
-		logFields = append(logFields, zap.Bool("compat_turn_state_attached", true))
-	}
 	logger.L().Debug("openai messages: model mapping applied", logFields...)
 
 	// 4. Marshal Responses request body, then apply the ChatGPT/Codex transform.
 	responsesBody, err := json.Marshal(responsesReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal responses request: %w", err)
-	}
-
-	bpsEnabled, bpsErr := s.excelBPSRouteEnabledForUpstreamModel(ctx, account, billingModel)
-	if bpsErr != nil {
-		MarkResponseCommitted(c)
-		writeExcelBPSOutputError(c, "anthropic", false, 503, "basispoints_settings_unavailable", bpsErr.Error())
-		return nil, bpsErr
-	}
-	if bpsEnabled && account.excelBPSNativeFallbackReason(responsesBody) == "" {
-		return s.forwardExcelBPSCompat(ctx, c, account, responsesBody, originalModel, upstreamModel, promptCacheKey, clientStream, startTime, "anthropic")
-	}
-	if account.IsExcelOAuth() {
-		writeAnthropicError(c, 400, "invalid_request_error", "Excel OAuth 仅支持已启用的 Excel/BPS 模型路由")
-		return nil, fmt.Errorf("Excel OAuth 路由不可用")
 	}
 
 	if account.UsesOpenAICodexProtocol() && account.Platform != PlatformGrok {
@@ -281,9 +261,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), apiKeyID)
 		delete(reqBody, "prompt_cache_key")
-		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
-			compatTurnState = s.getOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey)
-		}
 		// OAuth codex transform forces stream=true upstream, so always use
 		// the streaming response handler regardless of what the client asked.
 		isStream = true
@@ -416,13 +393,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.UsesOpenAICodexProtocol() && promptCacheKey != "" && strings.TrimSpace(c.GetHeader("conversation_id")) == "" {
 		upstreamReq.Header.Del("conversation_id")
 	}
-	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
-		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
-	}
-
-	if err := s.bindOpenAICodexTicketRequest(upstreamReq, account, upstreamModel); err != nil {
-		return nil, err
-	}
 	// 7. Send request
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -525,12 +495,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && !account.IsShadow() {
 		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, upstreamModel), account, resp.Header, resp.StatusCode)
-	}
-
-	if account.UsesOpenAICodexProtocol() && promptCacheKey != "" {
-		if turnState := strings.TrimSpace(resp.Header.Get("x-codex-turn-state")); turnState != "" {
-			s.bindOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey, turnState)
-		}
 	}
 
 	// 9. Handle normal response

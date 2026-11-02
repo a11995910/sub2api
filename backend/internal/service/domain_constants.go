@@ -687,14 +687,6 @@ const (
 	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 
-	// Gateway Forwarding Behavior
-	SettingKeyOpenAICodexTicketEnabled                   = "openai_codex_ticket_enabled"
-	SettingKeyOpenAICodexTicketModelMismatchInvalidation = "openai_codex_ticket_model_mismatch_invalidation"
-	SettingKeyOpenAICodexTicketUseHarvestProxy           = "openai_codex_ticket_use_harvest_proxy"
-	SettingKeyOpenAICodexTicketHarvestProxyURL           = "openai_codex_ticket_harvest_proxy_url"
-	SettingKeyOpenAICodexTicketHarvestProxyMode          = "openai_codex_ticket_harvest_proxy_mode"
-	SettingKeyOpenAICodexTicketHarvestExtractURL         = "openai_codex_ticket_harvest_extract_url"
-	SettingKeyOpenAICodexTicketHarvestExtractProtocol    = "openai_codex_ticket_harvest_extract_protocol"
 	// SettingKeyOpenAITTFTMode 控制 first_token_ms 的统计口径。
 	SettingKeyOpenAITTFTMode = "openai_ttft_mode"
 	OpenAITTFTModeSemantic   = "semantic"

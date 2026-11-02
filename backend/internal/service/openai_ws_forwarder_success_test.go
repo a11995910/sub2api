@@ -418,7 +418,6 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersPreservesCodexIdentity(t *test
 		"",
 		"",
 		"",
-		"",
 	)
 
 	require.NoError(t, err)
@@ -455,7 +454,6 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedC
 		"token",
 		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
 		true,
-		"",
 		"",
 		"",
 		"",
@@ -1309,127 +1307,6 @@ func TestOpenAIGatewayService_Forward_WSv1_Unsupported(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "WSv1")
 	require.Nil(t, upstream.lastReq, "WSv1 不支持时不应触发 HTTP 上游请求")
-}
-
-func TestOpenAIGatewayService_Forward_WSv2_TurnStateAndMetadataReplayOnReconnect(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	var connIndex atomic.Int64
-	headersCh := make(chan http.Header, 4)
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		idx := connIndex.Add(1)
-		headersCh <- cloneHeader(r.Header)
-
-		respHeader := http.Header{}
-		if idx == 1 {
-			respHeader.Set("x-codex-turn-state", "turn_state_first")
-		}
-		conn, err := upgrader.Upgrade(w, r, respHeader)
-		if err != nil {
-			t.Errorf("upgrade websocket failed: %v", err)
-			return
-		}
-		defer func() {
-			_ = conn.Close()
-		}()
-
-		var request map[string]any
-		if err := conn.ReadJSON(&request); err != nil {
-			t.Errorf("read ws request failed: %v", err)
-			return
-		}
-		responseID := "resp_turn_" + strconv.FormatInt(idx, 10)
-		if err := conn.WriteJSON(map[string]any{
-			"type": "response.completed",
-			"response": map[string]any{
-				"id":    responseID,
-				"model": "gpt-5.1",
-				"usage": map[string]any{
-					"input_tokens":  2,
-					"output_tokens": 1,
-				},
-			},
-		}); err != nil {
-			t.Errorf("write response.completed failed: %v", err)
-			return
-		}
-	}))
-	defer wsServer.Close()
-
-	cfg := &config.Config{}
-	cfg.Security.URLAllowlist.Enabled = false
-	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
-	cfg.Gateway.OpenAIWS.Enabled = true
-	cfg.Gateway.OpenAIWS.OAuthEnabled = true
-	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
-	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
-	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
-	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 0
-
-	svc := &OpenAIGatewayService{
-		cfg:              cfg,
-		httpUpstream:     &httpUpstreamRecorder{},
-		cache:            &stubGatewayCache{},
-		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
-		toolCorrector:    NewCodexToolCorrector(),
-	}
-
-	account := &Account{
-		ID:          49,
-		Name:        "openai-turn-state",
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeAPIKey,
-		Status:      StatusActive,
-		Schedulable: true,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"api_key":  "sk-test",
-			"base_url": wsServer.URL,
-		},
-		Extra: map[string]any{
-			"responses_websockets_v2_enabled": true,
-		},
-	}
-
-	reqBody := []byte(`{"model":"gpt-5.1","stream":false,"input":[{"type":"input_text","text":"hello"}]}`)
-	rec1 := httptest.NewRecorder()
-	c1, _ := gin.CreateTestContext(rec1)
-	c1.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c1.Request.Header.Set("session_id", "session_turn_state")
-	c1.Request.Header.Set("x-codex-turn-metadata", "turn_meta_1")
-	result1, err := svc.Forward(context.Background(), c1, account, reqBody)
-	require.NoError(t, err)
-	require.NotNil(t, result1)
-
-	// 会话级状态按执行作用域取键（显式 session_id 也在其中），不再是原会话哈希。
-	sessionHash, _ := resolveOpenAIWSExecutionScope(c1, reqBody, getAPIKeyIDFromContext(c1))
-	require.NotEmpty(t, sessionHash)
-	store := svc.getOpenAIWSStateStore()
-	turnState, ok := store.GetSessionTurnState(0, sessionHash)
-	require.True(t, ok)
-	require.Equal(t, "turn_state_first", turnState)
-
-	// 主动淘汰连接，模拟下一次请求发生重连。
-	connID, hasConn := store.GetResponseConn(result1.RequestID)
-	require.True(t, hasConn)
-	svc.getOpenAIWSConnPool().evictConn(account.ID, connID)
-
-	rec2 := httptest.NewRecorder()
-	c2, _ := gin.CreateTestContext(rec2)
-	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c2.Request.Header.Set("session_id", "session_turn_state")
-	c2.Request.Header.Set("x-codex-turn-metadata", "turn_meta_2")
-	result2, err := svc.Forward(context.Background(), c2, account, reqBody)
-	require.NoError(t, err)
-	require.NotNil(t, result2)
-
-	firstHandshakeHeaders := <-headersCh
-	secondHandshakeHeaders := <-headersCh
-	require.Equal(t, "turn_meta_1", firstHandshakeHeaders.Get("X-Codex-Turn-Metadata"))
-	require.Equal(t, "turn_meta_2", secondHandshakeHeaders.Get("X-Codex-Turn-Metadata"))
-	require.Equal(t, "turn_state_first", secondHandshakeHeaders.Get("X-Codex-Turn-State"))
 }
 
 func TestOpenAIGatewayService_Forward_WSv2_GeneratePrewarm(t *testing.T) {

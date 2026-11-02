@@ -605,14 +605,12 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 }
 
 func redactAccountManagedExtra(extra map[string]any) map[string]any {
-	if extra == nil {
+	redacted := service.RedactLegacyPrivateAccountExtra(extra)
+	if redacted == nil {
 		return nil
 	}
-	redacted := make(map[string]any, len(extra))
-	for key, value := range extra {
-		if service.IsOpenAICodexTicketPrivateExtraKey(key) {
-			continue
-		}
+	managed := make(map[string]any, len(redacted))
+	for key, value := range redacted {
 		switch key {
 		case service.OllamaCloudUsageSessionExtraKey,
 			service.OllamaCloudUsageAutoRefreshExtraKey,
@@ -621,10 +619,10 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 			service.OpenCodeGoUsageSnapshotExtraKey:
 			continue
 		default:
-			redacted[key] = value
+			managed[key] = value
 		}
 	}
-	return redacted
+	return managed
 }
 
 func AccountFromService(a *service.Account) *Account {
@@ -657,7 +655,6 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 		return nil
 	}
 	return &AccountListItem{
-		CodexTurnTickets:        a.CodexTurnTickets,
 		AnthropicForwardingRisk: a.AnthropicForwardingRisk,
 		ID:                      a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,

@@ -1677,13 +1677,6 @@ func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, 
 		return
 	}
 
-	if _, message, ok := failoverErr.OpenAITurnStateClientError(); ok {
-		if streamStarted {
-			service.MarkOpsStreamError(c, "api_error", message, http.StatusServiceUnavailable)
-		}
-		h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", message, streamStarted)
-		return
-	}
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	}
@@ -3692,10 +3685,6 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 		return
 	}
 
-	if code, message, ok := failoverErr.OpenAITurnStateClientError(); ok {
-		h.handleStreamingAwareErrorWithCode(c, http.StatusServiceUnavailable, "server_error", code, message, streamStarted, false)
-		return
-	}
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
 		return
@@ -4169,10 +4158,6 @@ func closeOpenAIWSFailoverExhausted(c *gin.Context, conn *coderws.Conn, failover
 		}
 		if code, localMessage, ok := failoverErr.AccountProtectionClientError(); ok {
 			intendedStatus = failoverErr.ClientStatusCode
-			errorType, errorCode, message = "server_error", code, localMessage
-			closeStatus = coderws.StatusTryAgainLater
-		} else if code, localMessage, ok := failoverErr.OpenAITurnStateClientError(); ok {
-			intendedStatus = http.StatusServiceUnavailable
 			errorType, errorCode, message = "server_error", code, localMessage
 			closeStatus = coderws.StatusTryAgainLater
 		} else if failoverErr.Stage == service.GatewayFailureStageAccountAuth {

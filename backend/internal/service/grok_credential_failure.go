@@ -96,6 +96,11 @@ func (s *OpenAIGatewayService) GetRequestCredential(ctx context.Context, c *gin.
 	return s.getRequestCredential(ctx, c, account)
 }
 
+// GetWebSocketRequestCredential 保留 WebSocket 入口的统一凭据接口。
+func (s *OpenAIGatewayService) GetWebSocketRequestCredential(ctx context.Context, c *gin.Context, account *Account, _ string) (string, string, error) {
+	return s.GetRequestCredential(ctx, c, account)
+}
+
 func (s *OpenAIGatewayService) getRequestCredential(ctx context.Context, c *gin.Context, account *Account) (string, string, error) {
 	if ctx == nil {
 		ctx = context.Background()

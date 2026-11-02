@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -131,7 +129,7 @@ func TestOpenAISetupTokenWSCompatibility(t *testing.T) {
 	headers, session, err := svc.buildOpenAIWSHeaders(
 		context.Background(), c, account, "setup-token-value",
 		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
-		true, "", "", "", "gpt-5.1-codex", "",
+		true, "", "", "gpt-5.1-codex", "",
 	)
 	require.NoError(t, err)
 	require.Equal(t, "Bearer setup-token-value", headers.Get("authorization"))
@@ -173,64 +171,6 @@ func TestOpenAISetupTokenChatCompletionsUsesCodexTransform(t *testing.T) {
 	require.Equal(t, int64(1), gjson.GetBytes(upstream.lastBody, "input.#").Int())
 	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "input.0.role").String())
 	require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
-}
-
-func TestOpenAISetupTokenMessagesUsesCodexBridgeAndTurnState(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	firstResp := openAICompatSSECompletedResponse("resp_setup_first", "gpt-5.4")
-	firstResp.Header.Set("x-codex-turn-state", "turn_state_setup")
-	upstream := &httpUpstreamRecorder{responses: []*http.Response{
-		firstResp,
-		openAICompatSSECompletedResponse("resp_setup_second", "gpt-5.4"),
-	}}
-	svc := &OpenAIGatewayService{
-		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
-		httpUpstream: upstream,
-	}
-	account := openAISetupTokenCompatAccount(72)
-
-	messages := make([]string, 0, openAICompatAnthropicReplayMaxTailMessages+3)
-	for i := 0; i < openAICompatAnthropicReplayMaxTailMessages+3; i++ {
-		messages = append(messages, `{"role":"user","content":"message-`+fmt.Sprintf("%02d", i)+`"}`)
-	}
-	firstBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[` + strings.Join(messages, ",") + `],"stream":false}`)
-	firstRec := httptest.NewRecorder()
-	firstCtx, _ := gin.CreateTestContext(firstRec)
-	firstCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(firstBody))
-	firstCtx.Request.Header.Set("Content-Type", "application/json")
-
-	firstResult, err := svc.ForwardAsAnthropic(context.Background(), firstCtx, account, firstBody, "stable-cache-key", "gpt-5.4")
-
-	require.NoError(t, err)
-	require.NotNil(t, firstResult)
-	require.True(t, isOpenAICompatMessagesBridgeContext(firstCtx))
-	require.Equal(t, int64(openAICompatAnthropicReplayMaxTailMessages+4), gjson.GetBytes(upstream.bodies[0], "input.#").Int())
-	require.Equal(t, "developer", gjson.GetBytes(upstream.bodies[0], "input.0.role").String())
-	require.Contains(t, gjson.GetBytes(upstream.bodies[0], "input.0.content.0.text").String(), openAICompatClaudeCodeTodoGuardMarker)
-	require.Equal(t, "message-00", gjson.GetBytes(upstream.bodies[0], "input.1.content.0.text").String())
-	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
-	require.Equal(t, chatgptCodexURL, upstream.requests[0].URL.String())
-	require.Equal(t, "Bearer setup-token-value", upstream.requests[0].Header.Get("Authorization"))
-	require.Equal(t, "chatgpt-setup", upstream.requests[0].Header.Get("chatgpt-account-id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexCLIOriginator)
-	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-
-	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"next"}],"stream":false}`)
-	secondRec := httptest.NewRecorder()
-	secondCtx, _ := gin.CreateTestContext(secondRec)
-	secondCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(secondBody))
-	secondCtx.Request.Header.Set("Content-Type", "application/json")
-
-	secondResult, err := svc.ForwardAsAnthropic(context.Background(), secondCtx, account, secondBody, "stable-cache-key", "gpt-5.4")
-
-	require.NoError(t, err)
-	require.NotNil(t, secondResult)
-	require.True(t, isOpenAICompatMessagesBridgeContext(secondCtx))
-	require.Equal(t, "turn_state_setup", upstream.requests[1].Header.Get("x-codex-turn-state"))
-	require.Equal(t, generateSessionUUID(isolateOpenAIUpstreamSessionID(0, account, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
-	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexCLIOriginator)
 }
 
 func openAISetupTokenCompatAccount(id int64) *Account {

@@ -488,27 +488,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")
 	}
-	if before.OpenAICodexTicketEnabled != after.OpenAICodexTicketEnabled {
-		changed = append(changed, "openai_codex_ticket_enabled")
-	}
-	if before.OpenAICodexTicketModelMismatchInvalidation != after.OpenAICodexTicketModelMismatchInvalidation {
-		changed = append(changed, "openai_codex_ticket_model_mismatch_invalidation")
-	}
-	if before.OpenAICodexTicketUseHarvestProxy != after.OpenAICodexTicketUseHarvestProxy {
-		changed = append(changed, "openai_codex_ticket_use_harvest_proxy")
-	}
-	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
-		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
-	}
-	if before.OpenAICodexTicketHarvestProxyMode != after.OpenAICodexTicketHarvestProxyMode {
-		changed = append(changed, "openai_codex_ticket_harvest_proxy_mode")
-	}
-	if before.OpenAICodexTicketHarvestExtractURL != after.OpenAICodexTicketHarvestExtractURL {
-		changed = append(changed, "openai_codex_ticket_harvest_extract_url")
-	}
-	if before.OpenAICodexTicketHarvestExtractProtocol != after.OpenAICodexTicketHarvestExtractProtocol {
-		changed = append(changed, "openai_codex_ticket_harvest_extract_protocol")
-	}
 	if before.OpenAITTFTMode != after.OpenAITTFTMode {
 		changed = append(changed, "openai_ttft_mode")
 	}

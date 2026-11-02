@@ -105,7 +105,6 @@ func (r *accountRestWSReplay) clearBinding(ctx context.Context, s *OpenAIGateway
 	responseID := r.bindingResponseID
 	r.mu.Unlock()
 	if c != nil && c.Request != nil {
-		c.Request.Header.Del(openAIWSTurnStateHeader)
 	}
 	groupID := getOpenAIGroupIDFromContext(c)
 	s.ClearRestingAccountBinding(ctx, &groupID, s.GenerateSessionHash(c, payload), responseID, err)

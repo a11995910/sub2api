@@ -37,11 +37,6 @@ type openAIWSConnBinding struct {
 	expiresAt time.Time
 }
 
-type openAIWSTurnStateBinding struct {
-	turnState string
-	expiresAt time.Time
-}
-
 type openAIWSSessionConnBinding struct {
 	connID    string
 	expiresAt time.Time
@@ -76,10 +71,6 @@ type OpenAIWSStateStore interface {
 	GetResponseConn(responseID string) (string, bool)
 	DeleteResponseConn(responseID string)
 
-	BindSessionTurnState(groupID int64, sessionHash, turnState string, ttl time.Duration)
-	GetSessionTurnState(groupID int64, sessionHash string) (string, bool)
-	DeleteSessionTurnState(groupID int64, sessionHash string)
-
 	BindSessionConn(groupID int64, sessionHash, connID string, ttl time.Duration)
 	GetSessionConn(groupID int64, sessionHash string) (string, bool)
 	DeleteSessionConn(groupID int64, sessionHash string)
@@ -97,16 +88,14 @@ type OpenAIWSStateStore interface {
 type defaultOpenAIWSStateStore struct {
 	cache GatewayCache
 
-	responseToAccountMu  sync.RWMutex
-	responseToAccount    map[string]openAIWSAccountBinding
-	responseOwnerMu      sync.RWMutex
-	responseOwners       map[string]openAIHTTPResponseOwnerBinding
-	responseToConnMu     sync.RWMutex
-	responseToConn       map[string]openAIWSConnBinding
-	sessionToTurnStateMu sync.RWMutex
-	sessionToTurnState   map[string]openAIWSTurnStateBinding
-	sessionToConnMu      sync.RWMutex
-	sessionToConn        map[string]openAIWSSessionConnBinding
+	responseToAccountMu sync.RWMutex
+	responseToAccount   map[string]openAIWSAccountBinding
+	responseOwnerMu     sync.RWMutex
+	responseOwners      map[string]openAIHTTPResponseOwnerBinding
+	responseToConnMu    sync.RWMutex
+	responseToConn      map[string]openAIWSConnBinding
+	sessionToConnMu     sync.RWMutex
+	sessionToConn       map[string]openAIWSSessionConnBinding
 
 	sessionInvalidEncryptedMu sync.RWMutex
 	sessionInvalidEncrypted   map[string]openAIWSInvalidEncryptedBinding
@@ -121,7 +110,6 @@ func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
 		responseToAccount:       make(map[string]openAIWSAccountBinding, 256),
 		responseOwners:          make(map[string]openAIHTTPResponseOwnerBinding, 256),
 		responseToConn:          make(map[string]openAIWSConnBinding, 256),
-		sessionToTurnState:      make(map[string]openAIWSTurnStateBinding, 256),
 		sessionToConn:           make(map[string]openAIWSSessionConnBinding, 256),
 		sessionInvalidEncrypted: make(map[string]openAIWSInvalidEncryptedBinding),
 	}
@@ -331,53 +319,8 @@ func (s *defaultOpenAIWSStateStore) DeleteResponseConn(responseID string) {
 	s.responseToConnMu.Unlock()
 }
 
-func (s *defaultOpenAIWSStateStore) BindSessionTurnState(groupID int64, sessionHash, turnState string, ttl time.Duration) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
-	state := strings.TrimSpace(turnState)
-	if key == "" || state == "" {
-		return
-	}
-	ttl = normalizeOpenAIWSTTL(ttl)
-	s.maybeCleanup()
-
-	s.sessionToTurnStateMu.Lock()
-	ensureBindingCapacity(s.sessionToTurnState, key, openAIWSStateStoreMaxEntriesPerMap)
-	s.sessionToTurnState[key] = openAIWSTurnStateBinding{
-		turnState: state,
-		expiresAt: time.Now().Add(ttl),
-	}
-	s.sessionToTurnStateMu.Unlock()
-}
-
-func (s *defaultOpenAIWSStateStore) GetSessionTurnState(groupID int64, sessionHash string) (string, bool) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
-	if key == "" {
-		return "", false
-	}
-	s.maybeCleanup()
-
-	now := time.Now()
-	s.sessionToTurnStateMu.RLock()
-	binding, ok := s.sessionToTurnState[key]
-	s.sessionToTurnStateMu.RUnlock()
-	if !ok || now.After(binding.expiresAt) || strings.TrimSpace(binding.turnState) == "" {
-		return "", false
-	}
-	return binding.turnState, true
-}
-
-func (s *defaultOpenAIWSStateStore) DeleteSessionTurnState(groupID int64, sessionHash string) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
-	if key == "" {
-		return
-	}
-	s.sessionToTurnStateMu.Lock()
-	delete(s.sessionToTurnState, key)
-	s.sessionToTurnStateMu.Unlock()
-}
-
 func (s *defaultOpenAIWSStateStore) BindSessionConn(groupID int64, sessionHash, connID string, ttl time.Duration) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	key := openAIWSSessionKey(groupID, sessionHash)
 	conn := strings.TrimSpace(connID)
 	if key == "" || conn == "" {
 		return
@@ -395,7 +338,7 @@ func (s *defaultOpenAIWSStateStore) BindSessionConn(groupID int64, sessionHash, 
 }
 
 func (s *defaultOpenAIWSStateStore) GetSessionConn(groupID int64, sessionHash string) (string, bool) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	key := openAIWSSessionKey(groupID, sessionHash)
 	if key == "" {
 		return "", false
 	}
@@ -412,7 +355,7 @@ func (s *defaultOpenAIWSStateStore) GetSessionConn(groupID int64, sessionHash st
 }
 
 func (s *defaultOpenAIWSStateStore) DeleteSessionConn(groupID int64, sessionHash string) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	key := openAIWSSessionKey(groupID, sessionHash)
 	if key == "" {
 		return
 	}
@@ -422,7 +365,7 @@ func (s *defaultOpenAIWSStateStore) DeleteSessionConn(groupID int64, sessionHash
 }
 
 func (s *defaultOpenAIWSStateStore) MarkSessionInvalidEncryptedContent(groupID int64, sessionHash string, digests []string, ttl time.Duration) {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	key := openAIWSSessionKey(groupID, sessionHash)
 	if key == "" || len(digests) == 0 {
 		return
 	}
@@ -465,7 +408,7 @@ func (s *defaultOpenAIWSStateStore) MarkSessionInvalidEncryptedContent(groupID i
 }
 
 func (s *defaultOpenAIWSStateStore) GetSessionInvalidEncryptedContentDigests(groupID int64, sessionHash string) map[string]struct{} {
-	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	key := openAIWSSessionKey(groupID, sessionHash)
 	if key == "" {
 		return nil
 	}
@@ -517,10 +460,6 @@ func (s *defaultOpenAIWSStateStore) maybeCleanup() {
 	cleanupExpiredConnBindings(s.responseToConn, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.responseToConnMu.Unlock()
 
-	s.sessionToTurnStateMu.Lock()
-	cleanupExpiredTurnStateBindings(s.sessionToTurnState, now, openAIWSStateStoreCleanupMaxPerMap)
-	s.sessionToTurnStateMu.Unlock()
-
 	s.sessionToConnMu.Lock()
 	cleanupExpiredSessionConnBindings(s.sessionToConn, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.sessionToConnMu.Unlock()
@@ -563,22 +502,6 @@ func cleanupExpiredAccountBindings(bindings map[string]openAIWSAccountBinding, n
 }
 
 func cleanupExpiredConnBindings(bindings map[string]openAIWSConnBinding, now time.Time, maxScan int) {
-	if len(bindings) == 0 || maxScan <= 0 {
-		return
-	}
-	scanned := 0
-	for key, binding := range bindings {
-		if now.After(binding.expiresAt) {
-			delete(bindings, key)
-		}
-		scanned++
-		if scanned >= maxScan {
-			break
-		}
-	}
-}
-
-func cleanupExpiredTurnStateBindings(bindings map[string]openAIWSTurnStateBinding, now time.Time, maxScan int) {
 	if len(bindings) == 0 || maxScan <= 0 {
 		return
 	}
@@ -650,7 +573,7 @@ func normalizeOpenAIWSTTL(ttl time.Duration) time.Duration {
 	return ttl
 }
 
-func openAIWSSessionTurnStateKey(groupID int64, sessionHash string) string {
+func openAIWSSessionKey(groupID int64, sessionHash string) string {
 	hash := strings.TrimSpace(sessionHash)
 	if hash == "" {
 		return ""

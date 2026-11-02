@@ -662,15 +662,6 @@ export interface SystemSettings {
   openai_codex_client_version: string;
   openai_codex_client_version_synced: string;
   openai_codex_version_auto_sync_enabled: boolean;
-  openai_codex_ticket_enabled: boolean;
-  openai_codex_ticket_model_mismatch_invalidation: boolean;
-  openai_codex_ticket_use_harvest_proxy: boolean;
-  openai_codex_ticket_harvest_proxy_url: string;
-  openai_codex_ticket_harvest_proxy_configured: boolean;
-  openai_codex_ticket_harvest_proxy_mode: 'proxy' | 'extract';
-  openai_codex_ticket_harvest_extract_url: string;
-  openai_codex_ticket_harvest_extract_configured: boolean;
-  openai_codex_ticket_harvest_extract_protocol: 'http' | 'https' | 'socks5h';
   claude_code_client_version: string;
   claude_code_client_version_synced: string;
   claude_code_version_auto_sync_enabled: boolean;
@@ -1013,13 +1004,6 @@ export interface UpdateSettingsRequest {
   openai_codex_user_agent?: string;
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;
-  openai_codex_ticket_enabled?: boolean;
-  openai_codex_ticket_model_mismatch_invalidation?: boolean;
-  openai_codex_ticket_use_harvest_proxy?: boolean;
-  openai_codex_ticket_harvest_proxy_url?: string;
-  openai_codex_ticket_harvest_proxy_mode?: 'proxy' | 'extract';
-  openai_codex_ticket_harvest_extract_url?: string;
-  openai_codex_ticket_harvest_extract_protocol?: 'http' | 'https' | 'socks5h';
   claude_code_client_version?: string;
   claude_code_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固

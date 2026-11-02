@@ -1121,8 +1121,6 @@ type GatewayConfig struct {
 	// OpenAICompactModel: /responses/compact 上游使用的模型。
 	// compact 端点支持模型滞后于普通 /responses 时，可用该配置降级规避上游错误。
 	OpenAICompactModel string `mapstructure:"openai_compact_model"`
-	// OpenAICodexTicket 控制独立 292/332 门票实验，默认关闭。
-	OpenAICodexTicket OpenAICodexTicketConfig `mapstructure:"openai_codex_ticket"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// Live: ChatGPT Frameless Live 会话配置。
@@ -2553,20 +2551,6 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")
-	viper.SetDefault("gateway.openai_codex_ticket.enabled", false)
-	viper.SetDefault("gateway.openai_codex_ticket.target_length", 292)
-	viper.SetDefault("gateway.openai_codex_ticket.ttl_seconds", 3600)
-	viper.SetDefault("gateway.openai_codex_ticket.refresh_before_seconds", 600)
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_mode", "proxy")
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_extract_url", "")
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_extract_protocol", "http")
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_concurrency", 3)
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_global_concurrency", 8)
-	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
-	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
@@ -4089,25 +4073,4 @@ func warnIfInsecureURL(field, raw string) {
 	if strings.EqualFold(u.Scheme, "http") {
 		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
 	}
-}
-
-// OpenAICodexTicketConfig 控制 ChatGPT OAuth 的 x-codex-turn-state 门票。
-// 标准 target_length（292 或 332）同时接受两种长度；其他值精确匹配。
-// 成功采集的门票与代理出口按账号、模型绑定，业务请求复用该出口。
-// 门票默认有效 3600 秒，到期或绑定失效后重新采集；refresh_before_seconds 仅保留配置兼容。
-type OpenAICodexTicketConfig struct {
-	Enabled                      bool     `mapstructure:"enabled"`
-	TargetLength                 int      `mapstructure:"target_length"`
-	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
-	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"`
-	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
-	HarvestProxyMode             string   `mapstructure:"harvest_proxy_mode"`
-	HarvestExtractURL            string   `mapstructure:"harvest_extract_url"`
-	HarvestExtractProtocol       string   `mapstructure:"harvest_extract_protocol"`
-	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
-	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
-	HarvestProxyConcurrency      int      `mapstructure:"harvest_proxy_concurrency"`
-	HarvestGlobalConcurrency     int      `mapstructure:"harvest_global_concurrency"`
-	FailClosed                   bool     `mapstructure:"fail_closed"`
-	Models                       []string `mapstructure:"models"`
 }
