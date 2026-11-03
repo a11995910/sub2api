@@ -32,4 +32,3 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
