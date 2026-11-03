@@ -178,6 +178,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldBalanceNotifyThreshold,
 				user.FieldBalanceNotifyExtraEmails,
 				user.FieldTotalRecharged,
+				user.FieldPreferredAccountID,
 				user.FieldSignupSource,
 				user.FieldLastLoginAt,
 				user.FieldLastActiveAt,

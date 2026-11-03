@@ -34,7 +34,7 @@ func TestUserPreferredAccountPersistence(t *testing.T) {
 	loaded, err := repo.GetByID(ctx, user.ID)
 	require.NoError(t, err)
 	require.Equal(t, int64(123), loaded.PreferredAccountID)
-	keys, err := keyRepo.GetByKey(ctx, key.Key)
+	keys, err := keyRepo.GetByKeyForAuth(ctx, key.Key)
 	require.NoError(t, err)
 	require.Equal(t, int64(123), keys.User.PreferredAccountID, "认证仓储加载优先账号")
 	users, _, err := repo.List(ctx, pagination.PaginationParams{Page: 1, PageSize: 100})
