@@ -2175,6 +2175,15 @@ export default {
 
     // Users Management
     users: {
+      preferredAccount: {
+        label: '优先调用账号',
+        none: '不指定，使用默认调度',
+        search: '搜索上游账号名称',
+        hint: '仅在当前分组包含该账号且账号可用时优先调用；不可用时自动使用组内其他账号。必须绑定原账号的续聊和任务保留原绑定。',
+        idFallback: '账号 #{id}（未加载或已删除）',
+        loadError: '账号列表加载失败，请重新搜索。当前设置已保留。'
+      },
+
       title: '用户管理',
       description: '管理用户账户和权限',
       createUser: '创建用户',

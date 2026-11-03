@@ -185,16 +185,18 @@ type CreateUserInput struct {
 }
 
 type UpdateUserInput struct {
-	Email         string
-	Password      string
-	Username      *string
-	Notes         *string
-	Role          string   // 空字符串表示"未提供"(不修改);合法值 admin/user
-	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
-	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
-	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
-	Status        string
-	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	// nil 保留原值，0 清除设置，正数指定优先上游账号。
+	PreferredAccountID *int64
+	Email              string
+	Password           string
+	Username           *string
+	Notes              *string
+	Role               string   // 空字符串表示"未提供"(不修改);合法值 admin/user
+	Balance            *float64 // 使用指针区分"未提供"和"设置为0"
+	Concurrency        *int     // 使用指针区分"未提供"和"设置为0"
+	RPMLimit           *int     // 使用指针区分"未提供"和"设置为0"
+	Status             string
+	AllowedGroups      *[]int64 // 使用指针区分"未提供"和"设置为空数组"
 	// BlockedGroups 保存用户不可使用的公开标准分组；nil 表示不修改。
 	BlockedGroups *[]int64
 	// AllowedGroupAccess 保存专属分组授权有效期；nil 表示不修改，非 nil 表示同步授权集合和时间。

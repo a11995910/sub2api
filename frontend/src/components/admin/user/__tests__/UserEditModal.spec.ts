@@ -48,6 +48,7 @@ const mountModal = (concurrency: number) => mount(UserEditModal, {
       Select: true,
       Icon: true,
       UserAttributeForm: true,
+      UserPreferredAccountSelect: true,
       TotpStepUpDialog: true
     }
   }
@@ -86,5 +87,36 @@ describe('UserEditModal concurrency', () => {
 
     expect(showError).toHaveBeenCalledWith('admin.users.concurrencyNonNegative')
     expect(update).not.toHaveBeenCalled()
+  })
+})
+
+describe('用户优先账号保存', () => {
+  beforeEach(() => { update.mockReset().mockResolvedValue({}); showError.mockReset() })
+  it('修改后提交账号 ID', async () => {
+    const wrapper = mountModal(3)
+    wrapper.findComponent({ name: 'UserPreferredAccountSelect' }).vm.$emit('update:modelValue', 2)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update).toHaveBeenCalledWith(7, expect.objectContaining({ preferred_account_id: 2 }))
+  })
+  it('未修改时省略该字段，清除时提交 0', async () => {
+    const wrapper = mountModal(3)
+    await wrapper.setProps({ user: { id: 7, email: 'user@example.test', role: 'user', concurrency: 3, preferred_account_id: 99 } as never })
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update.mock.calls[0][1]).not.toHaveProperty('preferred_account_id')
+    wrapper.findComponent({ name: 'UserPreferredAccountSelect' }).vm.$emit('update:modelValue', 0)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update).toHaveBeenLastCalledWith(7, expect.objectContaining({ preferred_account_id: 0 }))
+  })
+  it('取消后重新打开恢复已保存设置', async () => {
+    const wrapper = mountModal(3)
+    wrapper.findComponent({ name: 'UserPreferredAccountSelect' }).vm.$emit('update:modelValue', 2)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update.mock.calls[0][1]).not.toHaveProperty('preferred_account_id')
   })
 })

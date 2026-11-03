@@ -175,6 +175,11 @@ func TotalRecharged(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotalRecharged, v))
 }
 
+// PreferredAccountID applies equality check predicate on the "preferred_account_id" field. It's identical to PreferredAccountIDEQ.
+func PreferredAccountID(v int64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldPreferredAccountID, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
@@ -1358,6 +1363,46 @@ func TotalRechargedLT(v float64) predicate.User {
 // TotalRechargedLTE applies the LTE predicate on the "total_recharged" field.
 func TotalRechargedLTE(v float64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldTotalRecharged, v))
+}
+
+// PreferredAccountIDEQ applies the EQ predicate on the "preferred_account_id" field.
+func PreferredAccountIDEQ(v int64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldPreferredAccountID, v))
+}
+
+// PreferredAccountIDNEQ applies the NEQ predicate on the "preferred_account_id" field.
+func PreferredAccountIDNEQ(v int64) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldPreferredAccountID, v))
+}
+
+// PreferredAccountIDIn applies the In predicate on the "preferred_account_id" field.
+func PreferredAccountIDIn(vs ...int64) predicate.User {
+	return predicate.User(sql.FieldIn(FieldPreferredAccountID, vs...))
+}
+
+// PreferredAccountIDNotIn applies the NotIn predicate on the "preferred_account_id" field.
+func PreferredAccountIDNotIn(vs ...int64) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldPreferredAccountID, vs...))
+}
+
+// PreferredAccountIDGT applies the GT predicate on the "preferred_account_id" field.
+func PreferredAccountIDGT(v int64) predicate.User {
+	return predicate.User(sql.FieldGT(FieldPreferredAccountID, v))
+}
+
+// PreferredAccountIDGTE applies the GTE predicate on the "preferred_account_id" field.
+func PreferredAccountIDGTE(v int64) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldPreferredAccountID, v))
+}
+
+// PreferredAccountIDLT applies the LT predicate on the "preferred_account_id" field.
+func PreferredAccountIDLT(v int64) predicate.User {
+	return predicate.User(sql.FieldLT(FieldPreferredAccountID, v))
+}
+
+// PreferredAccountIDLTE applies the LTE predicate on the "preferred_account_id" field.
+func PreferredAccountIDLTE(v int64) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldPreferredAccountID, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

@@ -426,6 +426,27 @@ func (_u *UserUpdate) AddTotalRecharged(v float64) *UserUpdate {
 	return _u
 }
 
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (_u *UserUpdate) SetPreferredAccountID(v int64) *UserUpdate {
+	_u.mutation.ResetPreferredAccountID()
+	_u.mutation.SetPreferredAccountID(v)
+	return _u
+}
+
+// SetNillablePreferredAccountID sets the "preferred_account_id" field if the given value is not nil.
+func (_u *UserUpdate) SetNillablePreferredAccountID(v *int64) *UserUpdate {
+	if v != nil {
+		_u.SetPreferredAccountID(*v)
+	}
+	return _u
+}
+
+// AddPreferredAccountID adds value to the "preferred_account_id" field.
+func (_u *UserUpdate) AddPreferredAccountID(v int64) *UserUpdate {
+	_u.mutation.AddPreferredAccountID(v)
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *UserUpdate) SetRpmLimit(v int) *UserUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1066,6 +1087,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PreferredAccountID(); ok {
+		if err := user.PreferredAccountIDValidator(v); err != nil {
+			return &ValidationError{Name: "preferred_account_id", err: fmt.Errorf(`ent: validator failed for field "User.preferred_account_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1182,6 +1208,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PreferredAccountID(); ok {
+		_spec.SetField(user.FieldPreferredAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredAccountID(); ok {
+		_spec.AddField(user.FieldPreferredAccountID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
@@ -2293,6 +2325,27 @@ func (_u *UserUpdateOne) AddTotalRecharged(v float64) *UserUpdateOne {
 	return _u
 }
 
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (_u *UserUpdateOne) SetPreferredAccountID(v int64) *UserUpdateOne {
+	_u.mutation.ResetPreferredAccountID()
+	_u.mutation.SetPreferredAccountID(v)
+	return _u
+}
+
+// SetNillablePreferredAccountID sets the "preferred_account_id" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillablePreferredAccountID(v *int64) *UserUpdateOne {
+	if v != nil {
+		_u.SetPreferredAccountID(*v)
+	}
+	return _u
+}
+
+// AddPreferredAccountID adds value to the "preferred_account_id" field.
+func (_u *UserUpdateOne) AddPreferredAccountID(v int64) *UserUpdateOne {
+	_u.mutation.AddPreferredAccountID(v)
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *UserUpdateOne) SetRpmLimit(v int) *UserUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -2946,6 +2999,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PreferredAccountID(); ok {
+		if err := user.PreferredAccountIDValidator(v); err != nil {
+			return &ValidationError{Name: "preferred_account_id", err: fmt.Errorf(`ent: validator failed for field "User.preferred_account_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -3079,6 +3137,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PreferredAccountID(); ok {
+		_spec.SetField(user.FieldPreferredAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredAccountID(); ok {
+		_spec.AddField(user.FieldPreferredAccountID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)

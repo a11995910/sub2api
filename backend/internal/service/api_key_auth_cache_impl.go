@@ -14,8 +14,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-// 升级快照版本，淘汰缺少按张计费及定制字段的缓存。
-const apiKeyAuthSnapshotVersion = 30
+// 升级快照版本，淘汰缺少用户优先账号等定制字段的缓存。
+const apiKeyAuthSnapshotVersion = 31
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -368,6 +368,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			BalanceNotifyThreshold:     apiKey.User.BalanceNotifyThreshold,
 			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
 			TotalRecharged:             apiKey.User.TotalRecharged,
+			PreferredAccountID:         apiKey.User.PreferredAccountID,
 			RPMLimit:                   apiKey.User.RPMLimit,
 		},
 	}
@@ -492,6 +493,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			BalanceNotifyThreshold:     snapshot.User.BalanceNotifyThreshold,
 			BalanceNotifyExtraEmails:   snapshot.User.BalanceNotifyExtraEmails,
 			TotalRecharged:             snapshot.User.TotalRecharged,
+			PreferredAccountID:         snapshot.User.PreferredAccountID,
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
 		},

@@ -2154,6 +2154,15 @@ export default {
 
     // Users
     users: {
+      preferredAccount: {
+        label: 'Preferred upstream account',
+        none: 'None, use default scheduling',
+        search: 'Search upstream account names',
+        hint: 'Prefer this account only when it belongs to the current group and is available. Otherwise use another account in the group. Conversations and tasks that require their original account keep that binding.',
+        idFallback: 'Account #{id} (not loaded or deleted)',
+        loadError: 'Could not load accounts. Search again to retry. Your current setting is preserved.'
+      },
+
       title: 'User Management',
       description: 'Manage users and their permissions',
       createUser: 'Create User',

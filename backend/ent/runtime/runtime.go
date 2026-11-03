@@ -2396,8 +2396,14 @@ func init() {
 	userDescTotalRecharged := userFields[20].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
+	// userDescPreferredAccountID is the schema descriptor for preferred_account_id field.
+	userDescPreferredAccountID := userFields[21].Descriptor()
+	// user.DefaultPreferredAccountID holds the default value on creation for the preferred_account_id field.
+	user.DefaultPreferredAccountID = userDescPreferredAccountID.Default.(int64)
+	// user.PreferredAccountIDValidator is a validator for the "preferred_account_id" field. It is called by the builders before save.
+	user.PreferredAccountIDValidator = userDescPreferredAccountID.Validators[0].(func(int64) error)
 	// userDescRpmLimit is the schema descriptor for rpm_limit field.
-	userDescRpmLimit := userFields[21].Descriptor()
+	userDescRpmLimit := userFields[22].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()

@@ -51658,6 +51658,8 @@ type UserMutation struct {
 	balance_notify_extra_emails   *string
 	total_recharged               *float64
 	addtotal_recharged            *float64
+	preferred_account_id          *int64
+	addpreferred_account_id       *int64
 	rpm_limit                     *int
 	addrpm_limit                  *int
 	clearedFields                 map[string]struct{}
@@ -52852,6 +52854,62 @@ func (m *UserMutation) ResetTotalRecharged() {
 	m.addtotal_recharged = nil
 }
 
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (m *UserMutation) SetPreferredAccountID(i int64) {
+	m.preferred_account_id = &i
+	m.addpreferred_account_id = nil
+}
+
+// PreferredAccountID returns the value of the "preferred_account_id" field in the mutation.
+func (m *UserMutation) PreferredAccountID() (r int64, exists bool) {
+	v := m.preferred_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreferredAccountID returns the old "preferred_account_id" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldPreferredAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreferredAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreferredAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreferredAccountID: %w", err)
+	}
+	return oldValue.PreferredAccountID, nil
+}
+
+// AddPreferredAccountID adds i to the "preferred_account_id" field.
+func (m *UserMutation) AddPreferredAccountID(i int64) {
+	if m.addpreferred_account_id != nil {
+		*m.addpreferred_account_id += i
+	} else {
+		m.addpreferred_account_id = &i
+	}
+}
+
+// AddedPreferredAccountID returns the value that was added to the "preferred_account_id" field in this mutation.
+func (m *UserMutation) AddedPreferredAccountID() (r int64, exists bool) {
+	v := m.addpreferred_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPreferredAccountID resets all changes to the "preferred_account_id" field.
+func (m *UserMutation) ResetPreferredAccountID() {
+	m.preferred_account_id = nil
+	m.addpreferred_account_id = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *UserMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -53752,7 +53810,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -53825,6 +53883,9 @@ func (m *UserMutation) Fields() []string {
 	if m.total_recharged != nil {
 		fields = append(fields, user.FieldTotalRecharged)
 	}
+	if m.preferred_account_id != nil {
+		fields = append(fields, user.FieldPreferredAccountID)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
@@ -53884,6 +53945,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.BalanceNotifyExtraEmails()
 	case user.FieldTotalRecharged:
 		return m.TotalRecharged()
+	case user.FieldPreferredAccountID:
+		return m.PreferredAccountID()
 	case user.FieldRpmLimit:
 		return m.RpmLimit()
 	}
@@ -53943,6 +54006,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldBalanceNotifyExtraEmails(ctx)
 	case user.FieldTotalRecharged:
 		return m.OldTotalRecharged(ctx)
+	case user.FieldPreferredAccountID:
+		return m.OldPreferredAccountID(ctx)
 	case user.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	}
@@ -54122,6 +54187,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetTotalRecharged(v)
 		return nil
+	case user.FieldPreferredAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreferredAccountID(v)
+		return nil
 	case user.FieldRpmLimit:
 		v, ok := value.(int)
 		if !ok {
@@ -54152,6 +54224,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addtotal_recharged != nil {
 		fields = append(fields, user.FieldTotalRecharged)
 	}
+	if m.addpreferred_account_id != nil {
+		fields = append(fields, user.FieldPreferredAccountID)
+	}
 	if m.addrpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
@@ -54173,6 +54248,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBalanceNotifyThreshold()
 	case user.FieldTotalRecharged:
 		return m.AddedTotalRecharged()
+	case user.FieldPreferredAccountID:
+		return m.AddedPreferredAccountID()
 	case user.FieldRpmLimit:
 		return m.AddedRpmLimit()
 	}
@@ -54218,6 +54295,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddTotalRecharged(v)
+		return nil
+	case user.FieldPreferredAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPreferredAccountID(v)
 		return nil
 	case user.FieldRpmLimit:
 		v, ok := value.(int)
@@ -54363,6 +54447,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldTotalRecharged:
 		m.ResetTotalRecharged()
+		return nil
+	case user.FieldPreferredAccountID:
+		m.ResetPreferredAccountID()
 		return nil
 	case user.FieldRpmLimit:
 		m.ResetRpmLimit()

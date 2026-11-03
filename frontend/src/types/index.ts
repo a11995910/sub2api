@@ -117,6 +117,7 @@ export interface UserAllowedGroupAccess {
 }
 
 export interface AdminUser extends User {
+  preferred_account_id?: number
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
@@ -2249,6 +2250,7 @@ export interface ApiKeyUsageTrendPoint {
 // ==================== Admin User Management ====================
 
 export interface UpdateUserRequest {
+  preferred_account_id?: number
   email?: string
   password?: string
   username?: string

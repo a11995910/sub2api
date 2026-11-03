@@ -79,6 +79,20 @@ func (s *GatewayService) selectAccountForModelWithExclusionsInGroup(ctx context.
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 	}
 
+	if userPreferredAccountID(ctx) > 0 && groupID != nil {
+		group, err := s.resolveGroupByID(ctx, *groupID)
+		if err != nil {
+			return nil, err
+		}
+		useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
+		if account := s.userPreferredAccount(ctx, groupID, group, requestedModel, platform, useMixed, excludedIDs); account != nil {
+			if sessionHash != "" && s.cache != nil {
+				_ = s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, account.ID)
+			}
+			return account, nil
+		}
+	}
+
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
 	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
@@ -134,6 +148,34 @@ func (s *GatewayService) selectAccountWithLoadAwarenessInGroup(ctx context.Conte
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+	}
+
+	if userPreferredAccountID(ctx) > 0 {
+		platform, forced, err := s.resolvePlatform(ctx, groupID, group, requestedModel)
+		if err != nil {
+			return nil, err
+		}
+		useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !forced
+		if account := s.userPreferredAccount(ctx, groupID, group, requestedModel, platform, useMixed, excludedIDs); account != nil {
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			if err != nil {
+				return nil, err
+			}
+			if result != nil && result.Acquired {
+				if s.checkAndRegisterSession(ctx, account, sessionHash) {
+					if sessionHash != "" && s.cache != nil {
+						_ = s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, account.ID)
+					}
+					return attachSelectionProfitGate(ctx, &AccountSelectionResult{Account: account, Acquired: true, ReleaseFunc: result.ReleaseFunc}), nil
+				}
+				if result.ReleaseFunc != nil {
+					result.ReleaseFunc()
+				}
+			}
+			excludedIDs = excludePreferredAccount(excludedIDs, account.ID)
+		}
+		// 兼容无负载感知路径，避免重入时重复探测优先账号。
+		ctx = WithUserPreferredAccount(ctx, 0)
 	}
 
 	var stickyAccountID int64

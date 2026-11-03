@@ -355,6 +355,20 @@ func (_c *UserCreate) SetNillableTotalRecharged(v *float64) *UserCreate {
 	return _c
 }
 
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (_c *UserCreate) SetPreferredAccountID(v int64) *UserCreate {
+	_c.mutation.SetPreferredAccountID(v)
+	return _c
+}
+
+// SetNillablePreferredAccountID sets the "preferred_account_id" field if the given value is not nil.
+func (_c *UserCreate) SetNillablePreferredAccountID(v *int64) *UserCreate {
+	if v != nil {
+		_c.SetPreferredAccountID(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *UserCreate) SetRpmLimit(v int) *UserCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -701,6 +715,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultTotalRecharged
 		_c.mutation.SetTotalRecharged(v)
 	}
+	if _, ok := _c.mutation.PreferredAccountID(); !ok {
+		v := user.DefaultPreferredAccountID
+		_c.mutation.SetPreferredAccountID(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := user.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -793,6 +811,14 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.TotalRecharged(); !ok {
 		return &ValidationError{Name: "total_recharged", err: errors.New(`ent: missing required field "User.total_recharged"`)}
+	}
+	if _, ok := _c.mutation.PreferredAccountID(); !ok {
+		return &ValidationError{Name: "preferred_account_id", err: errors.New(`ent: missing required field "User.preferred_account_id"`)}
+	}
+	if v, ok := _c.mutation.PreferredAccountID(); ok {
+		if err := user.PreferredAccountIDValidator(v); err != nil {
+			return &ValidationError{Name: "preferred_account_id", err: fmt.Errorf(`ent: validator failed for field "User.preferred_account_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "User.rpm_limit"`)}
@@ -919,6 +945,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TotalRecharged(); ok {
 		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
 		_node.TotalRecharged = value
+	}
+	if value, ok := _c.mutation.PreferredAccountID(); ok {
+		_spec.SetField(user.FieldPreferredAccountID, field.TypeInt64, value)
+		_node.PreferredAccountID = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
@@ -1566,6 +1596,24 @@ func (u *UserUpsert) AddTotalRecharged(v float64) *UserUpsert {
 	return u
 }
 
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (u *UserUpsert) SetPreferredAccountID(v int64) *UserUpsert {
+	u.Set(user.FieldPreferredAccountID, v)
+	return u
+}
+
+// UpdatePreferredAccountID sets the "preferred_account_id" field to the value that was provided on create.
+func (u *UserUpsert) UpdatePreferredAccountID() *UserUpsert {
+	u.SetExcluded(user.FieldPreferredAccountID)
+	return u
+}
+
+// AddPreferredAccountID adds v to the "preferred_account_id" field.
+func (u *UserUpsert) AddPreferredAccountID(v int64) *UserUpsert {
+	u.Add(user.FieldPreferredAccountID, v)
+	return u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (u *UserUpsert) SetRpmLimit(v int) *UserUpsert {
 	u.Set(user.FieldRpmLimit, v)
@@ -2025,6 +2073,27 @@ func (u *UserUpsertOne) AddTotalRecharged(v float64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateTotalRecharged() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTotalRecharged()
+	})
+}
+
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (u *UserUpsertOne) SetPreferredAccountID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetPreferredAccountID(v)
+	})
+}
+
+// AddPreferredAccountID adds v to the "preferred_account_id" field.
+func (u *UserUpsertOne) AddPreferredAccountID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddPreferredAccountID(v)
+	})
+}
+
+// UpdatePreferredAccountID sets the "preferred_account_id" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdatePreferredAccountID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdatePreferredAccountID()
 	})
 }
 
@@ -2656,6 +2725,27 @@ func (u *UserUpsertBulk) AddTotalRecharged(v float64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateTotalRecharged() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTotalRecharged()
+	})
+}
+
+// SetPreferredAccountID sets the "preferred_account_id" field.
+func (u *UserUpsertBulk) SetPreferredAccountID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetPreferredAccountID(v)
+	})
+}
+
+// AddPreferredAccountID adds v to the "preferred_account_id" field.
+func (u *UserUpsertBulk) AddPreferredAccountID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddPreferredAccountID(v)
+	})
+}
+
+// UpdatePreferredAccountID sets the "preferred_account_id" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdatePreferredAccountID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdatePreferredAccountID()
 	})
 }
 

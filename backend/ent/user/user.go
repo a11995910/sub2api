@@ -63,6 +63,8 @@ const (
 	FieldBalanceNotifyExtraEmails = "balance_notify_extra_emails"
 	// FieldTotalRecharged holds the string denoting the total_recharged field in the database.
 	FieldTotalRecharged = "total_recharged"
+	// FieldPreferredAccountID holds the string denoting the preferred_account_id field in the database.
+	FieldPreferredAccountID = "preferred_account_id"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
@@ -245,6 +247,7 @@ var Columns = []string{
 	FieldBalanceNotifyThreshold,
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
+	FieldPreferredAccountID,
 	FieldRpmLimit,
 }
 
@@ -321,6 +324,10 @@ var (
 	DefaultBalanceNotifyExtraEmails string
 	// DefaultTotalRecharged holds the default value on creation for the "total_recharged" field.
 	DefaultTotalRecharged float64
+	// DefaultPreferredAccountID holds the default value on creation for the "preferred_account_id" field.
+	DefaultPreferredAccountID int64
+	// PreferredAccountIDValidator is a validator for the "preferred_account_id" field. It is called by the builders before save.
+	PreferredAccountIDValidator func(int64) error
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 )
@@ -451,6 +458,11 @@ func ByBalanceNotifyExtraEmails(opts ...sql.OrderTermOption) OrderOption {
 // ByTotalRecharged orders the results by the total_recharged field.
 func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotalRecharged, opts...).ToFunc()
+}
+
+// ByPreferredAccountID orders the results by the preferred_account_id field.
+func ByPreferredAccountID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPreferredAccountID, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.

@@ -197,6 +197,24 @@ func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userI
 }
 
 func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error) {
+	if input.PreferredAccountID != nil {
+		if *input.PreferredAccountID < 0 {
+			return nil, infraerrors.BadRequest("INVALID_PREFERRED_ACCOUNT", "优先账号 ID 不能为负数")
+		}
+		if *input.PreferredAccountID > 0 {
+			if s.accountRepo == nil {
+				return nil, fmt.Errorf("账号仓储未配置")
+			}
+			account, err := s.accountRepo.GetByID(ctx, *input.PreferredAccountID)
+			if errors.Is(err, ErrAccountNotFound) || (err == nil && account == nil) {
+				return nil, infraerrors.BadRequest("INVALID_PREFERRED_ACCOUNT", "优先账号不存在或已删除")
+			}
+			if err != nil {
+				return nil, fmt.Errorf("查询优先账号: %w", err)
+			}
+		}
+	}
+
 	// 校验用户专属分组倍率：必须 > 0（nil 合法，表示清除专属倍率）
 	if input.GroupRates != nil {
 		for groupID, rate := range input.GroupRates {
@@ -262,6 +280,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldStatus := user.Status
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
+	oldPreferredAccountID := user.PreferredAccountID
 	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
 	oldBlockedGroups := append([]int64(nil), user.BlockedGroups...)
 	allowedGroupAccessUpdated := input.AllowedGroupAccess != nil
@@ -323,6 +342,11 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.Concurrency != nil {
 		user.Concurrency = *input.Concurrency
 		fields.Concurrency = true
+	}
+
+	if input.PreferredAccountID != nil {
+		user.PreferredAccountID = *input.PreferredAccountID
+		fields.PreferredAccountID = true
 	}
 
 	if input.RPMLimit != nil {
@@ -399,7 +423,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// allowed_groups、blocked_groups 和公开分组限制都参与 API Key 分组授权判断；修改后必须立即失效旧快照。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || user.RestrictPublicGroups != oldRestrictPublicGroups || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || !sameInt64Set(user.BlockedGroups, oldBlockedGroups) {
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || user.PreferredAccountID != oldPreferredAccountID || user.RestrictPublicGroups != oldRestrictPublicGroups || allowedGroupAccessUpdated || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) || !sameInt64Set(user.BlockedGroups, oldBlockedGroups) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}

@@ -256,7 +256,11 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
+	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	if account := s.preferredOpenAIAccountWithoutSlot(ctx, groupID, PlatformOpenAI, requestedModel, excludedIDs, ""); account != nil {
+		return account, nil
+	}
+	return s.selectAccountForModelWithExclusions(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
 }
 
 // SelectAccountForTokenCount selects an account for a non-billable token-count
@@ -272,6 +276,9 @@ func (s *OpenAIGatewayService) SelectAccountForTokenCount(
 ) (*Account, error) {
 	ctx = WithOpenAIProfitControlSuppressed(ctx)
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	if account := s.preferredOpenAIAccountWithoutSlot(ctx, groupID, platform, requestedModel, nil, requiredCapability); account != nil {
+		return account, nil
+	}
 	return s.selectAccountForModelWithExclusions(
 		ctx,
 		groupID,
@@ -1151,6 +1158,20 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// 分组利润控制：legacy 公共入口同样装门，保证不经
 	// selectAccountWithScheduler 的调用方也无法绕过利润准入。
 	ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+	if userPreferredAccountID(ctx) > 0 {
+		preferredReq := OpenAIAccountScheduleRequest{
+			GroupID: groupID, Platform: PlatformOpenAI, SessionHash: sessionHash, RequestedModel: requestedModel,
+			ExcludedIDs: excludedIDs, RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+		}
+		if sessionHash != "" && s.cache != nil {
+			preferredReq.StickyAccountID, _ = s.getStickySessionAccountID(ctx, groupID, sessionHash)
+		}
+		preferredScheduler := &defaultOpenAIAccountScheduler{service: s}
+		if preferred, err := preferredScheduler.selectUserPreferredAccount(ctx, &preferredReq); err != nil || preferred != nil {
+			return preferred, err
+		}
+		excludedIDs = preferredReq.ExcludedIDs
+	}
 	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
 }
 

@@ -75,6 +75,7 @@ type CreateUserRequest struct {
 // UpdateUserRequest represents admin update user request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateUserRequest struct {
+	PreferredAccountID   *int64                       `json:"preferred_account_id" binding:"omitempty,min=0"`
 	Email                string                       `json:"email" binding:"omitempty,email"`
 	Password             string                       `json:"password" binding:"omitempty,min=6"`
 	Username             *string                      `json:"username"`
@@ -383,6 +384,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		accessInput = &items
 	}
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
+		PreferredAccountID:   req.PreferredAccountID,
 		Email:                req.Email,
 		Password:             req.Password,
 		Username:             req.Username,

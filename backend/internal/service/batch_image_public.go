@@ -946,6 +946,12 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		}
 		// 与普通账号调度一致：priority 数值越小越优先，同优先级按 ID 排序。
 		sort.SliceStable(accounts, func(i, j int) bool {
+			preferredID := userPreferredAccountID(ctx)
+			iPreferred := accounts[i].ID == preferredID && preferredAccountMatchesGroup(&accounts[i], owner.GroupID)
+			jPreferred := accounts[j].ID == preferredID && preferredAccountMatchesGroup(&accounts[j], owner.GroupID)
+			if iPreferred != jPreferred {
+				return iPreferred
+			}
 			if accounts[i].Priority != accounts[j].Priority {
 				return accounts[i].Priority < accounts[j].Priority
 			}

@@ -24,6 +24,7 @@ const (
 	openAIAccountScheduleLayerGuardianParent   = "guardian_parent"
 	openAIAccountScheduleLayerSessionSticky    = "session_hash"
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
+	openAIAccountScheduleLayerUserPreferred    = "user_preferred"
 	openAIAdvancedSchedulerSettingKey          = "openai_advanced_scheduler_enabled"
 )
 
@@ -472,6 +473,15 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			decision.SelectedAccountType = selection.Account.Type
 			return selection, decision, nil
 		}
+	}
+
+	if preferred, preferredErr := s.selectUserPreferredAccount(ctx, &req); preferredErr != nil {
+		return nil, decision, preferredErr
+	} else if preferred != nil {
+		decision.Layer = openAIAccountScheduleLayerUserPreferred
+		decision.SelectedAccountID = preferred.Account.ID
+		decision.SelectedAccountType = preferred.Account.Type
+		return preferred, decision, nil
 	}
 
 	if !req.StickyWeighted {
@@ -2513,6 +2523,30 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				decision.SelectedAccountType = selection.Account.Type
 				return selection, decision, nil
 			}
+		}
+		if userPreferredAccountID(ctx) > 0 {
+			preferredReq := OpenAIAccountScheduleRequest{
+				GroupID: groupID, Platform: platform, SessionHash: sessionHash,
+				PreviousResponseID: previousResponseID, GuardianParentAccountID: guardianParentAccountID,
+				PreserveStickyBinding: preserveGuardianParentBinding,
+				RequestedModel:        requestedModel, RequiredTransport: requiredTransport,
+				RequiredCapability: requiredCapability, RequiredImageCapability: requiredImageCapability,
+				RequireCompact: requireCompact, ExcludedIDs: excludedIDs,
+				RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+			}
+			if sessionHash != "" && s.cache != nil {
+				preferredReq.StickyAccountID, _ = s.getStickySessionAccountID(ctx, groupID, sessionHash)
+			}
+			preferredScheduler := &defaultOpenAIAccountScheduler{service: s}
+			if preferred, err := preferredScheduler.selectUserPreferredAccount(ctx, &preferredReq); err != nil {
+				return nil, decision, err
+			} else if preferred != nil {
+				decision.Layer = openAIAccountScheduleLayerUserPreferred
+				decision.SelectedAccountID = preferred.Account.ID
+				decision.SelectedAccountType = preferred.Account.Type
+				return preferred, decision, nil
+			}
+			excludedIDs = preferredReq.ExcludedIDs
 		}
 		legacySessionHash := sessionHash
 		if preserveGuardianParentBinding {

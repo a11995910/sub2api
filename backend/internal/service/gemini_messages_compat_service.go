@@ -125,6 +125,20 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 
 	cacheKey := "gemini:" + sessionHash
 
+	// 用户偏好只在当前分组内生效，复用 Gemini 模型、平台和限额检查。
+	if id := userPreferredAccountID(ctx); id > 0 && groupID != nil && s.accountRepo != nil {
+		if _, excluded := excludedIDs[id]; !excluded {
+			account, lookupErr := s.accountRepo.GetByID(ctx, id)
+			if lookupErr == nil && preferredAccountMatchesGroup(account, groupID) && account.IsSchedulable() &&
+				s.isAccountUsableForRequest(ctx, account, requestedModel, platform, useMixedScheduling) {
+				if sessionHash != "" && s.cache != nil {
+					_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, account.ID, geminiStickySessionTTL)
+				}
+				return account, nil
+			}
+		}
+	}
+
 	// 2. 尝试粘性会话命中
 	// Try sticky session hit
 	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {

@@ -164,6 +164,7 @@ docs/*
 !docs/EXCEL_BRIDGE_CN.md
 !docs/EXCEL_BPS_CN.md
 !docs/ACCOUNT_INTELLIGENCE_TESTS_CN.md
+!docs/USER_PREFERRED_ACCOUNT_CN.md
 !docs/LOTTERY.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/codex-credits.md

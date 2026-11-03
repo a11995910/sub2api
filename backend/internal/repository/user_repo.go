@@ -152,6 +152,7 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
+		SetPreferredAccountID(userIn.PreferredAccountID).
 		SetRpmLimit(userIn.RPMLimit).
 		SetRestrictPublicGroups(userIn.RestrictPublicGroups).
 		Save(txCtx)
@@ -352,6 +353,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	}
 	if fields.Concurrency {
 		updateOp = updateOp.SetConcurrency(userIn.Concurrency)
+	}
+	if fields.PreferredAccountID {
+		updateOp = updateOp.SetPreferredAccountID(userIn.PreferredAccountID)
 	}
 	if fields.RPMLimit {
 		updateOp = updateOp.SetRpmLimit(userIn.RPMLimit)
