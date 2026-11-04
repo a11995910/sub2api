@@ -2,7 +2,7 @@ export default {
   modelLeaderboard: {
     loadMore: '再看 25 条',
     title: '全球模型能力榜',
-    entry: '模型天梯',
+    entry: '模型天梯榜',
     subtitle:
       '基于 Artificial Analysis 官方评测，对比模型智能、专业能力、速度与价格。',
     back: '返回控制台',
