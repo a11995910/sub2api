@@ -185,6 +185,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/model-leaderboard',
+    name: 'ModelLeaderboard',
+    component: () => import('@/views/ModelLeaderboardView.vue'),
+    meta: { requiresAuth: false, title: '全球模型能力榜', titleKey: 'modelLeaderboard.title' }
+  },
+  {
     path: '/model-plaza',
     name: 'ModelPlaza',
     component: () => import('@/views/ModelPlazaView.vue'),
@@ -982,6 +988,11 @@ router.beforeEach(async (to, _from, next) => {
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
+    // 榜单与后端同口径：后台模式仅管理员可见。
+    if (to.path === '/model-leaderboard' && appStore.backendModeEnabled && !authStore.isAdmin) {
+      next('/login')
+      return
+    }
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
       // In backend mode, non-admin users should NOT be redirected away from login

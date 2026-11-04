@@ -72,6 +72,7 @@ import PlazaFilterBar from './PlazaFilterBar.vue'
 import PlazaGroupSection from './PlazaGroupSection.vue'
 import type { ModelPlazaGroup, ModelPlazaResponse } from '@/api/modelPlaza'
 import { useAuthStore } from '@/stores/auth'
+import { normalizeLeaderboardModel } from '@/utils/modelLeaderboard'
 
 const props = defineProps<{
   response: ModelPlazaResponse | null
@@ -79,6 +80,9 @@ const props = defineProps<{
   error?: boolean
   /** 后台内嵌形态(AppLayout 内):隐藏页头。 */
   embedded?: boolean
+  /** 榜单深链：精确定位模型及可选分组。 */
+  initialModel?: string
+  initialGroup?: number
 }>()
 
 const { t } = useI18n()
@@ -89,6 +93,13 @@ const selectedPlatform = ref<string>('all')
 const selectedGroupId = ref<number | 'all'>('all')
 const selectedRate = ref<number | 'all'>('all')
 const searchQuery = ref('')
+
+watch(() => [props.initialModel, props.initialGroup] as const, ([model, group]) => {
+  searchQuery.value = model ?? ''
+  selectedGroupId.value = group ?? 'all'
+  selectedPlatform.value = 'all'
+  selectedRate.value = 'all'
+}, { immediate: true })
 
 const searchActive = computed(() => searchQuery.value.trim() !== '')
 
@@ -146,7 +157,11 @@ const filteredGroups = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
     groups = groups
-      .map((g) => ({ ...g, models: g.models.filter((m) => m.name.toLowerCase().includes(q)) }))
+      .map((g) => ({ ...g, models: g.models.filter((m) =>
+        props.initialModel && searchQuery.value === props.initialModel
+          ? normalizeLeaderboardModel(m.name) === normalizeLeaderboardModel(props.initialModel)
+          : m.name.toLowerCase().includes(q)
+      ) }))
       .filter((g) => g.models.length > 0)
   }
   // 专属倍率会改变生效值,不能只依赖后端按默认倍率的排序。

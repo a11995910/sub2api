@@ -8,6 +8,7 @@ import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
 import lottery from './lottery'
+import modelLeaderboard from './modelLeaderboard'
 
 export default {
   adminAccessKeys,
@@ -18,6 +19,7 @@ export default {
   ...channelMonitorV2,
   ...batchImage,
   ...lottery,
+  ...modelLeaderboard,
   admin,
   ...misc,
 }

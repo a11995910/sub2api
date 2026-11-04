@@ -23,6 +23,8 @@
 
       <!-- Right: Developer Docs + Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex min-w-0 items-center gap-1 sm:gap-3">
+        <!-- 模型榜单位于入群快捷入口左侧。 -->
+        <ModelLeaderboardLink />
         <!-- Quick Link -->
         <a
           v-if="quickLinkVisible"
@@ -295,6 +297,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import ModelLeaderboardLink from '@/components/common/ModelLeaderboardLink.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
