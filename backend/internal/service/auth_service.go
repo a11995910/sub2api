@@ -171,6 +171,9 @@ func (s *AuthService) Register(ctx context.Context, email, password string) (str
 
 // RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和邀请返利码），返回token和用户。
 func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode string) (string, *User, error) {
+	if err := s.validateRegistrationEmailBlocklist(ctx, email); err != nil {
+		return "", nil, err
+	}
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -601,6 +604,10 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				return "", nil, ErrRegDisabled
 			}
 
+			if err := s.validateRegistrationEmailBlocklist(ctx, email); err != nil {
+				return "", nil, err
+			}
+
 			randomPassword, err := randomHexString(32)
 			if err != nil {
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to generate random password for oauth signup: %v", err)
@@ -744,6 +751,10 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					return nil, nil, ErrInvitationCodeInvalid
 				}
 				invitationRedeemCode = redeemCode
+			}
+
+			if err := s.validateRegistrationEmailBlocklist(ctx, email); err != nil {
+				return nil, nil, err
 			}
 
 			randomPassword, err := randomHexString(32)
@@ -1203,6 +1214,9 @@ func inferLegacySignupSource(email string) string {
 }
 
 func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email string) error {
+	if err := s.validateRegistrationEmailBlocklist(ctx, email); err != nil {
+		return err
+	}
 	if s.settingService == nil {
 		return nil
 	}
@@ -1217,6 +1231,9 @@ func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email
 // 非白名单域名默认直接拒绝（严格白名单模式）；仅当域名限量注册开关开启时，
 // 非白名单域名每个最多允许一个账户。
 func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email string) error {
+	if err := s.validateRegistrationEmailBlocklist(ctx, email); err != nil {
+		return err
+	}
 	if s.settingService == nil {
 		return nil
 	}
@@ -1253,6 +1270,9 @@ func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email 
 }
 
 func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, user *User) error {
+	if err := s.validateRegistrationEmailBlocklist(ctx, user.Email); err != nil {
+		return err
+	}
 	if s == nil || s.userRepo == nil {
 		return ErrServiceUnavailable
 	}
