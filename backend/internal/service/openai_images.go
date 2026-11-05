@@ -1494,21 +1494,8 @@ func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImages
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build image download request: %w", err)
-	}
-	headers := cloneHTTPHeader(opts.requestHeaders)
-	headers.Set("Accept", "image/*,*/*;q=0.8")
-	headers.Del("Content-Type")
-	for key, values := range headers {
-		for _, value := range values {
-			req.Header.Add(key, value)
-		}
-	}
-	if strings.TrimSpace(req.Header.Get("User-Agent")) == "" {
-		req.Header.Set("User-Agent", openAIImageBackendUserAgent)
-	}
+	ctx, cancel := context.WithTimeout(WithHTTPUpstreamRedirectsDisabled(ctx), openAIImageURLDownloadTimeout)
+	defer cancel()
 
 	accountID := int64(0)
 	accountConcurrency := 0
@@ -1516,15 +1503,54 @@ func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImages
 		accountID = opts.account.ID
 		accountConcurrency = opts.account.Concurrency
 	}
-	resp, err := s.httpUpstream.Do(req, opts.proxyURL, accountID, accountConcurrency)
-	if err != nil {
-		return nil, fmt.Errorf("download image url: %w", err)
-	}
-	if resp == nil {
-		return nil, fmt.Errorf("download image url: empty response")
-	}
-	if resp.Body == nil {
-		return nil, fmt.Errorf("download image url: empty response body")
+	var resp *http.Response
+	allowCredentials := true
+	for redirects := 0; ; redirects++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build image download request: %w", err)
+		}
+		// 预签名存储 URL 已包含认证参数，不能再附带上游 API 的 Bearer、Cookie 或自定义密钥。
+		// 仅原始 API 同源下载保留认证；跨域或重定向离开原站后不再恢复任何凭据。
+		allowCredentials = allowCredentials && sameOpenAIImagesOrigin(req.URL, opts.baseURL)
+		if allowCredentials {
+			req.Header = cloneHTTPHeader(opts.requestHeaders)
+		} else {
+			if err := rejectPrivateImageHost(downloadURL); err != nil {
+				return nil, err
+			}
+			req = req.WithContext(WithHTTPUpstreamPublicHostsOnly(req.Context()))
+		}
+		req.Header.Set("Accept", "image/*,*/*;q=0.8")
+		req.Header.Del("Content-Type")
+		req.Header.Del("Content-Length")
+		if strings.TrimSpace(req.Header.Get("User-Agent")) == "" {
+			req.Header.Set("User-Agent", openAIImageBackendUserAgent)
+		}
+		resp, err = s.httpUpstream.Do(req, opts.proxyURL, accountID, accountConcurrency)
+		if err != nil {
+			return nil, fmt.Errorf("download image url: %w", err)
+		}
+		if resp == nil || resp.Body == nil {
+			return nil, fmt.Errorf("download image url: empty response body")
+		}
+		switch resp.StatusCode {
+		case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+			_ = resp.Body.Close()
+			if redirects >= 5 {
+				return nil, fmt.Errorf("image url redirects too many times")
+			}
+			location := strings.TrimSpace(resp.Header.Get("Location"))
+			if location == "" {
+				return nil, fmt.Errorf("image url redirect has no location")
+			}
+			downloadURL, err = resolveOpenAIImagesResponseURL(location, req.URL)
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		break
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -1533,7 +1559,7 @@ func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImages
 		if message == "" {
 			message = fmt.Sprintf("status %d", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("download image url failed: %s", message)
+		return nil, fmt.Errorf("download image url failed (status %d): %s", resp.StatusCode, message)
 	}
 	data, err := readOpenAIImageDownloadBody(resp.Body)
 	if err != nil {
@@ -1549,6 +1575,22 @@ func (s *OpenAIGatewayService) downloadOpenAIImagesResponseURL(opts openAIImages
 	return data, nil
 }
 
+func sameOpenAIImagesOrigin(a, b *url.URL) bool {
+	if a == nil || b == nil || !strings.EqualFold(a.Scheme, b.Scheme) || !strings.EqualFold(a.Hostname(), b.Hostname()) {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if value := u.Port(); value != "" {
+			return value
+		}
+		if strings.EqualFold(u.Scheme, "https") {
+			return "443"
+		}
+		return "80"
+	}
+	return port(a) == port(b)
+}
+
 func resolveOpenAIImagesResponseURL(rawURL string, baseURL *url.URL) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
@@ -1559,6 +1601,9 @@ func resolveOpenAIImagesResponseURL(rawURL string, baseURL *url.URL) (string, er
 			return "", fmt.Errorf("relative image url requires upstream base url")
 		}
 		parsed = baseURL.ResolveReference(parsed)
+	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("image url must not contain credentials")
 	}
 	switch strings.ToLower(parsed.Scheme) {
 	case "http", "https":
