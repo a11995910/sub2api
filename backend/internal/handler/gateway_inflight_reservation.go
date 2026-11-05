@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,36 @@ func tokenInflightEstimate(model string, body []byte) service.InflightEstimateRe
 		MaxTokens: requestMaxOutputTokens(body),
 		Kind:      service.InflightEstimateToken,
 	}
+}
+
+// deepSeekMessagesInflightEstimate 在任何上游调用前校验 Fetch 声明和售价，并覆盖整个循环的预留。
+func deepSeekMessagesInflightEstimate(platform, model string, body []byte, group *service.Group) (service.InflightEstimateRequest, error) {
+	estimate := tokenInflightEstimate(model, body)
+	if platform != service.PlatformDeepseek {
+		return estimate, nil
+	}
+	hasFetch := false
+	for _, tool := range gjson.GetBytes(body, "tools").Array() {
+		if strings.HasPrefix(tool.Get("type").String(), "web_fetch") {
+			hasFetch = true
+			break
+		}
+	}
+	if !hasFetch {
+		return estimate, nil
+	}
+	uses, err := service.DeepSeekFetchMaxUses(body)
+	if err != nil {
+		return estimate, err
+	}
+	if err := service.ValidateDeepSeekToolPricing(group); err != nil {
+		return estimate, err
+	}
+	estimate.DeepSeekToolCalls = uses
+	estimate.TokenRounds = uses + 2
+	// 与执行器每次最多回填 128 KiB 一致；实际扣费只使用各轮返回的真实 usage。
+	estimate.BodyBytes += uses * 128 * 1024
+	return estimate, nil
 }
 
 func inflightNoop() {}

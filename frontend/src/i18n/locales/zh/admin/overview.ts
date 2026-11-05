@@ -1112,6 +1112,11 @@ export default {
         searchPricePer1k: '搜索每千次价格（USD）',
         pricePlaceholder: '可选'
       },
+      deepseekToolPricing: {
+        title: 'DeepSeek Search / Fetch 定价',
+        description: '仅对返回有效结果的独立 Search / Fetch 和服务端 Fetch 调用计费。留空禁用这些工具入口，填写 0 表示免费；不会自动套用官方或其他平台价格。费用按成功次数和基础分组倍率计算，不叠加高峰倍率。模型 Token 另按既有规则计费。',
+        pricePer1k: '每千次成功调用价格（USD）'
+      },
       modelPricing: {
         title: '分组逐模型定价',
         description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',

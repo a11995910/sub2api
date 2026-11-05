@@ -72,8 +72,18 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
 		return nil, writeOpenCodeUnsupportedModelError(c, true, routingModel)
 	}
-	switch s.resolveUpstreamProtocolFor(ctx, account, APIProtocolAnthropic, routingModel) {
+	protocol := s.resolveUpstreamProtocolFor(ctx, account, APIProtocolAnthropic, routingModel)
+	deepSeekFetch := account.Platform == PlatformDeepseek && hasDeepSeekFetchContent(body)
+	if deepSeekFetch && protocol != APIProtocolAnthropic {
+		err := errors.New("DeepSeek 服务端 Fetch 需要账号使用 Anthropic 或 adaptive 协议")
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+	switch protocol {
 	case APIProtocolAnthropic:
+		if deepSeekFetch {
+			return s.forwardDeepSeekFetch(ctx, c, account, body, defaultMappedModel)
+		}
 		// 上游为供应商原生 Anthropic 端点：/v1/messages 零转换直通（仅模型名映射 +
 		// 少量 body 清洗），完整保留 thinking / tool_use / cache 语义。
 		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)

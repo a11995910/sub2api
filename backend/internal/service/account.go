@@ -101,6 +101,7 @@ const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
+	OpenAIEndpointCapabilityDeepSeekTools   OpenAIEndpointCapability = "deepseek_tools"
 	// OpenAIEndpointCapabilityVideos 只要求 OpenAI API Key 账号；协议支持由首次
 	// 请求自动探测，不能依赖历史 chat_completions capability 配置。
 	OpenAIEndpointCapabilityVideos OpenAIEndpointCapability = "videos"
@@ -1932,6 +1933,13 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	if capability == "" {
 		return true
+	}
+	if capability == OpenAIEndpointCapabilityDeepSeekTools {
+		if a.Platform != PlatformDeepseek || a.Type != AccountTypeAPIKey || strings.TrimSpace(a.GetOpenAIProtocolAPIKey()) == "" {
+			return false
+		}
+		_, err := deepSeekToolBaseURL(a)
+		return err == nil
 	}
 	if !a.IsOpenAICompatible() {
 		return false

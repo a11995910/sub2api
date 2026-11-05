@@ -305,6 +305,12 @@ type OpenAIForwardResult struct {
 	WebSearchCalls int
 	// SearchCount is Grok-native web_search / tool search call count (per 1k pricing).
 	SearchCount int
+	// DeepSeekToolCalls 仅累计 Search/Fetch 返回有效结果的成功调用，不含失败与空结果。
+	DeepSeekToolCalls int
+	// DeepSeekToolOnly 标记独立工具端点，不参与模型 token 或渠道按次计费。
+	DeepSeekToolOnly bool
+	// DeepSeekModelUsages 保留工具循环每轮用量，阶梯价格与模型按次费用不能按合计输入重算。
+	DeepSeekModelUsages []OpenAIUsage
 	// AudioUsage carries Voice billing units when present.
 	AudioUsage *AudioUsage
 	// CacheHitTargetAdjustment 是 OpenAI HTTP 流式终止 usage 帧仍可改写时计算的

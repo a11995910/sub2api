@@ -1115,6 +1115,11 @@ export default {
         searchPricePer1k: 'Search price per 1k calls (USD)',
         pricePlaceholder: 'optional'
       },
+      deepseekToolPricing: {
+        title: 'DeepSeek Search / Fetch pricing',
+        description: 'Bills successful standalone Search / Fetch and server-side Fetch calls with usable results. Leave blank to disable these tool endpoints, or set 0 for free calls. No provider default is applied. Uses the base group multiplier without peak pricing. Model tokens are billed separately under existing rules.',
+        pricePer1k: 'Price per 1,000 successful calls (USD)'
+      },
       modelPricing: {
         title: 'Per-model group pricing',
         description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',

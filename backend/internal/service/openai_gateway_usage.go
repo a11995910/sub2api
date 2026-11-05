@@ -273,7 +273,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
 		cost.BillingMode == string(BillingModeImage) || result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
+			result.AudioUsage != nil || result.SearchCount > 0 || result.DeepSeekToolCalls > 0 || result.DeepSeekToolOnly,
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
@@ -408,6 +408,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		NativeCompactionV2:          input.NativeCompactionV2,
 	}
 	applyCacheHitTargetAudit(usageLog, cacheHitAdjustment)
+	if result.DeepSeekToolCalls > 0 {
+		// 沿用已有计费层级字段记录成功次数，不把工具调用伪装成图片或 token。
+		tier := fmt.Sprintf("deepseek_tools:%d", result.DeepSeekToolCalls)
+		usageLog.BillingTier = &tier
+	}
 	isVideoUsage := isVideoUsageResult(result, billingModels)
 	if isVideoUsage {
 		usageLog.VideoCount = result.VideoCount
@@ -429,7 +434,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.ActualCost = cost.ActualCost
 		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 	}
-	if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
+	if result.DeepSeekToolOnly {
+		usageLog.RateMultiplier = baseMultiplier
+	} else if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = videoMultiplier
 	} else if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier
@@ -504,6 +511,46 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 				zap.String("request_id", requestID),
 			).Warn("openai_usage.video_account_stats_unavailable", zap.Error(err))
 		}
+	} else if apiKey.GroupID != nil && len(result.DeepSeekModelUsages) > 0 {
+		// 成本统计也逐轮匹配规则/阶梯。工具优先显式统计规则，否则保留
+		// 售价×账号倍率的既有估算口径，不将第三方工具成本冒充官方价。
+		statsTotal := 0.0
+		if result.DeepSeekToolCalls > 0 {
+			toolCost, toolErr := CalculateDeepSeekToolCost(apiKey.Group, result.DeepSeekToolCalls, 1)
+			if toolErr != nil {
+				return toolErr
+			}
+			toolStats := resolveAccountStatsCostAt(ctx, s.channelService, s.billingService,
+				account.ID, *apiKey.GroupID, "deepseek-tools-fetch", UsageTokens{}, result.DeepSeekToolCalls,
+				toolCost.TotalCost, "", pricingAt, false)
+			if toolStats != nil {
+				statsTotal += *toolStats
+			} else {
+				statsTotal += toolCost.TotalCost
+			}
+		}
+		roundResult := *result
+		roundResult.DeepSeekModelUsages, roundResult.DeepSeekToolCalls = nil, 0
+		for _, usage := range result.DeepSeekModelUsages {
+			roundTokens := deepSeekUsageTokens(usage)
+			roundResult.Usage = usage
+			roundCost, roundErr := s.calculateOpenAIRecordUsageCost(ctx, &roundResult, apiKey, billingModels,
+				multiplier, imageMultiplier, videoMultiplier, baseMultiplier, roundTokens, serviceTier,
+				longContextBillingGate, modelLongContextExempt, pricingAt)
+			if roundErr != nil {
+				roundCost = &CostBreakdown{}
+			}
+			stats := resolveAccountStatsCostAt(ctx, s.channelService, s.billingService, account.ID, *apiKey.GroupID,
+				upstreamSentModel(result.Model, result.UpstreamModel), roundTokens, 1, roundCost.TotalCost,
+				serviceTier, pricingAt, accountStatsLongContextPricingEnabled(longContextBillingGate) && !modelLongContextExempt,
+				optionalStringValue(result.ReasoningEffort))
+			if stats != nil {
+				statsTotal += *stats
+			} else {
+				statsTotal += roundCost.TotalCost
+			}
+		}
+		usageLog.AccountStatsCost = &statsTotal
 	} else if apiKey.GroupID != nil {
 		applyAccountStatsCostAt(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
@@ -643,6 +690,56 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	pricingAt time.Time,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
+	var deepSeekToolCost *CostBreakdown
+	if result != nil && (result.DeepSeekToolOnly || result.DeepSeekToolCalls > 0) {
+		var group *Group
+		if apiKey != nil {
+			group = apiKey.Group
+		}
+		var err error
+		deepSeekToolCost, err = CalculateDeepSeekToolCost(group, result.DeepSeekToolCalls, webSearchMultiplier)
+		if err != nil {
+			return nil, err
+		}
+		if result.DeepSeekToolOnly {
+			return deepSeekToolCost, nil
+		}
+	}
+	if result != nil && len(result.DeepSeekModelUsages) > 0 {
+		// 每轮独立判断上下文阶梯/按次价，然后只叠加一次成功工具费。
+		total := &CostBreakdown{}
+		roundResult := *result
+		roundResult.DeepSeekModelUsages = nil
+		roundResult.DeepSeekToolCalls = 0
+		for _, usage := range result.DeepSeekModelUsages {
+			roundResult.Usage = usage
+			roundTokens := deepSeekUsageTokens(usage)
+			cost, err := s.calculateOpenAIRecordUsageCost(ctx, &roundResult, apiKey, billingModels, multiplier,
+				imageMultiplier, videoMultiplier, webSearchMultiplier, roundTokens, serviceTier, longContextBillingGate, modelLongContextExempt, pricingAt)
+			if err != nil {
+				if isUsagePricingUnavailableError(err) {
+					logger.L().Warn("deepseek_usage.model_pricing_missing_preserve_tool_cost", zap.Strings("models", billingModels))
+					continue
+				}
+				return nil, err
+			}
+			total.InputCost += cost.InputCost
+			total.OutputCost += cost.OutputCost
+			total.ImageInputCost += cost.ImageInputCost
+			total.ImageOutputCost += cost.ImageOutputCost
+			total.CacheCreationCost += cost.CacheCreationCost
+			total.CacheReadCost += cost.CacheReadCost
+			total.TotalCost += cost.TotalCost
+			total.ActualCost += cost.ActualCost
+			total.BillingMode = cost.BillingMode
+			total.LongContextBillingApplied = total.LongContextBillingApplied || cost.LongContextBillingApplied
+		}
+		if deepSeekToolCost != nil {
+			total.TotalCost += deepSeekToolCost.TotalCost
+			total.ActualCost += deepSeekToolCost.ActualCost
+		}
+		return total, nil
+	}
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
 		// 分组覆盖价（nil 时默认 0.01 = 官方 $10/1000 次），不参与渠道级模型定价。
@@ -748,6 +845,11 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 			if lastErr == nil {
 				lastErr = fmt.Errorf("%w: no non-empty billing model candidates", ErrModelPricingUnavailable)
 			}
+			if deepSeekToolCost != nil && isUsagePricingUnavailableError(lastErr) {
+				logger.L().Warn("deepseek_usage.model_pricing_missing_preserve_tool_cost", zap.Strings("models", billingModels))
+				deepSeekToolCost.BillingMode = string(BillingModeToken)
+				return deepSeekToolCost, nil
+			}
 			return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 		}
 		// Search-only (no model / pure tool path): allow search billing alone.
@@ -760,7 +862,16 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		if lastErr == nil {
 			lastErr = fmt.Errorf("%w: openai usage billing model is empty", ErrModelPricingUnavailable)
 		}
+		if deepSeekToolCost != nil && isUsagePricingUnavailableError(lastErr) {
+			logger.L().Warn("deepseek_usage.model_pricing_missing_preserve_tool_cost", zap.Strings("models", billingModels))
+			deepSeekToolCost.BillingMode = string(BillingModeToken)
+			return deepSeekToolCost, nil
+		}
 		return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
+	}
+	if deepSeekToolCost != nil {
+		tokenCost.TotalCost += deepSeekToolCost.TotalCost
+		tokenCost.ActualCost += deepSeekToolCost.ActualCost
 	}
 	if searchCost == nil || (searchCost.TotalCost == 0 && searchCost.ActualCost == 0) {
 		return tokenCost, nil
